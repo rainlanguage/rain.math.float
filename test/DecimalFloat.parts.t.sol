@@ -22,9 +22,9 @@ contract DecimalFloatPartsTest is Test {
 
         DecimalFloat value = LibDecimalFloat.fromParts(sign, coefficient, exponent);
         (uint256 signOut, uint256 coefficientOut, int256 exponentOut) = value.toParts();
-        assertEq(sign, signOut);
-        assertEq(coefficient, coefficientOut);
-        assertEq(exponent, exponentOut);
+        assertEq(sign, signOut, "sign");
+        assertEq(coefficient, coefficientOut, "coefficient");
+        assertEq(exponent, exponentOut, "exponent");
     }
 
     /// Out of bounds sign must error.
