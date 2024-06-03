@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: CAL
-pragma solidity ^0.8.25;
+pragma solidity =0.8.25;
 
 import {DecimalFloat, LibDecimalFloat, COEFFICIENT_MASK, ExponentOverflow} from "src/DecimalFloat.sol";
 

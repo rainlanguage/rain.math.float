@@ -114,15 +114,17 @@ library LibDecimalFloat {
                 staticCoefficient = signedCoefficientA;
             }
 
-            uint128 alignmentExponentDiff;
-            unchecked {
-                alignmentExponentDiff = uint128(largerExponent - smallerExponent);
+            if (adjustedCoefficient > 0) {
+                uint128 alignmentExponentDiff;
+                unchecked {
+                    alignmentExponentDiff = uint128(largerExponent - smallerExponent);
+                }
+                uint256 multiplier = 10 ** alignmentExponentDiff;
+                if (multiplier > uint256(type(int256).max)) {
+                    revert ExponentOverflow();
+                }
+                adjustedCoefficient *= int256(multiplier);
             }
-            uint256 multiplier = 10 ** alignmentExponentDiff;
-            if (multiplier > uint256(type(int256).max)) {
-                revert ExponentOverflow();
-            }
-            adjustedCoefficient *= int256(multiplier);
 
             // This can't overflow because the signed coefficient is 128 bits.
             // Worst case scenario is that one was aligned all the way to fill
@@ -310,7 +312,7 @@ library LibDecimalFloat {
         return DecimalFloat.wrap(DecimalFloat.unwrap(value) & ~SIGN_MASK | signBit);
     }
 
-    function div2(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
+    function divide2(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
         (int128 signedCoefficientA, int128 exponentA) = toParts(a);
         if (signedCoefficientA == 0) {
             return DecimalFloat.wrap(0);
@@ -318,7 +320,7 @@ library LibDecimalFloat {
         (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
 
         (int128 signedCoefficientB, int128 exponentB) = toParts(b);
-        (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
+        (signedCoefficientB, exponentB) = minimize(signedCoefficientB, exponentB);
 
         int256 signedCoefficient = int256(signedCoefficientA) / int256(signedCoefficientB);
         int128 exponent = exponentA - exponentB;
@@ -365,6 +367,9 @@ library LibDecimalFloat {
 
     function normalize(int256 signedCoefficient, int128 exponent) internal pure returns (int128, int128) {
         unchecked {
+            if (signedCoefficient == 0) {
+                return (0, 0);
+            }
             while (int128(signedCoefficient) != int256(signedCoefficient)) {
                 signedCoefficient /= 10;
                 exponent += 1;
@@ -375,6 +380,9 @@ library LibDecimalFloat {
 
     function maximize(int128 signedCoefficient, int128 exponent) internal pure returns (int128, int128) {
         unchecked {
+            if (signedCoefficient == 0) {
+                return (0, 0);
+            }
             int256 signedCoefficientMaximized = int256(signedCoefficient) * PRECISION_JUMP_MULTIPLIER;
             int128 exponentMaximized = exponent - PRECISION_JUMP_SIZE;
 
@@ -403,6 +411,9 @@ library LibDecimalFloat {
 
     function minimize(int128 signedCoefficient, int128 exponent) internal pure returns (int128, int128) {
         unchecked {
+            if (signedCoefficient == 0) {
+                return (0, 0);
+            }
             // Fast forward.
             while (signedCoefficient % PRECISION_JUMP_MULTIPLIER == 0) {
                 signedCoefficient /= PRECISION_JUMP_MULTIPLIER;
