@@ -630,7 +630,7 @@ library LibDecimalFloat {
             }
 
             result >>= uint256(int256(63 - (x >> 64)));
-            require(result <= uint256(int256(0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)));
+            // require(result <= uint256(int256(0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)));
 
             return int128(int256(result));
         }
@@ -642,110 +642,176 @@ library LibDecimalFloat {
 
             if (x < -0x400000000000000000) return 0; // Underflow
 
-            bytes memory table = hex"0000000000000000000000000000000001" hex"016A09E667F3BCC908B2FB1366EA957D3E" hex"01306FE0A31B7152DE8D5A46305C85EDEC"
-                hex"01172B83C7D517ADCDF7C8C50EB14A791F" hex"010B5586CF9890F6298B92B71842A98363"
-                hex"01059B0D31585743AE7C548EB68CA417FD" hex"0102C9A3E778060EE6F7CACA4F7A29BDE8"
-                hex"010163DA9FB33356D84A66AE336DCDFA3F" hex"0100B1AFA5ABCBED6129AB13EC11DC9543"
-                hex"010058C86DA1C09EA1FF19D294CF2F679B" hex"01002C605E2E8CEC506D21BFC89A23A00F"
-                hex"0100162F3904051FA128BCA9C55C31E5DF" hex"01000B175EFFDC76BA38E31671CA939725"
-                hex"0100058BA01FB9F96D6CACD4B180917C3D" hex"010002C5CC37DA9491D0985C348C68E7B3"
-                hex"01000162E525EE054754457D5995292026" hex"010000B17255775C040618BF4A4ADE83FC"
-                hex"01000058B91B5BC9AE2EED81E9B7D4CFAB" hex"0100002C5C89D5EC6CA4D7C8ACC017B7C9"
-                hex"010000162E43F4F831060E02D839A9D16D" hex"0100000B1721BCFC99D9F890EA06911763"
-                hex"010000058B90CF1E6D97F9CA14DBCC1628" hex"01000002C5C863B73F016468F6BAC5CA2B"
-                hex"0100000162E430E5A18F6119E3C02282A5" hex"01000000B1721835514B86E6D96EFD1BFE"
-                hex"0100000058B90C0B48C6BE5DF846C5B2EF" hex"010000002C5C8601CC6B9E94213C72737A"
-                hex"01000000162E42FFF037DF38AA2B219F06" hex"010000000B17217FBA9C739AA5819F44F9"
-                hex"01000000058B90BFCDEE5ACD3C1CEDC823" hex"0100000002C5C85FE31F35A6A30DA1BE50"
-                hex"010000000162E42FF0999CE3541B9FFFCF" hex"0100000000B17217F80F4EF5AADDA45554"
-                hex"010000000058B90BFBF8479BD5A81B51AD" hex"01000000002C5C85FDF84BD62AE30A74CC"
-                hex"0100000000162E42FEFB2FED257559BDAA" hex"01000000000B17217F7D5A7716BBA4A9AE"
-                hex"0100000000058B90BFBE9DDBAC5E109CCE" hex"010000000002C5C85FDF4B15DE6F17EB0D"
-                hex"01000000000162E42FEFA494F1478FDE05" hex"010000000000B17217F7D20CF927C8E94C"
-                hex"01000000000058B90BFBE8F71CB4E4B33D" hex"0100000000002C5C85FDF477B662B26945"
-                hex"010000000000162E42FEFA3AE53369388C" hex"0100000000000B17217F7D1D351A389D40"
-                hex"010000000000058B90BFBE8E8B2D3D4EDE" hex"01000000000002C5C85FDF4741BEA6E77E"
-                hex"0100000000000162E42FEFA39FE95583C2" hex"01000000000000B17217F7D1CFB72B45E1"
-                hex"0100000000000058B90BFBE8E7CC35C3F0" hex"010000000000002C5C85FDF473E242EA38"
-                hex"01000000000000162E42FEFA39F02B772C" hex"010000000000000B17217F7D1CF7D83C1A"
-                hex"01000000000000058B90BFBE8E7BDCBE2E" hex"0100000000000002C5C85FDF473DEA871F"
-                hex"010000000000000162E42FEFA39EF44D91" hex"0100000000000000B17217F7D1CF79E949"
-                hex"010000000000000058B90BFBE8E7BCE544" hex"01000000000000002C5C85FDF473DE6ECA"
-                hex"0100000000000000162E42FEFA39EF366F" hex"01000000000000000B17217F7D1CF79AFA"
-                hex"0100000000000000058B90BFBE8E7BCD6D" hex"010000000000000002C5C85FDF473DE6B2"
-                hex"01000000000000000162E42FEFA39EF358" hex"010000000000000000B17217F7D1CF79AB";
+            bytes memory table = hex"0000000000000000000000000000000001" hex"016A09E667F3BCC908B2FB1366EA957D3E"
+                hex"01306FE0A31B7152DE8D5A46305C85EDEC" hex"01172B83C7D517ADCDF7C8C50EB14A791F"
+                hex"010B5586CF9890F6298B92B71842A98363" hex"01059B0D31585743AE7C548EB68CA417FD"
+                hex"0102C9A3E778060EE6F7CACA4F7A29BDE8" hex"010163DA9FB33356D84A66AE336DCDFA3F"
+                hex"0100B1AFA5ABCBED6129AB13EC11DC9543" hex"010058C86DA1C09EA1FF19D294CF2F679B"
+                hex"01002C605E2E8CEC506D21BFC89A23A00F" hex"0100162F3904051FA128BCA9C55C31E5DF"
+                hex"01000B175EFFDC76BA38E31671CA939725" hex"0100058BA01FB9F96D6CACD4B180917C3D"
+                hex"010002C5CC37DA9491D0985C348C68E7B3" hex"01000162E525EE054754457D5995292026"
+                hex"010000B17255775C040618BF4A4ADE83FC" hex"01000058B91B5BC9AE2EED81E9B7D4CFAB"
+                hex"0100002C5C89D5EC6CA4D7C8ACC017B7C9" hex"010000162E43F4F831060E02D839A9D16D"
+                hex"0100000B1721BCFC99D9F890EA06911763" hex"010000058B90CF1E6D97F9CA14DBCC1628"
+                hex"01000002C5C863B73F016468F6BAC5CA2B" hex"0100000162E430E5A18F6119E3C02282A5"
+                hex"01000000B1721835514B86E6D96EFD1BFE" hex"0100000058B90C0B48C6BE5DF846C5B2EF"
+                hex"010000002C5C8601CC6B9E94213C72737A" hex"01000000162E42FFF037DF38AA2B219F06"
+                hex"010000000B17217FBA9C739AA5819F44F9" hex"01000000058B90BFCDEE5ACD3C1CEDC823"
+                hex"0100000002C5C85FE31F35A6A30DA1BE50" hex"010000000162E42FF0999CE3541B9FFFCF"
+                hex"0100000000B17217F80F4EF5AADDA45554" hex"010000000058B90BFBF8479BD5A81B51AD"
+                hex"01000000002C5C85FDF84BD62AE30A74CC" hex"0100000000162E42FEFB2FED257559BDAA"
+                hex"01000000000B17217F7D5A7716BBA4A9AE" hex"0100000000058B90BFBE9DDBAC5E109CCE"
+                hex"010000000002C5C85FDF4B15DE6F17EB0D" hex"01000000000162E42FEFA494F1478FDE05"
+                hex"010000000000B17217F7D20CF927C8E94C" hex"01000000000058B90BFBE8F71CB4E4B33D"
+                hex"0100000000002C5C85FDF477B662B26945" hex"010000000000162E42FEFA3AE53369388C"
+                hex"0100000000000B17217F7D1D351A389D40" hex"010000000000058B90BFBE8E8B2D3D4EDE"
+                hex"01000000000002C5C85FDF4741BEA6E77E" hex"0100000000000162E42FEFA39FE95583C2"
+                hex"01000000000000B17217F7D1CFB72B45E1" hex"0100000000000058B90BFBE8E7CC35C3F0"
+                hex"010000000000002C5C85FDF473E242EA38" hex"01000000000000162E42FEFA39F02B772C"
+                hex"010000000000000B17217F7D1CF7D83C1A" hex"01000000000000058B90BFBE8E7BDCBE2E"
+                hex"0100000000000002C5C85FDF473DEA871F" hex"010000000000000162E42FEFA39EF44D91"
+                hex"0100000000000000B17217F7D1CF79E949" hex"010000000000000058B90BFBE8E7BCE544"
+                hex"01000000000000002C5C85FDF473DE6ECA" hex"0100000000000000162E42FEFA39EF366F"
+                hex"01000000000000000B17217F7D1CF79AFA" hex"0100000000000000058B90BFBE8E7BCD6D"
+                hex"010000000000000002C5C85FDF473DE6B2" hex"01000000000000000162E42FEFA39EF358"
+                hex"010000000000000000B17217F7D1CF79AB";
 
             uint256 result = 0x80000000000000000000000000000000;
 
             assembly ("memory-safe") {
                 let tableStart := add(table, 0x20)
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(63, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(62, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(61, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(60, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(59, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(58, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(57, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(56, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(55, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(54, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(53, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(52, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(51, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(50, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(49, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(48, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(47, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(46, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(45, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(44, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(43, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(42, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(41, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(40, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(39, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(38, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(37, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(36, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(35, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(34, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(33, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(32, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(31, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(30, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(29, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(28, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(27, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(26, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(25, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(24, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(23, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(22, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(21, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(20, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(19, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(18, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(17, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(16, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(15, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(14, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(13, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(12, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(11, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(10, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(9, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(8, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(7, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(6, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(5, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(4, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(3, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(2, x), 17))))))
-                result := shr(128, mul(result, shr(120, mload(add(tableStart, mul(shr(1, x), 17))))))
+                let i := and(shr(63, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(62, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(61, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(60, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(59, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(58, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(57, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(56, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(55, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(54, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(53, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(52, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(51, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(50, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(49, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(48, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(47, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(46, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(45, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(44, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(43, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(42, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(41, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(40, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(39, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(38, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(37, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(36, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(35, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(34, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(33, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(32, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(31, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(30, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(29, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(28, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(27, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(26, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(25, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(24, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(23, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(22, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(21, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(20, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(19, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(18, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(17, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(16, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(15, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(14, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(13, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(12, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(11, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(10, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(9, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(8, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(7, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(6, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(5, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(4, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(3, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(2, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(shr(1, x), 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
+                i := and(x, 1)
+                result := shr(mul(i, 128), mul(result, shr(120, mload(add(tableStart, mul(i, 17))))))
             }
 
             result >>= uint256(int256(63 - (x >> 64)));
-            require(result <= uint256(int256(0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)));
+            // require(result <= uint256(int256(0x7FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF)));
 
             return int128(int256(result));
         }
