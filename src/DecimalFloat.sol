@@ -38,6 +38,8 @@ int256 constant PRECISION_JUMP_MULTIPLIER = int256(uint256(10 ** uint256(PRECISI
 int256 constant PRECISION_STEP_SIZE = 1;
 int256 constant PRECISION_STEP_MULTIPLIER = int256(uint256(10 ** uint256(PRECISION_STEP_SIZE)));
 
+int256 constant MINUS_MIN = (int256(type(int128).min) / -10) + 1;
+
 library LibDecimalFloat {
     // function fromFixedDecimal(uint256 value, uint8 decimals) internal pure returns (DecimalFloat) {
     //     unchecked {
@@ -56,7 +58,9 @@ library LibDecimalFloat {
     // }
 
     function fromParts(int256 signedCoefficient, int256 exponent) internal pure returns (DecimalFloat) {
-        return DecimalFloat.wrap(uint256(uint128(int128(signedCoefficient))) | (uint256(uint128(int128(exponent))) << 0x80));
+        return DecimalFloat.wrap(
+            uint256(uint128(int128(signedCoefficient))) | (uint256(uint128(int128(exponent))) << 0x80)
+        );
     }
 
     function toParts(DecimalFloat value) internal pure returns (int128 signedCoefficient, int128 exponent) {
@@ -208,7 +212,14 @@ library LibDecimalFloat {
     /// > add(’0’, a) and subtract(’0’, b) respectively, where the ’0’ has the
     /// > same exponent as the operand.
     function minus(DecimalFloat value) internal pure returns (DecimalFloat) {
-        return DecimalFloat.wrap(DecimalFloat.unwrap(value) ^ SIGN_MASK);
+        unchecked {
+            (int256 signedCoefficient, int256 exponent) = toParts(value);
+            if (signedCoefficient == int256(type(int128).max)) {
+                return fromParts(MINUS_MIN, exponent + 1);
+            } else {
+                return fromParts(-signedCoefficient, exponent);
+            }
+        }
     }
 
     /// https://speleotrove.com/decimal/daops.html#refabs
@@ -216,7 +227,14 @@ library LibDecimalFloat {
     /// > same as using the minus operation on the operand. Otherwise, the result
     /// > is the same as using the plus operation on the operand.
     function abs(DecimalFloat value) internal pure returns (DecimalFloat) {
-        return DecimalFloat.wrap(DecimalFloat.unwrap(value) & ~SIGN_MASK);
+        unchecked {
+            (int256 signedCoefficient, int256 exponent) = toParts(value);
+            if (signedCoefficient >= 0) {
+                return value;
+            } else {
+                return minus(value);
+            }
+        }
     }
 
     /// https://speleotrove.com/decimal/daops.html#refmult
@@ -404,7 +422,6 @@ library LibDecimalFloat {
             exponent = exponentA - exponentB;
         }
 
-
         (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
     }
 
@@ -431,12 +448,8 @@ library LibDecimalFloat {
     /// > expose the compare operation itself.
     function compare(DecimalFloat a, DecimalFloat b) internal pure returns (int256) {
         // We don't support negative zero.
-        if (DecimalFloat.unwrap(a) & SIGN_MASK != DecimalFloat.unwrap(b) & SIGN_MASK) {
-            return DecimalFloat.unwrap(a) & SIGN_MASK > 0 ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
-        }
-
         DecimalFloat result = sub(a, b);
-        (int128 signedCoefficient,) = toParts(result);
+        (int256 signedCoefficient,) = toParts(result);
         if (signedCoefficient == 0) {
             return COMPARE_EQUAL;
         }
@@ -445,9 +458,6 @@ library LibDecimalFloat {
 
     function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
-            if (signedCoefficient == 0) {
-                return (0, 0);
-            }
             while (int128(signedCoefficient) != int256(signedCoefficient)) {
                 signedCoefficient /= 10;
                 exponent += 1;

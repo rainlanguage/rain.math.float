@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {DecimalFloat, LibDecimalFloat} from "src/DecimalFloat.sol";
+import {DecimalFloat, LibDecimalFloat, COMPARE_EQUAL} from "src/DecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
@@ -10,12 +10,12 @@ contract DecimalFloatMultiplyTest is Test {
 
     /// Simple 0 multiply 0
     /// 0 * 0 = 0
-    function testMultiplyZero() external pure {
+    function testMultiplyZero0Exponent() external pure {
         DecimalFloat a = LibDecimalFloat.fromParts(0, 0);
         DecimalFloat b = LibDecimalFloat.fromParts(0, 0);
         DecimalFloat actual = a.multiply(b);
         DecimalFloat expected = LibDecimalFloat.fromParts(0, 0);
-        assertEq(DecimalFloat.unwrap(actual), DecimalFloat.unwrap(expected));
+        assertEq(actual.compare(expected), COMPARE_EQUAL);
     }
 
     /// 0 multiply 0 any exponent
@@ -25,7 +25,7 @@ contract DecimalFloatMultiplyTest is Test {
         DecimalFloat b = LibDecimalFloat.fromParts(0, exponentB);
         DecimalFloat actual = a.multiply(b);
         DecimalFloat expected = LibDecimalFloat.fromParts(0, 0);
-        assertEq(DecimalFloat.unwrap(actual), DecimalFloat.unwrap(expected));
+        assertEq(actual.compare(expected), COMPARE_EQUAL);
     }
 
     /// 0 multiply 1

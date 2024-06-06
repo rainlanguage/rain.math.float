@@ -38,7 +38,6 @@ contract DecimalFloatDivideTest is Test {
         LibDecimalFloat.divideByParts(1, 0, 3, 0);
     }
 
-
     /// 1 / 3 gas by parts 10
     function testDivide1Over3ByPartsGas10() external pure {
         (int256 c, int256 e) = LibDecimalFloat.divideByParts(1, 0, 3, 0);
@@ -52,7 +51,6 @@ contract DecimalFloatDivideTest is Test {
         (c, e) = LibDecimalFloat.divideByParts(e, c, 3, 0);
         (c, e) = LibDecimalFloat.divideByParts(e, c, 3, 0);
     }
-
 
     /// 1e18 / 3
     function testDivide1e18Over3() external pure {

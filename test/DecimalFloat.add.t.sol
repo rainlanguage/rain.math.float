@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {DecimalFloat, LibDecimalFloat} from "src/DecimalFloat.sol";
+import {DecimalFloat, LibDecimalFloat, COMPARE_EQUAL} from "src/DecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
@@ -25,7 +25,7 @@ contract DecimalFloatDecimalTest is Test {
         DecimalFloat b = LibDecimalFloat.fromParts(0, 0);
         DecimalFloat actual = a.add(b);
         DecimalFloat expected = LibDecimalFloat.fromParts(0, 0);
-        assertEq(DecimalFloat.unwrap(actual), DecimalFloat.unwrap(expected));
+        assertEq(actual.compare(expected), COMPARE_EQUAL);
     }
 
     /// 0 add 1
