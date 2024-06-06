@@ -29,6 +29,9 @@ int256 constant COMPARE_LESS_THAN = -1;
 int256 constant COMPARE_EQUAL = 0;
 int256 constant COMPARE_GREATER_THAN = 1;
 
+int256 constant PRECISION_LEAP_SIZE = 24;
+int256 constant PRECISION_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(PRECISION_LEAP_SIZE)));
+
 int256 constant PRECISION_JUMP_SIZE = 6;
 int256 constant PRECISION_JUMP_MULTIPLIER = int256(uint256(10 ** uint256(PRECISION_JUMP_SIZE)));
 
@@ -458,8 +461,23 @@ library LibDecimalFloat {
             if (signedCoefficient == 0) {
                 return (0, 0);
             }
-            int256 signedCoefficientMaximized = int256(signedCoefficient) * PRECISION_JUMP_MULTIPLIER;
-            int256 exponentMaximized = exponent - PRECISION_JUMP_SIZE;
+            if (signedCoefficient >= 1e37) {
+                return (signedCoefficient, exponent);
+            }
+
+            int256 signedCoefficientMaximized = int256(signedCoefficient) * PRECISION_LEAP_MULTIPLIER;
+            int256 exponentMaximized = exponent - PRECISION_LEAP_SIZE;
+
+            while (int128(signedCoefficientMaximized) == int256(signedCoefficientMaximized)) {
+                signedCoefficient = int128(signedCoefficientMaximized);
+                exponent = exponentMaximized;
+
+                signedCoefficientMaximized *= PRECISION_LEAP_MULTIPLIER;
+                exponentMaximized -= PRECISION_LEAP_SIZE;
+            }
+
+            signedCoefficientMaximized = int256(signedCoefficient) * PRECISION_JUMP_MULTIPLIER;
+            exponentMaximized = exponent - PRECISION_JUMP_SIZE;
 
             while (int128(signedCoefficientMaximized) == int256(signedCoefficientMaximized)) {
                 signedCoefficient = int128(signedCoefficientMaximized);
