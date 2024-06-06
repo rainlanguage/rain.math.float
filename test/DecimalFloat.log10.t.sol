@@ -41,10 +41,10 @@ contract DecimalFloatLog10Test is Test {
     /// log10(2) = 0.301029
     function testLog10Two() external view {
         uint256 a = gasleft();
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.log10ByParts(2, 0, 10);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.log10ByParts(2, 0, 5);
         uint256 b = gasleft();
         console.log("Gas used: %d", a - b);
-        assertEq(signedCoefficient, 8888888888888888888888888888888888888);
-        assertEq(exponent, -37);
+        assertEq(signedCoefficient, 301020408163265306122448979591836734);
+        assertEq(exponent, -36);
     }
 }

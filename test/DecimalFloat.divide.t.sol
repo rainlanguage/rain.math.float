@@ -70,4 +70,11 @@ contract DecimalFloatDivideTest is Test {
         assertEq(signedCoefficient, 5e37);
         assertEq(exponent, -37);
     }
+
+    /// 5e37,-37 / 2e37,-37 == 2.5
+    function testDivideOOMs5and2() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divideByParts(5e37, -37, 2e37, -37);
+        assertEq(signedCoefficient, 25e36);
+        assertEq(exponent, -37);
+    }
 }

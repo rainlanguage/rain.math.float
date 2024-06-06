@@ -21,4 +21,11 @@ contract DecimalFloatCompareTest is Test {
         DecimalFloat b = LibDecimalFloat.fromParts(1e38, -37);
         assertEq(a.compare(b), COMPARE_EQUAL);
     }
+
+    /// 1.6e35,-35 > 1.25e37,-37
+    function testCompareOnePointSix() external pure {
+        DecimalFloat a = LibDecimalFloat.fromParts(1.6e35, -35);
+        DecimalFloat b = LibDecimalFloat.fromParts(1.25e37, -37);
+        assertEq(a.compare(b), 1);
+    }
 }

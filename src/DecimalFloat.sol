@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
+// import {console} from "forge-std/console.sol";
+
 // error SignOverflow(uint256 badSign);
 error ExponentOverflow();
 // error CoefficientOverflow(uint256 badCoefficient);
@@ -151,10 +153,10 @@ library LibDecimalFloat {
         return fromParts(signedCoefficient, exponent);
     }
 
-    function addByParts(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    function addByPartsRaw(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
-        returns (int256 signedCoefficient, int256 exponent)
+        returns (int256, int256)
     {
         int256 smallerExponent;
         int256 adjustedCoefficient;
@@ -195,7 +197,16 @@ library LibDecimalFloat {
             }
         }
 
-        (signedCoefficient, exponent) = normalize(adjustedCoefficient, smallerExponent);
+        return (adjustedCoefficient, smallerExponent);
+    }
+
+    function addByParts(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (int256, int256)
+    {
+        (int256 signedCoefficient, int256 exponent) = addByPartsRaw(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return normalize(signedCoefficient, exponent);
     }
 
     function subByParts(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -455,31 +466,45 @@ library LibDecimalFloat {
         returns (int256)
     {
         // We don't support negative zero.
-        // Because subtraction involves rounding if the two numbers are very far
-        // apart, better to just compare the maximized versions directly
-        (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
-        (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
+        (signedCoefficientB, exponentB) = minusByParts(signedCoefficientB, exponentB);
+        // We want the un-normalized result so that rounding doesn't affect the
+        // comparison.
+        (int256 signedCoefficient,) = addByPartsRaw(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-        // The signs are different so just check which is smaller.
-        if (uint256(signedCoefficientA) >> 0xFF != uint256(signedCoefficientB) >> 0xFF) {
-            return signedCoefficientA < signedCoefficientB ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
-        }
-
-        // The signs are the same so check the exponents.
-        if (exponentA > exponentB) {
-            return COMPARE_GREATER_THAN;
-        } else if (exponentA < exponentB) {
-            return COMPARE_LESS_THAN;
-        }
-
-        // The exponents are the same so just check the coefficient.
-        if (signedCoefficientA == signedCoefficientB) {
+        if (signedCoefficient == 0) {
             return COMPARE_EQUAL;
-        } else if (signedCoefficientA < signedCoefficientB) {
+        } else if (signedCoefficient < 0) {
             return COMPARE_LESS_THAN;
         } else {
             return COMPARE_GREATER_THAN;
         }
+
+        // // We don't support negative zero.
+        // // Because subtraction involves rounding if the two numbers are very far
+        // // apart, better to just compare the maximized versions directly
+        // (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
+        // (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
+
+        // // The signs are different so just check which is smaller.
+        // if (uint256(signedCoefficientA) >> 0xFF != uint256(signedCoefficientB) >> 0xFF) {
+        //     return signedCoefficientA < signedCoefficientB ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
+        // }
+
+        // // The signs are the same so check the exponents.
+        // if (exponentA > exponentB) {
+        //     return COMPARE_GREATER_THAN;
+        // } else if (exponentA < exponentB) {
+        //     return COMPARE_LESS_THAN;
+        // }
+
+        // // The exponents are the same so just check the coefficient.
+        // if (signedCoefficientA == signedCoefficientB) {
+        //     return COMPARE_EQUAL;
+        // } else if (signedCoefficientA < signedCoefficientB) {
+        //     return COMPARE_LESS_THAN;
+        // } else {
+        //     return COMPARE_GREATER_THAN;
+        // }
     }
 
     function compare(DecimalFloat a, DecimalFloat b) internal pure returns (int256) {
@@ -554,7 +579,7 @@ library LibDecimalFloat {
         returns (int256, int256)
     {
         unchecked {
-            // Maximizing B can make the initial comparison faster.
+            // Maximizing B can make some comparisons faster.
             (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
 
             // We start with a0 in A, ax in B, 1 in C and F, and 0 in D and E. The
@@ -577,6 +602,7 @@ library LibDecimalFloat {
             while (i < precision) {
                 // Operation II (if A < B) :
                 if (compareByParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB) == COMPARE_LESS_THAN) {
+                    // console.log("operation II");
                     // We interchange A and B, C and E, D and F.
                     int256 tmpDecimalPart = signedCoefficientB;
                     signedCoefficientB = signedCoefficientA;
@@ -609,7 +635,6 @@ library LibDecimalFloat {
                         df = ((d + f) << 0x80) | f;
                     }
 
-                    // i++;
                 }
 
                 // If it happens that the logarithm is a rational number, for
@@ -622,7 +647,11 @@ library LibDecimalFloat {
                 }
             }
 
-            return divideByParts(int256(ce & type(uint128).max), 0, int256(df & type(uint128).max), 0);
+            uint256 e = ce & type(uint128).max;
+            uint256 f = df & type(uint128).max;
+            // console.log("final e", e);
+            // console.log("final f", f);
+            return divideByParts(int256(e), 0, int256(f), 0);
         }
     }
 
