@@ -458,14 +458,17 @@ library LibDecimalFloat {
 
     function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
-            if (signedCoefficient == 0) {
-                return (0, 0);
-            }
+            // already maximized.
+            // very common when chaining operations.
             if (signedCoefficient >= 1e37) {
                 return (signedCoefficient, exponent);
             }
+            // 0 can't maximise as 0 * x = 0.
+            if (signedCoefficient == 0) {
+                return (0, 0);
+            }
 
-            int256 signedCoefficientMaximized = int256(signedCoefficient) * PRECISION_LEAP_MULTIPLIER;
+            int256 signedCoefficientMaximized = signedCoefficient * PRECISION_LEAP_MULTIPLIER;
             int256 exponentMaximized = exponent - PRECISION_LEAP_SIZE;
 
             while (int128(signedCoefficientMaximized) == int256(signedCoefficientMaximized)) {
