@@ -527,11 +527,13 @@ library LibDecimalFloat {
     //             // Operation II (if A < B) :
     //             if (compare(a, b) == COMPARE_LESS_THAN) {
     //                 {
-    //                     DecimalFloat tmpB;
     //                     // We interchange A and B, C and E, D and F.
-    //                     tmpB = b;
-    //                     b = a;
-    //                     a = tmpB;
+    //                     int256 tmpDecimalPart = signedCoefficientB;
+    //                     signedCoefficientB = signedCoefficientA;
+    //                     signedCoefficientA = tmpDecimalPart;
+    //                     tmpDecimalPart = exponentB;
+    //                     exponentB = exponentA;
+    //                     exponentA = tmpDecimalPart;
 
     //                     uint256 tmpInt;
     //                     tmpInt = e;
@@ -556,7 +558,7 @@ library LibDecimalFloat {
     //             // If it happens that the logarithm is a rational number, for
     //             // instance log8 4 = 2/3, then at some point B becomes 1, the exact
     //             // log is obtained and no further changes in E or F occurs.
-    //             if (compare(b, DecimalFloat.wrap(1)) == COMPARE_EQUAL) {
+    //             if (compareByParts(signedCoefficientB, exponentB, 1, 0) == COMPARE_EQUAL) {
     //                 break;
     //             }
     //         }
@@ -565,6 +567,11 @@ library LibDecimalFloat {
 
     function minimize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
+            // Already minimized.
+            // Very common when chaining operations.
+            if (signedCoefficient % 10 > 0) {
+                return (signedCoefficient, exponent);
+            }
             if (signedCoefficient == 0) {
                 return (0, 0);
             }
