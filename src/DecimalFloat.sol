@@ -554,56 +554,62 @@ library LibDecimalFloat {
         returns (int256, int256)
     {
         unchecked {
+            // Maximizing B can make the initial comparison faster.
+            (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
+
             // We start with a0 in A, ax in B, 1 in C and F, and 0 in D and E. The
             // latest approximation to log a0 a1 is always E/F.
-            int256 signedCoefficientA = 10;
-            int256 exponentA = 0;
+            // Maximised form of 10 is 1e38e-37
+            int256 signedCoefficientA = 1e38;
+            int256 exponentA = -37;
 
-            uint256 e = 0;
-            uint256 f = 1;
+            // C and E get swapped to merge them. C is high 128 bits, E is low.
+            // C initial is 1
+            // E initial is 0
+            uint256 ce = 1 << 0x80;
+
+            // D and F get swapped to merge them. D is high 128 bits, F is low.
+            // D initial is 0
+            // F initial is 1
+            uint256 df = 1;
 
             uint256 i = 0;
-            uint256 ops = 0;
             while (i < precision) {
-                ops <<= 1;
-
-                uint256 c = 1;
-                uint256 d = 0;
-
                 // Operation II (if A < B) :
                 if (compareByParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB) == COMPARE_LESS_THAN) {
                     // We interchange A and B, C and E, D and F.
                     int256 tmpDecimalPart = signedCoefficientB;
                     signedCoefficientB = signedCoefficientA;
                     signedCoefficientA = tmpDecimalPart;
+
                     tmpDecimalPart = exponentB;
                     exponentB = exponentA;
                     exponentA = tmpDecimalPart;
 
-                    uint256 tmpInt;
-                    tmpInt = e;
-                    e = c;
-                    c = tmpInt;
+                    ce = ce << 0x80 | ce >> 0x80;
+                    df = df << 0x80 | df >> 0x80;
 
-                    tmpInt = f;
-                    f = d;
-                    d = tmpInt;
-
-                    ops |= 1;
-                } else {
+                    i++;
+                }
+                // Operation I (if A >= B) :
+                else {
                     // We put A/B in A, C + E in C, and D + F in D.
                     (signedCoefficientA, exponentA) =
                         divideByParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-                    c = c + e;
-                    d = d + f;
+                    {
+                        uint256 c = ce >> 0x80;
+                        uint256 e = ce & type(uint128).max;
+                        ce = ((c + e) << 0x80) | e;
+                    }
 
-                    // c = add(c, e);
-                    // d = add(d, f);
-                }
+                    {
+                        uint256 d = df >> 0x80;
+                        uint256 f = df & type(uint128).max;
+                        df = ((d + f) << 0x80) | f;
+                    }
 
-                if (ops & 1 != (ops >> 1) & 1) {
-                    ++i;
+                    // i++;
                 }
 
                 // If it happens that the logarithm is a rational number, for
@@ -616,7 +622,7 @@ library LibDecimalFloat {
                 }
             }
 
-            return divideByParts(int256(e), 0, int256(f), 0);
+            return divideByParts(int256(ce & type(uint128).max), 0, int256(df & type(uint128).max), 0);
         }
     }
 
@@ -631,6 +637,10 @@ library LibDecimalFloat {
                 return (0, 0);
             }
             // Fast forward.
+            while (signedCoefficient % PRECISION_LEAP_MULTIPLIER == 0) {
+                signedCoefficient /= PRECISION_LEAP_MULTIPLIER;
+                exponent += PRECISION_LEAP_SIZE;
+            }
             while (signedCoefficient % PRECISION_JUMP_MULTIPLIER == 0) {
                 signedCoefficient /= PRECISION_JUMP_MULTIPLIER;
                 exponent += PRECISION_JUMP_SIZE;

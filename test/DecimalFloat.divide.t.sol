@@ -56,4 +56,18 @@ contract DecimalFloatDivideTest is Test {
     function testDivide1e18Over3() external pure {
         DecimalFloat.wrap(1e18).divide2(DecimalFloat.wrap(3));
     }
+
+    /// 10,0 / 1e38,-37 == 1
+    function testDivideTenOverOOMs() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divideByParts(10, 0, 1e38, -37);
+        assertEq(signedCoefficient, 1e38);
+        assertEq(exponent, -38);
+    }
+
+    /// 1e38,-37 / 2,0 == 5
+    function testDivideOOMsOverTen() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divideByParts(1e38, -37, 2, 0);
+        assertEq(signedCoefficient, 5e37);
+        assertEq(exponent, -37);
+    }
 }
