@@ -93,9 +93,62 @@ library LibDecimalFloat {
     /// > were negative or the signs of the operands were different and the
     /// > rounding is round-floor.
     function add(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
+        // (int128 signedCoefficientA, int128 exponentA) = toParts(a);
+        // (int128 signedCoefficientB, int128 exponentB) = toParts(b);
+
+        // int128 smallerExponent;
+        // int256 adjustedCoefficient;
+
+        // {
+        //     int128 largerExponent;
+        //     int256 staticCoefficient;
+        //     if (exponentA > exponentB) {
+        //         smallerExponent = exponentB;
+        //         largerExponent = exponentA;
+        //         adjustedCoefficient = signedCoefficientA;
+        //         staticCoefficient = signedCoefficientB;
+        //     } else {
+        //         smallerExponent = exponentA;
+        //         largerExponent = exponentB;
+        //         adjustedCoefficient = signedCoefficientB;
+        //         staticCoefficient = signedCoefficientA;
+        //     }
+
+        //     if (adjustedCoefficient > 0) {
+        //         uint128 alignmentExponentDiff;
+        //         unchecked {
+        //             alignmentExponentDiff = uint128(largerExponent - smallerExponent);
+        //         }
+        //         uint256 multiplier = 10 ** alignmentExponentDiff;
+        //         if (multiplier > uint256(type(int256).max)) {
+        //             revert ExponentOverflow();
+        //         }
+        //         adjustedCoefficient *= int256(multiplier);
+        //     }
+
+        //     // This can't overflow because the signed coefficient is 128 bits.
+        //     // Worst case scenario is that one was aligned all the way to fill
+        //     // the high 128 bits, which we add to the max low 128 bits, which
+        //     // doesn't overflow.
+        //     unchecked {
+        //         adjustedCoefficient += staticCoefficient;
+        //     }
+        // }
+
+        // (int128 signedCoefficient, int128 exponent) = normalize(adjustedCoefficient, smallerExponent);
+        // return fromParts(signedCoefficient, exponent);
         (int128 signedCoefficientA, int128 exponentA) = toParts(a);
         (int128 signedCoefficientB, int128 exponentB) = toParts(b);
+        (int128 signedCoefficient, int128 exponent) =
+            addByParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return fromParts(signedCoefficient, exponent);
+    }
 
+    function addByParts(int128 signedCoefficientA, int128 exponentA, int128 signedCoefficientB, int128 exponentB)
+        internal
+        pure
+        returns (int128 signedCoefficient, int128 exponent)
+    {
         int128 smallerExponent;
         int256 adjustedCoefficient;
 
@@ -135,8 +188,7 @@ library LibDecimalFloat {
             }
         }
 
-        (int128 signedCoefficient, int128 exponent) = normalize(adjustedCoefficient, smallerExponent);
-        return fromParts(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = normalize(adjustedCoefficient, smallerExponent);
     }
 
     function sub(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
@@ -247,87 +299,107 @@ library LibDecimalFloat {
     /// > The result is then rounded to precision digits, if necessary, according
     /// > to the rounding algorithm and taking into account the remainder from
     /// > the division.
-    function divide(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
-        (int128 signedCoefficientA, int128 exponentA) = toParts(a);
-        if (signedCoefficientA == 0) {
-            return DecimalFloat.wrap(0);
-        }
+    // function divide(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
+    //     (int128 signedCoefficientA, int128 exponentA) = toParts(a);
+    //     if (signedCoefficientA == 0) {
+    //         return DecimalFloat.wrap(0);
+    //     }
 
-        (int128 signedCoefficientB, int128 exponentB) = toParts(b);
-        if (signedCoefficientB == 0) {
-            revert DivisionByZero();
-        }
+    //     (int128 signedCoefficientB, int128 exponentB) = toParts(b);
+    //     if (signedCoefficientB == 0) {
+    //         revert DivisionByZero();
+    //     }
 
-        uint256 unsignedCoefficientA = uint256(uint128(signedCoefficientA) & ~SIGN_MASK);
-        uint256 unsignedCoefficientB = uint256(uint128(signedCoefficientB) & ~SIGN_MASK);
+    //     uint256 unsignedCoefficientA = uint256(uint128(signedCoefficientA) & ~SIGN_MASK);
+    //     uint256 unsignedCoefficientB = uint256(uint128(signedCoefficientB) & ~SIGN_MASK);
 
-        int128 adjust = 0;
-        int256 resultCoefficient = 0;
+    //     int128 adjust = 0;
+    //     int256 resultCoefficient = 0;
 
-        unchecked {
-            while (unsignedCoefficientA < unsignedCoefficientB) {
-                unsignedCoefficientA *= 10;
-                adjust += 1;
-            }
+    //     unchecked {
+    //         while (unsignedCoefficientA < unsignedCoefficientB) {
+    //             unsignedCoefficientA *= 10;
+    //             adjust += 1;
+    //         }
 
-            uint256 tensB = unsignedCoefficientB * 10;
-            while (unsignedCoefficientA >= tensB) {
-                unsignedCoefficientB = tensB;
-                tensB *= 10;
-                adjust -= 1;
-            }
+    //         uint256 tensB = unsignedCoefficientB * 10;
+    //         while (unsignedCoefficientA >= tensB) {
+    //             unsignedCoefficientB = tensB;
+    //             tensB *= 10;
+    //             adjust -= 1;
+    //         }
 
-            uint256 tmpCoefficientA = unsignedCoefficientA;
+    //         uint256 tmpCoefficientA = unsignedCoefficientA;
 
-            while (true) {
-                while (tmpCoefficientA >= unsignedCoefficientB) {
-                    tmpCoefficientA -= unsignedCoefficientB;
-                    resultCoefficient += 1;
-                }
+    //         while (true) {
+    //             while (tmpCoefficientA >= unsignedCoefficientB) {
+    //                 tmpCoefficientA -= unsignedCoefficientB;
+    //                 resultCoefficient += 1;
+    //             }
 
-                // Discard this round as it caused precision loss in the result.
-                if (int128(resultCoefficient) != int256(resultCoefficient)) {
-                    break;
-                }
+    //             // Discard this round as it caused precision loss in the result.
+    //             if (int128(resultCoefficient) != int256(resultCoefficient)) {
+    //                 break;
+    //             }
 
-                unsignedCoefficientA = tmpCoefficientA;
+    //             unsignedCoefficientA = tmpCoefficientA;
 
-                if (tmpCoefficientA == 0 && adjust >= 0) {
-                    break;
-                }
+    //             if (tmpCoefficientA == 0 && adjust >= 0) {
+    //                 break;
+    //             }
 
-                tmpCoefficientA *= 10;
-                resultCoefficient *= 10;
-                adjust += 1;
-            }
-        }
+    //             tmpCoefficientA *= 10;
+    //             resultCoefficient *= 10;
+    //             adjust += 1;
+    //         }
+    //     }
 
-        int128 exponent = exponentA - exponentB - adjust;
+    //     int128 exponent = exponentA - exponentB - adjust;
 
-        (int128 normalizedCoefficient, int128 normalizedExponent) = normalize(resultCoefficient, exponent);
-        DecimalFloat value = fromParts(normalizedCoefficient, normalizedExponent);
+    //     (int128 normalizedCoefficient, int128 normalizedExponent) = normalize(resultCoefficient, exponent);
+    //     DecimalFloat value = fromParts(normalizedCoefficient, normalizedExponent);
 
-        uint256 signBit = DecimalFloat.unwrap(a) & SIGN_MASK ^ DecimalFloat.unwrap(b) & SIGN_MASK;
+    //     uint256 signBit = DecimalFloat.unwrap(a) & SIGN_MASK ^ DecimalFloat.unwrap(b) & SIGN_MASK;
 
-        return DecimalFloat.wrap(DecimalFloat.unwrap(value) & ~SIGN_MASK | signBit);
-    }
+    //     return DecimalFloat.wrap(DecimalFloat.unwrap(value) & ~SIGN_MASK | signBit);
+    // }
 
     function divide2(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
-        (int128 signedCoefficientA, int128 exponentA) = toParts(a);
-        if (signedCoefficientA == 0) {
-            return DecimalFloat.wrap(0);
-        }
-        (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
+        // (int128 signedCoefficientA, int128 exponentA) = toParts(a);
+        // if (signedCoefficientA == 0) {
+        //     return DecimalFloat.wrap(0);
+        // }
+        // (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
 
+        // (int128 signedCoefficientB, int128 exponentB) = toParts(b);
+        // (signedCoefficientB, exponentB) = minimize(signedCoefficientB, exponentB);
+
+        // int256 signedCoefficient = int256(signedCoefficientA) / int256(signedCoefficientB);
+        // int128 exponent = exponentA - exponentB;
+
+        // (int128 normalizedCoefficient, int128 normalizedExponent) = normalize(signedCoefficient, exponent);
+        // // (int128 minimizedCoefficient, int128 minimizedExponent) = minimize(normalizedCoefficient, normalizedExponent);
+        // return fromParts(normalizedCoefficient, normalizedExponent);
+
+        (int128 signedCoefficientA, int128 exponentA) = toParts(a);
         (int128 signedCoefficientB, int128 exponentB) = toParts(b);
+        (int128 signedCoefficient, int128 exponent) =
+            divideByParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return fromParts(signedCoefficient, exponent);
+    }
+
+    function divideByParts(int128 signedCoefficientA, int128 exponentA, int128 signedCoefficientB, int128 exponentB)
+        internal
+        pure
+        returns (int128 signedCoefficient, int128 exponent)
+    {
+        (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
         (signedCoefficientB, exponentB) = minimize(signedCoefficientB, exponentB);
 
-        int256 signedCoefficient = int256(signedCoefficientA) / int256(signedCoefficientB);
-        int128 exponent = exponentA - exponentB;
+        signedCoefficient = signedCoefficientA / signedCoefficientB;
+        exponent = exponentA - exponentB;
 
-        (int128 normalizedCoefficient, int128 normalizedExponent) = normalize(signedCoefficient, exponent);
-        (int128 minimizedCoefficient, int128 minimizedExponent) = minimize(normalizedCoefficient, normalizedExponent);
-        return fromParts(minimizedCoefficient, minimizedExponent);
+        (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
     }
 
     /// https://speleotrove.com/decimal/daops.html#refnumco
@@ -408,6 +480,64 @@ library LibDecimalFloat {
             return (signedCoefficient, exponent);
         }
     }
+
+    // /// https://www.ams.org/journals/mcom/1954-08-046/S0025-5718-1954-0061464-9/S0025-5718-1954-0061464-9.pdf
+    // function log10(DecimalFloat value) internal pure returns (DecimalFloat) {
+    //     unchecked {
+    //         // We start with a0 in A, ax in B, 1 in C and F, and 0 in D and E. The
+    //         // latest approximation to log a0 a1 is always E/F.
+    //         int128 signedCoefficientA = 10;
+    //         int128 exponentA = 0;
+    //         (int128 signedCoefficientB, int128 exponentB) = toParts(value);
+    //         // DecimalFloat c = DecimalFloat.wrap(1);
+    //         // DecimalFloat d = DecimalFloat.wrap(0);
+    //         uint256 c = 1;
+    //         uint256 d = 0;
+    //         uint256 e = 0;
+    //         uint256 f = 1;
+    //         // DecimalFloat e = DecimalFloat.wrap(0);
+    //         // DecimalFloat f = DecimalFloat.wrap(1);
+
+    //         // We will use breaks to control this flow.
+    //         while (true) {
+    //             // Operation II (if A < B) :
+    //             if (compare(a, b) == COMPARE_LESS_THAN) {
+    //                 {
+    //                     DecimalFloat tmpB;
+    //                     // We interchange A and B, C and E, D and F.
+    //                     tmpB = b;
+    //                     b = a;
+    //                     a = tmpB;
+
+    //                     uint256 tmpInt;
+    //                     tmpInt = e;
+    //                     e = c;
+    //                     c = tmpInt;
+
+    //                     tmpInt = f;
+    //                     f = d;
+    //                     d = tmpInt;
+    //                 }
+    //             } else {
+    //                 // We put A/B in A, C + E in C, and D + F in D.
+    //                 (signedCoefficientA, exponentA) = divideByParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+
+    //                 c = c + e;
+    //                 d = d + f;
+
+    //                 // c = add(c, e);
+    //                 // d = add(d, f);
+    //             }
+
+    //             // If it happens that the logarithm is a rational number, for
+    //             // instance log8 4 = 2/3, then at some point B becomes 1, the exact
+    //             // log is obtained and no further changes in E or F occurs.
+    //             if (compare(b, DecimalFloat.wrap(1)) == COMPARE_EQUAL) {
+    //                 break;
+    //             }
+    //         }
+    //     }
+    // }
 
     function minimize(int128 signedCoefficient, int128 exponent) internal pure returns (int128, int128) {
         unchecked {
