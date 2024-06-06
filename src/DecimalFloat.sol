@@ -205,7 +205,8 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
-        (int256 signedCoefficient, int256 exponent) = addByPartsRaw(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficient, int256 exponent) =
+            addByPartsRaw(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         return normalize(signedCoefficient, exponent);
     }
 
@@ -633,7 +634,6 @@ library LibDecimalFloat {
                         uint256 f = df & type(uint128).max;
                         df = ((d + f) << 0x80) | f;
                     }
-
                 }
 
                 // If it happens that the logarithm is a rational number, for
@@ -654,28 +654,142 @@ library LibDecimalFloat {
 
     function minimize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
-            // Already minimized.
-            // Very common when chaining operations.
-            if (signedCoefficient % 10 > 0) {
+            // Most likely is already maximally minimized or maximized.
+            // Already minimized:
+            if (int256(signedCoefficient % 10) > 0) {
                 return (signedCoefficient, exponent);
             }
-            if (signedCoefficient == 0) {
-                return (0, 0);
+
+            if (int256(signedCoefficient % 1e32) == 0) {
+                if (int256(signedCoefficient % 1e40) == 0) {
+                    return (0, 0);
+                }
+
+                if (int256(signedCoefficient % 1e36) == 0) {
+                    if (int256(signedCoefficient % 1e38) == 0) {
+                        return (int256(signedCoefficient / 1e38), exponent + 38);
+                    }
+
+                    if (int256(signedCoefficient % 1e37) == 0) {
+                        return (signedCoefficient / 1e37, exponent + 37);
+                    }
+
+                    return (int256(signedCoefficient / 1e36), exponent + 36);
+                }
+
+                if (int256(signedCoefficient % 1e34) == 0) {
+                    if (int256(signedCoefficient % 1e35) == 0) {
+                        return (signedCoefficient / 1e35, exponent + 35);
+                    }
+
+                    return (signedCoefficient / 1e34, exponent + 34);
+                }
+
+                if (int256(signedCoefficient % 1e33) == 0) {
+                    return (signedCoefficient / 1e33, exponent + 33);
+                }
+
+                return (signedCoefficient / 1e32, exponent + 32);
             }
-            // Fast forward.
-            while (signedCoefficient % PRECISION_LEAP_MULTIPLIER == 0) {
-                signedCoefficient /= PRECISION_LEAP_MULTIPLIER;
-                exponent += PRECISION_LEAP_SIZE;
+
+            if (int256(signedCoefficient % 1e16) == 0) {
+                if (int256(signedCoefficient % 1e24) == 0) {
+                    if (int256(signedCoefficient % 1e28) == 0) {
+                        if (int256(signedCoefficient % 1e30) == 0) {
+                            if (int256(signedCoefficient % 1e31) == 0) {
+                                return (signedCoefficient / 1e31, exponent + 31);
+                            }
+                            return (signedCoefficient / 1e30, exponent + 30);
+                        }
+                        if (int256(signedCoefficient % 1e29) == 0) {
+                            return (signedCoefficient / 1e29, exponent + 29);
+                        }
+                        return (signedCoefficient / 1e28, exponent + 28);
+                    }
+                    if (int256(signedCoefficient % 1e26) == 0) {
+                        if (int256(signedCoefficient % 1e27) == 0) {
+                            return (signedCoefficient / 1e27, exponent + 27);
+                        }
+                        return (signedCoefficient / 1e26, exponent + 26);
+                    }
+                    if (int256(signedCoefficient % 1e25) == 0) {
+                        return (signedCoefficient / 1e25, exponent + 25);
+                    }
+                    return (signedCoefficient / 1e24, exponent + 24);
+                }
+                if (int256(signedCoefficient % 1e20) == 0) {
+                    if (int256(signedCoefficient % 1e22) == 0) {
+                        if (int256(signedCoefficient % 1e23) == 0) {
+                            return (signedCoefficient / 1e23, exponent + 23);
+                        }
+                        return (signedCoefficient / 1e22, exponent + 22);
+                    }
+                    if (int256(signedCoefficient % 1e21) == 0) {
+                        return (signedCoefficient / 1e21, exponent + 21);
+                    }
+                    return (signedCoefficient / 1e20, exponent + 20);
+                }
+                if (int256(signedCoefficient % 1e18) == 0) {
+                    if (signedCoefficient % 1e19 == 0) {
+                        return (signedCoefficient / 1e19, exponent + 19);
+                    }
+                    return (signedCoefficient / 1e18, exponent + 18);
+                }
+                if (int256(signedCoefficient % 1e17) == 0) {
+                    return (signedCoefficient / 1e17, exponent + 17);
+                }
+                return (signedCoefficient / 1e16, exponent + 16);
             }
-            while (signedCoefficient % PRECISION_JUMP_MULTIPLIER == 0) {
-                signedCoefficient /= PRECISION_JUMP_MULTIPLIER;
-                exponent += PRECISION_JUMP_SIZE;
+
+            if (int256(signedCoefficient % 1e8) == 0) {
+                if (int256(signedCoefficient % 1e12) == 0) {
+                    if (int256(signedCoefficient % 1e14) == 0) {
+                        if (int256(signedCoefficient % 1e15) == 0) {
+                            return (signedCoefficient / 1e15, exponent + 15);
+                        }
+                        return (signedCoefficient / 1e14, exponent + 14);
+                    }
+                    if (int256(signedCoefficient % 1e13) == 0) {
+                        return (signedCoefficient / 1e13, exponent + 13);
+                    }
+                    return (signedCoefficient / 1e12, exponent + 12);
+                }
+                if (int256(signedCoefficient % 1e10) == 0) {
+                    if (int256(signedCoefficient % 1e11) == 0) {
+                        return (signedCoefficient / 1e11, exponent + 11);
+                    }
+                    return (signedCoefficient / 1e10, exponent + 10);
+                }
+                if (int256(signedCoefficient % 1e9) == 0) {
+                    return (signedCoefficient / 1e9, exponent + 9);
+                }
+                return (signedCoefficient / 1e8, exponent + 8);
             }
-            // Finalize.
-            while (signedCoefficient % PRECISION_STEP_MULTIPLIER == 0) {
-                signedCoefficient /= PRECISION_STEP_MULTIPLIER;
-                exponent += PRECISION_STEP_SIZE;
+
+            if (int256(signedCoefficient % 1e4) == 0) {
+                if (int256(signedCoefficient % 1e6) == 0) {
+                    if (int256(signedCoefficient % 1e7) == 0) {
+                        return (signedCoefficient / 1e7, exponent + 7);
+                    }
+                    return (signedCoefficient / 1e6, exponent + 6);
+                }
+                if (int256(signedCoefficient % 1e5) == 0) {
+                    return (signedCoefficient / 1e5, exponent + 5);
+                }
+                return (signedCoefficient / 1e4, exponent + 4);
             }
+
+            if (int256(signedCoefficient % 1e2) == 0) {
+                if (int256(signedCoefficient % 1e3) == 0) {
+                    return (signedCoefficient / 1e3, exponent + 3);
+                }
+                return (signedCoefficient / 1e2, exponent + 2);
+            }
+
+            if (int256(signedCoefficient % 1e1) == 0) {
+                return (signedCoefficient / 1e1, exponent + 1);
+            }
+
             return (signedCoefficient, exponent);
         }
     }
