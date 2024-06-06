@@ -13,7 +13,7 @@ contract DecimalFloatDivideTest is Test {
         DecimalFloat a = LibDecimalFloat.fromParts(1, 0);
         DecimalFloat b = LibDecimalFloat.fromParts(3, 0);
         DecimalFloat actual = a.divide2(b);
-        (int128 signedCoefficient, int128 exponent) = actual.toParts();
+        (int256 signedCoefficient, int256 exponent) = actual.toParts();
         assertEq(signedCoefficient, 33333333333333333333333333333333333333, "coefficient");
         assertEq(exponent, -38, "exponent");
     }
@@ -23,7 +23,7 @@ contract DecimalFloatDivideTest is Test {
         DecimalFloat a = LibDecimalFloat.fromParts(-1, 0);
         DecimalFloat b = LibDecimalFloat.fromParts(3, 0);
         DecimalFloat actual = a.divide2(b);
-        (int128 signedCoefficient, int128 exponent) = actual.toParts();
+        (int256 signedCoefficient, int256 exponent) = actual.toParts();
         assertEq(signedCoefficient, -33333333333333333333333333333333333333, "coefficient");
         assertEq(exponent, -38, "exponent");
     }
@@ -41,7 +41,7 @@ contract DecimalFloatDivideTest is Test {
 
     /// 1 / 3 gas by parts 10
     function testDivide1Over3ByPartsGas10() external pure {
-        (int128 c, int128 e) = LibDecimalFloat.divideByParts(1, 0, 3, 0);
+        (int256 c, int256 e) = LibDecimalFloat.divideByParts(1, 0, 3, 0);
         (c, e) = LibDecimalFloat.divideByParts(e, c, 3, 0);
         (c, e) = LibDecimalFloat.divideByParts(e, c, 3, 0);
         (c, e) = LibDecimalFloat.divideByParts(e, c, 3, 0);
