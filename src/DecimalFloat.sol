@@ -602,7 +602,6 @@ library LibDecimalFloat {
             while (i < precision) {
                 // Operation II (if A < B) :
                 if (compareByParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB) == COMPARE_LESS_THAN) {
-                    // console.log("operation II");
                     // We interchange A and B, C and E, D and F.
                     int256 tmpDecimalPart = signedCoefficientB;
                     signedCoefficientB = signedCoefficientA;
@@ -649,8 +648,6 @@ library LibDecimalFloat {
 
             uint256 e = ce & type(uint128).max;
             uint256 f = df & type(uint128).max;
-            // console.log("final e", e);
-            // console.log("final f", f);
             return divideByParts(int256(e), 0, int256(f), 0);
         }
     }
