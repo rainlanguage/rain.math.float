@@ -48,6 +48,20 @@ contract DecimalFloatLog10Test is Test {
     //     assertEq(exponent, -36);
     // }
 
+    function testLookupGas1() external view {
+        uint256 a = gasleft();
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.log10ByPartsTable(1, 0);
+        uint256 b = gasleft();
+        console.log("Gas used: %d", a - b);
+    }
+
+    function testLookupGas2() external view {
+        uint256 a = gasleft();
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.log10ByPartsTable(10015, -3);
+        uint256 b = gasleft();
+        console.log("Gas used: %d", a - b);
+    }
+
     function testLookup() external view {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.log10ByPartsTable(1, 0);
         assertEq(signedCoefficient, 0);

@@ -630,9 +630,6 @@ library LibDecimalFloat {
                     bytes memory tableSmallAlt = LOG_TABLE_SMALL_ALT;
                     uint256 scale = 1e34;
 
-                    console.log(uint256(signedCoefficient));
-                    console.log(uint256(signedCoefficient) / scale);
-
                     assembly ("memory-safe") {
                         function lookupTableVal(mainTable, smallTableMain, smallTableAlt, index) -> result {
                             let mainIndex := div(index, 10)
@@ -651,13 +648,9 @@ library LibDecimalFloat {
                         let index := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
 
-                        lowCoefficient :=
-                            mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, index))
+                        lowCoefficient := mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, index))
                         highCoefficient := mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, add(index, 1)))
                     }
-
-                    console.log("lowCoefficient", uint256(lowCoefficient));
-                    console.log("highCoefficient", uint256(highCoefficient));
                 }
 
                 // Linear interpolation.
@@ -665,28 +658,19 @@ library LibDecimalFloat {
                 {
                     // y2 - y1
                     (int256 yCoefficient, int256 yExponent) = subByParts(highCoefficient, -38, lowCoefficient, -38);
-                    console.log("yCoefficient", uint256(yCoefficient));
-                    console.log("yExponent", uint256(yExponent));
 
                     // x - x1
-                    (int256 xCoefficient, int256 xExponent) = subByParts(signedCoefficient, exponent, x1Coefficient, x1Exponent);
-                    console.log("signedCoefficient", uint256(signedCoefficient));
-                    console.log("exponent", uint256(exponent));
-                    console.log("x1Coefficient", uint256(x1Coefficient));
-                    console.log("x1Exponent", uint256(x1Exponent));
-                    console.log("xCoefficient", uint256(xCoefficient));
-                    console.log("xExponent", uint256(xExponent));
+                    (int256 xCoefficient, int256 xExponent) =
+                        subByParts(signedCoefficient, exponent, x1Coefficient, x1Exponent);
 
+                    // (x - x1) * (y2 - y1)
                     (signedCoefficient, exponent) = multiplyByParts(xCoefficient, xExponent, yCoefficient, yExponent);
-                    console.log("signedCoefficient", uint256(signedCoefficient));
-                    console.log("exponent", uint256(exponent));
+
                     // Diff between x2 and x1 is always 0.01.
                     (signedCoefficient, exponent) = divideByParts(signedCoefficient, exponent, 1, -2);
-                    console.log("signedCoefficient", uint256(signedCoefficient));
-                    console.log("exponent", uint256(exponent));
+
+                    // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
                     (signedCoefficient, exponent) = addByParts(signedCoefficient, exponent, lowCoefficient, -38);
-                    console.log("signedCoefficient", uint256(signedCoefficient));
-                    console.log("exponent", uint256(exponent));
                 }
 
                 return (signedCoefficient, exponent);
