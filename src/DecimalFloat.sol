@@ -634,12 +634,15 @@ library LibDecimalFloat {
                     console.log(uint256(signedCoefficient) / scale);
 
                     assembly ("memory-safe") {
-                        function processTableVal(tableVal, smallTableMain, smallTableAlt, smallIndex) -> result {
-                            result := and(tableVal, 0x7FFF)
-                            let smallTable := smallTableAlt
-                            if iszero(and(tableVal, 0x8000)) { smallTable := smallTableMain }
+                        function lookupTableVal(mainTable, smallTableMain, smallTableAlt, index) -> result {
+                            let mainIndex := div(index, 10)
+                            let mainTableVal := mload(add(mainTable, mul(2, add(mainIndex, 1))))
 
-                            result := add(result, byte(31, mload(add(smallTable, add(smallIndex, 1)))))
+                            result := and(mainTableVal, 0x7FFF)
+                            let smallTable := smallTableAlt
+                            if iszero(and(mainTableVal, 0x8000)) { smallTable := smallTableMain }
+
+                            result := add(result, byte(31, mload(add(smallTable, add(mod(index, 10), 1)))))
                         }
 
                         // Truncate the signed coefficient to what we can look
@@ -648,12 +651,9 @@ library LibDecimalFloat {
                         let index := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
 
-                        let threeSigFigs := div(index, 10)
-                        let tableVals := mload(add(table, mul(2, add(threeSigFigs, 2))))
-
                         lowCoefficient :=
-                            mul(scale, processTableVal(shr(0x10, tableVals), tableSmall, tableSmallAlt, mod(index, 10)))
-                        highCoefficient := mul(scale, processTableVal(tableVals, tableSmall, tableSmallAlt, 0))
+                            mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, index))
+                        highCoefficient := mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, add(index, 1)))
                     }
 
                     console.log("lowCoefficient", uint256(lowCoefficient));
@@ -664,7 +664,7 @@ library LibDecimalFloat {
                 // y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
                 {
                     // y2 - y1
-                    (int256 yCoefficient, int256 yExponent) = subByParts(highCoefficient, x1Exponent, lowCoefficient, x1Exponent);
+                    (int256 yCoefficient, int256 yExponent) = subByParts(highCoefficient, -38, lowCoefficient, -38);
                     console.log("yCoefficient", uint256(yCoefficient));
                     console.log("yExponent", uint256(yExponent));
 
@@ -680,11 +680,11 @@ library LibDecimalFloat {
                     (signedCoefficient, exponent) = multiplyByParts(xCoefficient, xExponent, yCoefficient, yExponent);
                     console.log("signedCoefficient", uint256(signedCoefficient));
                     console.log("exponent", uint256(exponent));
-                    // Diff between x2 and x1 is always 0.0001.
-                    (signedCoefficient, exponent) = divideByParts(signedCoefficient, exponent, 1, -4);
+                    // Diff between x2 and x1 is always 0.01.
+                    (signedCoefficient, exponent) = divideByParts(signedCoefficient, exponent, 1, -2);
                     console.log("signedCoefficient", uint256(signedCoefficient));
                     console.log("exponent", uint256(exponent));
-                    (signedCoefficient, exponent) = addByParts(signedCoefficient, exponent, lowCoefficient, x1Exponent);
+                    (signedCoefficient, exponent) = addByParts(signedCoefficient, exponent, lowCoefficient, -38);
                     console.log("signedCoefficient", uint256(signedCoefficient));
                     console.log("exponent", uint256(exponent));
                 }
