@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: CAL
-pragma solidity =0.8.25;
+pragma solidity ^0.8.25;
 
-// import {console} from "forge-std/console.sol";
+import {console} from "forge-std/console.sol";
+import {LOG_TABLE, LOG_TABLE_SMALL, LOG_TABLE_SMALL_ALT} from "./LogTable.sol";
 
 // error SignOverflow(uint256 badSign);
 error ExponentOverflow();
@@ -10,6 +11,10 @@ error ExponentOverflow();
 error NegativeFixedDecimalConversion(DecimalFloat value);
 
 error DivisionByZero();
+
+error Log10Zero();
+
+error Log10Negative(int256 signedCoefficient, int256 exponent);
 
 type DecimalFloat is uint256;
 
@@ -272,17 +277,25 @@ library LibDecimalFloat {
     function multiply(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
         (int256 signedCoefficientA, int256 exponentA) = toParts(a);
         (int256 signedCoefficientB, int256 exponentB) = toParts(b);
+        (int256 signedCoefficient, int256 exponent) =
+            multiplyByParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
+        return fromParts(signedCoefficient, exponent);
+    }
+
+    function multiplyByParts(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (int256, int256)
+    {
+        int256 signedCoefficient;
         // This can't overflow because we're multiplying 128 bit numbers in 256
         // bit space.
-        int256 signedCoefficient;
         unchecked {
-            signedCoefficient = int256(signedCoefficientA) * int256(signedCoefficientB);
+            signedCoefficient = signedCoefficientA * signedCoefficientB;
         }
         int256 exponent = exponentA + exponentB;
-
-        (int256 normalizedCoefficient, int256 normalizedExponent) = normalize(signedCoefficient, exponent);
-        return fromParts(normalizedCoefficient, normalizedExponent);
+        return normalize(signedCoefficient, exponent);
     }
 
     /// https://speleotrove.com/decimal/daops.html#refdivide
@@ -514,6 +527,17 @@ library LibDecimalFloat {
         return compareByParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
+    function normalize2(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        unchecked {
+            (signedCoefficient, exponent) = maximize(signedCoefficient, exponent);
+            while (signedCoefficient >= 1e38 || signedCoefficient <= -1e38) {
+                signedCoefficient /= 10;
+                exponent += 1;
+            }
+            return (signedCoefficient, exponent);
+        }
+    }
+
     function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
             while (int128(signedCoefficient) != int256(signedCoefficient)) {
@@ -570,6 +594,103 @@ library LibDecimalFloat {
             }
 
             return (signedCoefficient, exponent);
+        }
+    }
+
+    function log10ByPartsTable(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
+        unchecked {
+            {
+                (signedCoefficient, exponent) = normalize2(signedCoefficient, exponent);
+
+                if (signedCoefficient <= 0) {
+                    if (signedCoefficient == 0) {
+                        revert Log10Zero();
+                    } else {
+                        revert Log10Negative(signedCoefficient, exponent);
+                    }
+                }
+            }
+
+            // This is a positive log. i.e. log(x) where x >= 1.
+            if (exponent > -38) {
+                // This is an exact power of 10.
+                if (signedCoefficient == 1e37) {
+                    return (exponent + 37, 0);
+                }
+
+                int256 lowCoefficient;
+                int256 highCoefficient;
+                int256 x1Coefficient;
+                int256 x1Exponent = exponent;
+
+                // Table lookup.
+                {
+                    bytes memory table = LOG_TABLE;
+                    bytes memory tableSmall = LOG_TABLE_SMALL;
+                    bytes memory tableSmallAlt = LOG_TABLE_SMALL_ALT;
+                    uint256 scale = 1e34;
+
+                    console.log(uint256(signedCoefficient));
+                    console.log(uint256(signedCoefficient) / scale);
+
+                    assembly ("memory-safe") {
+                        function processTableVal(tableVal, smallTableMain, smallTableAlt, smallIndex) -> result {
+                            result := and(tableVal, 0x7FFF)
+                            let smallTable := smallTableAlt
+                            if iszero(and(tableVal, 0x8000)) { smallTable := smallTableMain }
+
+                            result := add(result, byte(31, mload(add(smallTable, add(smallIndex, 1)))))
+                        }
+
+                        // Truncate the signed coefficient to what we can look
+                        // up in the table.
+                        x1Coefficient := div(signedCoefficient, scale)
+                        let index := sub(x1Coefficient, 1000)
+                        x1Coefficient := mul(x1Coefficient, scale)
+
+                        let threeSigFigs := div(index, 10)
+                        let tableVals := mload(add(table, mul(2, add(threeSigFigs, 2))))
+
+                        lowCoefficient :=
+                            mul(scale, processTableVal(shr(0x10, tableVals), tableSmall, tableSmallAlt, mod(index, 10)))
+                        highCoefficient := mul(scale, processTableVal(tableVals, tableSmall, tableSmallAlt, 0))
+                    }
+
+                    console.log("lowCoefficient", uint256(lowCoefficient));
+                    console.log("highCoefficient", uint256(highCoefficient));
+                }
+
+                // Linear interpolation.
+                // y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
+                {
+                    // y2 - y1
+                    (int256 yCoefficient, int256 yExponent) = subByParts(highCoefficient, x1Exponent, lowCoefficient, x1Exponent);
+                    console.log("yCoefficient", uint256(yCoefficient));
+                    console.log("yExponent", uint256(yExponent));
+
+                    // x - x1
+                    (int256 xCoefficient, int256 xExponent) = subByParts(signedCoefficient, exponent, x1Coefficient, x1Exponent);
+                    console.log("signedCoefficient", uint256(signedCoefficient));
+                    console.log("exponent", uint256(exponent));
+                    console.log("x1Coefficient", uint256(x1Coefficient));
+                    console.log("x1Exponent", uint256(x1Exponent));
+                    console.log("xCoefficient", uint256(xCoefficient));
+                    console.log("xExponent", uint256(xExponent));
+
+                    (signedCoefficient, exponent) = multiplyByParts(xCoefficient, xExponent, yCoefficient, yExponent);
+                    console.log("signedCoefficient", uint256(signedCoefficient));
+                    console.log("exponent", uint256(exponent));
+                    // Diff between x2 and x1 is always 0.0001.
+                    (signedCoefficient, exponent) = divideByParts(signedCoefficient, exponent, 1, -4);
+                    console.log("signedCoefficient", uint256(signedCoefficient));
+                    console.log("exponent", uint256(exponent));
+                    (signedCoefficient, exponent) = addByParts(signedCoefficient, exponent, lowCoefficient, x1Exponent);
+                    console.log("signedCoefficient", uint256(signedCoefficient));
+                    console.log("exponent", uint256(exponent));
+                }
+
+                return (signedCoefficient, exponent);
+            }
         }
     }
 
@@ -646,9 +767,9 @@ library LibDecimalFloat {
                 }
             }
 
-            uint256 e = ce & type(uint128).max;
-            uint256 f = df & type(uint128).max;
-            return divideByParts(int256(e), 0, int256(f), 0);
+            uint256 eFinal = ce & type(uint128).max;
+            uint256 fFinal = df & type(uint128).max;
+            return divideByParts(int256(eFinal), 0, int256(fFinal), 0);
         }
     }
 

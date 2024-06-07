@@ -47,4 +47,30 @@ contract DecimalFloatLog10Test is Test {
     //     assertEq(signedCoefficient, 301020408163265306122448979591836734);
     //     assertEq(exponent, -36);
     // }
+
+    function testLookup() external view {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.log10ByPartsTable(1, 0);
+        assertEq(signedCoefficient, 0);
+        assertEq(exponent, 0);
+
+        (signedCoefficient, exponent) = LibDecimalFloat.log10ByPartsTable(1, 1);
+        assertEq(signedCoefficient, 1);
+        assertEq(exponent, 0);
+
+        (signedCoefficient, exponent) = LibDecimalFloat.log10ByPartsTable(1, 2);
+        assertEq(signedCoefficient, 2);
+        assertEq(exponent, 0);
+
+        (signedCoefficient, exponent) = LibDecimalFloat.log10ByPartsTable(1001, -2);
+        assertEq(signedCoefficient, 4e34);
+        assertEq(exponent, -38);
+
+        // (signedCoefficient, exponent) = LibDecimalFloat.log10ByPartsTable(1002, -2);
+        // assertEq(signedCoefficient, 200);
+        // assertEq(exponent, -2);
+
+        // (signedCoefficient, exponent) = LibDecimalFloat.log10ByPartsTable(1099, -2);
+        // assertEq(signedCoefficient, 200);
+        // assertEq(exponent, -2);
+    }
 }
