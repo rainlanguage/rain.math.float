@@ -57,13 +57,11 @@ library LibDecimalFloat {
     // }
 
     function pack(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
-        return
-            uint256(uint128(int128(signedCoefficient))) | (uint256(uint128(int128(exponent))) << 0x80)
-        ;
+        return uint256(uint128(int128(signedCoefficient))) | (uint256(uint128(int128(exponent))) << 0x80);
     }
 
     function unpack(uint256 packed) internal pure returns (int256, int256) {
-        return(int128(uint128(packed)), int128(uint128(packed >> 0x80)));
+        return (int128(uint128(packed)), int128(uint128(packed >> 0x80)));
     }
 
     /// https://speleotrove.com/decimal/daops.html#refaddsub
@@ -481,5 +479,4 @@ library LibDecimalFloat {
             }
         }
     }
-
 }

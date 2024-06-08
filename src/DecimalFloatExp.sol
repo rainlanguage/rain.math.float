@@ -98,7 +98,10 @@ library LibDecimalFloatExp {
             uint256 i = 0;
             while (i < precision) {
                 // Operation II (if A < B) :
-                if (LibDecimalFloat.compare(signedCoefficientA, exponentA, signedCoefficientB, exponentB) == COMPARE_LESS_THAN) {
+                if (
+                    LibDecimalFloat.compare(signedCoefficientA, exponentA, signedCoefficientB, exponentB)
+                        == COMPARE_LESS_THAN
+                ) {
                     // We interchange A and B, C and E, D and F.
                     int256 tmpDecimalPart = signedCoefficientB;
                     signedCoefficientB = signedCoefficientA;
@@ -147,7 +150,6 @@ library LibDecimalFloatExp {
             return LibDecimalFloat.divide(int256(eFinal), 0, int256(fFinal), 0);
         }
     }
-
 
     function minimize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {

@@ -89,9 +89,9 @@ contract DecimalFloatDivideTest is Test {
         assertEq(exponentB, -38);
 
         // (1 / 9) / (1 / 3)
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloat.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertEq(signedCoefficient, 33333333333333333333333333333333333333);
         assertEq(exponent, -38);
     }
-
 }
