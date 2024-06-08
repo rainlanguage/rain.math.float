@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {DecimalFloat, LibDecimalFloat} from "src/DecimalFloat.sol";
+import {LibDecimalFloat} from "src/DecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 

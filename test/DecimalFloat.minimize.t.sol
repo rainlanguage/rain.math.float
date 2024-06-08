@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {DecimalFloat, LibDecimalFloat} from "src/DecimalFloat.sol";
+import {LibDecimalFloat} from "src/DecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract DecimalFloatMinimizeTest is Test {
-    using LibDecimalFloat for DecimalFloat;
-
     /// 1 => 1
     function testMinimize1() external pure {
         (int256 minimizedCoefficient, int256 minimizedExponent) = LibDecimalFloat.minimize(1, 0);

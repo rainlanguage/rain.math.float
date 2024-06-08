@@ -1,13 +1,11 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {DecimalFloat, LibDecimalFloat} from "src/DecimalFloat.sol";
+import {LibDecimalFloat} from "src/DecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract DecimalFloatMaximizeTest is Test {
-    using LibDecimalFloat for DecimalFloat;
-
     /// 1 => 1e38
     function testMaximize1() external pure {
         (int256 maximizedCoefficient, int256 maximizedExponent) = LibDecimalFloat.maximize(1, 0);
