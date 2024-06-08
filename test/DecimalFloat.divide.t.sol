@@ -33,21 +33,21 @@ contract DecimalFloatDivideTest is Test {
 
     /// 1 / 3 gas by parts
     function testDivide1Over3Gas01() external pure {
-        LibDecimalFloat.divide(1, 0, 3, 0);
+        LibDecimalFloat.divide(1e37, -37, 3e37, -37);
     }
 
     /// 1 / 3 gas by parts 10
     function testDivide1Over3Gas10() external pure {
-        (int256 c, int256 e) = LibDecimalFloat.divide(1, 0, 3, 0);
-        (c, e) = LibDecimalFloat.divide(e, c, 3, 0);
-        (c, e) = LibDecimalFloat.divide(e, c, 3, 0);
-        (c, e) = LibDecimalFloat.divide(e, c, 3, 0);
-        (c, e) = LibDecimalFloat.divide(e, c, 3, 0);
-        (c, e) = LibDecimalFloat.divide(e, c, 3, 0);
-        (c, e) = LibDecimalFloat.divide(e, c, 3, 0);
-        (c, e) = LibDecimalFloat.divide(e, c, 3, 0);
-        (c, e) = LibDecimalFloat.divide(e, c, 3, 0);
-        (c, e) = LibDecimalFloat.divide(e, c, 3, 0);
+        (int256 c, int256 e) = LibDecimalFloat.divide(1, 0, 3e37, -37);
+        (c, e) = LibDecimalFloat.divide(c, e, 3e37, -37);
+        (c, e) = LibDecimalFloat.divide(c, e, 3e37, -37);
+        (c, e) = LibDecimalFloat.divide(c, e, 3e37, -37);
+        (c, e) = LibDecimalFloat.divide(c, e, 3e37, -37);
+        (c, e) = LibDecimalFloat.divide(c, e, 3e37, -37);
+        (c, e) = LibDecimalFloat.divide(c, e, 3e37, -37);
+        (c, e) = LibDecimalFloat.divide(c, e, 3e37, -37);
+        (c, e) = LibDecimalFloat.divide(c, e, 3e37, -37);
+        (c, e) = LibDecimalFloat.divide(c, e, 3e37, -37);
     }
 
     // /// 1e18 / 3
@@ -78,13 +78,20 @@ contract DecimalFloatDivideTest is Test {
 
     /// (1 / 9) / (1 / 3) == 0.333..
     function testDivide1Over9Over1Over3() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(1, 0, 9, 0);
-        assertEq(signedCoefficient, 11111111111111111111111111111111111111);
-        assertEq(exponent, -38);
+        // 1 / 9
+        (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloat.divide(1, 0, 9, 0);
+        assertEq(signedCoefficientA, 11111111111111111111111111111111111111);
+        assertEq(exponentA, -38);
 
-        (signedCoefficient, exponent) = LibDecimalFloat.divide(signedCoefficient, exponent, 3, 0);
-        assertEq(signedCoefficient, 37037037037037037037037037037037037030);
-        assertEq(exponent, -39);
+        // 1 / 3
+        (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloat.divide(1, 0, 3, 0);
+        assertEq(signedCoefficientB, 33333333333333333333333333333333333333);
+        assertEq(exponentB, -38);
+
+        // (1 / 9) / (1 / 3)
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(signedCoefficient, 33333333333333333333333333333333333333);
+        assertEq(exponent, -38);
     }
 
 }
