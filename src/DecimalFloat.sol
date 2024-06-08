@@ -1,19 +1,12 @@
 // SPDX-License-Identifier: CAL
 pragma solidity ^0.8.25;
 
-import {console} from "forge-std/console.sol";
 import {LOG_TABLE, LOG_TABLE_SMALL, LOG_TABLE_SMALL_ALT} from "./LogTable.sol";
 
-// error SignOverflow(uint256 badSign);
 error ExponentOverflow();
-// error CoefficientOverflow(uint256 badCoefficient);
-
 error NegativeFixedDecimalConversion(DecimalFloat value);
-
 error DivisionByZero();
-
 error Log10Zero();
-
 error Log10Negative(int256 signedCoefficient, int256 exponent);
 
 type DecimalFloat is uint256;
@@ -107,50 +100,6 @@ library LibDecimalFloat {
     /// > were negative or the signs of the operands were different and the
     /// > rounding is round-floor.
     function add(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
-        // (int128 signedCoefficientA, int128 exponentA) = toParts(a);
-        // (int128 signedCoefficientB, int128 exponentB) = toParts(b);
-
-        // int128 smallerExponent;
-        // int256 adjustedCoefficient;
-
-        // {
-        //     int128 largerExponent;
-        //     int256 staticCoefficient;
-        //     if (exponentA > exponentB) {
-        //         smallerExponent = exponentB;
-        //         largerExponent = exponentA;
-        //         adjustedCoefficient = signedCoefficientA;
-        //         staticCoefficient = signedCoefficientB;
-        //     } else {
-        //         smallerExponent = exponentA;
-        //         largerExponent = exponentB;
-        //         adjustedCoefficient = signedCoefficientB;
-        //         staticCoefficient = signedCoefficientA;
-        //     }
-
-        //     if (adjustedCoefficient > 0) {
-        //         uint128 alignmentExponentDiff;
-        //         unchecked {
-        //             alignmentExponentDiff = uint128(largerExponent - smallerExponent);
-        //         }
-        //         uint256 multiplier = 10 ** alignmentExponentDiff;
-        //         if (multiplier > uint256(type(int256).max)) {
-        //             revert ExponentOverflow();
-        //         }
-        //         adjustedCoefficient *= int256(multiplier);
-        //     }
-
-        //     // This can't overflow because the signed coefficient is 128 bits.
-        //     // Worst case scenario is that one was aligned all the way to fill
-        //     // the high 128 bits, which we add to the max low 128 bits, which
-        //     // doesn't overflow.
-        //     unchecked {
-        //         adjustedCoefficient += staticCoefficient;
-        //     }
-        // }
-
-        // (int128 signedCoefficient, int128 exponent) = normalize(adjustedCoefficient, smallerExponent);
-        // return fromParts(signedCoefficient, exponent);
         (int256 signedCoefficientA, int256 exponentA) = toParts(a);
         (int256 signedCoefficientB, int256 exponentB) = toParts(b);
         (int256 signedCoefficient, int256 exponent) =
@@ -348,88 +297,7 @@ library LibDecimalFloat {
     /// > The result is then rounded to precision digits, if necessary, according
     /// > to the rounding algorithm and taking into account the remainder from
     /// > the division.
-    // function divide(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
-    //     (int128 signedCoefficientA, int128 exponentA) = toParts(a);
-    //     if (signedCoefficientA == 0) {
-    //         return DecimalFloat.wrap(0);
-    //     }
-
-    //     (int128 signedCoefficientB, int128 exponentB) = toParts(b);
-    //     if (signedCoefficientB == 0) {
-    //         revert DivisionByZero();
-    //     }
-
-    //     uint256 unsignedCoefficientA = uint256(uint128(signedCoefficientA) & ~SIGN_MASK);
-    //     uint256 unsignedCoefficientB = uint256(uint128(signedCoefficientB) & ~SIGN_MASK);
-
-    //     int128 adjust = 0;
-    //     int256 resultCoefficient = 0;
-
-    //     unchecked {
-    //         while (unsignedCoefficientA < unsignedCoefficientB) {
-    //             unsignedCoefficientA *= 10;
-    //             adjust += 1;
-    //         }
-
-    //         uint256 tensB = unsignedCoefficientB * 10;
-    //         while (unsignedCoefficientA >= tensB) {
-    //             unsignedCoefficientB = tensB;
-    //             tensB *= 10;
-    //             adjust -= 1;
-    //         }
-
-    //         uint256 tmpCoefficientA = unsignedCoefficientA;
-
-    //         while (true) {
-    //             while (tmpCoefficientA >= unsignedCoefficientB) {
-    //                 tmpCoefficientA -= unsignedCoefficientB;
-    //                 resultCoefficient += 1;
-    //             }
-
-    //             // Discard this round as it caused precision loss in the result.
-    //             if (int128(resultCoefficient) != int256(resultCoefficient)) {
-    //                 break;
-    //             }
-
-    //             unsignedCoefficientA = tmpCoefficientA;
-
-    //             if (tmpCoefficientA == 0 && adjust >= 0) {
-    //                 break;
-    //             }
-
-    //             tmpCoefficientA *= 10;
-    //             resultCoefficient *= 10;
-    //             adjust += 1;
-    //         }
-    //     }
-
-    //     int128 exponent = exponentA - exponentB - adjust;
-
-    //     (int128 normalizedCoefficient, int128 normalizedExponent) = normalize(resultCoefficient, exponent);
-    //     DecimalFloat value = fromParts(normalizedCoefficient, normalizedExponent);
-
-    //     uint256 signBit = DecimalFloat.unwrap(a) & SIGN_MASK ^ DecimalFloat.unwrap(b) & SIGN_MASK;
-
-    //     return DecimalFloat.wrap(DecimalFloat.unwrap(value) & ~SIGN_MASK | signBit);
-    // }
-
-    function divide2(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
-        // (int128 signedCoefficientA, int128 exponentA) = toParts(a);
-        // if (signedCoefficientA == 0) {
-        //     return DecimalFloat.wrap(0);
-        // }
-        // (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
-
-        // (int128 signedCoefficientB, int128 exponentB) = toParts(b);
-        // (signedCoefficientB, exponentB) = minimize(signedCoefficientB, exponentB);
-
-        // int256 signedCoefficient = int256(signedCoefficientA) / int256(signedCoefficientB);
-        // int128 exponent = exponentA - exponentB;
-
-        // (int128 normalizedCoefficient, int128 normalizedExponent) = normalize(signedCoefficient, exponent);
-        // // (int128 minimizedCoefficient, int128 minimizedExponent) = minimize(normalizedCoefficient, normalizedExponent);
-        // return fromParts(normalizedCoefficient, normalizedExponent);
-
+    function divide(DecimalFloat a, DecimalFloat b) internal pure returns (DecimalFloat) {
         (int256 signedCoefficientA, int256 exponentA) = toParts(a);
         (int256 signedCoefficientB, int256 exponentB) = toParts(b);
         (int256 signedCoefficient, int256 exponent) =
@@ -492,33 +360,6 @@ library LibDecimalFloat {
         } else {
             return COMPARE_GREATER_THAN;
         }
-
-        // // We don't support negative zero.
-        // // Because subtraction involves rounding if the two numbers are very far
-        // // apart, better to just compare the maximized versions directly
-        // (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
-        // (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
-
-        // // The signs are different so just check which is smaller.
-        // if (uint256(signedCoefficientA) >> 0xFF != uint256(signedCoefficientB) >> 0xFF) {
-        //     return signedCoefficientA < signedCoefficientB ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
-        // }
-
-        // // The signs are the same so check the exponents.
-        // if (exponentA > exponentB) {
-        //     return COMPARE_GREATER_THAN;
-        // } else if (exponentA < exponentB) {
-        //     return COMPARE_LESS_THAN;
-        // }
-
-        // // The exponents are the same so just check the coefficient.
-        // if (signedCoefficientA == signedCoefficientB) {
-        //     return COMPARE_EQUAL;
-        // } else if (signedCoefficientA < signedCoefficientB) {
-        //     return COMPARE_LESS_THAN;
-        // } else {
-        //     return COMPARE_GREATER_THAN;
-        // }
     }
 
     function compare(DecimalFloat a, DecimalFloat b) internal pure returns (int256) {
@@ -674,6 +515,13 @@ library LibDecimalFloat {
                 }
 
                 return (signedCoefficient, exponent);
+            }
+            // This is a negative log. i.e. log(x) where 0 < x < 1.
+            // log(x) = -log(1/x)
+            else {
+                (signedCoefficient, exponent) = divideByParts(1e37, -37, signedCoefficient, exponent);
+                (signedCoefficient, exponent) = log10ByPartsTable(signedCoefficient, exponent);
+                return minusByParts(signedCoefficient, exponent);
             }
         }
     }

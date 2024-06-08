@@ -12,7 +12,7 @@ contract DecimalFloatDivideTest is Test {
     function testDivide1Over3() external pure {
         DecimalFloat a = LibDecimalFloat.fromParts(1, 0);
         DecimalFloat b = LibDecimalFloat.fromParts(3, 0);
-        DecimalFloat actual = a.divide2(b);
+        DecimalFloat actual = a.divide(b);
         (int256 signedCoefficient, int256 exponent) = actual.toParts();
         assertEq(signedCoefficient, 33333333333333333333333333333333333333, "coefficient");
         assertEq(exponent, -38, "exponent");
@@ -22,7 +22,7 @@ contract DecimalFloatDivideTest is Test {
     function testDivideNegative1Over3() external pure {
         DecimalFloat a = LibDecimalFloat.fromParts(-1, 0);
         DecimalFloat b = LibDecimalFloat.fromParts(3, 0);
-        DecimalFloat actual = a.divide2(b);
+        DecimalFloat actual = a.divide(b);
         (int256 signedCoefficient, int256 exponent) = actual.toParts();
         assertEq(signedCoefficient, -33333333333333333333333333333333333333, "coefficient");
         assertEq(exponent, -38, "exponent");
@@ -30,7 +30,7 @@ contract DecimalFloatDivideTest is Test {
 
     /// 1 / 3 gas
     function testDivide1Over3Gas() external pure {
-        DecimalFloat.wrap(1).divide2(DecimalFloat.wrap(3));
+        DecimalFloat.wrap(1).divide(DecimalFloat.wrap(3));
     }
 
     /// 1 / 3 gas by parts
@@ -54,7 +54,7 @@ contract DecimalFloatDivideTest is Test {
 
     /// 1e18 / 3
     function testDivide1e18Over3() external pure {
-        DecimalFloat.wrap(1e18).divide2(DecimalFloat.wrap(3));
+        DecimalFloat.wrap(1e18).divide(DecimalFloat.wrap(3));
     }
 
     /// 10,0 / 1e38,-37 == 1

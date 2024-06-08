@@ -13,7 +13,7 @@ contract DecimalFloatMixedTest is Test {
         DecimalFloat a = LibDecimalFloat.fromParts(1, 0);
         DecimalFloat b = LibDecimalFloat.fromParts(3, 0);
         DecimalFloat c = LibDecimalFloat.fromParts(555, 18);
-        DecimalFloat actual = a.divide2(b).multiply(c);
+        DecimalFloat actual = a.divide(b).multiply(c);
         (int128 signedCoefficient, int128 exponent) = actual.toParts();
         assertEq(signedCoefficient, 18499999999999999999999999999999999999);
         assertEq(exponent, -17);

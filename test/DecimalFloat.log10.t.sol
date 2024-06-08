@@ -52,6 +52,7 @@ contract DecimalFloatLog10Test is Test {
         uint256 a = gasleft();
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.log10ByPartsTable(1, 0);
         uint256 b = gasleft();
+        (signedCoefficient, exponent);
         console.log("Gas used: %d", a - b);
     }
 
@@ -59,6 +60,7 @@ contract DecimalFloatLog10Test is Test {
         uint256 a = gasleft();
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.log10ByPartsTable(10015, -3);
         uint256 b = gasleft();
+        (signedCoefficient, exponent);
         console.log("Gas used: %d", a - b);
     }
 
