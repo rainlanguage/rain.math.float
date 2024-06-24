@@ -393,7 +393,18 @@ library LibDecimalFloat {
         }
     }
 
-    function log10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
+    /// a^b = 10^(b * log10(a))
+    function power(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB) internal pure returns (int256, int256) {
+        (int256 signedCoefficient, int256 exponent) = log10(signedCoefficientA, exponentA);
+        (signedCoefficient, exponent) = multiply(signedCoefficient, exponent, signedCoefficientB, exponentB);
+        return power10(signedCoefficient, exponent);
+    }
+
+    function power10(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+
+    }
+
+    function log10(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
             {
                 (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
