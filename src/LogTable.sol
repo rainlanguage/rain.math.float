@@ -1,7 +1,27 @@
 // SPDX-License-Identifier: CAL
 pragma solidity ^0.8.25;
 
+import {console} from "forge-std/console.sol";
+
 library LibLogTable {
+
+    function toBytes(uint16[10][90] memory table) internal view returns (bytes memory) {
+        uint256 v;
+        bytes memory encoded;
+        assembly ("memory-safe") {
+            v := mload(add(mload(table), 0x20))
+
+            encoded := mload(0x40)
+            mstore(0x40, add(encoded, add(1800, 0x20)))
+
+            cursor := sub(mload(0x40), 0x20)
+
+        }
+        console.log("v", v);
+
+        return abi.encodePacked(table);
+    }
+
     function logTableDec() internal pure returns (uint16[10][90] memory) {
         return [
             [0, 43, 86, 128, 170, 212, 253, 294, 334, 374],
