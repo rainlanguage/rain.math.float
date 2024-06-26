@@ -14,4 +14,19 @@ contract LibLogTableBytesTest is Test {
         bytes memory result = LibLogTable.toBytes(LibLogTable.antiLogTableDec());
         console2.logBytes(result);
     }
+
+    function testToBytesLogTableDecSmall() external {
+        bytes memory result = LibLogTable.toBytes(LibLogTable.logTableDecSmall());
+        console2.logBytes(result);
+    }
+
+    function testToBytesLogTableDecSmallAlt() external {
+        bytes memory result = LibLogTable.toBytes(LibLogTable.logTableDecSmallAlt());
+        console2.logBytes(result);
+    }
+
+    function testToBytesAntiLogTableDecSmall() external {
+        bytes memory result = LibLogTable.toBytes(LibLogTable.antiLogTableDecSmall());
+        console2.logBytes(result);
+    }
 }

@@ -32,6 +32,90 @@ library LibLogTable {
         return encoded;
     }
 
+    function toBytes(uint8[10][90] memory table) internal view returns (bytes memory) {
+        bytes memory encoded;
+        assembly ("memory-safe") {
+            encoded := mload(0x40)
+            mstore(0x40, add(encoded, add(900, 0x20)))
+
+            let cursor := sub(mload(0x40), 0x20)
+
+            for {
+                let i := add(table, mul(0x20, 89))
+                let j := mul(0x20, 9)
+            } gt(cursor, encoded) {
+                cursor := sub(cursor, 1)
+                j := sub(j, 0x20)
+            } {
+                mstore(cursor, mload(add(mload(i), j)))
+
+                if iszero(j) {
+                    i := sub(i, 0x20)
+                    j := mul(0x20, 10)
+                }
+            }
+
+            mstore(cursor, 900)
+        }
+        return encoded;
+    }
+
+    function toBytes(uint8[10][100] memory table) internal view returns (bytes memory) {
+        bytes memory encoded;
+        assembly ("memory-safe") {
+            encoded := mload(0x40)
+            mstore(0x40, add(encoded, add(1000, 0x20)))
+
+            let cursor := sub(mload(0x40), 0x20)
+
+            for {
+                let i := add(table, mul(0x20, 99))
+                let j := mul(0x20, 9)
+            } gt(cursor, encoded) {
+                cursor := sub(cursor, 1)
+                j := sub(j, 0x20)
+            } {
+                mstore(cursor, mload(add(mload(i), j)))
+
+                if iszero(j) {
+                    i := sub(i, 0x20)
+                    j := mul(0x20, 10)
+                }
+            }
+
+            mstore(cursor, 1000)
+        }
+        return encoded;
+    }
+
+    function toBytes(uint8[10][10] memory table) internal view returns (bytes memory) {
+        bytes memory encoded;
+        assembly ("memory-safe") {
+            encoded := mload(0x40)
+            mstore(0x40, add(encoded, add(100, 0x20)))
+
+            let cursor := sub(mload(0x40), 0x20)
+
+            for {
+                let i := add(table, mul(0x20, 9))
+                let j := mul(0x20, 9)
+            } gt(cursor, encoded) {
+                cursor := sub(cursor, 1)
+                j := sub(j, 0x20)
+            } {
+                mstore(cursor, mload(add(mload(i), j)))
+
+                if iszero(j) {
+                    i := sub(i, 0x20)
+                    j := mul(0x20, 10)
+                }
+            }
+
+            mstore(cursor, 100)
+        }
+        return encoded;
+    }
+
     function toBytes(uint16[10][100] memory table) internal view returns (bytes memory) {
         bytes memory encoded;
         assembly ("memory-safe") {
@@ -250,7 +334,7 @@ library LibLogTable {
         ];
     }
 
-    function logTableSmallAlt() internal pure returns (uint8[10][10] memory) {
+    function logTableDecSmallAlt() internal pure returns (uint8[10][10] memory) {
         return [
             [0, 4, 8, 12, 16, 20, 24, 28, 32, 37],
             [0, 4, 7, 11, 15, 19, 22, 26, 30, 33],
@@ -370,7 +454,7 @@ library LibLogTable {
         ];
     }
 
-    function antiLogTableSmallDec() internal pure returns (uint8[10][100] memory) {
+    function antiLogTableDecSmall() internal pure returns (uint8[10][100] memory) {
         return [
             [0, 0, 0, 1, 1, 1, 1, 2, 2, 2],
             [0, 0, 0, 1, 1, 1, 1, 2, 2, 2],
