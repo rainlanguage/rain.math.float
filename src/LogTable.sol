@@ -4,22 +4,60 @@ pragma solidity ^0.8.25;
 import {console} from "forge-std/console.sol";
 
 library LibLogTable {
-
     function toBytes(uint16[10][90] memory table) internal view returns (bytes memory) {
-        uint256 v;
         bytes memory encoded;
         assembly ("memory-safe") {
-            v := mload(add(mload(table), 0x20))
-
             encoded := mload(0x40)
             mstore(0x40, add(encoded, add(1800, 0x20)))
 
-            cursor := sub(mload(0x40), 0x20)
+            let cursor := sub(mload(0x40), 0x20)
 
+            for {
+                let i := add(table, mul(0x20, 89))
+                let j := mul(0x20, 9)
+            } gt(cursor, encoded) {
+                cursor := sub(cursor, 2)
+                j := sub(j, 0x20)
+            } {
+                mstore(cursor, mload(add(mload(i), j)))
+
+                if iszero(j) {
+                    i := sub(i, 0x20)
+                    j := mul(0x20, 10)
+                }
+            }
+
+            mstore(cursor, 1800)
         }
-        console.log("v", v);
+        return encoded;
+    }
 
-        return abi.encodePacked(table);
+    function toBytes(uint16[10][100] memory table) internal view returns (bytes memory) {
+        bytes memory encoded;
+        assembly ("memory-safe") {
+            encoded := mload(0x40)
+            mstore(0x40, add(encoded, add(2000, 0x20)))
+
+            let cursor := sub(mload(0x40), 0x20)
+
+            for {
+                let i := add(table, mul(0x20, 99))
+                let j := mul(0x20, 9)
+            } gt(cursor, encoded) {
+                cursor := sub(cursor, 2)
+                j := sub(j, 0x20)
+            } {
+                mstore(cursor, mload(add(mload(i), j)))
+
+                if iszero(j) {
+                    i := sub(i, 0x20)
+                    j := mul(0x20, 10)
+                }
+            }
+
+            mstore(cursor, 2000)
+        }
+        return encoded;
     }
 
     function logTableDec() internal pure returns (uint16[10][90] memory) {
