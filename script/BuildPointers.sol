@@ -2,22 +2,9 @@
 pragma solidity =0.8.25;
 
 import {Script} from "forge-std/Script.sol";
-// import {RainterpreterNPE2} from "src/concrete/RainterpreterNPE2.sol";
-// import {RainterpreterStoreNPE2} from "src/concrete/RainterpreterStoreNPE2.sol";
-// import {IInterpreterV2} from "rain.interpreter.interface/interface/IInterpreterV2.sol";
-// import {RainterpreterParserNPE2, PARSE_META_BUILD_DEPTH} from "src/concrete/RainterpreterParserNPE2.sol";
-// import {
-//     RainterpreterExpressionDeployerNPE2,
-//     RainterpreterExpressionDeployerNPE2ConstructionConfigV2
-// } from "src/concrete/RainterpreterExpressionDeployerNPE2.sol";
-// import {
-//     RainterpreterReferenceExternNPE2,
-//     LibRainterpreterReferenceExternNPE2,
-//     EXTERN_PARSE_META_BUILD_DEPTH
-// } from "src/concrete/extern/RainterpreterReferenceExternNPE2.sol";
-// import {LibAllStandardOpsNP, AuthoringMetaV2} from "src/lib/op/LibAllStandardOpsNP.sol";
-import {LibCodeGen} from "rain.sol.codegen/lib/LibCodeGen.sol";
-import {LibFs} from "rain.sol.codegen/lib/LibFs.sol";
+import {LibCodeGen} from "rain.sol.codegen/src/lib/LibCodeGen.sol";
+import {LibFs} from "rain.sol.codegen/src/lib/LibFs.sol";
+import {LibLogTable} from "../src/LibLogTable.sol";
 
 contract BuildPointers is Script {
     function run() external {
@@ -25,7 +12,38 @@ contract BuildPointers is Script {
             vm,
             address(0),
             "LogTables",
-            ""
+            string.concat(
+                LibCodeGen.bytesConstantString(
+                    vm,
+                    "/// @dev Log tables.",
+                    "LOG_TABLES",
+                    LibLogTable.toBytes(LibLogTable.logTableDec())
+                ),
+                LibCodeGen.bytesConstantString(
+                    vm,
+                    "/// @dev Log tables small.",
+                    "LOG_TABLES_SMALL",
+                    LibLogTable.toBytes(LibLogTable.logTableDecSmall())
+                ),
+                LibCodeGen.bytesConstantString(
+                    vm,
+                    "/// @dev Log tables small alt.",
+                    "LOG_TABLES_SMALL_ALT",
+                    LibLogTable.toBytes(LibLogTable.logTableDecSmallAlt())
+                ),
+                LibCodeGen.bytesConstantString(
+                    vm,
+                    "/// @dev Anti log tables.",
+                    "ANTI_LOG_TABLES",
+                    LibLogTable.toBytes(LibLogTable.antiLogTableDec())
+                ),
+                LibCodeGen.bytesConstantString(
+                    vm,
+                    "/// @dev Anti log tables small.",
+                    "ANTI_LOG_TABLES_SMALL",
+                    LibLogTable.toBytes(LibLogTable.antiLogTableDecSmall())
+                )
+            )
         );
     }
 

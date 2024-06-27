@@ -2,7 +2,7 @@
 pragma solidity ^0.8.25;
 
 import {console} from "forge-std/Test.sol";
-import {LOG_TABLE, LOG_TABLE_SMALL, LOG_TABLE_SMALL_ALT} from "./LogTable.sol";
+import {LOG_TABLES, LOG_TABLES_SMALL, LOG_TABLES_SMALL_ALT} from "./generated/LogTables.pointers.sol";
 
 error ExponentOverflow();
 error NegativeFixedDecimalConversion(int256 signedCoefficient, int256 exponent);
@@ -434,9 +434,9 @@ library LibDecimalFloat {
 
                 // Table lookup.
                 {
-                    bytes memory table = LOG_TABLE;
-                    bytes memory tableSmall = LOG_TABLE_SMALL;
-                    bytes memory tableSmallAlt = LOG_TABLE_SMALL_ALT;
+                    bytes memory table = LOG_TABLES;
+                    bytes memory tableSmall = LOG_TABLES_SMALL;
+                    bytes memory tableSmallAlt = LOG_TABLES_SMALL_ALT;
                     uint256 scale = 1e34;
 
                     assembly ("memory-safe") {
