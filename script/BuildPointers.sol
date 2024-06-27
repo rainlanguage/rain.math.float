@@ -14,10 +14,7 @@ contract BuildPointers is Script {
             "LogTables",
             string.concat(
                 LibCodeGen.bytesConstantString(
-                    vm,
-                    "/// @dev Log tables.",
-                    "LOG_TABLES",
-                    LibLogTable.toBytes(LibLogTable.logTableDec())
+                    vm, "/// @dev Log tables.", "LOG_TABLES", LibLogTable.toBytes(LibLogTable.logTableDec())
                 ),
                 LibCodeGen.bytesConstantString(
                     vm,

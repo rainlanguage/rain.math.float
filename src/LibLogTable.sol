@@ -3,6 +3,8 @@ pragma solidity ^0.8.25;
 
 import {console} from "forge-std/console.sol";
 
+uint16 constant ALT_TABLE_FLAG = 0x8000;
+
 /// @dev https://icap.org.pk/files/per/students/exam/notices/log-table.pdf
 library LibLogTable {
     function toBytes(uint16[10][90] memory table) internal pure returns (bytes memory) {
@@ -147,16 +149,126 @@ library LibLogTable {
 
     function logTableDec() internal pure returns (uint16[10][90] memory) {
         return [
-            [0, 43, 86, 128, 170, 212, 253, 294, 334, 374],
-            [414, 453, 492, 531, 569, 607, 645, 682, 719, 755],
-            [792, 828, 864, 899, 934, 969, 1004, 1038, 1072, 1106],
-            [1139, 1173, 1206, 1239, 1271, 1303, 1335, 1367, 1399, 1430],
-            [1461, 1492, 1523, 1553, 1584, 1614, 1644, 1673, 1703, 1732],
-            [1761, 1790, 1818, 1847, 1875, 1903, 1931, 1959, 1987, 2014],
-            [2041, 2068, 2095, 2122, 2148, 2175, 2201, 2227, 2253, 2279],
-            [2304, 2330, 2355, 2380, 2405, 2430, 2455, 2480, 2504, 2529],
-            [2553, 2577, 2601, 2625, 2648, 2672, 2695, 2718, 2742, 2765],
-            [2788, 2810, 2833, 2856, 2878, 2900, 2923, 2945, 2967, 2989],
+            [
+                0,
+                43,
+                86,
+                128,
+                170,
+                212 | ALT_TABLE_FLAG,
+                253 | ALT_TABLE_FLAG,
+                294 | ALT_TABLE_FLAG,
+                334 | ALT_TABLE_FLAG,
+                374 | ALT_TABLE_FLAG
+            ],
+            [
+                414,
+                453,
+                492,
+                531,
+                569,
+                607 | ALT_TABLE_FLAG,
+                645 | ALT_TABLE_FLAG,
+                682 | ALT_TABLE_FLAG,
+                719 | ALT_TABLE_FLAG,
+                755 | ALT_TABLE_FLAG
+            ],
+            [
+                792,
+                828,
+                864,
+                899,
+                934,
+                969,
+                1004 | ALT_TABLE_FLAG,
+                1038 | ALT_TABLE_FLAG,
+                1072 | ALT_TABLE_FLAG,
+                1106 | ALT_TABLE_FLAG
+            ],
+            [
+                1139,
+                1173,
+                1206,
+                1239,
+                1271,
+                1303 | ALT_TABLE_FLAG,
+                1335 | ALT_TABLE_FLAG,
+                1367 | ALT_TABLE_FLAG,
+                1399 | ALT_TABLE_FLAG,
+                1430 | ALT_TABLE_FLAG
+            ],
+            [
+                1461,
+                1492,
+                1523,
+                1553,
+                1584 | ALT_TABLE_FLAG,
+                1614 | ALT_TABLE_FLAG,
+                1644 | ALT_TABLE_FLAG,
+                1673 | ALT_TABLE_FLAG,
+                1703 | ALT_TABLE_FLAG,
+                1732 | ALT_TABLE_FLAG
+            ],
+            [
+                1761,
+                1790,
+                1818,
+                1847,
+                1875,
+                1903,
+                1931 | ALT_TABLE_FLAG,
+                1959 | ALT_TABLE_FLAG,
+                1987 | ALT_TABLE_FLAG,
+                2014 | ALT_TABLE_FLAG
+            ],
+            [
+                2041,
+                2068,
+                2095,
+                2122,
+                2148,
+                2175 | ALT_TABLE_FLAG,
+                2201 | ALT_TABLE_FLAG,
+                2227 | ALT_TABLE_FLAG,
+                2253 | ALT_TABLE_FLAG,
+                2279 | ALT_TABLE_FLAG
+            ],
+            [
+                2304,
+                2330,
+                2355,
+                2380,
+                2405,
+                2430,
+                2455 | ALT_TABLE_FLAG,
+                2480 | ALT_TABLE_FLAG,
+                2504 | ALT_TABLE_FLAG,
+                2529 | ALT_TABLE_FLAG
+            ],
+            [
+                2553,
+                2577,
+                2601,
+                2625,
+                2648,
+                2672 | ALT_TABLE_FLAG,
+                2695 | ALT_TABLE_FLAG,
+                2718 | ALT_TABLE_FLAG,
+                2742 | ALT_TABLE_FLAG,
+                2765 | ALT_TABLE_FLAG
+            ],
+            [
+                2788,
+                2810,
+                2833,
+                2856,
+                2878,
+                2900 | ALT_TABLE_FLAG,
+                2923 | ALT_TABLE_FLAG,
+                2945 | ALT_TABLE_FLAG,
+                2967 | ALT_TABLE_FLAG,
+                2989 | ALT_TABLE_FLAG
+            ],
             [3010, 3032, 3054, 3075, 3096, 3118, 3139, 3160, 3181, 3201],
             [3222, 3243, 3263, 3284, 3304, 3324, 3345, 3365, 3385, 3404],
             [3424, 3444, 3464, 3483, 3502, 3522, 3541, 3560, 3579, 3598],

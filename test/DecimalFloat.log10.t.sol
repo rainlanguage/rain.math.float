@@ -6,16 +6,6 @@ import {LibDecimalFloat, COMPARE_EQUAL} from "src/DecimalFloat.sol";
 import {Test, console} from "forge-std/Test.sol";
 
 contract DecimalFloatLog10Test is Test {
-    // /// log10(2) = 0.301029
-    // function testLog10Two() external view {
-    //     uint256 a = gasleft();
-    //     (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.log10ByParts(2, 0, 4);
-    //     uint256 b = gasleft();
-    //     console.log("Gas used: %d", a - b);
-    //     assertEq(signedCoefficient, 301020408163265306122448979591836734);
-    //     assertEq(exponent, -36);
-    // }
-
     function checkLog10(
         int256 signedCoefficient,
         int256 exponent,
@@ -54,6 +44,6 @@ contract DecimalFloatLog10Test is Test {
 
     // This can't work until the full lookup table is implemented.
     function testSub1() external view {
-        // checkLog10(1001, -4, -9e37, -38);
+        checkLog10(1001, -4, -0.99960039960039960039960039960039960039e38, -38);
     }
 }

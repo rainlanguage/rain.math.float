@@ -2,7 +2,13 @@
 pragma solidity ^0.8.25;
 
 import {console} from "forge-std/Test.sol";
-import {LOG_TABLES, LOG_TABLES_SMALL, LOG_TABLES_SMALL_ALT} from "./generated/LogTables.pointers.sol";
+import {
+    LOG_TABLES,
+    LOG_TABLES_SMALL,
+    LOG_TABLES_SMALL_ALT,
+    ANTI_LOG_TABLES,
+    ANTI_LOG_TABLES_SMALL
+} from "./generated/LogTables.pointers.sol";
 
 error ExponentOverflow();
 error NegativeFixedDecimalConversion(int256 signedCoefficient, int256 exponent);
@@ -396,7 +402,7 @@ library LibDecimalFloat {
     /// a^b = 10^(b * log10(a))
     function power(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
-        pure
+        view
         returns (int256, int256)
     {
         (int256 signedCoefficient, int256 exponent) = log10(signedCoefficientA, exponentA);
@@ -404,7 +410,99 @@ library LibDecimalFloat {
         return power10(signedCoefficient, exponent);
     }
 
-    function power10(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {}
+    function power10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
+        unchecked {
+            (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
+
+            int256 y1Coefficient;
+            int256 y2Coefficient;
+            int256 x1Coefficient;
+            int256 x1Exponent = exponent;
+            int256 characteristic;
+
+            console.log("initial exponent: %d", uint256(-exponent));
+
+            // Table lookup.
+            {
+                bytes memory table = ANTI_LOG_TABLES;
+                bytes memory tableSmall = ANTI_LOG_TABLES_SMALL;
+                uint256 xScale = 1e33;
+                uint256 yScale = 1e35;
+                uint256 idx;
+
+                assembly ("memory-safe") {
+                    function lookupTableVal(mainTable, smallTable, index) -> result {
+                        let mainIndex := div(index, 10)
+
+                        let mainTableVal := and(mload(add(mainTable, mul(2, add(mainIndex, 1)))), 0xFFFF)
+
+                        let smallTableOffset := add(1, mul(div(index, 100), 10))
+                        let smallTableVal := byte(31, mload(add(smallTable, add(mod(index, 10), smallTableOffset))))
+
+                        result := add(mainTableVal, smallTableVal)
+                    }
+
+                    // Truncate the signed coefficient to what we can look
+                    // up in the table.
+                    x1Coefficient := div(signedCoefficient, xScale)
+                    idx := mod(x1Coefficient, 10000)
+                    characteristic := div(x1Coefficient, 10000)
+                    x1Coefficient := mul(x1Coefficient, xScale)
+
+                    y1Coefficient := mul(yScale, lookupTableVal(table, tableSmall, idx))
+                    y2Coefficient := mul(yScale, lookupTableVal(table, tableSmall, add(idx, 1)))
+                }
+
+                console.log("index: %d", uint256(idx));
+            }
+
+            console.log("y1Coefficient: %d", uint256(y1Coefficient));
+            console.log("y2Coefficient: %d", uint256(y2Coefficient));
+            console.log("x1Coefficient: %d", uint256(x1Coefficient));
+            console.log("signedCoefficient: %d", uint256(signedCoefficient));
+
+            (signedCoefficient, exponent) = linearInterpolation(
+                signedCoefficient, x1Coefficient, exponent, y1Coefficient, y2Coefficient, -38
+            );
+
+            console.log("exponent: %d", uint256(-exponent));
+            console.log("characteristic: %d", uint256(characteristic));
+
+            return (signedCoefficient, exponent + characteristic);
+        }
+    }
+
+    // Linear interpolation.
+    // y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
+    function linearInterpolation(
+        int256 xCoefficient,
+        int256 x1Coefficient,
+        int256 xExponent,
+        int256 y1Coefficient,
+        int256 y2Coefficient,
+        int256 yExponent
+    ) internal pure returns (int256, int256) {
+        int256 numeratorSignedCoefficient;
+        int256 numeratorExponent;
+
+        {
+            // y2 - y1
+            (int256 yDiffCoefficient, int256 yDiffExponent) = sub(y2Coefficient, yExponent, y1Coefficient, yExponent);
+
+            // x - x1
+            (int256 xDiffCoefficient, int256 xDiffExponent) = sub(xCoefficient, xExponent, x1Coefficient, xExponent);
+
+            // (x - x1) * (y2 - y1)
+            (numeratorSignedCoefficient, numeratorExponent) = multiply(xDiffCoefficient, xDiffExponent, yDiffCoefficient, yDiffExponent);
+        }
+
+        // Diff between x2 and x1 is always 0.01.  0.0001
+        (int256 yDiffSignedCoefficient, int256 yDiffExponent) = divide(numeratorSignedCoefficient, numeratorExponent, 1, -2);
+
+        // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
+        (int256 signedCoefficient, int256 exponent) = add(yDiffSignedCoefficient, yDiffExponent, y1Coefficient, -38);
+        return (signedCoefficient, exponent);
+    }
 
     function log10(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
@@ -462,25 +560,29 @@ library LibDecimalFloat {
                     }
                 }
 
-                // Linear interpolation.
-                // y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
-                {
-                    // y2 - y1
-                    (int256 yCoefficient, int256 yExponent) = sub(highCoefficient, -38, lowCoefficient, -38);
+                (signedCoefficient, exponent) = linearInterpolation(
+                    signedCoefficient, x1Coefficient, exponent, lowCoefficient, highCoefficient, -38
+                );
 
-                    // x - x1
-                    (int256 xCoefficient, int256 xExponent) =
-                        sub(signedCoefficient, exponent, x1Coefficient, x1Exponent);
+                // // Linear interpolation.
+                // // y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
+                // {
+                //     // y2 - y1
+                //     (int256 yCoefficient, int256 yExponent) = sub(highCoefficient, -38, lowCoefficient, -38);
 
-                    // (x - x1) * (y2 - y1)
-                    (signedCoefficient, exponent) = multiply(xCoefficient, xExponent, yCoefficient, yExponent);
+                //     // x - x1
+                //     (int256 xCoefficient, int256 xExponent) =
+                //         sub(signedCoefficient, exponent, x1Coefficient, x1Exponent);
 
-                    // Diff between x2 and x1 is always 0.01.
-                    (signedCoefficient, exponent) = divide(signedCoefficient, exponent, 1, -2);
+                //     // (x - x1) * (y2 - y1)
+                //     (signedCoefficient, exponent) = multiply(xCoefficient, xExponent, yCoefficient, yExponent);
 
-                    // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
-                    (signedCoefficient, exponent) = add(signedCoefficient, exponent, lowCoefficient, -38);
-                }
+                //     // Diff between x2 and x1 is always 0.01.
+                //     (signedCoefficient, exponent) = divide(signedCoefficient, exponent, 1, -2);
+
+                //     // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
+                //     (signedCoefficient, exponent) = add(signedCoefficient, exponent, lowCoefficient, -38);
+                // }
                 return add(signedCoefficient, exponent, x1Exponent + 37, 0);
             }
             // This is a negative log. i.e. log(x) where 0 < x < 1.
