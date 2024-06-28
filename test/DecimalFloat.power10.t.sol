@@ -22,9 +22,9 @@ contract DecimalFloatPower10Test is Test {
 
     function testExactPowers() external view {
         // 10^1 = 10
-        checkPower10(1, 0, 1e37, -36);
+        checkPower10(1e37, -37, 1e37, -36);
         // 10^10 = 10000000000
-        // checkPower10(1, 1, 10, 0);
+        checkPower10(10e37, -37, 1e37, -27);
         // checkPower10(1, 2, 100, 0);
         // checkPower10(1, 3, 1000, 0);
         // checkPower10(1, 4, 10000, 0);

@@ -413,12 +413,6 @@ library LibDecimalFloat {
         unchecked {
             (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
 
-            int256 y1Coefficient;
-            int256 y2Coefficient;
-            int256 x1Coefficient;
-            int256 x1Exponent = exponent;
-            int256 characteristic;
-
             // Table lookup.
             {
                 bytes memory table = ANTI_LOG_TABLES;
@@ -426,6 +420,10 @@ library LibDecimalFloat {
                 uint256 xScale = 1e33;
                 uint256 yScale = 1e35;
                 uint256 idx;
+                int256 y1Coefficient;
+                int256 y2Coefficient;
+                int256 x1Coefficient;
+                int256 x1Exponent = exponent;
 
                 assembly ("memory-safe") {
                     function lookupTableVal(mainTable, smallTable, index) -> result {
@@ -443,19 +441,18 @@ library LibDecimalFloat {
                     // up in the table.
                     x1Coefficient := div(signedCoefficient, xScale)
                     idx := mod(x1Coefficient, 10000)
-                    characteristic := div(x1Coefficient, 10000)
                     x1Coefficient := mul(x1Coefficient, xScale)
 
                     y1Coefficient := mul(yScale, lookupTableVal(table, tableSmall, idx))
                     y2Coefficient := mul(yScale, lookupTableVal(table, tableSmall, add(idx, 1)))
                 }
+
+                (signedCoefficient, exponent) = unitLinearInterpolation(
+                    signedCoefficient, x1Coefficient, exponent, -41, y1Coefficient, y2Coefficient, -38
+                );
             }
 
-            (signedCoefficient, exponent) = unitLinearInterpolation(
-                signedCoefficient, x1Coefficient, exponent, -41, y1Coefficient, y2Coefficient, -38
-            );
-
-            return (signedCoefficient, exponent + characteristic);
+            return (signedCoefficient, exponent);
         }
     }
 
