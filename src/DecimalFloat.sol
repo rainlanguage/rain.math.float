@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: CAL
 pragma solidity ^0.8.25;
 
-import {console} from "forge-std/Test.sol";
 import {
     LOG_TABLES,
     LOG_TABLES_SMALL,
@@ -420,8 +419,6 @@ library LibDecimalFloat {
             int256 x1Exponent = exponent;
             int256 characteristic;
 
-            console.log("initial exponent: %d", uint256(-exponent));
-
             // Table lookup.
             {
                 bytes memory table = ANTI_LOG_TABLES;
@@ -452,21 +449,11 @@ library LibDecimalFloat {
                     y1Coefficient := mul(yScale, lookupTableVal(table, tableSmall, idx))
                     y2Coefficient := mul(yScale, lookupTableVal(table, tableSmall, add(idx, 1)))
                 }
-
-                console.log("index: %d", uint256(idx));
             }
 
-            console.log("y1Coefficient: %d", uint256(y1Coefficient));
-            console.log("y2Coefficient: %d", uint256(y2Coefficient));
-            console.log("x1Coefficient: %d", uint256(x1Coefficient));
-            console.log("signedCoefficient: %d", uint256(signedCoefficient));
-
-            (signedCoefficient, exponent) = linearInterpolation(
-                signedCoefficient, x1Coefficient, exponent, y1Coefficient, y2Coefficient, -38
+            (signedCoefficient, exponent) = unitLinearInterpolation(
+                signedCoefficient, x1Coefficient, exponent, -41, y1Coefficient, y2Coefficient, -38
             );
-
-            console.log("exponent: %d", uint256(-exponent));
-            console.log("characteristic: %d", uint256(characteristic));
 
             return (signedCoefficient, exponent + characteristic);
         }
@@ -474,10 +461,11 @@ library LibDecimalFloat {
 
     // Linear interpolation.
     // y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
-    function linearInterpolation(
+    function unitLinearInterpolation(
         int256 xCoefficient,
         int256 x1Coefficient,
         int256 xExponent,
+        int256 xUnitExponent,
         int256 y1Coefficient,
         int256 y2Coefficient,
         int256 yExponent
@@ -486,21 +474,24 @@ library LibDecimalFloat {
         int256 numeratorExponent;
 
         {
-            // y2 - y1
-            (int256 yDiffCoefficient, int256 yDiffExponent) = sub(y2Coefficient, yExponent, y1Coefficient, yExponent);
-
             // x - x1
             (int256 xDiffCoefficient, int256 xDiffExponent) = sub(xCoefficient, xExponent, x1Coefficient, xExponent);
 
+            // y2 - y1
+            (int256 yDiffCoefficient, int256 yDiffExponent) = sub(y2Coefficient, yExponent, y1Coefficient, yExponent);
+
             // (x - x1) * (y2 - y1)
-            (numeratorSignedCoefficient, numeratorExponent) = multiply(xDiffCoefficient, xDiffExponent, yDiffCoefficient, yDiffExponent);
+            (numeratorSignedCoefficient, numeratorExponent) =
+                multiply(xDiffCoefficient, xDiffExponent, yDiffCoefficient, yDiffExponent);
         }
 
-        // Diff between x2 and x1 is always 0.01.  0.0001
-        (int256 yDiffSignedCoefficient, int256 yDiffExponent) = divide(numeratorSignedCoefficient, numeratorExponent, 1, -2);
+        // Diff between x2 and x1 is always 1 unit.
+        (int256 yDiffSignedCoefficient, int256 yDiffExponent) =
+            divide(numeratorSignedCoefficient, numeratorExponent, 1e37, xUnitExponent);
 
         // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
-        (int256 signedCoefficient, int256 exponent) = add(yDiffSignedCoefficient, yDiffExponent, y1Coefficient, -38);
+        (int256 signedCoefficient, int256 exponent) =
+            add(yDiffSignedCoefficient, yDiffExponent, y1Coefficient, yExponent);
         return (signedCoefficient, exponent);
     }
 
@@ -525,8 +516,8 @@ library LibDecimalFloat {
                     return (exponent + 37, 0);
                 }
 
-                int256 lowCoefficient;
-                int256 highCoefficient;
+                int256 y1Coefficient;
+                int256 y2Coefficient;
                 int256 x1Coefficient;
                 int256 x1Exponent = exponent;
 
@@ -555,34 +546,15 @@ library LibDecimalFloat {
                         let index := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
 
-                        lowCoefficient := mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, index))
-                        highCoefficient := mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, add(index, 1)))
+                        y1Coefficient := mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, index))
+                        y2Coefficient := mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, add(index, 1)))
                     }
                 }
 
-                (signedCoefficient, exponent) = linearInterpolation(
-                    signedCoefficient, x1Coefficient, exponent, lowCoefficient, highCoefficient, -38
+                (signedCoefficient, exponent) = unitLinearInterpolation(
+                    signedCoefficient, x1Coefficient, exponent, -39, y1Coefficient, y2Coefficient, -38
                 );
 
-                // // Linear interpolation.
-                // // y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
-                // {
-                //     // y2 - y1
-                //     (int256 yCoefficient, int256 yExponent) = sub(highCoefficient, -38, lowCoefficient, -38);
-
-                //     // x - x1
-                //     (int256 xCoefficient, int256 xExponent) =
-                //         sub(signedCoefficient, exponent, x1Coefficient, x1Exponent);
-
-                //     // (x - x1) * (y2 - y1)
-                //     (signedCoefficient, exponent) = multiply(xCoefficient, xExponent, yCoefficient, yExponent);
-
-                //     // Diff between x2 and x1 is always 0.01.
-                //     (signedCoefficient, exponent) = divide(signedCoefficient, exponent, 1, -2);
-
-                //     // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
-                //     (signedCoefficient, exponent) = add(signedCoefficient, exponent, lowCoefficient, -38);
-                // }
                 return add(signedCoefficient, exponent, x1Exponent + 37, 0);
             }
             // This is a negative log. i.e. log(x) where 0 < x < 1.

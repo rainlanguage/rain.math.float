@@ -54,12 +54,10 @@ contract DecimalFloatPower10Test is Test {
 
     function testInterpolatedLookups() external view {
         // 10^1.55555 = 35.9376769153
-        checkPower10(1.55555e37, -37, 3.593005e37, -36);
+        checkPower10(1.55555e37, -37, 3.5935e37, -36);
     }
 
     // function testSub1() external view {
     //     checkPower10(1, -4, 1, -4);
     // }
 }
-
-// 359400000000000000000000000000000000000
