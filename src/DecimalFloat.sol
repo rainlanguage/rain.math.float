@@ -299,6 +299,10 @@ library LibDecimalFloat {
         (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
     }
 
+    function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        return divide(1e37, -37, signedCoefficient, exponent);
+    }
+
     /// https://speleotrove.com/decimal/daops.html#refnumco
     /// > compare takes two operands and compares their values numerically. If
     /// > either operand is a special value then the general rules apply. No
@@ -463,6 +467,12 @@ library LibDecimalFloat {
 
     function power10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
         unchecked {
+            if (signedCoefficient < 0) {
+                (signedCoefficient, exponent) = minus(signedCoefficient, exponent);
+                (signedCoefficient, exponent) = power10(signedCoefficient, exponent);
+                return inv(signedCoefficient, exponent);
+            }
+
             // Table lookup.
             int256 mantissaCoefficient;
             int256 mantissaExponent;
