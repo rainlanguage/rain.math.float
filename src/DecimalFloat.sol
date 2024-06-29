@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: CAL
 pragma solidity ^0.8.25;
 
+import {console} from "forge-std/Test.sol";
+
 import {
     LOG_TABLES,
     LOG_TABLES_SMALL,
@@ -409,50 +411,83 @@ library LibDecimalFloat {
         return power10(signedCoefficient, exponent);
     }
 
+    function frac(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
+        (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
+
+        // This is already a fraction.
+        if (signedCoefficient == 0 || exponent < -37) {
+            return (signedCoefficient, exponent);
+        }
+
+        int256 unitCoefficient = int256(1e37 / (10 ** uint256(exponent + 37)));
+
+        return normalize(signedCoefficient % unitCoefficient, exponent);
+    }
+
+    /// Sets the coefficient so that exponent is -37. Truncates the coefficient
+    /// if shrinking, will error on overflow.
+    /// MAY produce UNNORMALIZED output.
+    function withTargetExponent(int256 signedCoefficient, int256 exponent, int256 targetExponent)
+        internal
+        view
+        returns (int256)
+    {
+        if (exponent == targetExponent) {
+            return signedCoefficient;
+        } else if (exponent < targetExponent) {
+            return signedCoefficient / int256(10 ** uint256(targetExponent - exponent));
+        } else {
+            return signedCoefficient * int256(10 ** uint256(exponent - targetExponent));
+        }
+    }
+
+    function lookupAntilogTableY1Y2(uint256 idx) internal pure returns (int256 y1Coefficient, int256 y2Coefficient) {
+        bytes memory table = ANTI_LOG_TABLES;
+        bytes memory tableSmall = ANTI_LOG_TABLES_SMALL;
+        assembly ("memory-safe") {
+            function lookupTableVal(mainTable, smallTable, index) -> result {
+                let mainIndex := div(index, 10)
+
+                let mainTableVal := and(mload(add(mainTable, mul(2, add(mainIndex, 1)))), 0xFFFF)
+
+                let smallTableOffset := add(1, mul(div(index, 100), 10))
+                let smallTableVal := byte(31, mload(add(smallTable, add(mod(index, 10), smallTableOffset))))
+
+                result := add(mainTableVal, smallTableVal)
+            }
+
+            y1Coefficient := lookupTableVal(table, tableSmall, idx)
+            y2Coefficient := lookupTableVal(table, tableSmall, add(idx, 1))
+        }
+    }
+
     function power10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
         unchecked {
-            (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
-
             // Table lookup.
+            int256 mantissaCoefficient;
+            int256 mantissaExponent;
+            int256 characteristicSignedCoefficient;
+            int256 characteristicExponent;
             {
-                bytes memory table = ANTI_LOG_TABLES;
-                bytes memory tableSmall = ANTI_LOG_TABLES_SMALL;
-                uint256 xScale = 1e33;
-                uint256 yScale = 1e35;
-                uint256 idx;
-                int256 y1Coefficient;
-                int256 y2Coefficient;
-                int256 x1Coefficient;
-                int256 x1Exponent = exponent;
+                (mantissaCoefficient, mantissaExponent) = frac(signedCoefficient, exponent);
+                (characteristicSignedCoefficient, characteristicExponent) =
+                    sub(signedCoefficient, exponent, mantissaCoefficient, mantissaExponent);
 
-                assembly ("memory-safe") {
-                    function lookupTableVal(mainTable, smallTable, index) -> result {
-                        let mainIndex := div(index, 10)
+                int256 xScale = 1e33;
+                uint256 idx = uint256(withTargetExponent(mantissaCoefficient, mantissaExponent, -37) / xScale);
+                int256 x1Coefficient = withTargetExponent(int256(idx) * xScale, -37, mantissaExponent);
 
-                        let mainTableVal := and(mload(add(mainTable, mul(2, add(mainIndex, 1)))), 0xFFFF)
-
-                        let smallTableOffset := add(1, mul(div(index, 100), 10))
-                        let smallTableVal := byte(31, mload(add(smallTable, add(mod(index, 10), smallTableOffset))))
-
-                        result := add(mainTableVal, smallTableVal)
-                    }
-
-                    // Truncate the signed coefficient to what we can look
-                    // up in the table.
-                    x1Coefficient := div(signedCoefficient, xScale)
-                    idx := mod(x1Coefficient, 10000)
-                    x1Coefficient := mul(x1Coefficient, xScale)
-
-                    y1Coefficient := mul(yScale, lookupTableVal(table, tableSmall, idx))
-                    y2Coefficient := mul(yScale, lookupTableVal(table, tableSmall, add(idx, 1)))
-                }
+                (int256 y1Coefficient, int256 y2Coefficient) = lookupAntilogTableY1Y2(idx);
 
                 (signedCoefficient, exponent) = unitLinearInterpolation(
-                    signedCoefficient, x1Coefficient, exponent, -41, y1Coefficient, y2Coefficient, -38
+                    mantissaCoefficient, x1Coefficient, mantissaExponent, -41, y1Coefficient, y2Coefficient, -4
                 );
             }
 
-            return (signedCoefficient, exponent);
+            return (
+                signedCoefficient,
+                1 + exponent + withTargetExponent(characteristicSignedCoefficient, characteristicExponent, 0)
+            );
         }
     }
 
@@ -466,7 +501,7 @@ library LibDecimalFloat {
         int256 y1Coefficient,
         int256 y2Coefficient,
         int256 yExponent
-    ) internal pure returns (int256, int256) {
+    ) internal view returns (int256, int256) {
         int256 numeratorSignedCoefficient;
         int256 numeratorExponent;
 
@@ -474,8 +509,14 @@ library LibDecimalFloat {
             // x - x1
             (int256 xDiffCoefficient, int256 xDiffExponent) = sub(xCoefficient, xExponent, x1Coefficient, xExponent);
 
+            console.log("xDiffCoefficient", uint256(xDiffCoefficient));
+            console.log("xDiffExponent", uint256(-xDiffExponent));
+
             // y2 - y1
             (int256 yDiffCoefficient, int256 yDiffExponent) = sub(y2Coefficient, yExponent, y1Coefficient, yExponent);
+
+            console.log("yDiffCoefficient", uint256(yDiffCoefficient));
+            console.log("yDiffExponent", uint256(-yDiffExponent));
 
             // (x - x1) * (y2 - y1)
             (numeratorSignedCoefficient, numeratorExponent) =
@@ -492,7 +533,7 @@ library LibDecimalFloat {
         return (signedCoefficient, exponent);
     }
 
-    function log10(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    function log10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
         unchecked {
             {
                 (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);

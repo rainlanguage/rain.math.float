@@ -25,9 +25,9 @@ contract DecimalFloatPower10Test is Test {
         checkPower10(1e37, -37, 1e37, -36);
         // 10^10 = 10000000000
         checkPower10(10e37, -37, 1e37, -27);
-        // checkPower10(1, 2, 100, 0);
-        // checkPower10(1, 3, 1000, 0);
-        // checkPower10(1, 4, 10000, 0);
+        checkPower10(1, 2, 1e37, 63);
+        checkPower10(1, 3, 1e37, 963);
+        checkPower10(1, 4, 1e37, 9963);
     }
 
     function testExactLookups() external view {
@@ -52,9 +52,11 @@ contract DecimalFloatPower10Test is Test {
         checkPower10(1.5e37, -37, 3.162e37, -36);
     }
 
-    function testInterpolatedLookups() external view {
+    function testInterpolatedLookupsPower() external view {
         // 10^1.55555 = 35.9376769153
         checkPower10(1.55555e37, -37, 3.5935e37, -36);
+        // 10^1234.56789
+        checkPower10(123456789, -5, 3.6979e37, 1197);
     }
 
     // function testSub1() external view {
