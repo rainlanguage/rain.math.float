@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: CAL
 pragma solidity ^0.8.25;
 
-import {console} from "forge-std/Test.sol";
-
 import {
     LOG_TABLES,
     LOG_TABLES_SMALL,
@@ -519,14 +517,8 @@ library LibDecimalFloat {
             // x - x1
             (int256 xDiffCoefficient, int256 xDiffExponent) = sub(xCoefficient, xExponent, x1Coefficient, xExponent);
 
-            console.log("xDiffCoefficient", uint256(xDiffCoefficient));
-            console.log("xDiffExponent", uint256(-xDiffExponent));
-
             // y2 - y1
             (int256 yDiffCoefficient, int256 yDiffExponent) = sub(y2Coefficient, yExponent, y1Coefficient, yExponent);
-
-            console.log("yDiffCoefficient", uint256(yDiffCoefficient));
-            console.log("yDiffExponent", uint256(-yDiffExponent));
 
             // (x - x1) * (y2 - y1)
             (numeratorSignedCoefficient, numeratorExponent) =
