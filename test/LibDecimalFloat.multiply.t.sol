@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, COMPARE_EQUAL} from "src/DecimalFloat.sol";
+import {LibDecimalFloat, COMPARE_EQUAL} from "src/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
-contract DecimalFloatMultiplyTest is Test {
+contract LibDecimalFloatMultiplyTest is Test {
 // /// Simple 0 multiply 0
 // /// 0 * 0 = 0
 // function testMultiplyZero0Exponent() external pure {

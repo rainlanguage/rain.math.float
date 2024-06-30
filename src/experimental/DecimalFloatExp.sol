@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity ^0.8.25;
 
-import {SIGN_MASK, LibDecimalFloat, DivisionByZero, COMPARE_EQUAL, COMPARE_LESS_THAN} from "./DecimalFloat.sol";
+import {SIGN_MASK, LibDecimalFloat, DivisionByZero, COMPARE_EQUAL, COMPARE_LESS_THAN} from "../LibDecimalFloat.sol";
 
 /// Experimental versions of algorithms for DecimalFloat.
 library LibDecimalFloatExp {

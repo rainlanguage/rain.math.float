@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat} from "src/DecimalFloat.sol";
+import {LibDecimalFloat} from "src/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
-contract DecimalFloatDivideTest is Test {
+contract LibDecimalFloatDivideTest is Test {
     // /// 1 / 3
     // function testDivide1Over3() external pure {
     //     DecimalFloat a = LibDecimalFloat.fromParts(1, 0);

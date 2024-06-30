@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, COMPARE_EQUAL} from "src/DecimalFloat.sol";
+import {LibDecimalFloat, COMPARE_EQUAL} from "src/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
-contract DecimalFloatCompareTest is Test {
+contract LibDecimalFloatCompareTest is Test {
 // /// 1 == 1
 // function testCompareOne() external pure {
 //     DecimalFloat a = DecimalFloat.wrap(1);

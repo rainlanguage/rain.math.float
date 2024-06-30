@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, COMPARE_EQUAL} from "src/DecimalFloat.sol";
+import {LibDecimalFloat, COMPARE_EQUAL} from "src/LibDecimalFloat.sol";
 
 import {Test, console} from "forge-std/Test.sol";
 
-contract DecimalFloatPowerTest is Test {
+contract LibDecimalFloatPowerTest is Test {
     function checkPower(
         int256 signedCoefficientA,
         int256 exponentA,
