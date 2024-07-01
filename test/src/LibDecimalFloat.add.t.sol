@@ -16,8 +16,8 @@ contract LibDecimalFloatDecimalTest is Test {
 
     /// 0 add 0 any exponent
     /// 0 + 0 = 0
-    function testAddZeroAnyExponent(int128 exponent) external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(0, exponent, 0, 0);
+    function testAddZeroAnyExponent(int128 inputExponent) external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(0, inputExponent, 0, 0);
         assertEq(signedCoefficient, 0);
         assertEq(exponent, 0);
     }

@@ -85,5 +85,6 @@ contract LibDecimalFloatMultiplyTest is Test {
 
     function testMultiplyGasOne() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.multiply(1e37, -37, 1e37, -37);
+        (signedCoefficient, exponent);
     }
 }
