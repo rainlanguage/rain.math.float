@@ -6,7 +6,7 @@ import {
     COMPARE_EQUAL,
     NORMALIZED_ZERO_SIGNED_COEFFICIENT,
     NORMALIZED_ZERO_EXPONENT
-} from "src/LibDecimalFloat.sol";
+} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 

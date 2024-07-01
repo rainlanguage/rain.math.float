@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity ^0.8.25;
 
-import {LibDecimalFloat, COEFFICIENT_MASK, ExponentOverflow} from "src/LibDecimalFloat.sol";
+import {LibDecimalFloat, COEFFICIENT_MASK, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPackTest is Test {
