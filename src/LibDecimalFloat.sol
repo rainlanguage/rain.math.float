@@ -44,22 +44,87 @@ int256 constant PRECISION_STEP_MULTIPLIER = int256(uint256(10 ** uint256(PRECISI
 
 int256 constant MINUS_MIN = (int256(type(int128).min) / -10) + 1;
 
-library LibDecimalFloat {
-    // function fromFixedDecimal(uint256 value, uint8 decimals) internal pure returns (DecimalFloat) {
-    //     unchecked {
-    //         return fromParts(0, value, int256(uint256(decimals)) * -1);
-    //     }
-    // }
+uint256 constant NORMALIZED_MAX = 1e38 - 1;
 
-    // function toFixedDecimal(DecimalFloat value, uint8 decimals) internal pure returns (uint256) {
-    //     unchecked {
-    //         (uint256 sign, uint256 coefficient, int256 exponent) = toParts(value);
-    //         if (sign == 1) {
-    //             revert NegativeFixedDecimalConversion(value);
-    //         }
-    //         return coefficient / (10 ** uint256(int256(uint256(decimals)) + exponent));
-    //     }
-    // }
+int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
+int256 constant NORMALIZED_ZERO_EXPONENT = -37;
+
+library LibDecimalFloat {
+    /// Convert a fixed point decimal value to a signed coefficient and exponent.
+    /// The returned value will be normalized and the conversion is lossy if this
+    /// results in a division that causes truncation. This can only happen if the
+    /// value is greater than `NORMALIZED_MAX`, which is 10^38 - 1. For most use
+    /// cases, this is not a concern and the conversion will always be lossless.
+    /// @param value The fixed point decimal value to convert.
+    /// @param decimals The number of decimals in the fixed point representation.
+    /// e.g. If 1e18 represents 1 this would be 18 decimals.
+    /// @return signedCoefficient The signed coefficient of the floating point
+    /// representation.
+    /// @return exponent The exponent of the floating point representation.
+    /// @return lossless `true` if the conversion is lossless.
+    function fromFixedDecimalLossy(uint256 value, uint8 decimals) internal pure returns (int256, int256, bool) {
+        unchecked {
+            uint256 unsignedCoefficient = value;
+            int256 exponent = 0;
+            while (unsignedCoefficient > NORMALIZED_MAX) {
+                unsignedCoefficient /= 10;
+                exponent += 1;
+            }
+
+            (int256 signedCoefficient, int256 finalExponent) =
+                normalize(int256(unsignedCoefficient), exponent - int256(uint256(decimals)));
+            return (
+                signedCoefficient,
+                finalExponent,
+                unsignedCoefficient <= NORMALIZED_MAX || unsignedCoefficient * (10 ** uint256(exponent)) == value
+            );
+        }
+    }
+
+    /// Convert a signed coefficient and exponent to a fixed point decimal value.
+    /// The conversion is impossible and will revert if the signed coefficient is
+    /// negative. If the conversion overflows it will also revert.
+    /// The conversion can be lossy if the floating point representation is not
+    /// able to fit in the fixed point representation, and will truncate
+    /// precision.
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// representation.
+    /// @param exponent The exponent of the floating point representation.
+    /// @param decimals The number of decimals in the fixed point representation.
+    /// e.g. If 1e18 represents 1 this would be 18 decimals.
+    /// @return value The fixed point decimal value.
+    /// @return lossless `true` if the conversion is lossless.
+    function toFixedDecimalLossy(int256 signedCoefficient, int256 exponent, uint8 decimals)
+        internal
+        pure
+        returns (uint256, bool)
+    {
+        if (signedCoefficient < 0) {
+            revert NegativeFixedDecimalConversion(signedCoefficient, exponent);
+        } else if (signedCoefficient == 0) {
+            return (0, true);
+        } else {
+            uint256 unsignedCoefficient = uint256(signedCoefficient);
+            int256 finalExponent = exponent + int256(uint256(decimals));
+            uint256 scale;
+            uint256 fixedDecimal;
+            if (finalExponent < 0) {
+                scale = 10 ** uint256(-finalExponent);
+                unchecked {
+                    fixedDecimal = unsignedCoefficient / scale;
+                    return (fixedDecimal, fixedDecimal * scale == unsignedCoefficient);
+                }
+            } else if (finalExponent > 0) {
+                scale = 10 ** uint256(finalExponent);
+                fixedDecimal = unsignedCoefficient * scale;
+                unchecked {
+                    return (fixedDecimal, fixedDecimal / scale == unsignedCoefficient);
+                }
+            } else {
+                return (unsignedCoefficient, true);
+            }
+        }
+    }
 
     function pack(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
         return uint256(uint128(int128(signedCoefficient))) | (uint256(uint128(int128(exponent))) << 0x80);
@@ -221,6 +286,10 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
+        if (signedCoefficientA == 0 || signedCoefficientB == 0) {
+            return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+        }
+
         int256 signedCoefficient;
         // This can't overflow because we're multiplying 128 bit numbers in 256
         // bit space.
@@ -413,7 +482,7 @@ library LibDecimalFloat {
         return power10(signedCoefficient, exponent);
     }
 
-    function frac(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
+    function frac(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
 
         // This is already a fraction.
@@ -431,7 +500,7 @@ library LibDecimalFloat {
     /// MAY produce UNNORMALIZED output.
     function withTargetExponent(int256 signedCoefficient, int256 exponent, int256 targetExponent)
         internal
-        view
+        pure
         returns (int256)
     {
         if (exponent == targetExponent) {
@@ -509,7 +578,7 @@ library LibDecimalFloat {
         int256 y1Coefficient,
         int256 y2Coefficient,
         int256 yExponent
-    ) internal view returns (int256, int256) {
+    ) internal pure returns (int256, int256) {
         int256 numeratorSignedCoefficient;
         int256 numeratorExponent;
 
@@ -526,12 +595,12 @@ library LibDecimalFloat {
         }
 
         // Diff between x2 and x1 is always 1 unit.
-        (int256 yDiffSignedCoefficient, int256 yDiffExponent) =
+        (int256 yMarginalSignedCoefficient, int256 yMarginalExponent) =
             divide(numeratorSignedCoefficient, numeratorExponent, 1e37, xUnitExponent);
 
         // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
         (int256 signedCoefficient, int256 exponent) =
-            add(yDiffSignedCoefficient, yDiffExponent, y1Coefficient, yExponent);
+            add(yMarginalSignedCoefficient, yMarginalExponent, y1Coefficient, yExponent);
         return (signedCoefficient, exponent);
     }
 

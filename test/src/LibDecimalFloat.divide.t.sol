@@ -1,39 +1,30 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
+import {THREES, ONES} from "../lib/LibCommonResults.sol";
 import {LibDecimalFloat} from "src/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatDivideTest is Test {
-    // /// 1 / 3
-    // function testDivide1Over3() external pure {
-    //     DecimalFloat a = LibDecimalFloat.fromParts(1, 0);
-    //     DecimalFloat b = LibDecimalFloat.fromParts(3, 0);
-    //     DecimalFloat actual = a.divide(b);
-    //     (int256 signedCoefficient, int256 exponent) = actual.toParts();
-    //     assertEq(signedCoefficient, 33333333333333333333333333333333333333, "coefficient");
-    //     assertEq(exponent, -38, "exponent");
-    // }
+    /// 1 / 3
+    function testDivide1Over3() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(1, 0, 3, 0);
+        assertEq(signedCoefficient, THREES, "coefficient");
+        assertEq(exponent, -38, "exponent");
+    }
 
-    // /// - 1 / 3
-    // function testDivideNegative1Over3() external pure {
-    //     DecimalFloat a = LibDecimalFloat.fromParts(-1, 0);
-    //     DecimalFloat b = LibDecimalFloat.fromParts(3, 0);
-    //     DecimalFloat actual = a.divide(b);
-    //     (int256 signedCoefficient, int256 exponent) = actual.toParts();
-    //     assertEq(signedCoefficient, -33333333333333333333333333333333333333, "coefficient");
-    //     assertEq(exponent, -38, "exponent");
-    // }
+    /// - 1 / 3
+    function testDivideNegative1Over3() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(-1, 0, 3, 0);
+        assertEq(signedCoefficient, -THREES, "coefficient");
+        assertEq(exponent, -38, "exponent");
+    }
 
-    // /// 1 / 3 gas
-    // function testDivide1Over3Gas() external pure {
-    //     DecimalFloat.wrap(1).divide(DecimalFloat.wrap(3));
-    // }
-
-    /// 1 / 3 gas by parts
-    function testDivide1Over3Gas01() external pure {
-        LibDecimalFloat.divide(1e37, -37, 3e37, -37);
+    /// 1 / 3 gas
+    function testDivide1Over3Gas0() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(1e37, -37, 3e37, -37);
+        (signedCoefficient, exponent);
     }
 
     /// 1 / 3 gas by parts 10
@@ -50,10 +41,12 @@ contract LibDecimalFloatDivideTest is Test {
         (c, e) = LibDecimalFloat.divide(c, e, 3e37, -37);
     }
 
-    // /// 1e18 / 3
-    // function testDivide1e18Over3() external pure {
-    //     DecimalFloat.wrap(1e18).divide(DecimalFloat.wrap(3));
-    // }
+    /// 1e18 / 3
+    function testDivide1e18Over3() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(1e18, 0, 3, 0);
+        assertEq(signedCoefficient, THREES);
+        assertEq(exponent, -20);
+    }
 
     /// 10,0 / 1e38,-37 == 1
     function testDivideTenOverOOMs() external pure {
@@ -80,18 +73,18 @@ contract LibDecimalFloatDivideTest is Test {
     function testDivide1Over9Over1Over3() external pure {
         // 1 / 9
         (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloat.divide(1, 0, 9, 0);
-        assertEq(signedCoefficientA, 11111111111111111111111111111111111111);
+        assertEq(signedCoefficientA, ONES);
         assertEq(exponentA, -38);
 
         // 1 / 3
         (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloat.divide(1, 0, 3, 0);
-        assertEq(signedCoefficientB, 33333333333333333333333333333333333333);
+        assertEq(signedCoefficientB, THREES);
         assertEq(exponentB, -38);
 
         // (1 / 9) / (1 / 3)
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloat.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        assertEq(signedCoefficient, 33333333333333333333333333333333333333);
+        assertEq(signedCoefficient, THREES);
         assertEq(exponent, -38);
     }
 }

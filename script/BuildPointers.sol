@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 import {Script} from "forge-std/Script.sol";
 import {LibCodeGen} from "rain.sol.codegen/src/lib/LibCodeGen.sol";
 import {LibFs} from "rain.sol.codegen/src/lib/LibFs.sol";
-import {LibLogTable} from "../src/LibLogTable.sol";
+import {LibLogTable} from "../src/table/LibLogTable.sol";
 
 contract BuildPointers is Script {
     function run() external {
