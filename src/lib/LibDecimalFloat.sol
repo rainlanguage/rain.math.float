@@ -30,13 +30,16 @@ int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT
 int256 constant EXPONENT_JUMP_SIZE = 6;
 /// @dev The multiplier for the jump size, calculated at compile time.
 int256 constant PRECISION_JUMP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_JUMP_SIZE)));
+int256 constant NORMALIZED_JUMP_DOWN_THRESHOLD = NORMALIZED_MAX * PRECISION_JUMP_MULTIPLIER;
+int256 constant NORMALIZED_JUMP_UP_THRESHOLD = NORMALIZED_MIN / PRECISION_JUMP_MULTIPLIER;
 
 /// @dev When normalizing a number, how far we "step" when close to normalized.
 int256 constant EXPONENT_STEP_SIZE = 1;
 /// @dev The multiplier for the step size, calculated at compile time.
 int256 constant EXPONENT_STEP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_STEP_SIZE)));
 
-uint256 constant NORMALIZED_MAX = 1e38 - 1;
+int256 constant NORMALIZED_MIN = 1e37;
+int256 constant NORMALIZED_MAX = 1e38 - 1;
 
 int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
 int256 constant NORMALIZED_ZERO_EXPONENT = -37;
@@ -56,19 +59,14 @@ library LibDecimalFloat {
     /// @return lossless `true` if the conversion is lossless.
     function fromFixedDecimalLossy(uint256 value, uint8 decimals) internal pure returns (int256, int256, bool) {
         unchecked {
-            uint256 unsignedCoefficient = value;
-            int256 exponent = 0;
-            while (unsignedCoefficient > NORMALIZED_MAX) {
-                unsignedCoefficient /= 10;
-                exponent += 1;
-            }
+            int256 exponent = -int256(uint256(decimals));
+            (int256 signedCoefficient, int256 finalExponent) = normalize(int256(value), exponent);
 
-            (int256 signedCoefficient, int256 finalExponent) =
-                normalize(int256(unsignedCoefficient), exponent - int256(uint256(decimals)));
             return (
                 signedCoefficient,
                 finalExponent,
-                unsignedCoefficient <= NORMALIZED_MAX || unsignedCoefficient * (10 ** uint256(exponent)) == value
+                value <= uint256(NORMALIZED_MAX)
+                    || uint256(signedCoefficient) * (10 ** uint256(finalExponent - exponent)) == value
             );
         }
     }
@@ -403,11 +401,43 @@ library LibDecimalFloat {
 
     function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
-            (signedCoefficient, exponent) = maximize(signedCoefficient, exponent);
-            while (signedCoefficient >= 1e38 || signedCoefficient <= -1e38) {
-                signedCoefficient /= 10;
-                exponent += 1;
+            if (signedCoefficient <= NORMALIZED_MAX && signedCoefficient >= NORMALIZED_MIN) {
+                return (signedCoefficient, exponent);
             }
+
+            if (signedCoefficient == 0) {
+                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+            }
+
+            bool isNeg = signedCoefficient < 0;
+            if (isNeg) {
+                signedCoefficient = -signedCoefficient;
+            }
+
+            while (signedCoefficient >= NORMALIZED_JUMP_DOWN_THRESHOLD) {
+                signedCoefficient /= PRECISION_JUMP_MULTIPLIER;
+                exponent += EXPONENT_JUMP_SIZE;
+            }
+
+            while (signedCoefficient > NORMALIZED_MAX) {
+                signedCoefficient /= EXPONENT_STEP_MULTIPLIER;
+                exponent += EXPONENT_STEP_SIZE;
+            }
+
+            while (signedCoefficient < NORMALIZED_JUMP_UP_THRESHOLD) {
+                signedCoefficient *= PRECISION_JUMP_MULTIPLIER;
+                exponent -= EXPONENT_JUMP_SIZE;
+            }
+
+            while (signedCoefficient < NORMALIZED_MIN) {
+                signedCoefficient *= EXPONENT_STEP_MULTIPLIER;
+                exponent -= EXPONENT_STEP_SIZE;
+            }
+
+            if (isNeg) {
+                signedCoefficient = -signedCoefficient;
+            }
+
             return (signedCoefficient, exponent);
         }
     }
