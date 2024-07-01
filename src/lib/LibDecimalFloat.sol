@@ -38,11 +38,14 @@ int256 constant EXPONENT_STEP_SIZE = 1;
 /// @dev The multiplier for the step size, calculated at compile time.
 int256 constant EXPONENT_STEP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_STEP_SIZE)));
 
-/// @dev The minimum absolute
+/// @dev The minimum absolute value of a normalized signed coefficient.
 int256 constant NORMALIZED_MIN = 1e37;
+/// @dev The maximum absolute value of a normalized signed coefficient.
 int256 constant NORMALIZED_MAX = 1e38 - 1;
 
+/// @dev The signed coefficient of zero when normalized.
 int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
+/// @dev The exponent of zero when normalized.
 int256 constant NORMALIZED_ZERO_EXPONENT = -37;
 
 library LibDecimalFloat {
