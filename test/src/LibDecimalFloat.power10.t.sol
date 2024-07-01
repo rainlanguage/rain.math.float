@@ -63,8 +63,4 @@ contract LibDecimalFloatPower10Test is Test {
         // 10^1234.56789
         checkPower10(123456789, -5, 3.6979e37, 1197);
     }
-
-    // function testSub1() external view {
-    //     checkPower10(1, -4, 1, -4);
-    // }
 }
