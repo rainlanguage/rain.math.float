@@ -38,6 +38,7 @@ int256 constant EXPONENT_STEP_SIZE = 1;
 /// @dev The multiplier for the step size, calculated at compile time.
 int256 constant EXPONENT_STEP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_STEP_SIZE)));
 
+/// @dev The minimum absolute
 int256 constant NORMALIZED_MIN = 1e37;
 int256 constant NORMALIZED_MAX = 1e38 - 1;
 
@@ -405,13 +406,19 @@ library LibDecimalFloat {
                 return (signedCoefficient, exponent);
             }
 
-            if (signedCoefficient == 0) {
-                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+            if (signedCoefficient < 0) {
+                // This is a special case because we cannot negate the minimum
+                // value of an int256 without overflow.
+                if (signedCoefficient == type(int256).min) {
+                    signedCoefficient /= 10;
+                    exponent += 1;
+                }
+                (signedCoefficient, exponent) = normalize(-signedCoefficient, exponent);
+                return (-signedCoefficient, exponent);
             }
 
-            bool isNeg = signedCoefficient < 0;
-            if (isNeg) {
-                signedCoefficient = -signedCoefficient;
+            if (signedCoefficient == 0) {
+                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
             }
 
             while (signedCoefficient >= NORMALIZED_JUMP_DOWN_THRESHOLD) {
@@ -432,10 +439,6 @@ library LibDecimalFloat {
             while (signedCoefficient < NORMALIZED_MIN) {
                 signedCoefficient *= EXPONENT_STEP_MULTIPLIER;
                 exponent -= EXPONENT_STEP_SIZE;
-            }
-
-            if (isNeg) {
-                signedCoefficient = -signedCoefficient;
             }
 
             return (signedCoefficient, exponent);
