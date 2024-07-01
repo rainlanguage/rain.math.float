@@ -112,6 +112,9 @@ library LibDecimalFloat {
                 scale = 10 ** uint256(-finalExponent);
                 unchecked {
                     fixedDecimal = unsignedCoefficient / scale;
+                    // Slither false positive because we're explicitly checking
+                    // for the lossiness that it warns about.
+                    //slither-disable-next-line divide-before-multiply
                     return (fixedDecimal, fixedDecimal * scale == unsignedCoefficient);
                 }
             } else if (finalExponent > 0) {
@@ -170,9 +173,9 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
-        (int256 signedCoefficient, int256 exponent) =
+        (int256 signedCoefficientC, int256 exponentC) =
             addRaw(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return normalize(signedCoefficient, exponent);
+        return normalize(signedCoefficientC, exponentC);
     }
 
     function addRaw(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -521,6 +524,9 @@ library LibDecimalFloat {
 
                 let mainTableVal := and(mload(add(mainTable, mul(2, add(mainIndex, 1)))), 0xFFFF)
 
+                // Slither false positive because the truncation is deliberate
+                // here.
+                //slither-disable-next-line divide-before-multiply
                 let smallTableOffset := add(1, mul(div(index, 100), 10))
                 let smallTableVal := byte(31, mload(add(smallTable, add(mod(index, 10), smallTableOffset))))
 
@@ -651,6 +657,9 @@ library LibDecimalFloat {
 
                         // Truncate the signed coefficient to what we can look
                         // up in the table.
+                        // Slither false positive because the truncation is
+                        // deliberate here.
+                        //slither-disable-next-line divide-before-multiply
                         x1Coefficient := div(signedCoefficient, scale)
                         let index := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
