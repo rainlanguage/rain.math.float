@@ -7,13 +7,10 @@ import {
     LOG_TABLES_SMALL_ALT,
     ANTI_LOG_TABLES,
     ANTI_LOG_TABLES_SMALL
-} from "./generated/LogTables.pointers.sol";
-
-error ExponentOverflow();
-error NegativeFixedDecimalConversion(int256 signedCoefficient, int256 exponent);
-error DivisionByZero();
-error Log10Zero();
-error Log10Negative(int256 signedCoefficient, int256 exponent);
+} from "../generated/LogTables.pointers.sol";
+import {
+    ExponentOverflow, Log10Negative, Log10Zero, NegativeFixedDecimalConversion
+} from "../error/ErrDecimalFloat.sol";
 
 /// @dev Currently we limit the coefficient bits to 128 so that operations like
 /// multiplication can be done with 256 bit integers and be guaranteed not to

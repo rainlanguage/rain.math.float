@@ -2,7 +2,7 @@
 pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std/Test.sol";
-import {LibLogTable} from "src/table/LibLogTable.sol";
+import {LibLogTable} from "src/lib/table/LibLogTable.sol";
 
 contract LibLogTableBytesTest is Test {
     function testToBytesLogTableDec() external pure {
