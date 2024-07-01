@@ -30,7 +30,11 @@ int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT
 int256 constant EXPONENT_JUMP_SIZE = 6;
 /// @dev The multiplier for the jump size, calculated at compile time.
 int256 constant PRECISION_JUMP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_JUMP_SIZE)));
+/// @dev Every value above or equal to this can jump down while normalizing
+/// without overshooting and causing unnecessary precision loss.
 int256 constant NORMALIZED_JUMP_DOWN_THRESHOLD = NORMALIZED_MAX * PRECISION_JUMP_MULTIPLIER;
+/// @dev Every value below this can jump up while normalizing without
+/// overshooting the normalized range.
 int256 constant NORMALIZED_JUMP_UP_THRESHOLD = NORMALIZED_MIN / PRECISION_JUMP_MULTIPLIER;
 
 /// @dev When normalizing a number, how far we "step" when close to normalized.
