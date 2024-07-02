@@ -52,6 +52,54 @@ int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
 /// @dev The exponent of zero when normalized.
 int256 constant NORMALIZED_ZERO_EXPONENT = -37;
 
+/// @title LibDecimalFloat
+/// Floating point math library for Rainlang.
+/// Broadly implements decimal floating point math with 128 signed bits for the
+/// coefficient and 128 signed bits for the exponent. Notably the implementation
+/// differs from standard specifications in a few key areas:
+///
+/// - There is no concept of NaN or Infinity.
+/// - There is no concept of rounding modes.
+/// - There is no negative zero.
+/// - This is a decimal floating point library, not binary.
+///
+/// This means that operations such as divide by 0 will revert, rather than
+/// produce nonsense like NaN or Infinity. This is a deliberate design choice
+/// to make the library more predictable and easier to reason about as the basis
+/// of a defi native smart contract language.
+///
+/// The reason that this is a decimal floating point system is that the inputs
+/// to the system as rainlang literals are decimal values. This means that `0.1`
+/// has an _exact_ representation in the system, rather than a repeating binary
+/// fraction. This technically results in less precision than a binary floating
+/// point system, but is much more predictable and easier to reason about in the
+/// context of financial inputs and outputs, which are typically all decimal
+/// values as understood by humans. However, consider that we have 127 bits of
+/// precision in the coefficient, which is far more than the 53 bits of a double
+/// precision floating point number regardless of binary/decimal considerations,
+/// and should be more than enough for most defi use cases.
+///
+/// A typical defi fixed point value has 18 decimals, while a normalized decimal
+/// float in this system has 37 decimals. This means, for example, that we can
+/// represent the entire supply of any 18 decimal fixed point token amount up to
+/// 10 quintillion tokens, without any loss of precision.
+///
+/// One use case for this number system is representing ratios of tokens that
+/// have both large differences in their decimals and unit value. For example,
+/// at the time of writing, 1 SHIB is worth about 2.7e-10 BTC while the
+/// WTBC contract only supports 8 decimals vs. SHIB's 18 decimals. It's literally
+/// not possible to represent a purchase of 1 SHIB (1e18) worth of WBTC, so it's
+/// easy to see how a fixed point decimal system could accidentally round
+/// something down to `0` or up to `1` or similarly bad precision loss, simply
+/// due to the large difference in OOMs in _representation_ of any two tokens
+/// being considered.
+///
+/// Of course there are workarounds, such as temporarily inflating values during
+/// calculations and rescaling them afterwards, but they are ad-hoc and error
+/// prone. Importantly, the workarounds are typically not obvious to the target
+/// demographic of Rainlang, and it is not obvious where/when they need to be
+/// applied without rigourous testing/mathematical models that are beyond the
+/// scope of the typical user of Rainlang.
 library LibDecimalFloat {
     /// Convert a fixed point decimal value to a signed coefficient and exponent.
     /// The returned value will be normalized and the conversion is lossy if this
@@ -68,13 +116,37 @@ library LibDecimalFloat {
     function fromFixedDecimalLossy(uint256 value, uint8 decimals) internal pure returns (int256, int256, bool) {
         unchecked {
             int256 exponent = -int256(uint256(decimals));
+
+            // Catch an edge case where unsigned value looks like a negative
+            // value when coerced.
+            if (value > uint256(type(int256).max)) {
+                value /= 10;
+                exponent += 1;
+            }
+
+            // Safe to do this conversion of `value` because we've truncated
+            // anything above `type(int256).max` above by 1 OOM.
             (int256 signedCoefficient, int256 finalExponent) = normalize(int256(value), exponent);
 
             return (
                 signedCoefficient,
                 finalExponent,
                 value <= uint256(NORMALIZED_MAX)
-                    || uint256(signedCoefficient) * (10 ** uint256(finalExponent - exponent)) == value
+                // We only hit this if value is greater than NORMALIZED_MAX.
+                //
+                // This means that finalExponent is larger than exponent due
+                // to the normalization. Therefore, we will never attempt to
+                // cast a negative number to an unsigned number.
+                //
+                // It also means that the greatest possible diff between
+                // value and the normalized value is the difference in OOMs
+                // between the two due to normalization, which is max at
+                // rescaling `type(uint256).max`, i.e. ~1.15e77 down to
+                // ~1.15e37, which is a loss of 40 OOMs. While this is large,
+                // 40 OOMs is not enough to cause 10 ** 40 to overflow a
+                // uint256, and we never scale up by more than we first
+                // scaled down, so we can't overflow the uint256 space.
+                || uint256(signedCoefficient) * (10 ** uint256(finalExponent - exponent)) == value
             );
         }
     }
@@ -97,19 +169,43 @@ library LibDecimalFloat {
         pure
         returns (uint256, bool)
     {
+        // The output type is uint256, so we can't represent negative numbers.
         if (signedCoefficient < 0) {
             revert NegativeFixedDecimalConversion(signedCoefficient, exponent);
-        } else if (signedCoefficient == 0) {
+        }
+        // Zero is always 0 and neither exponent nor decimals matter.
+        else if (signedCoefficient == 0) {
             return (0, true);
         } else {
+            // Safe to do this conversion because we revert above on negative.
             uint256 unsignedCoefficient = uint256(signedCoefficient);
-            int256 finalExponent = exponent + int256(uint256(decimals));
+            int256 finalExponent;
+
+            // Ye olde "safe math" to give a better error if this edge case
+            // overflow is ever hit. Normal use should never overflow here.
+            unchecked {
+                finalExponent = exponent + int256(uint256(decimals));
+                if (finalExponent < exponent) {
+                    revert ExponentOverflow();
+                }
+            }
+
             uint256 scale;
             uint256 fixedDecimal;
             if (finalExponent < 0) {
-                scale = 10 ** uint256(-finalExponent);
                 unchecked {
+                    // Every possible value rounds to 0 if the exponent is less
+                    // than -77. This is always lossless as we know the value is
+                    // is not zero in real.
+                    if (finalExponent < -77) {
+                        return (0, false);
+                    }
+
+                    // At this point, scale cannot revert, so it is safe to do
+                    // this unchecked.
+                    scale = 10 ** uint256(-finalExponent);
                     fixedDecimal = unsignedCoefficient / scale;
+
                     // Slither false positive because we're explicitly checking
                     // for the lossiness that it warns about.
                     //slither-disable-next-line divide-before-multiply
