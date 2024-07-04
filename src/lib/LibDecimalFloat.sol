@@ -506,8 +506,14 @@ library LibDecimalFloat {
         }
     }
 
+    function isNormalized(int256 signedCoefficient, int256) internal pure returns (bool) {
+        return signedCoefficient <= NORMALIZED_MAX && signedCoefficient >= NORMALIZED_MIN;
+    }
+
     function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
+            // Inlined version of `isNormalized` to avoid the function call
+            // gas overhead.
             if (signedCoefficient <= NORMALIZED_MAX && signedCoefficient >= NORMALIZED_MIN) {
                 return (signedCoefficient, exponent);
             }

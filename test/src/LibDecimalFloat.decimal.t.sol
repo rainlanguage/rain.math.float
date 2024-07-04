@@ -44,6 +44,7 @@ contract LibDecimalFloatDecimalTest is Test {
         assertEq(signedCoefficient, expectedCoefficient, "signedCoefficient");
         assertEq(exponent, expectedExponent, "exponent");
         assertEq(lossless, true, "lossless");
+        assert(LibDecimalFloat.isNormalized(signedCoefficient, exponent));
     }
 
     function checkFromFixedDecimalLossy(
