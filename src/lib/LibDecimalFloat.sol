@@ -215,7 +215,10 @@ library LibDecimalFloat {
                 scale = 10 ** uint256(finalExponent);
                 fixedDecimal = unsignedCoefficient * scale;
                 unchecked {
-                    return (fixedDecimal, fixedDecimal / scale == unsignedCoefficient);
+                    // This is always lossless because we're scaling up.
+                    // If the value is too large to fit in a uint256, we'll
+                    // revert above due to overflow.
+                    return (fixedDecimal, true);
                 }
             } else {
                 return (unsignedCoefficient, true);

@@ -5,10 +5,11 @@ import {
     LibDecimalFloat,
     ExponentOverflow,
     NORMALIZED_MAX,
+    NORMALIZED_MIN,
     NegativeFixedDecimalConversion
 } from "src/lib/LibDecimalFloat.sol";
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test, console2, stdError} from "forge-std/Test.sol";
 
 contract LibDecimalFloatDecimalTest is Test {
     function toFixedDecimalLossyExternal(int256 signedCoefficient, int256 exponent, uint8 decimals)
@@ -168,6 +169,7 @@ contract LibDecimalFloatDecimalTest is Test {
         signedCoefficient = bound(signedCoefficient, type(int256).min, -1);
         vm.expectRevert(abi.encodeWithSelector(NegativeFixedDecimalConversion.selector, signedCoefficient, exponent));
         (uint256 value, bool lossless) = LibDecimalFloat.toFixedDecimalLossy(signedCoefficient, exponent, decimals);
+        (value, lossless);
     }
 
     /// Converting any exponent and decimals for `0` is `0`.
@@ -199,6 +201,7 @@ contract LibDecimalFloatDecimalTest is Test {
         exponent = bound(exponent, type(int256).max - int256(uint256(decimals)) + 1, type(int256).max);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector));
         (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
+        (value, lossless);
     }
 
     /// If the final exponent is less than -77 then every value will be 0 when
@@ -233,5 +236,46 @@ contract LibDecimalFloatDecimalTest is Test {
         checkToFixedDecimalLossless(123456789e37, -37, 3, 123456789000);
         checkToFixedDecimalLossless(1e38, -38, 0, 1);
         checkToFixedDecimalLossless(1e38, -37, 0, 10);
+    }
+
+    /// If the final exponent is positive and does not overflow then the value
+    /// will be scaled up losslessly.
+    function testToFixedDecimalLosslessScaleUp(int256 signedCoefficient, int256 exponent, uint8 decimals)
+        external
+        pure
+    {
+        signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
+        decimals = uint8(bound(decimals, 0, 77));
+        exponent = int256(bound(exponent, 1 - int256(uint256(decimals)), 77 - int256(uint256(decimals))));
+
+        int256 finalExponent = exponent + int256(uint256(decimals));
+        uint256 scale = 10 ** uint256(finalExponent);
+
+        uint256 unsignedCoefficient = uint256(signedCoefficient);
+        unchecked {
+            uint256 c = scale * unsignedCoefficient;
+            vm.assume(c / scale == unsignedCoefficient);
+        }
+
+        checkToFixedDecimalLossless(signedCoefficient, exponent, decimals, unsignedCoefficient * scale);
+    }
+
+    /// If the final exponent is positive and too large it will overflow.
+    function testToFixedDecimalLossyScaleUpOverflow(int256 signedCoefficient, int256 exponent, uint8 decimals)
+        external
+    {
+        signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
+        exponent = int256(bound(exponent, 1 - int256(uint256(decimals)), 77 - int256(uint256(decimals))));
+
+        int256 finalExponent = exponent + int256(uint256(decimals));
+        uint256 scale = 10 ** uint256(finalExponent);
+
+        uint256 unsignedCoefficient = uint256(signedCoefficient);
+        unchecked {
+            uint256 c = scale * unsignedCoefficient;
+            vm.assume(c / scale != unsignedCoefficient);
+        }
+        vm.expectRevert(stdError.arithmeticError);
+        checkToFixedDecimalLossless(signedCoefficient, exponent, decimals, unsignedCoefficient * scale);
     }
 }
