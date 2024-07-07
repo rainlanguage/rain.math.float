@@ -47,6 +47,16 @@ int256 constant NORMALIZED_MIN = 1e37;
 /// @dev The maximum absolute value of a normalized signed coefficient.
 int256 constant NORMALIZED_MAX = 1e38 - 1;
 
+/// @dev The minimum exponent that can be normalized.
+/// This is crazy small, so should never be a problem for any real use case.
+/// We need it to guard against overflow when normalizing.
+int256 constant EXPONENT_MIN = type(int128).min + 78;
+
+/// @dev The maximum exponent that can be normalized.
+/// This is crazy large, so should never be a problem for any real use case.
+/// We need it to guard against overflow when normalizing.
+int256 constant EXPONENT_MAX = type(int128).max - 78;
+
 /// @dev The signed coefficient of zero when normalized.
 int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
 /// @dev The exponent of zero when normalized.
@@ -226,12 +236,41 @@ library LibDecimalFloat {
         }
     }
 
-    function pack(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
-        return uint256(uint128(int128(signedCoefficient))) | (uint256(uint128(int128(exponent))) << 0x80);
+    /// Pack a signed coefficient and exponent into a single uint256. Clearly
+    /// this involves fitting 64 bytes into 32 bytes, so there will be data loss.
+    /// Normalized numbers are guaranteed to round trip through pack/unpack in
+    /// a lossless manner. The normalization process will _truncate_ on precision
+    /// loss if required, which is significantly better than potentially
+    /// _decapitating_ a non-normalized number during the pack operation. It is
+    /// highly recomended to normalize numbers before packing them.
+    /// Note that mathematical operations in this lib all output normalized
+    /// so typically this is implicit.
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// representation.
+    /// @param exponent The exponent of the floating point representation.
+    /// @return packed The packed representation of the signed coefficient and
+    /// exponent.
+    function pack(int256 signedCoefficient, int256 exponent) internal pure returns (uint256 packed) {
+        uint256 mask = type(uint128).max;
+        assembly ("memory-safe") {
+            packed := or(and(signedCoefficient, mask), shl(0x80, exponent))
+        }
     }
 
-    function unpack(uint256 packed) internal pure returns (int256, int256) {
-        return (int128(uint128(packed)), int128(uint128(packed >> 0x80)));
+    /// Unpack a packed uint256 into a signed coefficient and exponent. This is
+    /// the inverse of `pack`. Note that the unpacked values are not necessarily
+    /// normalized, especially if their provenance is unknown or user input.
+    /// @param packed The packed representation of the signed coefficient and
+    /// exponent.
+    /// @return signedCoefficient The signed coefficient of the floating point
+    /// representation.
+    /// @return exponent The exponent of the floating point representation.
+    function unpack(uint256 packed) internal pure returns (int256 signedCoefficient, int256 exponent) {
+        uint256 mask = type(uint128).max;
+        assembly ("memory-safe") {
+            signedCoefficient := signextend(0x0F, and(packed, mask))
+            exponent := sar(0x80, packed)
+        }
     }
 
     /// https://speleotrove.com/decimal/daops.html#refaddsub
@@ -513,24 +552,36 @@ library LibDecimalFloat {
     function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
             // Inlined version of `isNormalized` to avoid the function call
-            // gas overhead.
+            // gas overhead. This is a very hot path.
             if (signedCoefficient <= NORMALIZED_MAX && signedCoefficient >= NORMALIZED_MIN) {
                 return (signedCoefficient, exponent);
+            }
+
+            if (signedCoefficient == 0) {
+                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+            }
+
+            // Need to do the exponent range check here before we attempt to
+            // do unsigned math (potentially) in the negative coefficient case.
+            // Need to do this after the normalization check to avoid adding
+            // overhead to the hot path.
+            if (exponent < EXPONENT_MIN || exponent > EXPONENT_MAX) {
+                revert ExponentOverflow();
             }
 
             if (signedCoefficient < 0) {
                 // This is a special case because we cannot negate the minimum
                 // value of an int256 without overflow.
+                // Note that if BOTH the coefficient is `type(int256).min` and
+                // the exponent is `EXPONENT_MAX`, we will still overflow here.
+                // This is due to the recursive nature of the normalization
+                // for negative numbers, and the exponent increment here.
                 if (signedCoefficient == type(int256).min) {
                     signedCoefficient /= 10;
                     exponent += 1;
                 }
                 (signedCoefficient, exponent) = normalize(-signedCoefficient, exponent);
                 return (-signedCoefficient, exponent);
-            }
-
-            if (signedCoefficient == 0) {
-                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
             }
 
             while (signedCoefficient >= NORMALIZED_JUMP_DOWN_THRESHOLD) {
@@ -551,55 +602,6 @@ library LibDecimalFloat {
             while (signedCoefficient < NORMALIZED_MIN) {
                 signedCoefficient *= EXPONENT_STEP_MULTIPLIER;
                 exponent -= EXPONENT_STEP_SIZE;
-            }
-
-            return (signedCoefficient, exponent);
-        }
-    }
-
-    function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        unchecked {
-            // already maximized.
-            // very common when chaining operations.
-            if (signedCoefficient >= 1e37) {
-                return (signedCoefficient, exponent);
-            }
-            // 0 can't maximise as 0 * x = 0.
-            if (signedCoefficient == 0) {
-                return (0, 0);
-            }
-
-            int256 signedCoefficientMaximized = signedCoefficient * EXPONENT_LEAP_MULTIPLIER;
-            int256 exponentMaximized = exponent - EXPONENT_LEAP_SIZE;
-
-            while (int128(signedCoefficientMaximized) == int256(signedCoefficientMaximized)) {
-                signedCoefficient = int128(signedCoefficientMaximized);
-                exponent = exponentMaximized;
-
-                signedCoefficientMaximized *= EXPONENT_LEAP_MULTIPLIER;
-                exponentMaximized -= EXPONENT_LEAP_SIZE;
-            }
-
-            signedCoefficientMaximized = int256(signedCoefficient) * PRECISION_JUMP_MULTIPLIER;
-            exponentMaximized = exponent - EXPONENT_JUMP_SIZE;
-
-            while (int128(signedCoefficientMaximized) == int256(signedCoefficientMaximized)) {
-                signedCoefficient = int128(signedCoefficientMaximized);
-                exponent = exponentMaximized;
-
-                signedCoefficientMaximized *= PRECISION_JUMP_MULTIPLIER;
-                exponentMaximized -= EXPONENT_JUMP_SIZE;
-            }
-
-            signedCoefficientMaximized = int256(signedCoefficient) * EXPONENT_STEP_MULTIPLIER;
-            exponentMaximized = exponent - EXPONENT_STEP_SIZE;
-
-            while (int128(signedCoefficientMaximized) == int256(signedCoefficientMaximized)) {
-                signedCoefficient = int128(signedCoefficientMaximized);
-                exponent = exponentMaximized;
-
-                signedCoefficientMaximized *= EXPONENT_STEP_MULTIPLIER;
-                exponentMaximized -= EXPONENT_STEP_SIZE;
             }
 
             return (signedCoefficient, exponent);

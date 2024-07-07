@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, COMPARE_EQUAL} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, COMPARE_EQUAL, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
@@ -17,6 +17,7 @@ contract LibDecimalFloatDecimalTest is Test {
     /// 0 add 0 any exponent
     /// 0 + 0 = 0
     function testAddZeroAnyExponent(int128 inputExponent) external pure {
+        inputExponent = int128(bound(inputExponent, EXPONENT_MIN, EXPONENT_MAX));
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(0, inputExponent, 0, 0);
         assertEq(signedCoefficient, 0);
         assertEq(exponent, -37);
