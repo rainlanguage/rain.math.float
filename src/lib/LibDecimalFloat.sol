@@ -348,7 +348,7 @@ library LibDecimalFloat {
                 unchecked {
                     alignmentExponentDiff = uint256(largerExponent - smallerExponent);
                     if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
-                        return (adjustedCoefficient, largerExponent);
+                        return LibDecimalFloatImplementation.normalize(adjustedCoefficient, largerExponent);
                     }
                     multiplier = 10 ** alignmentExponentDiff;
                 }

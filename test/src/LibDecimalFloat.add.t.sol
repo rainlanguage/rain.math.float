@@ -78,22 +78,13 @@ contract LibDecimalFloatDecimalAddTest is Test {
         int256 signedCoefficientB,
         int256 exponentB
     ) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
-        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
+        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         vm.assume(type(int256).min != signedCoefficientA);
         vm.assume(type(int256).min != signedCoefficientB);
 
-        if (exponentA > exponentB) {
-            vm.assume(exponentA - exponentB + 1000 <= EXPONENT_MAX);
-        } else if (exponentB > exponentA) {
-            vm.assume(exponentB - exponentA + 1000 <= EXPONENT_MAX);
-        }
-        else {
-            vm.assume(exponentA + 1000 <= EXPONENT_MAX);
-        }
-
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloat.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        // assert(LibDecimalFloatImplementation.isNormalized(signedCoefficient, exponent));
+        assert(LibDecimalFloatImplementation.isNormalized(signedCoefficient, exponent));
     }
 }
