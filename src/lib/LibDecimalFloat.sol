@@ -172,7 +172,7 @@ library LibDecimalFloat {
             unchecked {
                 finalExponent = exponent + int256(uint256(decimals));
                 if (finalExponent < exponent) {
-                    revert ExponentOverflow();
+                    revert ExponentOverflow(signedCoefficient, exponent);
                 }
             }
 
@@ -315,6 +315,12 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
+        if (signedCoefficientA == 0) {
+            return LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
+        } else if (signedCoefficientB == 0) {
+            return LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
+        }
+
         (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
         (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
 

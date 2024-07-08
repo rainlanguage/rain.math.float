@@ -2,7 +2,7 @@
 pragma solidity ^0.8.25;
 
 /// @dev Thrown when an exponent overflows.
-error ExponentOverflow();
+error ExponentOverflow(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when attempting to convert a negative number to an unsigned
 /// fixed-point number.

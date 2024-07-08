@@ -56,14 +56,6 @@ library LibDecimalFloatImplementation {
                 return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
             }
 
-            // Need to do the exponent range check here before we attempt to
-            // do unsigned math (potentially) in the negative coefficient case.
-            // Need to do this after the normalization check to avoid adding
-            // overhead to the hot path.
-            if (exponent < EXPONENT_MIN || exponent > EXPONENT_MAX) {
-                revert ExponentOverflow();
-            }
-
             if (signedCoefficient < 0) {
                 // This is a special case because we cannot negate the minimum
                 // value of an int256 without overflow.
@@ -72,11 +64,18 @@ library LibDecimalFloatImplementation {
                 // This is due to the recursive nature of the normalization
                 // for negative numbers, and the exponent increment here.
                 if (signedCoefficient == type(int256).min) {
+                    if (exponent > EXPONENT_MAX) {
+                        revert ExponentOverflow(signedCoefficient, exponent);
+                    }
                     signedCoefficient /= 10;
                     exponent += 1;
                 }
                 (signedCoefficient, exponent) = normalize(-signedCoefficient, exponent);
                 return (-signedCoefficient, exponent);
+            }
+
+            if (exponent < EXPONENT_MIN || exponent > EXPONENT_MAX) {
+                revert ExponentOverflow(signedCoefficient, exponent);
             }
 
             while (signedCoefficient >= NORMALIZED_JUMP_DOWN_THRESHOLD) {
