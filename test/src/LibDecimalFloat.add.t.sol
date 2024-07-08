@@ -69,6 +69,6 @@ contract LibDecimalFloatDecimalAddTest is Test {
     }
 
     function testGasAddOne() external pure {
-        LibDecimalFloatImplementation.addRaw(1e37, -37, 1e37, -37);
+        LibDecimalFloat.add(1e37, -37, 1e37, -37);
     }
 }
