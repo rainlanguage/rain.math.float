@@ -11,7 +11,16 @@ import {
 import {
     ExponentOverflow, Log10Negative, Log10Zero, NegativeFixedDecimalConversion
 } from "../error/ErrDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    NORMALIZED_ZERO_SIGNED_COEFFICIENT,
+    NORMALIZED_ZERO_EXPONENT,
+    EXPONENT_MIN,
+    EXPONENT_MAX,
+    NORMALIZED_MIN,
+    NORMALIZED_MAX,
+    EXPONENT_STEP_SIZE
+} from "./implementation/LibDecimalFloatImplementation.sol";
 
 /// @dev Returned by `compare` when the first operand is less than the second.
 int256 constant COMPARE_LESS_THAN = -1;
@@ -25,43 +34,6 @@ int256 constant COMPARE_GREATER_THAN = 1;
 int256 constant EXPONENT_LEAP_SIZE = 24;
 /// @dev The multiplier for the leap size, calculated at compile time.
 int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_LEAP_SIZE)));
-
-/// @dev When normalizing a number, how far we "jump" when somewhat far from
-/// normalized.
-int256 constant EXPONENT_JUMP_SIZE = 6;
-/// @dev The multiplier for the jump size, calculated at compile time.
-int256 constant PRECISION_JUMP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_JUMP_SIZE)));
-/// @dev Every value above or equal to this can jump down while normalizing
-/// without overshooting and causing unnecessary precision loss.
-int256 constant NORMALIZED_JUMP_DOWN_THRESHOLD = NORMALIZED_MAX * PRECISION_JUMP_MULTIPLIER;
-/// @dev Every value below this can jump up while normalizing without
-/// overshooting the normalized range.
-int256 constant NORMALIZED_JUMP_UP_THRESHOLD = NORMALIZED_MIN / PRECISION_JUMP_MULTIPLIER;
-
-/// @dev When normalizing a number, how far we "step" when close to normalized.
-int256 constant EXPONENT_STEP_SIZE = 1;
-/// @dev The multiplier for the step size, calculated at compile time.
-int256 constant EXPONENT_STEP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_STEP_SIZE)));
-
-/// @dev The minimum absolute value of a normalized signed coefficient.
-int256 constant NORMALIZED_MIN = 1e37;
-/// @dev The maximum absolute value of a normalized signed coefficient.
-int256 constant NORMALIZED_MAX = 1e38 - 1;
-
-/// @dev The minimum exponent that can be normalized.
-/// This is crazy small, so should never be a problem for any real use case.
-/// We need it to guard against overflow when normalizing.
-int256 constant EXPONENT_MIN = type(int128).min + 78;
-
-/// @dev The maximum exponent that can be normalized.
-/// This is crazy large, so should never be a problem for any real use case.
-/// We need it to guard against overflow when normalizing.
-int256 constant EXPONENT_MAX = type(int128).max - 78;
-
-/// @dev The signed coefficient of zero when normalized.
-int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
-/// @dev The exponent of zero when normalized.
-int256 constant NORMALIZED_ZERO_EXPONENT = -37;
 
 /// @title LibDecimalFloat
 /// Floating point math library for Rainlang.
@@ -137,7 +109,8 @@ library LibDecimalFloat {
 
             // Safe to do this conversion of `value` because we've truncated
             // anything above `type(int256).max` above by 1 OOM.
-            (int256 signedCoefficient, int256 finalExponent) = normalize(int256(value), exponent);
+            (int256 signedCoefficient, int256 finalExponent) =
+                LibDecimalFloatImplementation.normalize(int256(value), exponent);
 
             return (
                 signedCoefficient,
@@ -294,14 +267,22 @@ library LibDecimalFloat {
     /// conventions for amounts are typically 18 decimals or less, and so entire
     /// token supplies are typically representable within ~26-33 decimals of
     /// precision, making addition lossless for all actual possible values.
+    ///
+    /// @param signedCoefficientA The signed coefficient of the first floating
+    /// point number.
+    /// @param exponentA The exponent of the first floating point number.
+    /// @param signedCoefficientB The signed coefficient of the second floating
+    /// point number.
+    /// @param exponentB The exponent of the second floating point number.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
     function add(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
         returns (int256, int256)
     {
-        (int256 signedCoefficientC, int256 exponentC) =
-            LibDecimalFloatImplementation.addRaw(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return normalize(signedCoefficientC, exponentC);
+        return LibDecimalFloatImplementation.addRaw(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        // return normalize(signedCoefficientC, exponentC);
     }
 
     function sub(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -323,7 +304,7 @@ library LibDecimalFloat {
     /// > add(’0’, a) and subtract(’0’, b) respectively, where the ’0’ has the
     /// > same exponent as the operand.
     function minus(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
         return (-signedCoefficient, exponent);
     }
 
@@ -374,7 +355,7 @@ library LibDecimalFloat {
             signedCoefficient = signedCoefficientA * signedCoefficientB;
         }
         int256 exponent = exponentA + exponentB;
-        return normalize(signedCoefficient, exponent);
+        return LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
     }
 
     /// https://speleotrove.com/decimal/daops.html#refdivide
@@ -432,15 +413,15 @@ library LibDecimalFloat {
         pure
         returns (int256 signedCoefficient, int256 exponent)
     {
-        (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
-        (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
+        (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
+        (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
 
         unchecked {
             signedCoefficient = (signedCoefficientA * 1e38) / signedCoefficientB;
             exponent = exponentA - exponentB - 38;
         }
 
-        (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
     }
 
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
@@ -477,8 +458,7 @@ library LibDecimalFloat {
         (signedCoefficientB, exponentB) = minus(signedCoefficientB, exponentB);
         // We want the un-normalized result so that rounding doesn't affect the
         // comparison.
-        (int256 signedCoefficient,) =
-            LibDecimalFloatImplementation.addRaw(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficient,) = add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
         if (signedCoefficient == 0) {
             return COMPARE_EQUAL;
@@ -486,69 +466,6 @@ library LibDecimalFloat {
             return COMPARE_LESS_THAN;
         } else {
             return COMPARE_GREATER_THAN;
-        }
-    }
-
-    function isNormalized(int256 signedCoefficient, int256) internal pure returns (bool) {
-        return signedCoefficient <= NORMALIZED_MAX && signedCoefficient >= NORMALIZED_MIN;
-    }
-
-    function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        unchecked {
-            // Inlined version of `isNormalized` to avoid the function call
-            // gas overhead. This is a very hot path.
-            if (signedCoefficient <= NORMALIZED_MAX && signedCoefficient >= NORMALIZED_MIN) {
-                return (signedCoefficient, exponent);
-            }
-
-            if (signedCoefficient == 0) {
-                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
-            }
-
-            // Need to do the exponent range check here before we attempt to
-            // do unsigned math (potentially) in the negative coefficient case.
-            // Need to do this after the normalization check to avoid adding
-            // overhead to the hot path.
-            if (exponent < EXPONENT_MIN || exponent > EXPONENT_MAX) {
-                revert ExponentOverflow();
-            }
-
-            if (signedCoefficient < 0) {
-                // This is a special case because we cannot negate the minimum
-                // value of an int256 without overflow.
-                // Note that if BOTH the coefficient is `type(int256).min` and
-                // the exponent is `EXPONENT_MAX`, we will still overflow here.
-                // This is due to the recursive nature of the normalization
-                // for negative numbers, and the exponent increment here.
-                if (signedCoefficient == type(int256).min) {
-                    signedCoefficient /= 10;
-                    exponent += 1;
-                }
-                (signedCoefficient, exponent) = normalize(-signedCoefficient, exponent);
-                return (-signedCoefficient, exponent);
-            }
-
-            while (signedCoefficient >= NORMALIZED_JUMP_DOWN_THRESHOLD) {
-                signedCoefficient /= PRECISION_JUMP_MULTIPLIER;
-                exponent += EXPONENT_JUMP_SIZE;
-            }
-
-            while (signedCoefficient > NORMALIZED_MAX) {
-                signedCoefficient /= EXPONENT_STEP_MULTIPLIER;
-                exponent += EXPONENT_STEP_SIZE;
-            }
-
-            while (signedCoefficient < NORMALIZED_JUMP_UP_THRESHOLD) {
-                signedCoefficient *= PRECISION_JUMP_MULTIPLIER;
-                exponent -= EXPONENT_JUMP_SIZE;
-            }
-
-            while (signedCoefficient < NORMALIZED_MIN) {
-                signedCoefficient *= EXPONENT_STEP_MULTIPLIER;
-                exponent -= EXPONENT_STEP_SIZE;
-            }
-
-            return (signedCoefficient, exponent);
         }
     }
 
@@ -564,7 +481,7 @@ library LibDecimalFloat {
     }
 
     function frac(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
 
         // This is already a fraction.
         if (signedCoefficient == 0 || exponent < -37) {
@@ -573,7 +490,7 @@ library LibDecimalFloat {
 
         int256 unitCoefficient = int256(1e37 / (10 ** uint256(exponent + 37)));
 
-        return normalize(signedCoefficient % unitCoefficient, exponent);
+        return LibDecimalFloatImplementation.normalize(signedCoefficient % unitCoefficient, exponent);
     }
 
     /// Sets the coefficient so that exponent is -37. Truncates the coefficient
@@ -691,7 +608,7 @@ library LibDecimalFloat {
     function log10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
         unchecked {
             {
-                (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
+                (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
 
                 if (signedCoefficient <= 0) {
                     if (signedCoefficient == 0) {

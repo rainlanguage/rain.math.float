@@ -2,6 +2,7 @@
 pragma solidity ^0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPackTest is Test {
@@ -21,7 +22,7 @@ contract LibDecimalFloatPackTest is Test {
         if (signedCoefficient == type(int256).min) {
             vm.assume(exponent != EXPONENT_MAX);
         }
-        (signedCoefficient, exponent) = LibDecimalFloat.normalize(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
 
         uint256 packed = LibDecimalFloat.pack(signedCoefficient, exponent);
         (int256 signedCoefficientOut, int256 exponentOut) = LibDecimalFloat.unpack(packed);

@@ -2,10 +2,11 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, COMPARE_EQUAL, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std/Test.sol";
 
-contract LibDecimalFloatDecimalTest is Test {
+contract LibDecimalFloatDecimalAddTest is Test {
     /// Simple 0 add 0
     /// 0 + 0 = 0
     function testAddZero() external pure {
@@ -52,7 +53,7 @@ contract LibDecimalFloatDecimalTest is Test {
     function testAdd123456789987654321() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(123456789, 0, 987654321, 0);
         assertEq(signedCoefficient, 1.11111111e37);
-        assertEq(exponent, -28);
+        assertEq(exponent, -37 + 9);
     }
 
     /// 123456789e9 add 987654321
@@ -60,7 +61,7 @@ contract LibDecimalFloatDecimalTest is Test {
     function testAdd123456789e9987654321() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(123456789, 9, 987654321, 0);
         assertEq(signedCoefficient, 1.23456789987654321e37);
-        assertEq(exponent, -20);
+        assertEq(exponent, -37 + 17);
     }
 
     function testGasAddZero() external pure {
@@ -68,6 +69,6 @@ contract LibDecimalFloatDecimalTest is Test {
     }
 
     function testGasAddOne() external pure {
-        LibDecimalFloat.add(1e37, -37, 1e37, -37);
+        LibDecimalFloatImplementation.addRaw(1e37, -37, 1e37, -37);
     }
 }

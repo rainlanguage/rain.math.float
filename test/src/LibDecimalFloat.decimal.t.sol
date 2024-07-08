@@ -8,6 +8,7 @@ import {
     NORMALIZED_MIN,
     NegativeFixedDecimalConversion
 } from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test, console2, stdError} from "forge-std/Test.sol";
 
@@ -44,7 +45,7 @@ contract LibDecimalFloatDecimalTest is Test {
         assertEq(signedCoefficient, expectedCoefficient, "signedCoefficient");
         assertEq(exponent, expectedExponent, "exponent");
         assertEq(lossless, true, "lossless");
-        assert(LibDecimalFloat.isNormalized(signedCoefficient, exponent));
+        assert(LibDecimalFloatImplementation.isNormalized(signedCoefficient, exponent));
     }
 
     function checkFromFixedDecimalLossy(
