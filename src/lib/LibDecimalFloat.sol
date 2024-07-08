@@ -29,6 +29,8 @@ int256 constant COMPARE_EQUAL = 0;
 /// @dev Returned by `compare` when the first operand is greater than the second.
 int256 constant COMPARE_GREATER_THAN = 1;
 
+uint256 constant ADD_MAX_EXPONENT_DIFF = 37;
+
 /// @dev When normalizing a number, how far we "leap" when very far from
 /// normalized.
 int256 constant EXPONENT_LEAP_SIZE = 24;
@@ -339,8 +341,8 @@ library LibDecimalFloat {
                 uint256 multiplier;
                 unchecked {
                     alignmentExponentDiff = uint256(largerExponent - smallerExponent);
-                    if (alignmentExponentDiff > 76) {
-                        revert ExponentOverflow();
+                    if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
+                        return (adjustedCoefficient, largerExponent);
                     }
                     multiplier = 10 ** alignmentExponentDiff;
                 }
