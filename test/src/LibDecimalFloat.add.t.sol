@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, COMPARE_EQUAL, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, COMPARE_EQUAL, EXPONENT_MIN, EXPONENT_MAX, ADD_MAX_EXPONENT_DIFF} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test, console2} from "forge-std/Test.sol";
@@ -92,12 +92,12 @@ contract LibDecimalFloatDecimalAddTest is Test {
         assert(LibDecimalFloatImplementation.isNormalized(signedCoefficient, exponent));
     }
 
-    function testAddingSmallToLargeReturnsLarge(
+    function testAddingSmallToLargeReturnsLargeFuzz(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
-    ) external pure {
+    ) public pure {
         exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         vm.assume(signedCoefficientA != 0);
@@ -111,12 +111,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
         vm.assume(normalizedSignedCoefficientA != 0);
         vm.assume(expectedSignedCoefficient != 0);
 
-        console2.log("normalizedSignedCoefficientA", normalizedSignedCoefficientA);
-        console2.log("normalizedExponentA", normalizedExponentA);
-        console2.log("expectedSignedCoefficient", expectedSignedCoefficient);
-        console2.log("expectedExponent", expectedExponent);
-
-        vm.assume((exponentB - exponentA) > 100);
+        vm.assume((expectedExponent - normalizedExponentA) > int256(ADD_MAX_EXPONENT_DIFF));
 
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloat.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);

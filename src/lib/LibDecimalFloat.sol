@@ -249,10 +249,7 @@ library LibDecimalFloat {
         }
     }
 
-    /// Add two floats together.
-    /// Most of the internal details of this function are in the `addRaw`
-    /// function, but this function is recommended for general use as it
-    /// normalizes the result.
+    /// Add two floats together as a normalized result.
     ///
     /// Note that because the input values can have arbitrary exponents that may
     /// be very far apart, the normalization process is necessarily lossy.
@@ -335,19 +332,17 @@ library LibDecimalFloat {
                 staticCoefficient = signedCoefficientA;
             }
 
-            if (adjustedCoefficient != 0) {
-                uint256 alignmentExponentDiff;
-                uint256 multiplier;
-                unchecked {
-                    alignmentExponentDiff = uint256(largerExponent - smallerExponent);
-                    if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
-                        return (adjustedCoefficient, largerExponent);
-                    }
-                    multiplier = 10 ** alignmentExponentDiff;
+            uint256 alignmentExponentDiff;
+            uint256 multiplier;
+            unchecked {
+                alignmentExponentDiff = uint256(largerExponent - smallerExponent);
+                if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
+                    return (adjustedCoefficient, largerExponent);
                 }
-
-                adjustedCoefficient *= int256(multiplier);
+                multiplier = 10 ** alignmentExponentDiff;
             }
+
+            adjustedCoefficient *= int256(multiplier);
 
             // This can't overflow because the signed coefficient is 128 bits.
             // Worst case scenario is that one was aligned all the way to fill
