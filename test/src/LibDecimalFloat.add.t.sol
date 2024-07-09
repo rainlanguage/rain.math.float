@@ -92,25 +92,30 @@ contract LibDecimalFloatDecimalAddTest is Test {
         assert(LibDecimalFloatImplementation.isNormalized(signedCoefficient, exponent));
     }
 
-    // function testAddingSmallToLargeReturnsLarge(
-    //     int256 signedCoefficientA,
-    //     int256 exponentA,
-    //     int256 signedCoefficientB,
-    //     int256 exponentB
-    // ) external pure {
-    //     exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-    //     exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-    //     vm.assume(signedCoefficientA != 0);
-    //     vm.assume(signedCoefficientB != 0);
+    function testAddingSmallToLargeReturnsLarge(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external pure {
+        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        vm.assume(signedCoefficientA != 0);
+        vm.assume(signedCoefficientB != 0);
 
-    //     (int256 expectedSignedCoefficient, int256 expectedExponent) =
-    //         LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
+        (int256 normalizedSignedCoefficientA, int256 normalizedExponentA) =
+            LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
 
-    //     vm.assume(exponentB - exponentA > 100);
+        vm.assume(normalizedSignedCoefficientA != 0);
+        vm.assume(expectedSignedCoefficient != 0);
 
-    //     (int256 signedCoefficient, int256 exponent) =
-    //         LibDecimalFloat.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-    //     assertEq(signedCoefficient, expectedSignedCoefficient);
-    //     assertEq(exponent, expectedExponent);
-    // }
+        vm.assume((exponentB - exponentA) > 100);
+
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloat.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(signedCoefficient, expectedSignedCoefficient);
+        assertEq(exponent, expectedExponent);
+    }
 }

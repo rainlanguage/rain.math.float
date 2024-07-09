@@ -335,7 +335,7 @@ library LibDecimalFloat {
                 staticCoefficient = signedCoefficientA;
             }
 
-            if (adjustedCoefficient > 0) {
+            if (adjustedCoefficient != 0) {
                 uint256 alignmentExponentDiff;
                 uint256 multiplier;
                 unchecked {
