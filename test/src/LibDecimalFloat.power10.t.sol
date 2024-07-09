@@ -24,10 +24,10 @@ contract LibDecimalFloatPower10Test is Test {
         // 10^1 = 10
         checkPower10(1e37, -37, 1e37, -36);
         // 10^10 = 10000000000
-        // checkPower10(10e37, -37, 1e37, -27);
-        // checkPower10(1, 2, 1e37, 63);
-        // checkPower10(1, 3, 1e37, 963);
-        // checkPower10(1, 4, 1e37, 9963);
+        checkPower10(10e37, -37, 1e37, -27);
+        checkPower10(1, 2, 1e37, 63);
+        checkPower10(1, 3, 1e37, 963);
+        checkPower10(1, 4, 1e37, 9963);
     }
 
     function testExactLookups() external view {
