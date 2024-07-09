@@ -10,7 +10,7 @@ import {
 } from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatDecimalAddTest is Test {
     /// Simple 0 add 0
