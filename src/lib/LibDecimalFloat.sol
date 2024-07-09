@@ -312,76 +312,50 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
+        // Normalizing A and B gives us similar coefficients, which simplifies
+        // detecting when their exponents are too far apart to add without
+        // simply ignoring one of them.
         (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
         (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
 
         // We want A to represent the larger exponent. If this is not the case
         // then swap them.
         if (exponentB > exponentA) {
-            exponentA = exponentA ^ exponentB;
-            exponentB = exponentA ^ exponentB;
-            exponentA = exponentA ^ exponentB;
+            int256 tmp = signedCoefficientA;
+            signedCoefficientA = signedCoefficientB;
+            signedCoefficientB = tmp;
 
-            signedCoefficientA = signedCoefficientA ^ signedCoefficientB;
-            signedCoefficientB = signedCoefficientA ^ signedCoefficientB;
-            signedCoefficientA = signedCoefficientA ^ signedCoefficientB;
+            tmp = exponentA;
+            exponentA = exponentB;
+            exponentB = tmp;
         }
 
+        // After normalization the signed coefficients are the same OOM in
+        // magnitude. However, what we need is for the exponents to be the same.
+        // If the exponents are close enough we can multiply coefficient A by
+        // some power of 10 to align their exponents without precision loss.
+        // If the exponents are too far apart, then all the information in B
+        // would be lost by the final normalization step, so we can just ignore
+        // B and return A.
         uint256 multiplier;
         unchecked {
             uint256 alignmentExponentDiff = uint256(exponentA - exponentB);
+            // The early return here allows us to do unchecked pow on the
+            // multiplier and means we never revert due to overflow here.
             if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
                 return (signedCoefficientA, exponentA);
             }
             multiplier = 10 ** alignmentExponentDiff;
         }
-
         signedCoefficientA *= int256(multiplier);
 
+        // The actual addition step.
         unchecked {
             signedCoefficientA += signedCoefficientB;
         }
+        // The internal alignment and subsequent addition could easily result in
+        // an un-normalized number, so we normalize the result.
         return LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentB);
-
-        // int256 smallerExponent;
-        // int256 adjustedCoefficient;
-        // {
-        //     int256 largerExponent;
-        //     int256 staticCoefficient;
-        //     if (exponentA > exponentB) {
-        //         smallerExponent = exponentB;
-        //         largerExponent = exponentA;
-        //         adjustedCoefficient = signedCoefficientA;
-        //         staticCoefficient = signedCoefficientB;
-        //     } else {
-        //         smallerExponent = exponentA;
-        //         largerExponent = exponentB;
-        //         adjustedCoefficient = signedCoefficientB;
-        //         staticCoefficient = signedCoefficientA;
-        //     }
-
-        //     uint256 alignmentExponentDiff;
-        //     uint256 multiplier;
-        //     unchecked {
-        //         alignmentExponentDiff = uint256(largerExponent - smallerExponent);
-        //         if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
-        //             return (adjustedCoefficient, largerExponent);
-        //         }
-        //         multiplier = 10 ** alignmentExponentDiff;
-        //     }
-
-        //     adjustedCoefficient *= int256(multiplier);
-
-        //     // This can't overflow because the signed coefficient is 128 bits.
-        //     // Worst case scenario is that one was aligned all the way to fill
-        //     // the high 128 bits, which we add to the max low 128 bits, which
-        //     // doesn't overflow.
-        //     unchecked {
-        //         adjustedCoefficient += staticCoefficient;
-        //     }
-        // }
-
-        // return LibDecimalFloatImplementation.normalize(adjustedCoefficient, smallerExponent);
     }
 
     function sub(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
