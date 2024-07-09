@@ -41,8 +41,12 @@ int256 constant NORMALIZED_ZERO_EXPONENT = 0;
 
 library LibDecimalFloatImplementation {
     function isNormalized(int256 signedCoefficient, int256 exponent) internal pure returns (bool) {
+        unchecked {
+
+
         return (signedCoefficient / (NORMALIZED_MAX + 1) == 0 && signedCoefficient / NORMALIZED_MIN != 0)
             || (signedCoefficient == NORMALIZED_ZERO_SIGNED_COEFFICIENT && exponent == NORMALIZED_ZERO_EXPONENT);
+        }
     }
 
     function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
