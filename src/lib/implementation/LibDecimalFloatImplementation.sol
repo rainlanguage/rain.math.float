@@ -49,16 +49,14 @@ library LibDecimalFloatImplementation {
         uint256 normalizedMaxPlusOne = NORMALIZED_MAX_PLUS_ONE;
         uint256 normalizedMin = NORMALIZED_MIN;
         assembly {
-            result := or(
-                and(
-                    iszero(sdiv(signedCoefficient, normalizedMaxPlusOne)),
-                    iszero(iszero(sdiv(signedCoefficient, normalizedMin)))
-                ),
-                and(
-                    iszero(signedCoefficient),
-                    iszero(exponent)
+            result :=
+                or(
+                    and(
+                        iszero(sdiv(signedCoefficient, normalizedMaxPlusOne)),
+                        iszero(iszero(sdiv(signedCoefficient, normalizedMin)))
+                    ),
+                    and(iszero(signedCoefficient), iszero(exponent))
                 )
-            )
         }
         return result;
     }
@@ -77,24 +75,26 @@ library LibDecimalFloatImplementation {
                 revert ExponentOverflow(signedCoefficient, exponent);
             }
 
-            while (signedCoefficient / NORMALIZED_JUMP_DOWN_THRESHOLD != 0) {
-                signedCoefficient /= PRECISION_JUMP_MULTIPLIER;
-                exponent += EXPONENT_JUMP_SIZE;
-            }
+            if (signedCoefficient / (SIGNED_NORMALIZED_MAX + 1) != 0) {
+                while (signedCoefficient / NORMALIZED_JUMP_DOWN_THRESHOLD != 0) {
+                    signedCoefficient /= PRECISION_JUMP_MULTIPLIER;
+                    exponent += EXPONENT_JUMP_SIZE;
+                }
 
-            while (signedCoefficient / (SIGNED_NORMALIZED_MAX + 1) != 0) {
-                signedCoefficient /= EXPONENT_STEP_MULTIPLIER;
-                exponent += EXPONENT_STEP_SIZE;
-            }
+                while (signedCoefficient / (SIGNED_NORMALIZED_MAX + 1) != 0) {
+                    signedCoefficient /= EXPONENT_STEP_MULTIPLIER;
+                    exponent += EXPONENT_STEP_SIZE;
+                }
+            } else {
+                while (NORMALIZED_JUMP_UP_THRESHOLD / signedCoefficient != 0) {
+                    signedCoefficient *= PRECISION_JUMP_MULTIPLIER;
+                    exponent -= EXPONENT_JUMP_SIZE;
+                }
 
-            while (NORMALIZED_JUMP_UP_THRESHOLD / signedCoefficient != 0) {
-                signedCoefficient *= PRECISION_JUMP_MULTIPLIER;
-                exponent -= EXPONENT_JUMP_SIZE;
-            }
-
-            while ((SIGNED_NORMALIZED_MIN - 1) / signedCoefficient != 0) {
-                signedCoefficient *= EXPONENT_STEP_MULTIPLIER;
-                exponent -= EXPONENT_STEP_SIZE;
+                while ((SIGNED_NORMALIZED_MIN - 1) / signedCoefficient != 0) {
+                    signedCoefficient *= EXPONENT_STEP_MULTIPLIER;
+                    exponent -= EXPONENT_STEP_SIZE;
+                }
             }
 
             return (signedCoefficient, exponent);
