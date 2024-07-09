@@ -24,15 +24,18 @@ int256 constant EXPONENT_JUMP_SIZE = 6;
 int256 constant PRECISION_JUMP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_JUMP_SIZE)));
 /// @dev Every value above or equal to this can jump down while normalizing
 /// without overshooting and causing unnecessary precision loss.
-int256 constant NORMALIZED_JUMP_DOWN_THRESHOLD = NORMALIZED_MAX * PRECISION_JUMP_MULTIPLIER;
+int256 constant NORMALIZED_JUMP_DOWN_THRESHOLD = SIGNED_NORMALIZED_MAX * PRECISION_JUMP_MULTIPLIER;
 /// @dev Every value below this can jump up while normalizing without
 /// overshooting the normalized range.
-int256 constant NORMALIZED_JUMP_UP_THRESHOLD = NORMALIZED_MIN / PRECISION_JUMP_MULTIPLIER;
+int256 constant NORMALIZED_JUMP_UP_THRESHOLD = SIGNED_NORMALIZED_MIN / PRECISION_JUMP_MULTIPLIER;
 
 /// @dev The minimum absolute value of a normalized signed coefficient.
-int256 constant NORMALIZED_MIN = 1e37;
+uint256 constant NORMALIZED_MIN = 1e37;
+int256 constant SIGNED_NORMALIZED_MIN = 1e37;
 /// @dev The maximum absolute value of a normalized signed coefficient.
-int256 constant NORMALIZED_MAX = 1e38 - 1;
+uint256 constant NORMALIZED_MAX = 1e38 - 1;
+int256 constant SIGNED_NORMALIZED_MAX = 1e38 - 1;
+uint256 constant NORMALIZED_MAX_PLUS_ONE = 1e38;
 
 /// @dev The signed coefficient of zero when normalized.
 int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
@@ -41,12 +44,22 @@ int256 constant NORMALIZED_ZERO_EXPONENT = 0;
 
 library LibDecimalFloatImplementation {
     function isNormalized(int256 signedCoefficient, int256 exponent) internal pure returns (bool) {
-        unchecked {
-
-
-        return (signedCoefficient / (NORMALIZED_MAX + 1) == 0 && signedCoefficient / NORMALIZED_MIN != 0)
-            || (signedCoefficient == NORMALIZED_ZERO_SIGNED_COEFFICIENT && exponent == NORMALIZED_ZERO_EXPONENT);
+        bool result;
+        uint256 normalizedMaxPlusOne = NORMALIZED_MAX_PLUS_ONE;
+        uint256 normalizedMin = NORMALIZED_MIN;
+        assembly {
+            result := or(
+                and(
+                    iszero(sdiv(signedCoefficient, normalizedMaxPlusOne)),
+                    iszero(iszero(sdiv(signedCoefficient, normalizedMin)))
+                ),
+                and(
+                    iszero(signedCoefficient),
+                    iszero(exponent)
+                )
+            )
         }
+        return result;
     }
 
     function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
@@ -68,7 +81,7 @@ library LibDecimalFloatImplementation {
                 exponent += EXPONENT_JUMP_SIZE;
             }
 
-            while (signedCoefficient / (NORMALIZED_MAX + 1) != 0) {
+            while (signedCoefficient / (SIGNED_NORMALIZED_MAX + 1) != 0) {
                 signedCoefficient /= EXPONENT_STEP_MULTIPLIER;
                 exponent += EXPONENT_STEP_SIZE;
             }
@@ -78,7 +91,7 @@ library LibDecimalFloatImplementation {
                 exponent -= EXPONENT_JUMP_SIZE;
             }
 
-            while ((NORMALIZED_MIN - 1) / signedCoefficient != 0) {
+            while ((SIGNED_NORMALIZED_MIN - 1) / signedCoefficient != 0) {
                 signedCoefficient *= EXPONENT_STEP_MULTIPLIER;
                 exponent -= EXPONENT_STEP_SIZE;
             }
