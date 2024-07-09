@@ -55,44 +55,26 @@ library LibDecimalFloatImplementation {
                 return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
             }
 
-            if (signedCoefficient < 0) {
-                // This is a special case because we cannot negate the minimum
-                // value of an int256 without overflow.
-                // Note that if BOTH the coefficient is `type(int256).min` and
-                // the exponent is `EXPONENT_MAX`, we will still overflow here.
-                // This is due to the recursive nature of the normalization
-                // for negative numbers, and the exponent increment here.
-                if (signedCoefficient == type(int256).min) {
-                    if (exponent > EXPONENT_MAX) {
-                        revert ExponentOverflow(signedCoefficient, exponent);
-                    }
-                    signedCoefficient /= 10;
-                    exponent += 1;
-                }
-                (signedCoefficient, exponent) = normalize(-signedCoefficient, exponent);
-                return (-signedCoefficient, exponent);
-            }
-
             if (exponent < EXPONENT_MIN || exponent > EXPONENT_MAX) {
                 revert ExponentOverflow(signedCoefficient, exponent);
             }
 
-            while (signedCoefficient >= NORMALIZED_JUMP_DOWN_THRESHOLD) {
+            while (signedCoefficient / NORMALIZED_JUMP_DOWN_THRESHOLD != 0) {
                 signedCoefficient /= PRECISION_JUMP_MULTIPLIER;
                 exponent += EXPONENT_JUMP_SIZE;
             }
 
-            while (signedCoefficient > NORMALIZED_MAX) {
+            while (signedCoefficient / (NORMALIZED_MAX + 1) != 0) {
                 signedCoefficient /= EXPONENT_STEP_MULTIPLIER;
                 exponent += EXPONENT_STEP_SIZE;
             }
 
-            while (signedCoefficient < NORMALIZED_JUMP_UP_THRESHOLD) {
+            while (NORMALIZED_JUMP_UP_THRESHOLD / signedCoefficient != 0) {
                 signedCoefficient *= PRECISION_JUMP_MULTIPLIER;
                 exponent -= EXPONENT_JUMP_SIZE;
             }
 
-            while (signedCoefficient < NORMALIZED_MIN) {
+            while ((NORMALIZED_MIN - 1) / signedCoefficient != 0) {
                 signedCoefficient *= EXPONENT_STEP_MULTIPLIER;
                 exponent -= EXPONENT_STEP_SIZE;
             }
