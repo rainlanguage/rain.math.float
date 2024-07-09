@@ -42,8 +42,14 @@ contract LibDecimalFloatDecimalAddTest is Test {
 
     /// 1 add 1
     /// 1 + 1 = 2
-    function testAddOneOne() external pure {
+    function testAddOneOneNotNormalized() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(1, 0, 1, 0);
+        assertEq(signedCoefficient, 2e37);
+        assertEq(exponent, -37);
+    }
+
+    function testAddOneOnePreNormalized() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(1e37, -37, 1e37, -37);
         assertEq(signedCoefficient, 2e37);
         assertEq(exponent, -37);
     }

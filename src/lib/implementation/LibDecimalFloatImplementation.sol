@@ -72,7 +72,7 @@ library LibDecimalFloatImplementation {
                 return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
             }
 
-            if (exponent < EXPONENT_MIN || exponent > EXPONENT_MAX) {
+            if (exponent / EXPONENT_MAX != 0) {
                 revert ExponentOverflow(signedCoefficient, exponent);
             }
 
