@@ -315,18 +315,11 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
-        if (signedCoefficientA == 0) {
-            return LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
-        } else if (signedCoefficientB == 0) {
-            return LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
-        }
-
         (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
         (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
 
         int256 smallerExponent;
         int256 adjustedCoefficient;
-
         {
             int256 largerExponent;
             int256 staticCoefficient;
@@ -348,7 +341,7 @@ library LibDecimalFloat {
                 unchecked {
                     alignmentExponentDiff = uint256(largerExponent - smallerExponent);
                     if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
-                        return LibDecimalFloatImplementation.normalize(adjustedCoefficient, largerExponent);
+                        return (adjustedCoefficient, largerExponent);
                     }
                     multiplier = 10 ** alignmentExponentDiff;
                 }
