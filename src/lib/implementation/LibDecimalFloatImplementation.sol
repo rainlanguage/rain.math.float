@@ -6,12 +6,13 @@ import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
 /// @dev The minimum exponent that can be normalized.
 /// This is crazy small, so should never be a problem for any real use case.
 /// We need it to guard against overflow when normalizing.
-int256 constant EXPONENT_MIN = type(int128).min + 78;
+int256 constant EXPONENT_MIN = type(int128).min + 79;
 
 /// @dev The maximum exponent that can be normalized.
 /// This is crazy large, so should never be a problem for any real use case.
 /// We need it to guard against overflow when normalizing.
 int256 constant EXPONENT_MAX = type(int128).max - 78;
+int256 constant EXPONENT_MAX_PLUS_ONE = EXPONENT_MAX + 1;
 
 /// @dev When normalizing a number, how far we "step" when close to normalized.
 int256 constant EXPONENT_STEP_SIZE = 1;
@@ -72,7 +73,7 @@ library LibDecimalFloatImplementation {
                 return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
             }
 
-            if (exponent / EXPONENT_MAX != 0) {
+            if (exponent / EXPONENT_MAX_PLUS_ONE != 0) {
                 revert ExponentOverflow(signedCoefficient, exponent);
             }
 

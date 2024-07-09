@@ -18,10 +18,6 @@ contract LibDecimalFloatPackTest is Test {
     /// Can round trip any normalized number.
     function testNormalizedRoundTrip(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
-        // This is a special case which will revert the exponent.
-        if (signedCoefficient == type(int256).min) {
-            vm.assume(exponent != EXPONENT_MAX);
-        }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
 
         uint256 packed = LibDecimalFloat.pack(signedCoefficient, exponent);
