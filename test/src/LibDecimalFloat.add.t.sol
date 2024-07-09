@@ -111,6 +111,11 @@ contract LibDecimalFloatDecimalAddTest is Test {
         vm.assume(normalizedSignedCoefficientA != 0);
         vm.assume(expectedSignedCoefficient != 0);
 
+        console2.log("normalizedSignedCoefficientA", normalizedSignedCoefficientA);
+        console2.log("normalizedExponentA", normalizedExponentA);
+        console2.log("expectedSignedCoefficient", expectedSignedCoefficient);
+        console2.log("expectedExponent", expectedExponent);
+
         vm.assume((exponentB - exponentA) > 100);
 
         (int256 signedCoefficient, int256 exponent) =
