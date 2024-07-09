@@ -201,7 +201,7 @@ contract LibDecimalFloatDecimalTest is Test {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         decimals = uint8(bound(decimals, 1, type(uint8).max));
         exponent = bound(exponent, type(int256).max - int256(uint256(decimals)) + 1, type(int256).max);
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector));
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
         (value, lossless);
     }

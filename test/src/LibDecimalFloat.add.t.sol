@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, COMPARE_EQUAL, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatDecimalAddTest is Test {
     /// Simple 0 add 0
@@ -12,7 +12,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
     function testAddZero() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(0, 0, 0, 0);
         assertEq(signedCoefficient, 0);
-        assertEq(exponent, -37);
+        assertEq(exponent, 0);
     }
 
     /// 0 add 0 any exponent
@@ -21,7 +21,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
         inputExponent = int128(bound(inputExponent, EXPONENT_MIN, EXPONENT_MAX));
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(0, inputExponent, 0, 0);
         assertEq(signedCoefficient, 0);
-        assertEq(exponent, -37);
+        assertEq(exponent, 0);
     }
 
     /// 0 add 1
@@ -85,6 +85,8 @@ contract LibDecimalFloatDecimalAddTest is Test {
 
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloat.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        console2.log("signedCoefficient", signedCoefficient);
+        console2.log("exponent", exponent);
         assert(LibDecimalFloatImplementation.isNormalized(signedCoefficient, exponent));
     }
 }
