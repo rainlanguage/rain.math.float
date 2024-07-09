@@ -315,45 +315,73 @@ library LibDecimalFloat {
         (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
         (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
 
-        int256 smallerExponent;
-        int256 adjustedCoefficient;
-        {
-            int256 largerExponent;
-            int256 staticCoefficient;
-            if (exponentA > exponentB) {
-                smallerExponent = exponentB;
-                largerExponent = exponentA;
-                adjustedCoefficient = signedCoefficientA;
-                staticCoefficient = signedCoefficientB;
-            } else {
-                smallerExponent = exponentA;
-                largerExponent = exponentB;
-                adjustedCoefficient = signedCoefficientB;
-                staticCoefficient = signedCoefficientA;
-            }
+        // We want A to represent the larger exponent. If this is not the case
+        // then swap them.
+        if (exponentB > exponentA) {
+            exponentA = exponentA ^ exponentB;
+            exponentB = exponentA ^ exponentB;
+            exponentA = exponentA ^ exponentB;
 
-            uint256 alignmentExponentDiff;
-            uint256 multiplier;
-            unchecked {
-                alignmentExponentDiff = uint256(largerExponent - smallerExponent);
-                if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
-                    return (adjustedCoefficient, largerExponent);
-                }
-                multiplier = 10 ** alignmentExponentDiff;
-            }
-
-            adjustedCoefficient *= int256(multiplier);
-
-            // This can't overflow because the signed coefficient is 128 bits.
-            // Worst case scenario is that one was aligned all the way to fill
-            // the high 128 bits, which we add to the max low 128 bits, which
-            // doesn't overflow.
-            unchecked {
-                adjustedCoefficient += staticCoefficient;
-            }
+            signedCoefficientA = signedCoefficientA ^ signedCoefficientB;
+            signedCoefficientB = signedCoefficientA ^ signedCoefficientB;
+            signedCoefficientA = signedCoefficientA ^ signedCoefficientB;
         }
 
-        return LibDecimalFloatImplementation.normalize(adjustedCoefficient, smallerExponent);
+        uint256 multiplier;
+        unchecked {
+            uint256 alignmentExponentDiff = uint256(exponentA - exponentB);
+            if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
+                return (signedCoefficientA, exponentA);
+            }
+            multiplier = 10 ** alignmentExponentDiff;
+        }
+
+        signedCoefficientA *= int256(multiplier);
+
+        unchecked {
+            signedCoefficientA += signedCoefficientB;
+        }
+        return LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentB);
+
+        // int256 smallerExponent;
+        // int256 adjustedCoefficient;
+        // {
+        //     int256 largerExponent;
+        //     int256 staticCoefficient;
+        //     if (exponentA > exponentB) {
+        //         smallerExponent = exponentB;
+        //         largerExponent = exponentA;
+        //         adjustedCoefficient = signedCoefficientA;
+        //         staticCoefficient = signedCoefficientB;
+        //     } else {
+        //         smallerExponent = exponentA;
+        //         largerExponent = exponentB;
+        //         adjustedCoefficient = signedCoefficientB;
+        //         staticCoefficient = signedCoefficientA;
+        //     }
+
+        //     uint256 alignmentExponentDiff;
+        //     uint256 multiplier;
+        //     unchecked {
+        //         alignmentExponentDiff = uint256(largerExponent - smallerExponent);
+        //         if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
+        //             return (adjustedCoefficient, largerExponent);
+        //         }
+        //         multiplier = 10 ** alignmentExponentDiff;
+        //     }
+
+        //     adjustedCoefficient *= int256(multiplier);
+
+        //     // This can't overflow because the signed coefficient is 128 bits.
+        //     // Worst case scenario is that one was aligned all the way to fill
+        //     // the high 128 bits, which we add to the max low 128 bits, which
+        //     // doesn't overflow.
+        //     unchecked {
+        //         adjustedCoefficient += staticCoefficient;
+        //     }
+        // }
+
+        // return LibDecimalFloatImplementation.normalize(adjustedCoefficient, smallerExponent);
     }
 
     function sub(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
