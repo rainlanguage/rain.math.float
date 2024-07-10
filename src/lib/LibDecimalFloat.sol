@@ -426,6 +426,11 @@ library LibDecimalFloat {
         }
     }
 
+    /// Returns the absolute value of a float.
+    /// Identity if non-negative, negated if negative. Max negative signed value
+    /// for the coefficient will be shifted one OOM so that it can be negated to
+    /// a positive value.
+    ///
     /// https://speleotrove.com/decimal/daops.html#refabs
     /// > abs takes one operand. If the operand is negative, the result is the
     /// > same as using the minus operation on the operand. Otherwise, the result
