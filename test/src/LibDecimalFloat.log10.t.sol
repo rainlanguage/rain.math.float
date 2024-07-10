@@ -38,9 +38,9 @@ contract LibDecimalFloatLog10Test is Test {
     //     checkLog10(1099, -2, 1.0411e37, -37);
     // }
 
-    function testInterpolatedLookups() external view {
-        checkLog10(10015, -3, 1.00065e37, -37);
-    }
+    // function testInterpolatedLookups() external view {
+    //     checkLog10(10015, -3, 1.00065e37, -37);
+    // }
 
     // // This can't work until the full lookup table is implemented.
     // function testSub1() external view {

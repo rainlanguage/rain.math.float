@@ -10,7 +10,7 @@ import {
 } from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatDecimalAddTest is Test {
     /// Simple 0 add 0
@@ -34,16 +34,16 @@ contract LibDecimalFloatDecimalAddTest is Test {
     /// 0 + 1 = 1
     function testAddZeroOne() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(0, 0, 1, 0);
-        assertEq(signedCoefficient, 1e37);
-        assertEq(exponent, -37);
+        assertEq(signedCoefficient, 1);
+        assertEq(exponent, 0);
     }
 
     /// 1 add 0
     /// 1 + 0 = 1
     function testAddOneZero() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(1, 0, 0, 0);
-        assertEq(signedCoefficient, 1e37);
-        assertEq(exponent, -37);
+        assertEq(signedCoefficient, 1);
+        assertEq(exponent, 0);
     }
 
     /// 1 add 1
@@ -64,16 +64,16 @@ contract LibDecimalFloatDecimalAddTest is Test {
     /// 123456789 + 987654321 = 1111111110
     function testAdd123456789987654321() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(123456789, 0, 987654321, 0);
-        assertEq(signedCoefficient, 1.11111111e37);
-        assertEq(exponent, -37 + 9);
+        assertEq(signedCoefficient, 1.11111111e38);
+        assertEq(exponent, -38 + 9);
     }
 
     /// 123456789e9 add 987654321
     /// 123456789e9 + 987654321 = 123456789987654321
     function testAdd123456789e9987654321() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(123456789, 9, 987654321, 0);
-        assertEq(signedCoefficient, 1.23456789987654321e37);
-        assertEq(exponent, -37 + 17);
+        assertEq(signedCoefficient, 1.23456789987654321e46);
+        assertEq(exponent, -46 + 17);
     }
 
     function testGasAddZero() external pure {
@@ -84,7 +84,8 @@ contract LibDecimalFloatDecimalAddTest is Test {
         LibDecimalFloat.add(1e37, -37, 1e37, -37);
     }
 
-    function testAddNeverRevertIsNormalized(
+    /// Provided our exponents are in range we should never revert.
+    function testAddNeverRevert(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
@@ -95,7 +96,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
 
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloat.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        assert(LibDecimalFloatImplementation.isNormalized(signedCoefficient, exponent));
+        (signedCoefficient, exponent);
     }
 
     function testAddingSmallToLargeReturnsLargeFuzz(
@@ -128,12 +129,12 @@ contract LibDecimalFloatDecimalAddTest is Test {
     function testAddingSmallToLargeReturnsLargeExamples() external pure {
         // Establish a baseline.
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(1e37, 0, 1e37, -37);
-        assertEq(signedCoefficient, 1.0000000000000000000000000000000000001e37);
-        assertEq(exponent, 0);
+        assertEq(signedCoefficient, 10000000000000000000000000000000000001e37);
+        assertEq(exponent, -37);
         // Show baseline with reversed order.
         (signedCoefficient, exponent) = LibDecimalFloat.add(1e37, -37, 1e37, 0);
-        assertEq(signedCoefficient, 1.0000000000000000000000000000000000001e37);
-        assertEq(exponent, 0);
+        assertEq(signedCoefficient, 10000000000000000000000000000000000001e37);
+        assertEq(exponent, -37);
 
         // Show full precision loss.
         (signedCoefficient, exponent) = LibDecimalFloat.add(1e37, 0, 1e37, -38);
@@ -155,12 +156,12 @@ contract LibDecimalFloatDecimalAddTest is Test {
 
         // Only the difference in exponents matters. Show the baseline.
         (signedCoefficient, exponent) = LibDecimalFloat.add(1e37, -20, 1e37, -57);
-        assertEq(signedCoefficient, 1.0000000000000000000000000000000000001e37);
-        assertEq(exponent, -20);
+        assertEq(signedCoefficient, 10000000000000000000000000000000000001e37);
+        assertEq(exponent, -57);
         // Reverse order.
         (signedCoefficient, exponent) = LibDecimalFloat.add(1e37, -57, 1e37, -20);
-        assertEq(signedCoefficient, 1.0000000000000000000000000000000000001e37);
-        assertEq(exponent, -20);
+        assertEq(signedCoefficient, 10000000000000000000000000000000000001e37);
+        assertEq(exponent, -57);
 
         // Only the difference in exponents matters.
         (signedCoefficient, exponent) = LibDecimalFloat.add(1e37, -20, 1e37, -58);
@@ -180,32 +181,36 @@ contract LibDecimalFloatDecimalAddTest is Test {
     }
 
     /// If the exponents are the same and the coefficients are the same, then
-    /// addition is simply adding the coefficients and normalizing.
+    /// addition is simply adding the coefficients.
     function testAddSameExponentSameCoefficient(int256 signedCoefficientA, int256 signedCoefficientB) external pure {
         int256 exponentA;
         int256 exponentB;
         (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, 0);
         (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, 0);
 
+        if (signedCoefficientA == 0 || signedCoefficientB == 0) {
+            exponentA = 0;
+        }
         exponentB = exponentA;
 
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloat.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.normalize(signedCoefficientA + signedCoefficientB, exponentA);
+        int256 expectedSignedCoefficient = signedCoefficientA + signedCoefficientB;
+        int256 expectedExponent = exponentA;
 
         assertEq(signedCoefficient, expectedSignedCoefficient);
         assertEq(exponent, expectedExponent);
     }
 
     /// Adding any zero to any value returns the non-zero value.
-    function testAddZeroToAny(int256 exponentZero, int256 signedCoefficient, int256 exponent) external pure {
+    function testAddZeroToAnyNonZero(int256 exponentZero, int256 signedCoefficient, int256 exponent) external pure {
         exponentZero = bound(exponentZero, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         exponent = bound(exponent, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
 
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+        vm.assume(signedCoefficient != 0);
+
+        (int256 expectedSignedCoefficient, int256 expectedExponent) = (signedCoefficient, exponent);
         (int256 signedCoefficientAddZero, int256 exponentAddZero) =
             LibDecimalFloat.add(0, exponentZero, signedCoefficient, exponent);
         assertEq(signedCoefficientAddZero, expectedSignedCoefficient);

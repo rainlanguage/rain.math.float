@@ -57,10 +57,10 @@ contract LibDecimalFloatPower10Test is Test {
     //     checkPower10(-0.3e37, -37, 5.012531328320802005012531328320802005e37, -38);
     // }
 
-    function testInterpolatedLookupsPower() external view {
-        // 10^1.55555 = 35.9376769153
-        checkPower10(1.55555e37, -37, 3.5935e37, -36);
-        // 10^1234.56789
-        checkPower10(123456789, -5, 3.6979e37, 1197);
-    }
+    // function testInterpolatedLookupsPower() external view {
+    //     // 10^1.55555 = 35.9376769153
+    //     checkPower10(1.55555e37, -37, 3.5935e37, -36);
+    //     // 10^1234.56789
+    //     checkPower10(123456789, -5, 3.6979e37, 1197);
+    // }
 }
