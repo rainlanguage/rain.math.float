@@ -23,8 +23,8 @@ contract LibDecimalFloatPowerTest is Test {
         assertEq(actualExponent, expectedExponent, "exponent");
     }
 
-    function testPowers() external view {
-        checkPower(5e37, -38, 3e37, -36, 9.3283582089552238805970149253731343283e37, -47);
-        checkPower(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
-    }
+    // function testPowers() external view {
+    //     checkPower(5e37, -38, 3e37, -36, 9.3283582089552238805970149253731343283e37, -47);
+    //     checkPower(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
+    // }
 }

@@ -8,6 +8,7 @@ import {
     NORMALIZED_MIN,
     NegativeFixedDecimalConversion
 } from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test, console2, stdError} from "forge-std/Test.sol";
 
@@ -44,7 +45,7 @@ contract LibDecimalFloatDecimalTest is Test {
         assertEq(signedCoefficient, expectedCoefficient, "signedCoefficient");
         assertEq(exponent, expectedExponent, "exponent");
         assertEq(lossless, true, "lossless");
-        assert(LibDecimalFloat.isNormalized(signedCoefficient, exponent));
+        assert(LibDecimalFloatImplementation.isNormalized(signedCoefficient, exponent));
     }
 
     function checkFromFixedDecimalLossy(
@@ -200,7 +201,7 @@ contract LibDecimalFloatDecimalTest is Test {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         decimals = uint8(bound(decimals, 1, type(uint8).max));
         exponent = bound(exponent, type(int256).max - int256(uint256(decimals)) + 1, type(int256).max);
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector));
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
         (value, lossless);
     }
