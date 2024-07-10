@@ -468,6 +468,8 @@ library LibDecimalFloat {
         returns (int256, int256)
     {
         unchecked {
+            // Minimize jumps to return early on either zero. Needed to avoid a
+            // divide by zero later.
             bool isZero;
             assembly ("memory-safe") {
                 isZero := or(iszero(signedCoefficientA), iszero(signedCoefficientB))
@@ -475,8 +477,12 @@ library LibDecimalFloat {
             if (isZero) {
                 return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
             }
+
+            // Unchecked mul the coefficients and add the exponents.
             int256 signedCoefficient = signedCoefficientA * signedCoefficientB;
             int256 exponent = exponentA + exponentB;
+
+            // Minimise jumps to see if we overflowed.
             bool didOverflow;
             assembly ("memory-safe") {
                 didOverflow :=
@@ -485,6 +491,9 @@ library LibDecimalFloat {
                         iszero(eq(sub(exponent, exponentA), exponentB))
                     )
             }
+            // If we did overflow, normalize and try again. Normalized values
+            // cannot overflow, so this will always succeed, provided the
+            // exponents are not out of bounds.
             if (didOverflow) {
                 (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
                 (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
