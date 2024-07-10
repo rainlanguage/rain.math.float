@@ -343,7 +343,11 @@ library LibDecimalFloat {
             // The early return here allows us to do unchecked pow on the
             // multiplier and means we never revert due to overflow here.
             if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
-                return (signedCoefficientA, exponentA);
+                if (signedCoefficientA == 0) {
+                    return (signedCoefficientB, exponentB);
+                } else {
+                    return (signedCoefficientA, exponentA);
+                }
             }
             multiplier = 10 ** alignmentExponentDiff;
         }
@@ -380,6 +384,9 @@ library LibDecimalFloat {
         return add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
+    /// Negates and normalizes a float.
+    /// Equivalent to `0 - x`.
+    ///
     /// https://speleotrove.com/decimal/daops.html#refplusmin
     /// > minus and plus both take one operand, and correspond to the prefix
     /// > minus and plus operators in programming languages.
@@ -389,6 +396,12 @@ library LibDecimalFloat {
     /// > (where a and b refer to any numbers) are calculated as the operations
     /// > add(’0’, a) and subtract(’0’, b) respectively, where the ’0’ has the
     /// > same exponent as the operand.
+    ///
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
     function minus(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
         return (-signedCoefficient, exponent);

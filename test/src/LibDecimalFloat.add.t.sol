@@ -198,4 +198,22 @@ contract LibDecimalFloatDecimalAddTest is Test {
         assertEq(signedCoefficient, expectedSignedCoefficient);
         assertEq(exponent, expectedExponent);
     }
+
+    /// Adding any zero to any value returns the non-zero value.
+    function testAddZeroToAny(int256 exponentZero, int256 signedCoefficient, int256 exponent) external pure {
+        exponentZero = bound(exponentZero, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponent = bound(exponent, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+        (int256 signedCoefficientAddZero, int256 exponentAddZero) =
+            LibDecimalFloat.add(0, exponentZero, signedCoefficient, exponent);
+        assertEq(signedCoefficientAddZero, expectedSignedCoefficient);
+        assertEq(exponentAddZero, expectedExponent);
+
+        // Reverse order.
+        (signedCoefficientAddZero, exponentAddZero) = LibDecimalFloat.add(signedCoefficient, exponent, 0, exponentZero);
+        assertEq(signedCoefficientAddZero, expectedSignedCoefficient);
+        assertEq(exponentAddZero, expectedExponent);
+    }
 }
