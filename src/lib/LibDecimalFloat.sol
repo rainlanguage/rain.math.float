@@ -467,10 +467,6 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
-        if (signedCoefficientA == 0 || signedCoefficientB == 0) {
-            return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
-        }
-
         int256 signedCoefficient;
         // This can't overflow because we're multiplying 128 bit numbers in 256
         // bit space.
