@@ -355,6 +355,7 @@ library LibDecimalFloat {
         }
         // The internal alignment and subsequent addition could easily result in
         // an un-normalized number, so we normalize the result.
+        // slither-disable-next-line unused-return
         return LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentB);
     }
 
@@ -428,6 +429,7 @@ library LibDecimalFloat {
             signedCoefficient = signedCoefficientA * signedCoefficientB;
         }
         int256 exponent = exponentA + exponentB;
+        // slither-disable-next-line unused-return
         return LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
     }
 
@@ -563,6 +565,7 @@ library LibDecimalFloat {
 
         int256 unitCoefficient = int256(1e37 / (10 ** uint256(exponent + 37)));
 
+        // slither-disable-next-line unused-return
         return LibDecimalFloatImplementation.normalize(signedCoefficient % unitCoefficient, exponent);
     }
 
