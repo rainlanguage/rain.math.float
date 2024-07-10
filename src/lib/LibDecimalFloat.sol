@@ -359,6 +359,18 @@ library LibDecimalFloat {
         return LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentB);
     }
 
+    /// Subtract two floats together as a normalized result.
+    ///
+    /// This is effectively shorthand for adding the two floats with the second
+    /// float negated. Therefore, the same caveats apply as for `add`.
+    /// @param signedCoefficientA The signed coefficient of the first floating
+    /// point number.
+    /// @param exponentA The exponent of the first floating point number.
+    /// @param signedCoefficientB The signed coefficient of the second floating
+    /// point number.
+    /// @param exponentB The exponent of the second floating point number.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
     function sub(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
