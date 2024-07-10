@@ -432,11 +432,11 @@ library LibDecimalFloat {
     /// > is the same as using the plus operation on the operand.
     function abs(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
-            if (signedCoefficient >= 0) {
-                return (signedCoefficient, exponent);
-            } else {
+            if (signedCoefficient < 0) {
                 return minus(signedCoefficient, exponent);
             }
+
+            return (signedCoefficient, exponent);
         }
     }
 
