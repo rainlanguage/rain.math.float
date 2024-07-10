@@ -414,15 +414,15 @@ library LibDecimalFloat {
     /// @return exponent The exponent of the result.
     function minus(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
-        // This is the only edge case that can't be simply negated.
-        if (signedCoefficient == type(int256).min) {
-            if (exponent == type(int256).max) {
-                revert ExponentOverflow(signedCoefficient, exponent);
+            // This is the only edge case that can't be simply negated.
+            if (signedCoefficient == type(int256).min) {
+                if (exponent == type(int256).max) {
+                    revert ExponentOverflow(signedCoefficient, exponent);
+                }
+                signedCoefficient /= 10;
+                ++exponent;
             }
-            signedCoefficient /= 10;
-            ++exponent;
-        }
-        return (-signedCoefficient, exponent);
+            return (-signedCoefficient, exponent);
         }
     }
 
