@@ -7,7 +7,12 @@ import {
     NORMALIZED_ZERO_SIGNED_COEFFICIENT,
     NORMALIZED_ZERO_EXPONENT
 } from "src/lib/LibDecimalFloat.sol";
-import {EXPONENT_MIN, EXPONENT_MAX} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {
+    EXPONENT_MIN,
+    EXPONENT_MAX,
+    LibDecimalFloatImplementation
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 
 import {Test} from "forge-std/Test.sol";
 
@@ -89,15 +94,20 @@ contract LibDecimalFloatMultiplyTest is Test {
         (signedCoefficient, exponent);
     }
 
-    function testMultiplyNotRevert(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB) external pure {
+    function testMultiplyNotRevertAnyExpectation(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external pure {
         exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
         exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloat.multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatSlow.multiplySlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-        // unchecked {
-        //     int256 expectedSignedCoefficient = signedCoefficientA * signedCoefficientB;
-
-
-        // }
+        assertEq(signedCoefficient, expectedSignedCoefficient);
+        assertEq(exponent, expectedExponent);
     }
 }

@@ -479,7 +479,7 @@ library LibDecimalFloat {
 
             int256 exponent = exponentA + exponentB;
 
-            // Minimise jumps to see if we overflowed.
+            // No jumps to see if we overflowed.
             bool didOverflow;
             assembly ("memory-safe") {
                 didOverflow :=
