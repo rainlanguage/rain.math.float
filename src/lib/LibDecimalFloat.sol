@@ -315,7 +315,13 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
-        if (signedCoefficientA == 0 || signedCoefficientB == 0) {
+        // Zero for either is the edge case but we have to guard against it.
+        // Doing it eagerly with assembly is less gas than lazily with jumps.
+        bool eitherZero;
+        assembly ("memory-safe") {
+            eitherZero := or(iszero(signedCoefficientA), iszero(signedCoefficientB))
+        }
+        if (eitherZero) {
             if (signedCoefficientA == 0) {
                 return (signedCoefficientB, exponentB);
             } else {
