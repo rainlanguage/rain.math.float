@@ -467,15 +467,31 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
-        int256 signedCoefficient;
-        // This can't overflow because we're multiplying 128 bit numbers in 256
-        // bit space.
         unchecked {
-            signedCoefficient = signedCoefficientA * signedCoefficientB;
+            bool isZero;
+            assembly ("memory-safe") {
+                isZero := or(iszero(signedCoefficientA), iszero(signedCoefficientB))
+            }
+            if (isZero) {
+                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+            }
+            int256 signedCoefficient = signedCoefficientA * signedCoefficientB;
+            int256 exponent = exponentA + exponentB;
+            bool didOverflow;
+            assembly ("memory-safe") {
+                didOverflow :=
+                    or(
+                        iszero(eq(sdiv(signedCoefficient, signedCoefficientA), signedCoefficientB)),
+                        iszero(eq(sub(exponent, exponentA), exponentB))
+                    )
+            }
+            if (didOverflow) {
+                (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
+                (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
+                return multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            }
+            return (signedCoefficient, exponent);
         }
-        int256 exponent = exponentA + exponentB;
-        // slither-disable-next-line unused-return
-        return LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
     }
 
     /// https://speleotrove.com/decimal/daops.html#refdivide
