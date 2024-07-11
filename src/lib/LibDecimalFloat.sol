@@ -555,15 +555,14 @@ library LibDecimalFloat {
         pure
         returns (int256 signedCoefficient, int256 exponent)
     {
-        (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
-        (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
-
         unchecked {
-            signedCoefficient = (signedCoefficientA * 1e38) / signedCoefficientB;
-            exponent = exponentA - exponentB - 38;
-        }
+            (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
+            (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
 
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+            int256 signedCoefficient = (signedCoefficientA * 1e38) / signedCoefficientB;
+            int256 exponent = exponentA - exponentB - 38;
+            return (signedCoefficient, exponent);
+        }
     }
 
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
