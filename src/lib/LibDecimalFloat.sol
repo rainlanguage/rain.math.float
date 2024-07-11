@@ -553,7 +553,7 @@ library LibDecimalFloat {
     function divide(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
-        returns (int256 signedCoefficient, int256 exponent)
+        returns (int256, int256)
     {
         unchecked {
             (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
@@ -566,7 +566,12 @@ library LibDecimalFloat {
     }
 
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        return divide(1e37, -37, signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+
+        signedCoefficient = 1e75 / signedCoefficient;
+        exponent = -exponent - 75;
+
+        return (signedCoefficient, exponent);
     }
 
     /// https://speleotrove.com/decimal/daops.html#refnumco
