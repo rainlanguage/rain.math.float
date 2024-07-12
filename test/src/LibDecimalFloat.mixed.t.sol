@@ -16,7 +16,7 @@ contract LibDecimalFloatMixedTest is Test {
         (int256 signedCoefficientMul, int256 exponentMul) =
             LibDecimalFloat.multiply(signedCoefficientDiv, exponentDiv, 555, 18);
 
-        assertEq(signedCoefficientMul, 18499999999999999999999999999999999999);
-        assertEq(exponentMul, -17);
+        assertEq(signedCoefficientMul, 18499999999999999999999999999999999999815);
+        assertEq(exponentMul, -20);
     }
 }

@@ -467,19 +467,37 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
-        if (signedCoefficientA == 0 || signedCoefficientB == 0) {
-            return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
-        }
-
-        int256 signedCoefficient;
-        // This can't overflow because we're multiplying 128 bit numbers in 256
-        // bit space.
         unchecked {
-            signedCoefficient = signedCoefficientA * signedCoefficientB;
+            // Unchecked mul the coefficients and add the exponents.
+            int256 signedCoefficient = signedCoefficientA * signedCoefficientB;
+
+            // Need to return early if the result is zero to avoid divide by
+            // zero in the overflow check.
+            if (signedCoefficient == 0) {
+                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+            }
+
+            int256 exponent = exponentA + exponentB;
+
+            // No jumps to see if we overflowed.
+            bool didOverflow;
+            assembly ("memory-safe") {
+                didOverflow :=
+                    or(
+                        iszero(eq(sdiv(signedCoefficient, signedCoefficientA), signedCoefficientB)),
+                        iszero(eq(sub(exponent, exponentA), exponentB))
+                    )
+            }
+            // If we did overflow, normalize and try again. Normalized values
+            // cannot overflow, so this will always succeed, provided the
+            // exponents are not out of bounds.
+            if (didOverflow) {
+                (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
+                (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
+                return multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            }
+            return (signedCoefficient, exponent);
         }
-        int256 exponent = exponentA + exponentB;
-        // slither-disable-next-line unused-return
-        return LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
     }
 
     /// https://speleotrove.com/decimal/daops.html#refdivide
