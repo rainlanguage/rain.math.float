@@ -227,6 +227,9 @@ library LibDecimalFloat {
     /// @return packed The packed representation of the signed coefficient and
     /// exponent.
     function pack(int256 signedCoefficient, int256 exponent) internal pure returns (uint256 packed) {
+        if (int128(signedCoefficient) != signedCoefficient || int128(exponent) != exponent) {
+            (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+        }
         uint256 mask = type(uint128).max;
         assembly ("memory-safe") {
             packed := or(and(signedCoefficient, mask), shl(0x80, exponent))
@@ -312,6 +315,20 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
+        // Zero for either is the edge case but we have to guard against it.
+        // Doing it eagerly with assembly is less gas than lazily with jumps.
+        bool eitherZero;
+        assembly ("memory-safe") {
+            eitherZero := or(iszero(signedCoefficientA), iszero(signedCoefficientB))
+        }
+        if (eitherZero) {
+            if (signedCoefficientA == 0) {
+                return (signedCoefficientB, exponentB);
+            } else {
+                return (signedCoefficientA, exponentA);
+            }
+        }
+
         // Normalizing A and B gives us similar coefficients, which simplifies
         // detecting when their exponents are too far apart to add without
         // simply ignoring one of them.
@@ -343,11 +360,7 @@ library LibDecimalFloat {
             // The early return here allows us to do unchecked pow on the
             // multiplier and means we never revert due to overflow here.
             if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
-                if (signedCoefficientA == 0) {
-                    return (signedCoefficientB, exponentB);
-                } else {
-                    return (signedCoefficientA, exponentA);
-                }
+                return (signedCoefficientA, exponentA);
             }
             multiplier = 10 ** alignmentExponentDiff;
         }
@@ -357,10 +370,7 @@ library LibDecimalFloat {
         unchecked {
             signedCoefficientA += signedCoefficientB;
         }
-        // The internal alignment and subsequent addition could easily result in
-        // an un-normalized number, so we normalize the result.
-        // slither-disable-next-line unused-return
-        return LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentB);
+        return (signedCoefficientA, exponentB);
     }
 
     /// Subtract two floats together as a normalized result.
@@ -403,8 +413,17 @@ library LibDecimalFloat {
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
     function minus(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
-        return (-signedCoefficient, exponent);
+        unchecked {
+            // This is the only edge case that can't be simply negated.
+            if (signedCoefficient == type(int256).min) {
+                if (exponent == type(int256).max) {
+                    revert ExponentOverflow(signedCoefficient, exponent);
+                }
+                signedCoefficient /= 10;
+                ++exponent;
+            }
+            return (-signedCoefficient, exponent);
+        }
     }
 
     /// https://speleotrove.com/decimal/daops.html#refabs

@@ -37,10 +37,9 @@ contract LibDecimalFloatSubTest is Test {
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloat.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-        // Which behaves the same as normalizing then adding its negation.
-        (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
+        // Minus will just shift the max min value one exponent internally.
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloat.add(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
+            LibDecimalFloat.add(signedCoefficientA, exponentA, -(signedCoefficientB / 10), exponentB + 1);
 
         assertEq(signedCoefficient, expectedSignedCoefficient);
         assertEq(exponent, expectedExponent);
