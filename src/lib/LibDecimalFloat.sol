@@ -565,6 +565,7 @@ library LibDecimalFloat {
         }
     }
 
+    /// Inverts a float. Equivalent to `1 / x` with modest gas optimizations.
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
 
