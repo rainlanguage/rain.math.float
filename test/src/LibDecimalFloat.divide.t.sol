@@ -2,9 +2,9 @@
 pragma solidity =0.8.25;
 
 import {THREES, ONES} from "../lib/LibCommonResults.sol";
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
 
-import {Test, console2} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatDivideTest is Test {
     function checkDivision(
@@ -90,18 +90,34 @@ contract LibDecimalFloatDivideTest is Test {
         assertEq(exponent, -38);
     }
 
-    function testUnnormalizedThreesDivision0() external pure {
-        int256 i = 1;
-        int256 j = -38;
-        while (true) {
-            checkDivision(i, 0, 3, 0, THREES, j);
+    /// forge-config: default.fuzz.runs = 100
+    function testUnnormalizedThreesDivision0(int256 exponentA, int256 exponentB) external pure {
+        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
+        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
 
-            if (i == 1e76) {
-                break;
+        int256 d = 3;
+        int256 di = 0;
+        while (true) {
+            int256 i = 1;
+            int256 j = -38 - di;
+            while (true) {
+                // want to see full precision on the THREES regardless of the
+                // scale of the numerator and denominator.
+                checkDivision(i, exponentA, d, exponentB, THREES, exponentA - exponentB + j);
+
+                if (i == 1e76) {
+                    break;
+                }
+
+                i *= 10;
+                ++j;
             }
 
-            i *= 10;
-            ++j;
+            if (d == 3e76) {
+                break;
+            }
+            d *= 10;
+            ++di;
         }
     }
 }
