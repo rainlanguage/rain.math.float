@@ -553,21 +553,26 @@ library LibDecimalFloat {
     function divide(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
-        returns (int256 signedCoefficient, int256 exponent)
+        returns (int256, int256)
     {
-        (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
-        (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
-
         unchecked {
-            signedCoefficient = (signedCoefficientA * 1e38) / signedCoefficientB;
-            exponent = exponentA - exponentB - 38;
-        }
+            (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
+            (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
 
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+            int256 signedCoefficient = (signedCoefficientA * 1e38) / signedCoefficientB;
+            int256 exponent = exponentA - exponentB - 38;
+            return (signedCoefficient, exponent);
+        }
     }
 
+    /// Inverts a float. Equivalent to `1 / x` with modest gas optimizations.
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        return divide(1e37, -37, signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+
+        signedCoefficient = 1e75 / signedCoefficient;
+        exponent = -exponent - 75;
+
+        return (signedCoefficient, exponent);
     }
 
     /// https://speleotrove.com/decimal/daops.html#refnumco

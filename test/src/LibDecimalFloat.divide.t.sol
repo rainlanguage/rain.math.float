@@ -2,23 +2,33 @@
 pragma solidity =0.8.25;
 
 import {THREES, ONES} from "../lib/LibCommonResults.sol";
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatDivideTest is Test {
+    function checkDivision(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        int256 signedCoefficientC,
+        int256 exponentC
+    ) internal pure {
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloat.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(signedCoefficient, signedCoefficientC, "coefficient");
+        assertEq(exponent, exponentC, "exponent");
+    }
+
     /// 1 / 3
     function testDivide1Over3() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(1, 0, 3, 0);
-        assertEq(signedCoefficient, THREES, "coefficient");
-        assertEq(exponent, -38, "exponent");
+        checkDivision(1, 0, 3, 0, THREES, -38);
     }
 
     /// - 1 / 3
     function testDivideNegative1Over3() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(-1, 0, 3, 0);
-        assertEq(signedCoefficient, -THREES, "coefficient");
-        assertEq(exponent, -38, "exponent");
+        checkDivision(-1, 0, 3, 0, -THREES, -38);
     }
 
     /// 1 / 3 gas
@@ -43,30 +53,22 @@ contract LibDecimalFloatDivideTest is Test {
 
     /// 1e18 / 3
     function testDivide1e18Over3() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(1e18, 0, 3, 0);
-        assertEq(signedCoefficient, THREES);
-        assertEq(exponent, -20);
+        checkDivision(1e18, 0, 3, 0, THREES, -20);
     }
 
     /// 10,0 / 1e38,-37 == 1
     function testDivideTenOverOOMs() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(10, 0, 1e38, -37);
-        assertEq(signedCoefficient, 1e37);
-        assertEq(exponent, -37);
+        checkDivision(10, 0, 1e38, -37, 1e38, -38);
     }
 
     /// 1e38,-37 / 2,0 == 5
     function testDivideOOMsOverTen() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(1e38, -37, 2, 0);
-        assertEq(signedCoefficient, 5e37);
-        assertEq(exponent, -37);
+        checkDivision(1e38, -37, 2, 0, 5e37, -37);
     }
 
     /// 5e37,-37 / 2e37,-37 == 2.5
     function testDivideOOMs5and2() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.divide(5e37, -37, 2e37, -37);
-        assertEq(signedCoefficient, 25e36);
-        assertEq(exponent, -37);
+        checkDivision(5e37, -37, 2e37, -37, 25e37, -38);
     }
 
     /// (1 / 9) / (1 / 3) == 0.333..
@@ -86,5 +88,36 @@ contract LibDecimalFloatDivideTest is Test {
             LibDecimalFloat.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertEq(signedCoefficient, THREES);
         assertEq(exponent, -38);
+    }
+
+    /// forge-config: default.fuzz.runs = 100
+    function testUnnormalizedThreesDivision0(int256 exponentA, int256 exponentB) external pure {
+        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
+        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
+
+        int256 d = 3;
+        int256 di = 0;
+        while (true) {
+            int256 i = 1;
+            int256 j = -38 - di;
+            while (true) {
+                // want to see full precision on the THREES regardless of the
+                // scale of the numerator and denominator.
+                checkDivision(i, exponentA, d, exponentB, THREES, exponentA - exponentB + j);
+
+                if (i == 1e76) {
+                    break;
+                }
+
+                i *= 10;
+                ++j;
+            }
+
+            if (d == 3e76) {
+                break;
+            }
+            d *= 10;
+            ++di;
+        }
     }
 }
