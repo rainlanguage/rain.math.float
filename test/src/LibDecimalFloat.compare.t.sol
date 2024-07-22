@@ -1,7 +1,14 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, COMPARE_EQUAL, COMPARE_GREATER_THAN, COMPARE_LESS_THAN, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
+import {
+    LibDecimalFloat,
+    COMPARE_EQUAL,
+    COMPARE_GREATER_THAN,
+    COMPARE_LESS_THAN,
+    EXPONENT_MIN,
+    EXPONENT_MAX
+} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
@@ -25,7 +32,12 @@ contract LibDecimalFloatCompareTest is Test {
     }
 
     /// Anything negative is less than anything positive or 0.
-    function testCompareNegative(int256 signedCoefficientNeg, int256 exponentNeg, int256 signedCoefficientPos, int256 exponentPos) external pure {
+    function testCompareNegative(
+        int256 signedCoefficientNeg,
+        int256 exponentNeg,
+        int256 signedCoefficientPos,
+        int256 exponentPos
+    ) external pure {
         signedCoefficientNeg = bound(signedCoefficientNeg, type(int256).min, -1);
         signedCoefficientPos = bound(signedCoefficientPos, 0, type(int256).max);
         exponentNeg = bound(exponentNeg, EXPONENT_MIN, EXPONENT_MAX);
@@ -36,7 +48,12 @@ contract LibDecimalFloatCompareTest is Test {
     }
 
     /// Reversing the order reverses the outcome.
-    function testCompareReversed(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB) external pure {
+    function testCompareReversed(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external pure {
         exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
         exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
 
@@ -53,7 +70,10 @@ contract LibDecimalFloatCompareTest is Test {
     }
 
     /// The only possible return values are -1, 0, and 1.
-    function testCompareBounds(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB) external pure {
+    function testCompareBounds(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+    {
         exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
         exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
 
@@ -70,7 +90,10 @@ contract LibDecimalFloatCompareTest is Test {
     }
 
     /// Two values with the same exponent are compared by their coefficients.
-    function testCompareSameExponent(int256 signedCoefficientA, int256 signedCoefficientB, int256 exponent) external pure {
+    function testCompareSameExponent(int256 signedCoefficientA, int256 signedCoefficientB, int256 exponent)
+        external
+        pure
+    {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         vm.assume(signedCoefficientA != signedCoefficientB);
 

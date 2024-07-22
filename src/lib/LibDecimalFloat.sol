@@ -601,14 +601,82 @@ library LibDecimalFloat {
         pure
         returns (int256)
     {
-        (int256 signedCoefficient,) = sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        unchecked {
+            // Firstly, if either is negative while the other is not, the latter is greater.
+            bool diffSign;
+            assembly ("memory-safe") {
+                diffSign :=
+                    or(
+                        and(slt(signedCoefficientA, 0), sgt(signedCoefficientB, 0)),
+                        and(sgt(signedCoefficientA, 0), slt(signedCoefficientB, 0))
+                    )
+            }
+            if (diffSign) {
+                return signedCoefficientA < signedCoefficientB ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
+            }
 
-        if (signedCoefficient == 0) {
-            return COMPARE_EQUAL;
-        } else if (signedCoefficient < 0) {
-            return COMPARE_LESS_THAN;
-        } else {
-            return COMPARE_GREATER_THAN;
+            // Zero needs special handling because it defies rescaling logic.
+            bool eitherZero;
+            assembly ("memory-safe") {
+                eitherZero := or(iszero(signedCoefficientA), iszero(signedCoefficientB))
+            }
+            if (eitherZero) {
+                if (signedCoefficientA > signedCoefficientB) {
+                    return COMPARE_GREATER_THAN;
+                } else if (signedCoefficientA < signedCoefficientB) {
+                    return COMPARE_LESS_THAN;
+                } else {
+                    return COMPARE_EQUAL;
+                }
+            }
+
+            // Make sure that signedCoefficientA has the larger exponent.
+            bool didSwap = false;
+            if (exponentB > exponentA) {
+                int256 tmp = signedCoefficientA;
+                signedCoefficientA = signedCoefficientB;
+                signedCoefficientB = tmp;
+
+                tmp = exponentA;
+                exponentA = exponentB;
+                exponentB = tmp;
+
+                didSwap = true;
+            }
+
+            // Almost always we won't overflow by normalizing the exponents in one step.
+            int256 exponentDiff = exponentA - exponentB;
+            if (exponentDiff + exponentB != exponentA) {
+                // We overflowed the diff of the exponents in signed 256 bit space, so we're gazillions of OOMs apart.
+                // The coefficient with the larger exponent is the larger number.
+                // I.e. the current A is larger than B.
+                return didSwap ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
+            }
+
+            if (exponentDiff > 76) {
+                // We didn't overflow but we're still too far apart to compare.
+                // The coefficient with the larger exponent is the larger number.
+                // I.e. the current A is larger than B.
+                return didSwap ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
+            }
+
+            int256 scale = int256(10 ** uint256(exponentDiff));
+            int256 rescaled = signedCoefficientA * scale;
+
+            if (rescaled / scale != signedCoefficientA) {
+                // We overflowed the rescale, so we're too far apart to compare.
+                // The coefficient with the larger exponent is the larger number.
+                // I.e. the current A is larger than B.
+                return didSwap ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
+            } else {
+                if (rescaled < signedCoefficientB) {
+                    return didSwap ? COMPARE_GREATER_THAN : COMPARE_LESS_THAN;
+                } else if (rescaled > signedCoefficientB) {
+                    return didSwap ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
+                } else {
+                    return COMPARE_EQUAL;
+                }
+            }
         }
     }
 
