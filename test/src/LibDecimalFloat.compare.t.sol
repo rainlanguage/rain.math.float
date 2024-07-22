@@ -116,4 +116,24 @@ contract LibDecimalFloatCompareTest is Test {
         int256 compare = LibDecimalFloat.compare(0, exponentZero, signedCoefficient, exponent);
         assertEq(compare, COMPARE_LESS_THAN);
     }
+
+    function testCompareGasDifferentSigns() external pure {
+        LibDecimalFloat.compare(1, 0, -1, 0);
+    }
+
+    function testCompareGasAZero() external pure {
+        LibDecimalFloat.compare(0, 0, 1, 0);
+    }
+
+    function testCompareGasBZero() external pure {
+        LibDecimalFloat.compare(1, 0, 0, 0);
+    }
+
+    function testCompareBothZero() external pure {
+        LibDecimalFloat.compare(0, 0, 0, 0);
+    }
+
+    function testCompareGasExponentDiffOverflow() external pure {
+        LibDecimalFloat.compare(1, type(int256).max, 1, type(int256).min);
+    }
 }
