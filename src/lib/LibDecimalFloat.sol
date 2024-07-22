@@ -601,11 +601,7 @@ library LibDecimalFloat {
         pure
         returns (int256)
     {
-        // We don't support negative zero.
-        (signedCoefficientB, exponentB) = minus(signedCoefficientB, exponentB);
-        // We want the un-normalized result so that rounding doesn't affect the
-        // comparison.
-        (int256 signedCoefficient,) = add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficient,) = sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
         if (signedCoefficient == 0) {
             return COMPARE_EQUAL;
