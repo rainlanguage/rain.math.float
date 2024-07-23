@@ -3,9 +3,25 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 
+import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
+
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatEqTest is Test {
+    function testEqReference(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+    {
+        bool actual = LibDecimalFloat.eq(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        bool expected = LibDecimalFloatSlow.eqSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+
+        assertEq(actual, expected);
+    }
+
+    function testEqNotReverts(int256 x, int256 exponentX, int256 y, int256 exponentY) external pure {
+        LibDecimalFloat.eq(x, exponentX, y, exponentY);
+    }
+
     /// x == x
     function testEqX(int256 x) external pure {
         bool eq = LibDecimalFloat.eq(x, 0, x, 0);
@@ -57,30 +73,22 @@ contract LibDecimalFloatEqTest is Test {
         bool eq = LibDecimalFloat.eq(x, exponentX, y, exponentY);
 
         if (eq) {
-            if (y > x) {
+            if (x == y) {
+                assertTrue(exponentX == exponentY || x == 0);
+            } else if (y > x) {
                 assertTrue(exponentY < exponentX, "y > x but exponentY >= exponentX");
                 assertTrue(exponentX - exponentY < 77, "y > x but exponentX - exponentY >= 77");
                 assertEq(x / y, int256(10 ** uint256(exponentX - exponentY)), "y > x but x / y != 10^(X - Y)");
                 assertEq(x % y, 0, "y > x but x % y != 0");
-            } else if (x < y) {
+            } else {
                 assertTrue(exponentX < exponentY, "x < y but exponentX >= exponentY");
                 assertTrue(exponentY - exponentX < 77, "x < y but exponentY - exponentX >= 77");
                 assertEq(y / x, int256(10 ** uint256(exponentY - exponentX)), "x < y but y / x != 10^(Y - X)");
                 assertEq(y % x, 0, "x < y but y % x != 0");
-            } else {
-                assertEq(x, y);
-                assertTrue(exponentX == exponentY || x == 0);
             }
         } else {
             if (x == y) {
                 assertTrue(exponentX != exponentY);
-                if (exponentX < exponentY && exponentY - exponentX < 77) {
-                    assertTrue(x / y != int256(10 ** uint256(exponentX - exponentY)));
-                    assertTrue(x % y != 0);
-                } else if (exponentY < exponentX && exponentX - exponentY < 77) {
-                    assertTrue(y / x != int256(10 ** uint256(exponentY - exponentX)));
-                    assertTrue(y % x != 0);
-                }
             }
         }
     }
