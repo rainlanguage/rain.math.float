@@ -568,6 +568,19 @@ library LibDecimalFloat {
         return (signedCoefficient, exponent);
     }
 
+    /// Numeric equality for floats.
+    /// Two floats are equal if their numeric value is equal.
+    /// For example, 1e2, 10e1, and 100e0 are all equal. Also implies that 0eX
+    /// and 0eY are equal for all X and Y.
+    /// Any representable value can be equality checked without precision loss,
+    /// e.g. no normalization is done internally.
+    /// @param signedCoefficientA The signed coefficient of the first floating
+    /// point number.
+    /// @param exponentA The exponent of the first floating point number.
+    /// @param signedCoefficientB The signed coefficient of the second floating
+    /// point number.
+    /// @param exponentB The exponent of the second floating point number.
+    /// @return `true` if the two floats are equal, `false` otherwise.
     function eq(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -579,6 +592,19 @@ library LibDecimalFloat {
         return signedCoefficientA == signedCoefficientB;
     }
 
+    /// Numeric less than for floats.
+    /// A float is less than another if its numeric value is less than the other.
+    /// For example, 1e2 is less than 1e3, and 1e2 is less than 2e2.
+    /// Any representable value can be compared without precision loss, e.g. no
+    /// normalization is done internally.
+    /// @param signedCoefficientA The signed coefficient of the first floating
+    /// point number.
+    /// @param exponentA The exponent of the first floating point number.
+    /// @param signedCoefficientB The signed coefficient of the second floating
+    /// point number.
+    /// @param exponentB The exponent of the second floating point number.
+    /// @return `true` if the first float is less than the second, `false`
+    /// otherwise.
     function lt(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -590,6 +616,19 @@ library LibDecimalFloat {
         return signedCoefficientA < signedCoefficientB;
     }
 
+    /// Numeric greater than for floats.
+    /// A float is greater than another if its numeric value is greater than the
+    /// other. For example, 1e3 is greater than 1e2, and 2e2 is greater than 1e2.
+    /// Any representable value can be compared without precision loss, e.g. no
+    /// normalization is done internally.
+    /// @param signedCoefficientA The signed coefficient of the first floating
+    /// point number.
+    /// @param exponentA The exponent of the first floating point number.
+    /// @param signedCoefficientB The signed coefficient of the second floating
+    /// point number.
+    /// @param exponentB The exponent of the second floating point number.
+    /// @return `true` if the first float is greater than the second, `false`
+    /// otherwise.
     function gt(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
