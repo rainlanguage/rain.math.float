@@ -100,4 +100,90 @@ library LibDecimalFloatImplementation {
             return (signedCoefficient, exponent);
         }
     }
+
+    /// Rescale two floats so that they are possible to directly compare using
+    /// standard operators on the signed coefficient.
+    ///
+    /// This works by taking the number with the larger exponent and raising it
+    /// to the power of 10^(largerExponent - smallerExponent), then reducing its
+    /// float exponent by the diff. This gives both floats the same exponent,
+    /// which makes their signed coefficients directly comparable.
+    ///
+    /// In the case that rescaling causes an overflow, this means that the
+    /// rescaled number is larger than the unscaled number. We cannot directly
+    /// return the rescaled number, so instead we return 1, 0 for the larger and
+    /// 0, 0 for the smaller. This way, comparisons can still be done at all
+    /// scales.
+    function compareRescale(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (int256, int256)
+    {
+        unchecked {
+            // There are special cases where the signed coefficients can be
+            // compared directly, ignoring their exponents, without rescaling:
+            // - Either is zero
+            // - They have different signs
+            // - Their exponents are equal
+            {
+                bool noopRescale;
+                assembly ("memory-safe") {
+                    noopRescale :=
+                        or(
+                            or(
+                                // Either is zero
+                                or(iszero(signedCoefficientA), iszero(signedCoefficientB)),
+                                // They have different signs
+                                xor(slt(signedCoefficientA, 0), slt(signedCoefficientB, 0))
+                            ),
+                            // Their exponents are equal
+                            eq(exponentA, exponentB)
+                        )
+                }
+                if (noopRescale) {
+                    return (signedCoefficientA, signedCoefficientB);
+                }
+            }
+
+            bool didSwap = false;
+            if (exponentB > exponentA) {
+                int256 tmp = signedCoefficientA;
+                signedCoefficientA = signedCoefficientB;
+                signedCoefficientB = tmp;
+
+                tmp = exponentA;
+                exponentA = exponentB;
+                exponentB = tmp;
+
+                didSwap = true;
+            }
+
+            int256 exponentDiff = exponentA - exponentB;
+            bool didOverflow;
+            assembly ("memory-safe") {
+                didOverflow := or(slt(exponentDiff, 0), sgt(exponentDiff, 76))
+            }
+            if (didOverflow) {
+                if (didSwap) {
+                    return (0, 1);
+                } else {
+                    return (1, 0);
+                }
+            }
+            int256 scale = int256(10 ** uint256(exponentDiff));
+            int256 rescaled = signedCoefficientA * scale;
+
+            if (rescaled / scale != signedCoefficientA) {
+                if (didSwap) {
+                    return (0, 1);
+                } else {
+                    return (1, 0);
+                }
+            } else if (didSwap) {
+                return (signedCoefficientB, rescaled);
+            } else {
+                return (rescaled, signedCoefficientB);
+            }
+        }
+    }
 }

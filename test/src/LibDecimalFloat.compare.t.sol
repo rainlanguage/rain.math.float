@@ -134,11 +134,15 @@ contract LibDecimalFloatCompareTest is Test {
         vm.assume(signedCoefficientA != 0);
         vm.assume(signedCoefficientB != 0);
 
-        int256 compare = LibDecimalFloat.compare(signedCoefficientA, type(int256).max, signedCoefficientB, type(int256).min);
+        int256 compare =
+            LibDecimalFloat.compare(signedCoefficientA, type(int256).max, signedCoefficientB, type(int256).min);
         assertEq(compare, COMPARE_GREATER_THAN);
     }
 
-    function testNeverRevert(int256 signedCoeffficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB) external pure {
+    function testNeverRevert(int256 signedCoeffficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+    {
         LibDecimalFloat.compare(signedCoeffficientA, exponentA, signedCoefficientB, exponentB);
     }
 }

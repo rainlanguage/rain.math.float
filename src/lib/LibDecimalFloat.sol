@@ -575,103 +575,37 @@ library LibDecimalFloat {
         return (signedCoefficient, exponent);
     }
 
-    function compareRescale(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB) internal pure returns (bool, bool, int256, int256, int256, int256) {
-        unchecked {
-            bool didSwap = false;
-        if (exponentB > exponentA) {
-            int256 tmp = signedCoefficientA;
-            signedCoefficientA = signedCoefficientB;
-            signedCoefficientB = tmp;
-
-            tmp = exponentA;
-            exponentA = exponentB;
-            exponentB = tmp;
-
-            didSwap = true;
-        }
-
-        int256 exponentDiff = exponentA - exponentB;
-        bool didOverflow;
-        assembly ("memory-safe") {
-            didOverflow := or(slt(exponentDiff, 0), sgt(exponentDiff, 76))
-        }
-        if (didOverflow) {
-            return (didOverflow, didSwap, 0, 0, 0, 0);
-        }
-        int256 scale = int256(10 ** uint256(exponentDiff));
-        int256 rescaled = signedCoefficientA * scale;
-
-        if (rescaled / scale != signedCoefficientA) {
-            return (true, didSwap, 0, 0, 0, 0);
-        }
-        else {
-            return (false, didSwap, rescaled, exponentA - exponentDiff, signedCoefficientB, exponentB);
-        }
-        }
-    }
-
-    function equal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB) internal pure returns (bool) {
-        // Trivially true if both coefficient and exponent are the same.
-        bool trivialTrue;
-        assembly ("memory-safe") {
-            trivialTrue := and(eq(signedCoefficientA, signedCoefficientB), eq(exponentA, exponentB))
-        }
-        if (trivialTrue) {
-            return true;
-        }
-
-        // Handle zeros that don't rescale well.
-        if (signedCoefficientA == 0 || signedCoefficientB == 0) {
-            return signedCoefficientA == signedCoefficientB;
-        }
-
-        bool didOverflow;
-        bool didSwap;
-        (didOverflow, didSwap, signedCoefficientA, exponentA, signedCoefficientB, exponentB) = compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-
-        if (didOverflow) {
-            return false;
-        }
+    function equal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
         return signedCoefficientA == signedCoefficientB;
     }
 
-    function lt(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB) internal pure returns (bool) {
-        bool straightLt;
-        // If either coefficients are 0 then do straight lt.
-        assembly ("memory-safe") {
-            straightLt := or(iszero(signedCoefficientA), iszero(signedCoefficientB))
-        }
-        if (straightLt) {
-            return signedCoefficientA < signedCoefficientB;
-        }
+    function lt(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-        // If the exponents are the same or the signs of the coefficients differ then lt is just a normal lt on the coefficients.
-        assembly ("memory-safe") {
-            straightLt := or(
-                slt(sdiv(signedCoefficientA, signedCoefficientB), 0),
-                slt(sdiv(signedCoefficientB, signedCoefficientA), 0)
-            )
-        }
+        return signedCoefficientA < signedCoefficientB;
+    }
 
-        if (straightLt) {
-            return signedCoefficientA < signedCoefficientB;
-        }
+    function gt(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-        bool didOverflow;
-        bool didSwap;
-        (didOverflow, didSwap, signedCoefficientA, exponentA, signedCoefficientB, exponentB) = compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-
-        if (didOverflow) {
-            return !didSwap;
-        }
-
-        if (didSwap) {
-            return signedCoefficientB < signedCoefficientA;
-        }
-        else {
-            return signedCoefficientA < signedCoefficientB;
-        }
+        return signedCoefficientA > signedCoefficientB;
     }
 
     /// https://speleotrove.com/decimal/daops.html#refnumco
