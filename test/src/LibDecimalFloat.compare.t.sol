@@ -40,8 +40,6 @@ contract LibDecimalFloatCompareTest is Test {
     ) external pure {
         signedCoefficientNeg = bound(signedCoefficientNeg, type(int256).min, -1);
         signedCoefficientPos = bound(signedCoefficientPos, 0, type(int256).max);
-        exponentNeg = bound(exponentNeg, EXPONENT_MIN, EXPONENT_MAX);
-        exponentPos = bound(exponentPos, EXPONENT_MIN, EXPONENT_MAX);
 
         int256 compare = LibDecimalFloat.compare(signedCoefficientNeg, exponentNeg, signedCoefficientPos, exponentPos);
         assertEq(compare, COMPARE_LESS_THAN);
@@ -54,9 +52,6 @@ contract LibDecimalFloatCompareTest is Test {
         int256 signedCoefficientB,
         int256 exponentB
     ) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
-        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
-
         int256 compare0 = LibDecimalFloat.compare(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         int256 compare1 = LibDecimalFloat.compare(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
 
@@ -74,17 +69,12 @@ contract LibDecimalFloatCompareTest is Test {
         external
         pure
     {
-        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
-        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
-
         int256 compare = LibDecimalFloat.compare(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assert(compare == COMPARE_LESS_THAN || compare == COMPARE_EQUAL || compare == COMPARE_GREATER_THAN);
     }
 
     /// Comparing something to itself is always equal.
     function testCompareSelf(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
-
         int256 compare = LibDecimalFloat.compare(signedCoefficient, exponent, signedCoefficient, exponent);
         assertEq(compare, COMPARE_EQUAL);
     }
@@ -94,7 +84,6 @@ contract LibDecimalFloatCompareTest is Test {
         external
         pure
     {
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         vm.assume(signedCoefficientA != signedCoefficientB);
 
         int256 compare = LibDecimalFloat.compare(signedCoefficientA, exponent, signedCoefficientB, exponent);
@@ -110,8 +99,6 @@ contract LibDecimalFloatCompareTest is Test {
     /// Anything 0 is always less than anything positive.
     function testCompareZero(int256 signedCoefficient, int256 exponent, int256 exponentZero) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
-        exponentZero = bound(exponentZero, EXPONENT_MIN, EXPONENT_MAX);
 
         int256 compare = LibDecimalFloat.compare(0, exponentZero, signedCoefficient, exponent);
         assertEq(compare, COMPARE_LESS_THAN);
@@ -135,5 +122,23 @@ contract LibDecimalFloatCompareTest is Test {
 
     function testCompareGasExponentDiffOverflow() external pure {
         LibDecimalFloat.compare(1, type(int256).max, 1, type(int256).min);
+    }
+
+    function testCompareExponentDiffOverflowMax(int256 signedCoefficientA, int256 signedCoefficientB) external pure {
+        if (signedCoefficientA < 0) {
+            vm.assume(signedCoefficientB < 0);
+        }
+        if (signedCoefficientA > 0) {
+            vm.assume(signedCoefficientB > 0);
+        }
+        vm.assume(signedCoefficientA != 0);
+        vm.assume(signedCoefficientB != 0);
+
+        int256 compare = LibDecimalFloat.compare(signedCoefficientA, type(int256).max, signedCoefficientB, type(int256).min);
+        assertEq(compare, COMPARE_GREATER_THAN);
+    }
+
+    function testNeverRevert(int256 signedCoeffficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB) external pure {
+        LibDecimalFloat.compare(signedCoeffficientA, exponentA, signedCoefficientB, exponentB);
     }
 }
