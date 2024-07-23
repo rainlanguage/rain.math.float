@@ -22,13 +22,6 @@ import {
     EXPONENT_STEP_SIZE
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
-/// @dev Returned by `compare` when the first operand is less than the second.
-int256 constant COMPARE_LESS_THAN = -1;
-/// @dev Returned by `compare` when the operands are equal.
-int256 constant COMPARE_EQUAL = 0;
-/// @dev Returned by `compare` when the first operand is greater than the second.
-int256 constant COMPARE_GREATER_THAN = 1;
-
 uint256 constant ADD_MAX_EXPONENT_DIFF = 37;
 
 /// @dev When normalizing a number, how far we "leap" when very far from
@@ -575,7 +568,7 @@ library LibDecimalFloat {
         return (signedCoefficient, exponent);
     }
 
-    function equal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    function eq(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
         returns (bool)
@@ -606,104 +599,6 @@ library LibDecimalFloat {
             LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
         return signedCoefficientA > signedCoefficientB;
-    }
-
-    /// https://speleotrove.com/decimal/daops.html#refnumco
-    /// > compare takes two operands and compares their values numerically. If
-    /// > either operand is a special value then the general rules apply. No
-    /// > flags are set unless an operand is a signaling NaN.
-    /// >
-    /// > Otherwise, the operands are compared as follows.
-    /// >
-    /// > If the signs of the operands differ, a value representing each operand
-    /// > (’-1’ if the operand is less than zero, ’0’ if the operand is zero or
-    /// > negative zero, or ’1’ if the operand is greater than zero) is used in
-    /// > place of that operand for the comparison instead of the actual operand.
-    /// >
-    /// > The comparison is then effected by subtracting the second operand from
-    /// > the first and then returning a value according to the result of the
-    /// > subtraction: ’-1’ if the result is less than zero, ’0’ if the result is
-    /// > zero or negative zero, or ’1’ if the result is greater than zero.
-    /// >
-    /// > An implementation may use this operation ‘under the covers’ to
-    /// > implement a closed set of comparison operations
-    /// > (greater than, equal,etc.) if desired. It need not, in this case,
-    /// > expose the compare operation itself.
-    function compare(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
-        internal
-        pure
-        returns (int256)
-    {
-        unchecked {
-            // Firstly, if either is negative while the other is not, the latter is greater.
-            bool diffSign;
-            assembly ("memory-safe") {
-                diffSign :=
-                    or(
-                        and(slt(signedCoefficientA, 0), sgt(signedCoefficientB, 0)),
-                        and(sgt(signedCoefficientA, 0), slt(signedCoefficientB, 0))
-                    )
-            }
-            if (diffSign) {
-                return signedCoefficientA < signedCoefficientB ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
-            }
-
-            // Zero needs special handling because it defies rescaling logic.
-            bool eitherZero;
-            assembly ("memory-safe") {
-                eitherZero := or(iszero(signedCoefficientA), iszero(signedCoefficientB))
-            }
-            if (eitherZero) {
-                if (signedCoefficientA > signedCoefficientB) {
-                    return COMPARE_GREATER_THAN;
-                } else if (signedCoefficientA < signedCoefficientB) {
-                    return COMPARE_LESS_THAN;
-                } else {
-                    return COMPARE_EQUAL;
-                }
-            }
-
-            // Make sure that signedCoefficientA has the larger exponent.
-            bool didSwap = false;
-            if (exponentB > exponentA) {
-                int256 tmp = signedCoefficientA;
-                signedCoefficientA = signedCoefficientB;
-                signedCoefficientB = tmp;
-
-                tmp = exponentA;
-                exponentA = exponentB;
-                exponentB = tmp;
-
-                didSwap = true;
-            }
-
-            // Almost always we won't overflow by normalizing the exponents in one step.
-            int256 exponentDiff = exponentA - exponentB;
-            if (exponentDiff < 0 || exponentDiff > 76) {
-                // Our exponentDiff is overflowing what we can handle.
-                // The coefficient with the larger exponent is the larger number.
-                // I.e. the current A is larger than B.
-                return didSwap ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
-            }
-
-            int256 scale = int256(10 ** uint256(exponentDiff));
-            int256 rescaled = signedCoefficientA * scale;
-
-            if (rescaled / scale != signedCoefficientA) {
-                // We overflowed the rescale, so we're too far apart to compare.
-                // The coefficient with the larger exponent is the larger number.
-                // I.e. the current A is larger than B.
-                return didSwap ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
-            } else {
-                if (rescaled < signedCoefficientB) {
-                    return didSwap ? COMPARE_GREATER_THAN : COMPARE_LESS_THAN;
-                } else if (rescaled > signedCoefficientB) {
-                    return didSwap ? COMPARE_LESS_THAN : COMPARE_GREATER_THAN;
-                } else {
-                    return COMPARE_EQUAL;
-                }
-            }
-        }
     }
 
     /// a^b = 10^(b * log10(a))

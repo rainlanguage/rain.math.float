@@ -104,16 +104,31 @@ library LibDecimalFloatImplementation {
     /// Rescale two floats so that they are possible to directly compare using
     /// standard operators on the signed coefficient.
     ///
-    /// This works by taking the number with the larger exponent and raising it
-    /// to the power of 10^(largerExponent - smallerExponent), then reducing its
-    /// float exponent by the diff. This gives both floats the same exponent,
-    /// which makes their signed coefficients directly comparable.
+    /// There is no guarantee that the returned values somehow represent the
+    /// input values. The only guarantee is that comparing them directly will
+    /// give the same result as comparing the inputs as floats.
     ///
-    /// In the case that rescaling causes an overflow, this means that the
-    /// rescaled number is larger than the unscaled number. We cannot directly
-    /// return the rescaled number, so instead we return 1, 0 for the larger and
-    /// 0, 0 for the smaller. This way, comparisons can still be done at all
-    /// scales.
+    /// https://speleotrove.com/decimal/daops.html#refnumco
+    /// > compare takes two operands and compares their values numerically. If
+    /// > either operand is a special value then the general rules apply. No
+    /// > flags are set unless an operand is a signaling NaN.
+    /// >
+    /// > Otherwise, the operands are compared as follows.
+    /// >
+    /// > If the signs of the operands differ, a value representing each operand
+    /// > (’-1’ if the operand is less than zero, ’0’ if the operand is zero or
+    /// > negative zero, or ’1’ if the operand is greater than zero) is used in
+    /// > place of that operand for the comparison instead of the actual operand.
+    /// >
+    /// > The comparison is then effected by subtracting the second operand from
+    /// > the first and then returning a value according to the result of the
+    /// > subtraction: ’-1’ if the result is less than zero, ’0’ if the result is
+    /// > zero or negative zero, or ’1’ if the result is greater than zero.
+    /// >
+    /// > An implementation may use this operation ‘under the covers’ to
+    /// > implement a closed set of comparison operations
+    /// > (greater than, equal,etc.) if desired. It need not, in this case,
+    /// > expose the compare operation itself.
     function compareRescale(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -165,9 +180,9 @@ library LibDecimalFloatImplementation {
             }
             if (didOverflow) {
                 if (didSwap) {
-                    return (0, 1);
+                    return (0, signedCoefficientA);
                 } else {
-                    return (1, 0);
+                    return (signedCoefficientA, 0);
                 }
             }
             int256 scale = int256(10 ** uint256(exponentDiff));
@@ -175,9 +190,9 @@ library LibDecimalFloatImplementation {
 
             if (rescaled / scale != signedCoefficientA) {
                 if (didSwap) {
-                    return (0, 1);
+                    return (0, signedCoefficientA);
                 } else {
-                    return (1, 0);
+                    return (signedCoefficientA, 0);
                 }
             } else if (didSwap) {
                 return (signedCoefficientB, rescaled);

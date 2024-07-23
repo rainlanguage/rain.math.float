@@ -1,13 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {
-    LibDecimalFloat,
-    COMPARE_EQUAL,
-    EXPONENT_MIN,
-    EXPONENT_MAX,
-    ADD_MAX_EXPONENT_DIFF
-} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX, ADD_MAX_EXPONENT_DIFF} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std/Test.sol";

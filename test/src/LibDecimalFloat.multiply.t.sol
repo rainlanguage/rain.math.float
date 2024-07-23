@@ -2,10 +2,7 @@
 pragma solidity =0.8.25;
 
 import {
-    LibDecimalFloat,
-    COMPARE_EQUAL,
-    NORMALIZED_ZERO_SIGNED_COEFFICIENT,
-    NORMALIZED_ZERO_EXPONENT
+    LibDecimalFloat, NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT
 } from "src/lib/LibDecimalFloat.sol";
 import {
     EXPONENT_MIN,
