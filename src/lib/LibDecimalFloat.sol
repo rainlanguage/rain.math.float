@@ -640,6 +640,13 @@ library LibDecimalFloat {
         return signedCoefficientA > signedCoefficientB;
     }
 
+    /// Fractional component of a float.
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the fractional
+    /// component.
+    /// @return exponent The exponent of the fractional component.
     function frac(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
             // if exponent is not negative the frac is 0
