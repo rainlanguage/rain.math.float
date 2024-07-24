@@ -4,7 +4,6 @@ pragma solidity ^0.8.25;
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 
-import {console2} from "forge-std/Test.sol";
 
 library LibDecimalFloatSlow {
     function multiplySlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
