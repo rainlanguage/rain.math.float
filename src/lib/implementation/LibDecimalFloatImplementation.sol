@@ -2,6 +2,14 @@
 pragma solidity ^0.8.25;
 
 import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
+import {
+    LOG_TABLES,
+    LOG_TABLES_SMALL,
+    LOG_TABLES_SMALL_ALT,
+    ANTI_LOG_TABLES,
+    ANTI_LOG_TABLES_SMALL
+} from "../../generated/LogTables.pointers.sol";
+import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
 /// @dev The minimum exponent that can be normalized.
 /// This is crazy small, so should never be a problem for any real use case.
@@ -200,5 +208,83 @@ library LibDecimalFloatImplementation {
                 return (rescaled, signedCoefficientB);
             }
         }
+    }
+
+    /// Sets the coefficient so that exponent is -37. Truncates the coefficient
+    /// if shrinking, will error on overflow.
+    /// MAY produce UNNORMALIZED output.
+    function withTargetExponent(int256 signedCoefficient, int256 exponent, int256 targetExponent)
+        internal
+        pure
+        returns (int256)
+    {
+        if (exponent == targetExponent) {
+            return signedCoefficient;
+        } else if (exponent < targetExponent) {
+            return signedCoefficient / int256(10 ** uint256(targetExponent - exponent));
+        } else {
+            return signedCoefficient * int256(10 ** uint256(exponent - targetExponent));
+        }
+    }
+
+    function lookupAntilogTableY1Y2(uint256 idx) internal pure returns (int256 y1Coefficient, int256 y2Coefficient) {
+        bytes memory table = ANTI_LOG_TABLES;
+        bytes memory tableSmall = ANTI_LOG_TABLES_SMALL;
+        assembly ("memory-safe") {
+            function lookupTableVal(mainTable, smallTable, index) -> result {
+                let mainIndex := div(index, 10)
+
+                let mainTableVal := and(mload(add(mainTable, mul(2, add(mainIndex, 1)))), 0xFFFF)
+
+                // Slither false positive because the truncation is deliberate
+                // here.
+                //slither-disable-next-line divide-before-multiply
+                let smallTableOffset := add(1, mul(div(index, 100), 10))
+                let smallTableVal := byte(31, mload(add(smallTable, add(mod(index, 10), smallTableOffset))))
+
+                result := add(mainTableVal, smallTableVal)
+            }
+
+            y1Coefficient := lookupTableVal(table, tableSmall, idx)
+            y2Coefficient := lookupTableVal(table, tableSmall, add(idx, 1))
+        }
+    }
+
+    // Linear interpolation.
+    // y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
+    function unitLinearInterpolation(
+        int256 xCoefficient,
+        int256 x1Coefficient,
+        int256 xExponent,
+        int256 xUnitExponent,
+        int256 y1Coefficient,
+        int256 y2Coefficient,
+        int256 yExponent
+    ) internal pure returns (int256, int256) {
+        int256 numeratorSignedCoefficient;
+        int256 numeratorExponent;
+
+        {
+            // x - x1
+            (int256 xDiffCoefficient, int256 xDiffExponent) =
+                LibDecimalFloat.sub(xCoefficient, xExponent, x1Coefficient, xExponent);
+
+            // y2 - y1
+            (int256 yDiffCoefficient, int256 yDiffExponent) =
+                LibDecimalFloat.sub(y2Coefficient, yExponent, y1Coefficient, yExponent);
+
+            // (x - x1) * (y2 - y1)
+            (numeratorSignedCoefficient, numeratorExponent) =
+                LibDecimalFloat.multiply(xDiffCoefficient, xDiffExponent, yDiffCoefficient, yDiffExponent);
+        }
+
+        // Diff between x2 and x1 is always 1 unit.
+        (int256 yMarginalSignedCoefficient, int256 yMarginalExponent) =
+            LibDecimalFloat.divide(numeratorSignedCoefficient, numeratorExponent, 1e37, xUnitExponent);
+
+        // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloat.add(yMarginalSignedCoefficient, yMarginalExponent, y1Coefficient, yExponent);
+        return (signedCoefficient, exponent);
     }
 }
