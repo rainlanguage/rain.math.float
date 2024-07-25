@@ -63,4 +63,8 @@ contract LibDecimalFloatPower10Test is Test {
         // 10^1234.56789
         checkPower10(123456789, -5, 36979e37, 1193);
     }
+
+    function testNoRevert(int256 x, int256 exponent) external view {
+        LibDecimalFloat.power10(x, exponent);
+    }
 }

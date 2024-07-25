@@ -11,6 +11,8 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
+error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
+
 /// @dev The minimum exponent that can be normalized.
 /// This is crazy small, so should never be a problem for any real use case.
 /// We need it to guard against overflow when normalizing.
@@ -211,19 +213,38 @@ library LibDecimalFloatImplementation {
     }
 
     /// Sets the coefficient so that exponent is -37. Truncates the coefficient
-    /// if shrinking, will error on overflow.
-    /// MAY produce UNNORMALIZED output.
+    /// if shrinking, will error on overflow when growing.
+    /// @param signedCoefficient The signed coefficient.
+    /// @param exponent The exponent.
+    /// @param targetExponent The target exponent.
+    /// @return The new signed coefficient.
     function withTargetExponent(int256 signedCoefficient, int256 exponent, int256 targetExponent)
         internal
         pure
         returns (int256)
     {
-        if (exponent == targetExponent) {
-            return signedCoefficient;
-        } else if (exponent < targetExponent) {
-            return signedCoefficient / int256(10 ** uint256(targetExponent - exponent));
-        } else {
-            return signedCoefficient * int256(10 ** uint256(exponent - targetExponent));
+        unchecked {
+            if (exponent == targetExponent) {
+                return signedCoefficient;
+            } else if (targetExponent > exponent) {
+                int256 exponentDiff = targetExponent - exponent;
+                if (exponentDiff > 76 || exponentDiff < 0) {
+                    return (NORMALIZED_ZERO_SIGNED_COEFFICIENT);
+                }
+
+                return signedCoefficient / int256(10 ** uint256(exponentDiff));
+            } else {
+                int256 exponentDiff = exponent - targetExponent;
+                if (exponentDiff > 76 || exponentDiff < 0) {
+                    revert WithTargetExponentOverflow(signedCoefficient, exponent, targetExponent);
+                }
+                int256 scale = int256(10 ** uint256(exponentDiff));
+                int256 rescaled = signedCoefficient * scale;
+                if (rescaled / scale != signedCoefficient) {
+                    revert WithTargetExponentOverflow(signedCoefficient, exponent, targetExponent);
+                }
+                return rescaled;
+            }
         }
     }
 
