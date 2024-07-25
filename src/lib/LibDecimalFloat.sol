@@ -22,13 +22,6 @@ import {
     EXPONENT_STEP_SIZE
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
-/// @dev Returned by `compare` when the first operand is less than the second.
-int256 constant COMPARE_LESS_THAN = -1;
-/// @dev Returned by `compare` when the operands are equal.
-int256 constant COMPARE_EQUAL = 0;
-/// @dev Returned by `compare` when the first operand is greater than the second.
-int256 constant COMPARE_GREATER_THAN = 1;
-
 uint256 constant ADD_MAX_EXPONENT_DIFF = 37;
 
 /// @dev When normalizing a number, how far we "leap" when very far from
@@ -575,45 +568,76 @@ library LibDecimalFloat {
         return (signedCoefficient, exponent);
     }
 
-    /// https://speleotrove.com/decimal/daops.html#refnumco
-    /// > compare takes two operands and compares their values numerically. If
-    /// > either operand is a special value then the general rules apply. No
-    /// > flags are set unless an operand is a signaling NaN.
-    /// >
-    /// > Otherwise, the operands are compared as follows.
-    /// >
-    /// > If the signs of the operands differ, a value representing each operand
-    /// > (’-1’ if the operand is less than zero, ’0’ if the operand is zero or
-    /// > negative zero, or ’1’ if the operand is greater than zero) is used in
-    /// > place of that operand for the comparison instead of the actual operand.
-    /// >
-    /// > The comparison is then effected by subtracting the second operand from
-    /// > the first and then returning a value according to the result of the
-    /// > subtraction: ’-1’ if the result is less than zero, ’0’ if the result is
-    /// > zero or negative zero, or ’1’ if the result is greater than zero.
-    /// >
-    /// > An implementation may use this operation ‘under the covers’ to
-    /// > implement a closed set of comparison operations
-    /// > (greater than, equal,etc.) if desired. It need not, in this case,
-    /// > expose the compare operation itself.
-    function compare(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    /// Numeric equality for floats.
+    /// Two floats are equal if their numeric value is equal.
+    /// For example, 1e2, 10e1, and 100e0 are all equal. Also implies that 0eX
+    /// and 0eY are equal for all X and Y.
+    /// Any representable value can be equality checked without precision loss,
+    /// e.g. no normalization is done internally.
+    /// @param signedCoefficientA The signed coefficient of the first floating
+    /// point number.
+    /// @param exponentA The exponent of the first floating point number.
+    /// @param signedCoefficientB The signed coefficient of the second floating
+    /// point number.
+    /// @param exponentB The exponent of the second floating point number.
+    /// @return `true` if the two floats are equal, `false` otherwise.
+    function eq(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
-        returns (int256)
+        returns (bool)
     {
-        // We don't support negative zero.
-        (signedCoefficientB, exponentB) = minus(signedCoefficientB, exponentB);
-        // We want the un-normalized result so that rounding doesn't affect the
-        // comparison.
-        (int256 signedCoefficient,) = add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-        if (signedCoefficient == 0) {
-            return COMPARE_EQUAL;
-        } else if (signedCoefficient < 0) {
-            return COMPARE_LESS_THAN;
-        } else {
-            return COMPARE_GREATER_THAN;
-        }
+        return signedCoefficientA == signedCoefficientB;
+    }
+
+    /// Numeric less than for floats.
+    /// A float is less than another if its numeric value is less than the other.
+    /// For example, 1e2 is less than 1e3, and 1e2 is less than 2e2.
+    /// Any representable value can be compared without precision loss, e.g. no
+    /// normalization is done internally.
+    /// @param signedCoefficientA The signed coefficient of the first floating
+    /// point number.
+    /// @param exponentA The exponent of the first floating point number.
+    /// @param signedCoefficientB The signed coefficient of the second floating
+    /// point number.
+    /// @param exponentB The exponent of the second floating point number.
+    /// @return `true` if the first float is less than the second, `false`
+    /// otherwise.
+    function lt(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+
+        return signedCoefficientA < signedCoefficientB;
+    }
+
+    /// Numeric greater than for floats.
+    /// A float is greater than another if its numeric value is greater than the
+    /// other. For example, 1e3 is greater than 1e2, and 2e2 is greater than 1e2.
+    /// Any representable value can be compared without precision loss, e.g. no
+    /// normalization is done internally.
+    /// @param signedCoefficientA The signed coefficient of the first floating
+    /// point number.
+    /// @param exponentA The exponent of the first floating point number.
+    /// @param signedCoefficientB The signed coefficient of the second floating
+    /// point number.
+    /// @param exponentB The exponent of the second floating point number.
+    /// @return `true` if the first float is greater than the second, `false`
+    /// otherwise.
+    function gt(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+
+        return signedCoefficientA > signedCoefficientB;
     }
 
     /// a^b = 10^(b * log10(a))

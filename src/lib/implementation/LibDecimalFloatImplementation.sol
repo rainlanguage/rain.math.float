@@ -100,4 +100,105 @@ library LibDecimalFloatImplementation {
             return (signedCoefficient, exponent);
         }
     }
+
+    /// Rescale two floats so that they are possible to directly compare using
+    /// standard operators on the signed coefficient.
+    ///
+    /// There is no guarantee that the returned values somehow represent the
+    /// input values. The only guarantee is that comparing them directly will
+    /// give the same result as comparing the inputs as floats.
+    ///
+    /// https://speleotrove.com/decimal/daops.html#refnumco
+    /// > compare takes two operands and compares their values numerically. If
+    /// > either operand is a special value then the general rules apply. No
+    /// > flags are set unless an operand is a signaling NaN.
+    /// >
+    /// > Otherwise, the operands are compared as follows.
+    /// >
+    /// > If the signs of the operands differ, a value representing each operand
+    /// > (’-1’ if the operand is less than zero, ’0’ if the operand is zero or
+    /// > negative zero, or ’1’ if the operand is greater than zero) is used in
+    /// > place of that operand for the comparison instead of the actual operand.
+    /// >
+    /// > The comparison is then effected by subtracting the second operand from
+    /// > the first and then returning a value according to the result of the
+    /// > subtraction: ’-1’ if the result is less than zero, ’0’ if the result is
+    /// > zero or negative zero, or ’1’ if the result is greater than zero.
+    /// >
+    /// > An implementation may use this operation ‘under the covers’ to
+    /// > implement a closed set of comparison operations
+    /// > (greater than, equal,etc.) if desired. It need not, in this case,
+    /// > expose the compare operation itself.
+    function compareRescale(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (int256, int256)
+    {
+        unchecked {
+            // There are special cases where the signed coefficients can be
+            // compared directly, ignoring their exponents, without rescaling:
+            // - Either is zero
+            // - They have different signs
+            // - Their exponents are equal
+            {
+                bool noopRescale;
+                assembly ("memory-safe") {
+                    noopRescale :=
+                        or(
+                            or(
+                                // Either is zero
+                                or(iszero(signedCoefficientA), iszero(signedCoefficientB)),
+                                // They have different signs
+                                xor(slt(signedCoefficientA, 0), slt(signedCoefficientB, 0))
+                            ),
+                            // Their exponents are equal
+                            eq(exponentA, exponentB)
+                        )
+                }
+                if (noopRescale) {
+                    return (signedCoefficientA, signedCoefficientB);
+                }
+            }
+
+            bool didSwap = false;
+            if (exponentB > exponentA) {
+                int256 tmp = signedCoefficientA;
+                signedCoefficientA = signedCoefficientB;
+                signedCoefficientB = tmp;
+
+                tmp = exponentA;
+                exponentA = exponentB;
+                exponentB = tmp;
+
+                didSwap = true;
+            }
+
+            int256 exponentDiff = exponentA - exponentB;
+            bool didOverflow;
+            assembly ("memory-safe") {
+                didOverflow := or(slt(exponentDiff, 0), sgt(exponentDiff, 76))
+            }
+            if (didOverflow) {
+                if (didSwap) {
+                    return (0, signedCoefficientA);
+                } else {
+                    return (signedCoefficientA, 0);
+                }
+            }
+            int256 scale = int256(10 ** uint256(exponentDiff));
+            int256 rescaled = signedCoefficientA * scale;
+
+            if (rescaled / scale != signedCoefficientA) {
+                if (didSwap) {
+                    return (0, signedCoefficientA);
+                } else {
+                    return (signedCoefficientA, 0);
+                }
+            } else if (didSwap) {
+                return (signedCoefficientB, rescaled);
+            } else {
+                return (rescaled, signedCoefficientB);
+            }
+        }
+    }
 }
