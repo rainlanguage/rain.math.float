@@ -648,19 +648,36 @@ library LibDecimalFloat {
     /// component.
     /// @return exponent The exponent of the fractional component.
     function frac(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (, signedCoefficient) = characteristicMantissa(signedCoefficient, exponent);
+        return (signedCoefficient, exponent);
+    }
+
+    function floor(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (signedCoefficient,) = characteristicMantissa(signedCoefficient, exponent);
+        return (signedCoefficient, exponent);
+    }
+
+    function characteristicMantissa(int256 signedCoefficient, int256 exponent)
+        internal
+        pure
+        returns (int256 characteristic, int256 mantissa)
+    {
         unchecked {
-            // if exponent is not negative the frac is 0
+            // if exponent is not negative the characteristic is the number
+            // itself and the mantissa is 0.
             if (exponent >= 0) {
-                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+                return (signedCoefficient, 0);
             }
 
-            // If the exponent is less than -76, the frac is the number itself.
+            // If the exponent is less than -76, the characteristic is 0.
+            // and the mantissa is the number itself.
             if (exponent < -76) {
-                return (signedCoefficient, exponent);
+                return (0, signedCoefficient);
             }
 
             int256 unit = int256(10 ** uint256(-exponent));
-            return (signedCoefficient % unit, exponent);
+            mantissa = signedCoefficient % unit;
+            characteristic = signedCoefficient - mantissa;
         }
     }
 
@@ -673,15 +690,11 @@ library LibDecimalFloat {
             }
 
             // Table lookup.
-            int256 mantissaCoefficient;
-            int256 mantissaExponent;
-            int256 characteristicSignedCoefficient;
-            int256 characteristicExponent;
+            (int256 characteristicCoefficient, int256 mantissaCoefficient) =
+                characteristicMantissa(signedCoefficient, exponent);
+            int256 mantissaExponent = exponent;
+            int256 characteristicExponent = exponent;
             {
-                (mantissaCoefficient, mantissaExponent) = frac(signedCoefficient, exponent);
-                (characteristicSignedCoefficient, characteristicExponent) =
-                    sub(signedCoefficient, exponent, mantissaCoefficient, mantissaExponent);
-
                 int256 xScale = 1e33;
                 uint256 idx = uint256(
                     LibDecimalFloatImplementation.withTargetExponent(mantissaCoefficient, mantissaExponent, -37)
@@ -700,9 +713,7 @@ library LibDecimalFloat {
             return (
                 signedCoefficient,
                 1 + exponent
-                    + LibDecimalFloatImplementation.withTargetExponent(
-                        characteristicSignedCoefficient, characteristicExponent, 0
-                    )
+                    + LibDecimalFloatImplementation.withTargetExponent(characteristicCoefficient, characteristicExponent, 0)
             );
         }
     }

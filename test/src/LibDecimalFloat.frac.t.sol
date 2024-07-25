@@ -19,7 +19,7 @@ contract LibDecimalFloatFracTest is Test {
     /// Every non negative exponent has no fractional component.
     function testFracNonNegative(int256 x, int256 exponent) external pure {
         exponent = bound(exponent, 0, type(int256).max);
-        checkFrac(x, exponent, 0, 0);
+        checkFrac(x, exponent, 0, exponent);
     }
 
     /// If the exponent is less than -76 then the fractional component is the
