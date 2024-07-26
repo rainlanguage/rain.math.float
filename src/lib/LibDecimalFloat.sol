@@ -640,6 +640,30 @@ library LibDecimalFloat {
         return signedCoefficientA > signedCoefficientB;
     }
 
+    /// Fractional component of a float.
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the fractional
+    /// component.
+    /// @return exponent The exponent of the fractional component.
+    function frac(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        unchecked {
+            // if exponent is not negative the frac is 0
+            if (exponent >= 0) {
+                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+            }
+
+            // If the exponent is less than -76, the frac is the number itself.
+            if (exponent < -76) {
+                return (signedCoefficient, exponent);
+            }
+
+            int256 unit = int256(10 ** uint256(-exponent));
+            return (signedCoefficient % unit, exponent);
+        }
+    }
+
     /// a^b = 10^(b * log10(a))
     function power(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
@@ -649,20 +673,6 @@ library LibDecimalFloat {
         (int256 signedCoefficient, int256 exponent) = log10(signedCoefficientA, exponentA);
         (signedCoefficient, exponent) = multiply(signedCoefficient, exponent, signedCoefficientB, exponentB);
         return power10(signedCoefficient, exponent);
-    }
-
-    function frac(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
-
-        // This is already a fraction.
-        if (signedCoefficient == 0 || exponent < -37) {
-            return (signedCoefficient, exponent);
-        }
-
-        int256 unitCoefficient = int256(1e37 / (10 ** uint256(exponent + 37)));
-
-        // slither-disable-next-line unused-return
-        return LibDecimalFloatImplementation.normalize(signedCoefficient % unitCoefficient, exponent);
     }
 
     /// Sets the coefficient so that exponent is -37. Truncates the coefficient
