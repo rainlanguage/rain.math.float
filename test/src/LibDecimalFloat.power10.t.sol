@@ -3,7 +3,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, EXPONENT_MIN} from "src/lib/LibDecimalFloat.sol";
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPower10Test is Test {
     function checkPower10(
@@ -15,7 +15,7 @@ contract LibDecimalFloatPower10Test is Test {
         uint256 a = gasleft();
         (int256 actualSignedCoefficient, int256 actualExponent) = LibDecimalFloat.power10(signedCoefficient, exponent);
         uint256 b = gasleft();
-        console.log("%d %d Gas used: %d", uint256(signedCoefficient), uint256(exponent), a - b);
+        console2.log("%d %d Gas used: %d", uint256(signedCoefficient), uint256(exponent), a - b);
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
         assertEq(actualExponent, expectedExponent, "exponent");
     }
@@ -64,10 +64,16 @@ contract LibDecimalFloatPower10Test is Test {
         checkPower10(123456789, -5, 36979e37, 1193);
     }
 
+    function boundFloat(int256 x, int256 exponent) internal pure returns (int256, int256) {
+        exponent = bound(exponent, -76, 76);
+        vm.assume(LibDecimalFloat.gt(x, exponent, -1e38, 0));
+        vm.assume(LibDecimalFloat.lt(x, exponent, type(int256).max, 0));
+        return (x, exponent);
+    }
+
+    /// Test the current range that we can handle power10 over does not revert.
     function testNoRevert(int256 x, int256 exponent) external view {
-        exponent = bound(exponent, -10, 10);
-        vm.assume(exponent != 0);
-        vm.assume(LibDecimalFloat.lt(x, exponent, 100, 0));
+        (x, exponent) = boundFloat(x, exponent);
         LibDecimalFloat.power10(x, exponent);
     }
 }

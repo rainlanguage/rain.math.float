@@ -28,25 +28,26 @@ contract LibDecimalFloatPowerTest is Test {
         checkPower(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
     }
 
+    function checkRoundTrip(int256 x, int256 exponentX, int256 y, int256 exponentY) internal view {
+        (int256 result, int256 exponent) = LibDecimalFloat.power(x, exponentX, y, exponentY);
+        (y, exponentY) = LibDecimalFloat.inv(y, exponentY);
+        (int256 roundTrip, int256 roundTripExponent) = LibDecimalFloat.power(result, exponent, y, exponentY);
+
+        (int256 diff, int256 diffExponent) = LibDecimalFloat.divide(x, exponentX, roundTrip, roundTripExponent);
+        (diff, diffExponent) = LibDecimalFloat.sub(diff, diffExponent, 1, 0);
+        (diff, diffExponent) = LibDecimalFloat.abs(diff, diffExponent);
+        assertTrue(LibDecimalFloat.lt(diff, diffExponent, 1, -2), "diff");
+    }
+
     /// X^Y^(1/Y) = X
-    function testRoundTrip(int256 x, int256 exponentX, int256 y, int256 exponentY) external view {
-        vm.assume(x > 0);
-        vm.assume(y > 0);
-        exponentX = bound(exponentX, 1, 10);
-        exponentY = bound(exponentY, 1, 10);
-
-        // (int256 result, int256 exponent) = LibDecimalFloat.power(x, exponentX, y, exponentY);
-        // (y, exponentY) = LibDecimalFloat.inv(y, exponentY);
-        // (int256 roundTrip, int256 roundTripExponent) = LibDecimalFloat.power(result, exponent, y, exponentY);
-
-        // console2.log(x);
-        // console2.log(exponentX);
-        // console2.log(roundTrip);
-        // console2.log(roundTripExponent);
-
-        // (int256 diff, int256 diffExponent) = LibDecimalFloat.sub(x, exponentX, roundTrip, roundTripExponent);
-        // (diff, diffExponent) = LibDecimalFloat.abs(diff, diffExponent);
-
-        // assertTrue(LibDecimalFloat.lt(diff, diffExponent, 1, 0), "diff");
+    /// Can generally round trip whatever within 1% of the original value.
+    function testRoundTrip() external view {
+        checkRoundTrip(5, 0, 2, 0);
+        checkRoundTrip(5, 0, 3, 0);
+        checkRoundTrip(50, 0, 40, 0);
+        checkRoundTrip(5, -1, 3, -1);
+        checkRoundTrip(5, -1, 2, -1);
+        checkRoundTrip(5, 100, 3, 20);
+        checkRoundTrip(5, -1, 100, 0);
     }
 }
