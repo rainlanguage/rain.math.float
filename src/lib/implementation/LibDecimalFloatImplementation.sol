@@ -248,6 +248,46 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    function characteristicMantissa(int256 signedCoefficient, int256 exponent)
+        internal
+        pure
+        returns (int256 characteristic, int256 mantissa)
+    {
+        unchecked {
+            // if exponent is not negative the characteristic is the number
+            // itself and the mantissa is 0.
+            if (exponent >= 0) {
+                return (signedCoefficient, 0);
+            }
+
+            // If the exponent is less than -76, the characteristic is 0.
+            // and the mantissa is the number itself.
+            if (exponent < -76) {
+                return (0, signedCoefficient);
+            }
+
+            int256 unit = int256(10 ** uint256(-exponent));
+            mantissa = signedCoefficient % unit;
+            characteristic = signedCoefficient - mantissa;
+        }
+    }
+
+    function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+        unchecked {
+            if (exponent <= -4) {
+                if (exponent < -80) {
+                    return 0;
+                }
+                return signedCoefficient / int256(10 ** uint256(-(exponent + 4)));
+            } else if (exponent >= 0) {
+                return 0;
+            } else {
+                // exponent is [-3, -1]
+                return signedCoefficient * int256(10 ** uint256(4 + exponent));
+            }
+        }
+    }
+
     function lookupAntilogTableY1Y2(uint256 idx) internal pure returns (int256 y1Coefficient, int256 y2Coefficient) {
         bytes memory table = ANTI_LOG_TABLES;
         bytes memory tableSmall = ANTI_LOG_TABLES_SMALL;

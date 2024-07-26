@@ -648,55 +648,33 @@ library LibDecimalFloat {
     /// component.
     /// @return exponent The exponent of the fractional component.
     function frac(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (, signedCoefficient) = characteristicMantissa(signedCoefficient, exponent);
+        (, signedCoefficient) = LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
         return (signedCoefficient, exponent);
     }
 
+    /// Integer component of a float.
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the integer
+    /// component.
+    /// @return exponent The exponent of the integer component.
     function floor(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient,) = characteristicMantissa(signedCoefficient, exponent);
+        (signedCoefficient,) = LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
         return (signedCoefficient, exponent);
     }
 
-    function characteristicMantissa(int256 signedCoefficient, int256 exponent)
-        internal
-        pure
-        returns (int256 characteristic, int256 mantissa)
-    {
-        unchecked {
-            // if exponent is not negative the characteristic is the number
-            // itself and the mantissa is 0.
-            if (exponent >= 0) {
-                return (signedCoefficient, 0);
-            }
-
-            // If the exponent is less than -76, the characteristic is 0.
-            // and the mantissa is the number itself.
-            if (exponent < -76) {
-                return (0, signedCoefficient);
-            }
-
-            int256 unit = int256(10 ** uint256(-exponent));
-            mantissa = signedCoefficient % unit;
-            characteristic = signedCoefficient - mantissa;
-        }
-    }
-
-    function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
-        unchecked {
-            if (exponent <= -4) {
-                if (exponent < -80) {
-                    return 0;
-                }
-                return signedCoefficient / int256(10 ** uint256(-(exponent + 4)));
-            } else if (exponent >= 0) {
-                return 0;
-            } else {
-                // exponent is [-3, -1]
-                return signedCoefficient * int256(10 ** uint256(4 + exponent));
-            }
-        }
-    }
-
+    /// 10^x for a float x.
+    ///
+    /// Internally uses log tables so is not perfectly accurate, but also doesn't
+    /// require any loops or iterations, and works across a wide range of
+    /// exponents without precision loss.
+    ///
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
     function power10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
         unchecked {
             if (signedCoefficient < 0) {
@@ -707,10 +685,10 @@ library LibDecimalFloat {
 
             // Table lookup.
             (int256 characteristicCoefficient, int256 mantissaCoefficient) =
-                characteristicMantissa(signedCoefficient, exponent);
+                LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
             int256 characteristicExponent = exponent;
             {
-                int256 idx = mantissa4(mantissaCoefficient, exponent);
+                int256 idx = LibDecimalFloatImplementation.mantissa4(mantissaCoefficient, exponent);
                 (int256 y1Coefficient, int256 y2Coefficient) =
                     LibDecimalFloatImplementation.lookupAntilogTableY1Y2(uint256(idx));
 
@@ -727,6 +705,17 @@ library LibDecimalFloat {
         }
     }
 
+    /// log10(x) for a float x.
+    ///
+    /// Internally uses log tables so is not perfectly accurate, but also doesn't
+    /// require any loops or iterations, and works across a wide range of
+    /// exponents without precision loss.
+    ///
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
     function log10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
         unchecked {
             {
@@ -802,7 +791,22 @@ library LibDecimalFloat {
         }
     }
 
-    /// a^b = 10^(b * log10(a))
+    /// x^y = 10^(y * log10(x))
+    ///
+    /// Due to the inaccuraces of log10 and power10, this is not perfectly
+    /// accurate, a round trip like x^y^(1/y) will typically be within half a
+    /// percent or less of the original value, but this can vary depending on
+    /// the input values.
+    ///
+    /// Doesn't lose precision due to the exponent, for a wide range of
+    /// exponents.
+    ///
+    /// @param signedCoefficientA The signed coefficient of the base.
+    /// @param exponentA The exponent of the base.
+    /// @param signedCoefficientB The signed coefficient of the exponent.
+    /// @param exponentB The exponent of the exponent.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
     function power(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         view
