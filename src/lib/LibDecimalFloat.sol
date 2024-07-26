@@ -681,6 +681,22 @@ library LibDecimalFloat {
         }
     }
 
+    function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+        unchecked {
+            if (exponent <= -4) {
+                if (exponent < -80) {
+                    return 0;
+                }
+                return signedCoefficient / int256(10 ** uint256(-(exponent + 4)));
+            } else if (exponent >= 0) {
+                return 0;
+            } else {
+                // exponent is [-3, -1]
+                return signedCoefficient * int256(10 ** uint256(4 + exponent));
+            }
+        }
+    }
+
     function power10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
         unchecked {
             if (signedCoefficient < 0) {
@@ -692,21 +708,14 @@ library LibDecimalFloat {
             // Table lookup.
             (int256 characteristicCoefficient, int256 mantissaCoefficient) =
                 characteristicMantissa(signedCoefficient, exponent);
-            int256 mantissaExponent = exponent;
             int256 characteristicExponent = exponent;
             {
-                int256 xScale = 1e33;
-                uint256 idx = uint256(
-                    LibDecimalFloatImplementation.withTargetExponent(mantissaCoefficient, mantissaExponent, -37)
-                        / xScale
-                );
-                int256 x1Coefficient =
-                    LibDecimalFloatImplementation.withTargetExponent(int256(idx) * xScale, -37, mantissaExponent);
-
-                (int256 y1Coefficient, int256 y2Coefficient) = LibDecimalFloatImplementation.lookupAntilogTableY1Y2(idx);
+                int256 idx = mantissa4(mantissaCoefficient, exponent);
+                (int256 y1Coefficient, int256 y2Coefficient) =
+                    LibDecimalFloatImplementation.lookupAntilogTableY1Y2(uint256(idx));
 
                 (signedCoefficient, exponent) = LibDecimalFloatImplementation.unitLinearInterpolation(
-                    mantissaCoefficient, x1Coefficient, mantissaExponent, -41, y1Coefficient, y2Coefficient, -4
+                    mantissaCoefficient, exponent, idx, -4, -41, y1Coefficient, y2Coefficient, -4
                 );
             }
 
@@ -778,7 +787,7 @@ library LibDecimalFloat {
                 }
 
                 (signedCoefficient, exponent) = LibDecimalFloatImplementation.unitLinearInterpolation(
-                    signedCoefficient, x1Coefficient, exponent, -39, y1Coefficient, y2Coefficient, -38
+                    signedCoefficient, exponent, x1Coefficient, exponent, -39, y1Coefficient, y2Coefficient, -38
                 );
 
                 return add(signedCoefficient, exponent, x1Exponent + 37, 0);

@@ -275,8 +275,9 @@ library LibDecimalFloatImplementation {
     // y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
     function unitLinearInterpolation(
         int256 xCoefficient,
-        int256 x1Coefficient,
         int256 xExponent,
+        int256 x1Coefficient,
+        int256 x1Exponent,
         int256 xUnitExponent,
         int256 y1Coefficient,
         int256 y2Coefficient,
@@ -288,7 +289,7 @@ library LibDecimalFloatImplementation {
         {
             // x - x1
             (int256 xDiffCoefficient, int256 xDiffExponent) =
-                LibDecimalFloat.sub(xCoefficient, xExponent, x1Coefficient, xExponent);
+                LibDecimalFloat.sub(xCoefficient, xExponent, x1Coefficient, x1Exponent);
 
             // y2 - y1
             (int256 yDiffCoefficient, int256 yDiffExponent) =

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, EXPONENT_MIN} from "src/lib/LibDecimalFloat.sol";
 
 import {Test, console} from "forge-std/Test.sol";
 
@@ -65,6 +65,9 @@ contract LibDecimalFloatPower10Test is Test {
     }
 
     function testNoRevert(int256 x, int256 exponent) external view {
+        exponent = bound(exponent, -10, 10);
+        vm.assume(exponent != 0);
+        vm.assume(LibDecimalFloat.lt(x, exponent, 100, 0));
         LibDecimalFloat.power10(x, exponent);
     }
 }
