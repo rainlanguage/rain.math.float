@@ -648,8 +648,10 @@ library LibDecimalFloat {
     /// component.
     /// @return exponent The exponent of the fractional component.
     function frac(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (, signedCoefficient) = LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
-        return (signedCoefficient, exponent);
+        (int256 characteristic, int256 mantissa) =
+            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
+        (characteristic);
+        return (mantissa, exponent);
     }
 
     /// Integer component of a float.
@@ -660,8 +662,10 @@ library LibDecimalFloat {
     /// component.
     /// @return exponent The exponent of the integer component.
     function floor(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient,) = LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
-        return (signedCoefficient, exponent);
+        (int256 characteristic, int256 mantissa) =
+            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
+        (mantissa);
+        return (characteristic, exponent);
     }
 
     /// 10^x for a float x.
