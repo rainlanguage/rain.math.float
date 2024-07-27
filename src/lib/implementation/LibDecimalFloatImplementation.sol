@@ -288,7 +288,11 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx) internal view returns (int256 y1Coefficient, int256 y2Coefficient) {
+    function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx)
+        internal
+        view
+        returns (int256 y1Coefficient, int256 y2Coefficient)
+    {
         assembly ("memory-safe") {
             function lookupTableVal(tables, index) -> result {
                 // 1 byte for start of data contract

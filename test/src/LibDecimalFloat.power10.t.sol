@@ -15,7 +15,8 @@ contract LibDecimalFloatPower10Test is LogTest {
     ) internal {
         address tables = logTables();
         uint256 a = gasleft();
-        (int256 actualSignedCoefficient, int256 actualExponent) = LibDecimalFloat.power10(tables, signedCoefficient, exponent);
+        (int256 actualSignedCoefficient, int256 actualExponent) =
+            LibDecimalFloat.power10(tables, signedCoefficient, exponent);
         uint256 b = gasleft();
         console2.log("%d %d Gas used: %d", uint256(signedCoefficient), uint256(exponent), a - b);
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");

@@ -40,7 +40,9 @@ contract LibDecimalFloatPowerTest is LogTest {
         (int256 diff, int256 diffExponent) = LibDecimalFloat.divide(x, exponentX, roundTrip, roundTripExponent);
         (diff, diffExponent) = LibDecimalFloat.sub(diff, diffExponent, 1, 0);
         (diff, diffExponent) = LibDecimalFloat.abs(diff, diffExponent);
-        assertTrue(LibDecimalFloat.lt(diff, diffExponent, 1, -2), "diff");
+        console2.log(diff);
+        console2.log(diffExponent);
+        assertTrue(LibDecimalFloat.lt(diff, diffExponent, 0.0025e4, -4), "diff");
     }
 
     /// X^Y^(1/Y) = X

@@ -679,7 +679,11 @@ library LibDecimalFloat {
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function power10(address tablesDataContract, int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
+    function power10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
+        internal
+        view
+        returns (int256, int256)
+    {
         unchecked {
             if (signedCoefficient < 0) {
                 (signedCoefficient, exponent) = minus(signedCoefficient, exponent);
@@ -772,7 +776,9 @@ library LibDecimalFloat {
                             }
 
                             mstore(0, 0)
-                            extcodecopy(tables, 31, add(smallTableOffset, mod(index, 10)), 1)
+                            extcodecopy(
+                                tables, 31, add(smallTableOffset, add(mul(div(index, 100), 10), mod(index, 10))), 1
+                            )
                             result := add(result, mload(0))
                         }
 
