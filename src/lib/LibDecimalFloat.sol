@@ -709,6 +709,17 @@ library LibDecimalFloat {
         }
     }
 
+    // function lookupLog10TableVal(address tables, uint256 index) internal pure returns (int256, int256) {
+    //     assembly ("memory-safe") {
+
+    //     }
+    //     // unchecked {
+    //     //     uint256 mainIndex = index / 10;
+    //     //     uint256 mainOffset = mainIndex * 2;
+    //     //     LibDataContract.readSlice(tables, mainOffset, 2);
+    //     // }
+    // }
+
     /// log10(x) for a float x.
     ///
     /// Internally uses log tables so is not perfectly accurate, but also doesn't
@@ -720,7 +731,11 @@ library LibDecimalFloat {
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function log10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
+    function log10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
+        internal
+        view
+        returns (int256, int256)
+    {
         unchecked {
             {
                 (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
@@ -748,21 +763,28 @@ library LibDecimalFloat {
 
                 // Table lookup.
                 {
-                    bytes memory table = LOG_TABLES;
-                    bytes memory tableSmall = LOG_TABLES_SMALL;
-                    bytes memory tableSmallAlt = LOG_TABLES_SMALL_ALT;
                     uint256 scale = 1e34;
-
                     assembly ("memory-safe") {
-                        function lookupTableVal(mainTable, smallTableMain, smallTableAlt, index) -> result {
-                            let mainIndex := div(index, 10)
-                            let mainTableVal := mload(add(mainTable, mul(2, add(mainIndex, 1))))
+                        function lookupTableVal(tables, index) -> result {
+                            // First byte of the data contract must be skipped.
+                            let mainOffset := add(1, mul(div(index, 10), 2))
+                            mstore(0, 0)
+                            extcodecopy(tables, 30, mainOffset, 2)
+                            let mainTableVal := mload(0)
 
                             result := and(mainTableVal, 0x7FFF)
-                            let smallTable := smallTableAlt
-                            if iszero(and(mainTableVal, 0x8000)) { smallTable := smallTableMain }
+                            // Skip first byte of data contract then 1800 bytes
+                            // of the log tables.
+                            let smallTableOffset := 1801
+                            if iszero(iszero(and(mainTableVal, 0x8000))) {
+                                // Small table is half the size of the main
+                                // table.
+                                smallTableOffset := add(smallTableOffset, 900)
+                            }
 
-                            result := add(result, byte(31, mload(add(smallTable, add(mod(index, 10), 1)))))
+                            mstore(0, 0)
+                            extcodecopy(tables, 31, add(smallTableOffset, mod(index, 10)), 1)
+                            result := add(result, mload(0))
                         }
 
                         // Truncate the signed coefficient to what we can look
@@ -774,8 +796,8 @@ library LibDecimalFloat {
                         let index := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
 
-                        y1Coefficient := mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, index))
-                        y2Coefficient := mul(scale, lookupTableVal(table, tableSmall, tableSmallAlt, add(index, 1)))
+                        y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, index))
+                        y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(index, 1)))
                     }
                 }
 
@@ -789,7 +811,7 @@ library LibDecimalFloat {
             // log(x) = -log(1/x)
             else {
                 (signedCoefficient, exponent) = divide(1e37, -37, signedCoefficient, exponent);
-                (signedCoefficient, exponent) = log10(signedCoefficient, exponent);
+                (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
                 return minus(signedCoefficient, exponent);
             }
         }
@@ -811,12 +833,14 @@ library LibDecimalFloat {
     /// @param exponentB The exponent of the exponent.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function power(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
-        internal
-        view
-        returns (int256, int256)
-    {
-        (int256 signedCoefficient, int256 exponent) = log10(signedCoefficientA, exponentA);
+    function power(
+        address tablesDataContract,
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal view returns (int256, int256) {
+        (int256 signedCoefficient, int256 exponent) = log10(tablesDataContract, signedCoefficientA, exponentA);
         (signedCoefficient, exponent) = multiply(signedCoefficient, exponent, signedCoefficientB, exponentB);
         return power10(signedCoefficient, exponent);
     }
