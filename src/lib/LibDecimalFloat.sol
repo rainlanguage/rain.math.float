@@ -679,11 +679,11 @@ library LibDecimalFloat {
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function power10(int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
+    function power10(address tablesDataContract, int256 signedCoefficient, int256 exponent) internal view returns (int256, int256) {
         unchecked {
             if (signedCoefficient < 0) {
                 (signedCoefficient, exponent) = minus(signedCoefficient, exponent);
-                (signedCoefficient, exponent) = power10(signedCoefficient, exponent);
+                (signedCoefficient, exponent) = power10(tablesDataContract, signedCoefficient, exponent);
                 return inv(signedCoefficient, exponent);
             }
 
@@ -842,6 +842,6 @@ library LibDecimalFloat {
     ) internal view returns (int256, int256) {
         (int256 signedCoefficient, int256 exponent) = log10(tablesDataContract, signedCoefficientA, exponentA);
         (signedCoefficient, exponent) = multiply(signedCoefficient, exponent, signedCoefficientB, exponentB);
-        return power10(signedCoefficient, exponent);
+        return power10(tablesDataContract, signedCoefficient, exponent);
     }
 }
