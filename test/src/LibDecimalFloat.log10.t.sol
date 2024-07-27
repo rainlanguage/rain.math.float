@@ -39,6 +39,8 @@ contract LibDecimalFloatLog10Test is LogTest {
 
         checkLog10(10.02e2, -2, 1.0009e41, -41);
         checkLog10(10.99e2, -2, 1.0411e39, -39);
+
+        checkLog10(6566, 0, 8.175e41, -41);
     }
 
     function testInterpolatedLookups() external {

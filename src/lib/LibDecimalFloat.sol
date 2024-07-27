@@ -694,7 +694,7 @@ library LibDecimalFloat {
             {
                 int256 idx = LibDecimalFloatImplementation.mantissa4(mantissaCoefficient, exponent);
                 (int256 y1Coefficient, int256 y2Coefficient) =
-                    LibDecimalFloatImplementation.lookupAntilogTableY1Y2(uint256(idx));
+                    LibDecimalFloatImplementation.lookupAntilogTableY1Y2(tablesDataContract, uint256(idx));
 
                 (signedCoefficient, exponent) = LibDecimalFloatImplementation.unitLinearInterpolation(
                     mantissaCoefficient, exponent, idx, -4, -41, y1Coefficient, y2Coefficient, -4
@@ -708,17 +708,6 @@ library LibDecimalFloat {
             );
         }
     }
-
-    // function lookupLog10TableVal(address tables, uint256 index) internal pure returns (int256, int256) {
-    //     assembly ("memory-safe") {
-
-    //     }
-    //     // unchecked {
-    //     //     uint256 mainIndex = index / 10;
-    //     //     uint256 mainOffset = mainIndex * 2;
-    //     //     LibDataContract.readSlice(tables, mainOffset, 2);
-    //     // }
-    // }
 
     /// log10(x) for a float x.
     ///
