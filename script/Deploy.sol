@@ -15,7 +15,7 @@ contract Deploy is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        container.write();
+        container.writeZoltu();
 
         vm.stopBroadcast();
     }
