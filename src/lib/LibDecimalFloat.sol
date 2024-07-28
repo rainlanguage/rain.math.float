@@ -758,6 +758,7 @@ library LibDecimalFloat {
                 {
                     uint256 scale = 1e34;
                     assembly ("memory-safe") {
+                        //slither-disable-next-line divide-before-multiply
                         function lookupTableVal(tables, index) -> result {
                             // First byte of the data contract must be skipped.
                             let mainOffset := add(1, mul(div(index, 10), 2))

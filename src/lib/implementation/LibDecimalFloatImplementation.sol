@@ -294,6 +294,7 @@ library LibDecimalFloatImplementation {
         returns (int256 y1Coefficient, int256 y2Coefficient)
     {
         assembly ("memory-safe") {
+            //slither-disable-next-line divide-before-multiply
             function lookupTableVal(tables, index) -> result {
                 // 1 byte for start of data contract
                 // + 1800 for log tables
