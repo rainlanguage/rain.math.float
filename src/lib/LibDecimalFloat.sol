@@ -753,6 +753,7 @@ library LibDecimalFloat {
                 int256 y2Coefficient;
                 int256 x1Coefficient;
                 int256 x1Exponent = exponent;
+                bool interpolate;
 
                 // Table lookup.
                 {
@@ -791,15 +792,24 @@ library LibDecimalFloat {
                         x1Coefficient := div(signedCoefficient, scale)
                         let index := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
+                        interpolate := iszero(eq(x1Coefficient, signedCoefficient))
 
                         y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, index))
-                        y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(index, 1)))
+
+                        if interpolate {
+                            y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(index, 1)))
+                        }
                     }
                 }
 
-                (signedCoefficient, exponent) = LibDecimalFloatImplementation.unitLinearInterpolation(
-                    signedCoefficient, exponent, x1Coefficient, exponent, -39, y1Coefficient, y2Coefficient, -38
-                );
+                if (interpolate) {
+                    (signedCoefficient, exponent) = LibDecimalFloatImplementation.unitLinearInterpolation(
+                        signedCoefficient, exponent, x1Coefficient, exponent, -39, y1Coefficient, y2Coefficient, -38
+                    );
+                } else {
+                    signedCoefficient = y1Coefficient;
+                    exponent = -38;
+                }
 
                 return add(signedCoefficient, exponent, x1Exponent + 37, 0);
             }
