@@ -28,22 +28,21 @@ contract LibDecimalFloatLog10Test is Test {
         checkLog10(10000, 0, 4, 0);
     }
 
-    // function testExactLookups() external view {
-    //     checkLog10(1001, 0, 3.0004e37, -37);
-    //     checkLog10(1001, -1, 2.0004e37, -37);
-    //     checkLog10(1001, -2, 1.0004e37, -37);
-    //     checkLog10(1001, -3, 4e37, -41);
+    function testExactLookups() external view {
+        checkLog10(1001, 0, 3.0004e41, -41);
+        checkLog10(100.1e1, -1, 2.0004e41, -41);
+        checkLog10(10.01e2, -2, 1.0004e41, -41);
+        checkLog10(1.001e3, -3, 0.0004e38, -38);
 
-    //     checkLog10(1002, -2, 1.0009e37, -37);
-    //     checkLog10(1099, -2, 1.0411e37, -37);
-    // }
+        checkLog10(10.02e2, -2, 1.0009e41, -41);
+        checkLog10(10.99e2, -2, 1.0411e39, -39);
+    }
 
-    // function testInterpolatedLookups() external view {
-    //     checkLog10(10015, -3, 1.00065e37, -37);
-    // }
+    function testInterpolatedLookups() external view {
+        checkLog10(10.015e3, -3, 1.00065e41, -41);
+    }
 
-    // // This can't work until the full lookup table is implemented.
-    // function testSub1() external view {
-    //     checkLog10(1001, -4, -0.99960039960039960039960039960039960039e38, -38);
-    // }
+    function testSub1() external view {
+        checkLog10(0.1001e4, -4, -0.999600399600399600399600399600399600396e44, -44);
+    }
 }

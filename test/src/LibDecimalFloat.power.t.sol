@@ -3,7 +3,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPowerTest is Test {
     function checkPower(
@@ -18,13 +18,36 @@ contract LibDecimalFloatPowerTest is Test {
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloat.power(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         uint256 b = gasleft();
-        console.log("%d %d Gas used: %d", uint256(signedCoefficientA), uint256(exponentA), a - b);
+        console2.log("%d %d Gas used: %d", uint256(signedCoefficientA), uint256(exponentA), a - b);
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
         assertEq(actualExponent, expectedExponent, "exponent");
     }
 
-    // function testPowers() external view {
-    //     checkPower(5e37, -38, 3e37, -36, 9.3283582089552238805970149253731343283e37, -47);
-    //     checkPower(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
-    // }
+    function testPowers() external view {
+        checkPower(5e37, -38, 3e37, -36, 9.3283582089552238805970149253731343283e37, -47);
+        checkPower(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
+    }
+
+    function checkRoundTrip(int256 x, int256 exponentX, int256 y, int256 exponentY) internal view {
+        (int256 result, int256 exponent) = LibDecimalFloat.power(x, exponentX, y, exponentY);
+        (y, exponentY) = LibDecimalFloat.inv(y, exponentY);
+        (int256 roundTrip, int256 roundTripExponent) = LibDecimalFloat.power(result, exponent, y, exponentY);
+
+        (int256 diff, int256 diffExponent) = LibDecimalFloat.divide(x, exponentX, roundTrip, roundTripExponent);
+        (diff, diffExponent) = LibDecimalFloat.sub(diff, diffExponent, 1, 0);
+        (diff, diffExponent) = LibDecimalFloat.abs(diff, diffExponent);
+        assertTrue(LibDecimalFloat.lt(diff, diffExponent, 1, -2), "diff");
+    }
+
+    /// X^Y^(1/Y) = X
+    /// Can generally round trip whatever within 1% of the original value.
+    function testRoundTrip() external view {
+        checkRoundTrip(5, 0, 2, 0);
+        checkRoundTrip(5, 0, 3, 0);
+        checkRoundTrip(50, 0, 40, 0);
+        checkRoundTrip(5, -1, 3, -1);
+        checkRoundTrip(5, -1, 2, -1);
+        checkRoundTrip(5, 100, 3, 20);
+        checkRoundTrip(5, -1, 100, 0);
+    }
 }
