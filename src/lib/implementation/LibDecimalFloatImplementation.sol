@@ -302,6 +302,7 @@ library LibDecimalFloatImplementation {
                     return (0, signedCoefficient != 0);
                 }
                 int256 scale = int256(10 ** uint256(-(exponent + 4)));
+                //slither-disable-next-line divide-before-multiply
                 int256 rescaled = signedCoefficient / scale;
                 return (rescaled, rescaled * scale != signedCoefficient);
             } else if (exponent >= 0) {
