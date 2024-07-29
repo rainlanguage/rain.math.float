@@ -293,23 +293,27 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+    function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256, bool) {
         unchecked {
-            if (exponent <= -4) {
+            if (exponent == -4) {
+                return (signedCoefficient, false);
+            } else if (exponent < -4) {
                 if (exponent < -80) {
-                    return 0;
+                    return (0, signedCoefficient != 0);
                 }
-                return signedCoefficient / int256(10 ** uint256(-(exponent + 4)));
+                int256 scale = int256(10 ** uint256(-(exponent + 4)));
+                int256 rescaled = signedCoefficient / scale;
+                return (rescaled, rescaled * scale != signedCoefficient);
             } else if (exponent >= 0) {
-                return 0;
+                return (0, false);
             } else {
                 // exponent is [-3, -1]
-                return signedCoefficient * int256(10 ** uint256(4 + exponent));
+                return (signedCoefficient * int256(10 ** uint256(4 + exponent)), false);
             }
         }
     }
 
-    function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx)
+    function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx, bool lossyIdx)
         internal
         view
         returns (int256 y1Coefficient, int256 y2Coefficient)
@@ -333,7 +337,7 @@ library LibDecimalFloatImplementation {
             }
 
             y1Coefficient := lookupTableVal(tablesDataContract, idx)
-            y2Coefficient := lookupTableVal(tablesDataContract, add(idx, 1))
+            if lossyIdx { y2Coefficient := lookupTableVal(tablesDataContract, add(idx, 1)) }
         }
     }
 
