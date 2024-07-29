@@ -96,14 +96,24 @@ library LibDecimalFloatImplementation {
                     exponent += EXPONENT_STEP_SIZE;
                 }
             } else {
-                while (NORMALIZED_JUMP_UP_THRESHOLD / signedCoefficient != 0) {
-                    signedCoefficient *= PRECISION_JUMP_MULTIPLIER;
-                    exponent -= EXPONENT_JUMP_SIZE;
+                if (signedCoefficient / 1e18 == 0) {
+                    signedCoefficient *= 1e19;
+                    exponent -= 19;
                 }
 
-                while ((SIGNED_NORMALIZED_MIN - 1) / signedCoefficient != 0) {
-                    signedCoefficient *= EXPONENT_STEP_MULTIPLIER;
-                    exponent -= EXPONENT_STEP_SIZE;
+                if (signedCoefficient / 1e28 == 0) {
+                    signedCoefficient *= 1e9;
+                    exponent -= 9;
+                }
+
+                while (signedCoefficient / 1e36 == 0) {
+                    signedCoefficient *= 100;
+                    exponent -= 2;
+                }
+
+                if (signedCoefficient / 1e37 == 0) {
+                    signedCoefficient *= 10;
+                    exponent -= 1;
                 }
             }
 
