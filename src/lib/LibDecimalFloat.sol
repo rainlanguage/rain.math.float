@@ -696,11 +696,11 @@ library LibDecimalFloat {
                 LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
             int256 characteristicExponent = exponent;
             {
-                (int256 idx, bool lossy) = LibDecimalFloatImplementation.mantissa4(mantissaCoefficient, exponent);
+                (int256 idx, bool interpolate) = LibDecimalFloatImplementation.mantissa4(mantissaCoefficient, exponent);
                 (int256 y1Coefficient, int256 y2Coefficient) =
-                    LibDecimalFloatImplementation.lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), lossy);
+                    LibDecimalFloatImplementation.lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
 
-                if (lossy) {
+                if (interpolate) {
                     (signedCoefficient, exponent) = LibDecimalFloatImplementation.unitLinearInterpolation(
                         mantissaCoefficient, exponent, idx, -4, -41, y1Coefficient, y2Coefficient, -4
                     );
