@@ -47,6 +47,7 @@ int256 constant SIGNED_NORMALIZED_MIN = 1e37;
 uint256 constant NORMALIZED_MAX = 1e38 - 1;
 int256 constant SIGNED_NORMALIZED_MAX = 1e38 - 1;
 uint256 constant NORMALIZED_MAX_PLUS_ONE = 1e38;
+int256 constant SIGNED_NORMALIZED_MAX_PLUS_ONE = 1e38;
 
 /// @dev The signed coefficient of zero when normalized.
 int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
@@ -85,15 +86,25 @@ library LibDecimalFloatImplementation {
                 revert ExponentOverflow(signedCoefficient, exponent);
             }
 
-            if (signedCoefficient / (SIGNED_NORMALIZED_MAX + 1) != 0) {
-                while (signedCoefficient / NORMALIZED_JUMP_DOWN_THRESHOLD != 0) {
-                    signedCoefficient /= PRECISION_JUMP_MULTIPLIER;
-                    exponent += EXPONENT_JUMP_SIZE;
+            if (signedCoefficient / SIGNED_NORMALIZED_MAX_PLUS_ONE != 0) {
+                if (signedCoefficient / 1e56 != 0) {
+                    signedCoefficient /= 1e19;
+                    exponent += 19;
                 }
 
-                while (signedCoefficient / (SIGNED_NORMALIZED_MAX + 1) != 0) {
-                    signedCoefficient /= EXPONENT_STEP_MULTIPLIER;
-                    exponent += EXPONENT_STEP_SIZE;
+                if (signedCoefficient / 1e46 != 0) {
+                    signedCoefficient /= 1e9;
+                    exponent += 9;
+                }
+
+                while (signedCoefficient / 1e39 != 0) {
+                    signedCoefficient /= 100;
+                    exponent += 2;
+                }
+
+                if (signedCoefficient / 1e38 != 0) {
+                    signedCoefficient /= 10;
+                    exponent += 1;
                 }
             } else {
                 if (signedCoefficient / 1e18 == 0) {
