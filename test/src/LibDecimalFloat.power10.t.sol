@@ -2,25 +2,28 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, EXPONENT_MIN} from "src/lib/LibDecimalFloat.sol";
+import {LogTest} from "../abstract/LogTest.sol";
 
-import {Test, console2} from "forge-std/Test.sol";
+import {console2} from "forge-std/Test.sol";
 
-contract LibDecimalFloatPower10Test is Test {
+contract LibDecimalFloatPower10Test is LogTest {
     function checkPower10(
         int256 signedCoefficient,
         int256 exponent,
         int256 expectedSignedCoefficient,
         int256 expectedExponent
-    ) internal view {
+    ) internal {
+        address tables = logTables();
         uint256 a = gasleft();
-        (int256 actualSignedCoefficient, int256 actualExponent) = LibDecimalFloat.power10(signedCoefficient, exponent);
+        (int256 actualSignedCoefficient, int256 actualExponent) =
+            LibDecimalFloat.power10(tables, signedCoefficient, exponent);
         uint256 b = gasleft();
         console2.log("%d %d Gas used: %d", uint256(signedCoefficient), uint256(exponent), a - b);
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
         assertEq(actualExponent, expectedExponent, "exponent");
     }
 
-    function testExactPowers() external view {
+    function testExactPowers() external {
         // 10^1 = 10
         checkPower10(1e37, -37, 1000, -2);
         // 10^10 = 10000000000
@@ -30,7 +33,7 @@ contract LibDecimalFloatPower10Test is Test {
         checkPower10(1, 4, 1000, 9997);
     }
 
-    function testExactLookups() external view {
+    function testExactLookups() external {
         // 10^2 = 100
         checkPower10(2, 0, 1000, -1);
         // 10^3 = 1000
@@ -57,7 +60,7 @@ contract LibDecimalFloatPower10Test is Test {
         checkPower10(-0.3e37, -37, 5.012531328320802005012531328320802005e37, -38);
     }
 
-    function testInterpolatedLookupsPower() external view {
+    function testInterpolatedLookupsPower() external {
         // 10^1.55555 = 35.9376769153
         checkPower10(1.55555e37, -37, 35935e37, -40);
         // 10^1234.56789
@@ -72,8 +75,9 @@ contract LibDecimalFloatPower10Test is Test {
     }
 
     /// Test the current range that we can handle power10 over does not revert.
-    function testNoRevert(int256 x, int256 exponent) external view {
+    function testNoRevert(int256 x, int256 exponent) external {
+        address tables = logTables();
         (x, exponent) = boundFloat(x, exponent);
-        LibDecimalFloat.power10(x, exponent);
+        LibDecimalFloat.power10(tables, x, exponent);
     }
 }

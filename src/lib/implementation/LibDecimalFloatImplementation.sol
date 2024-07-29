@@ -288,26 +288,31 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    function lookupAntilogTableY1Y2(uint256 idx) internal pure returns (int256 y1Coefficient, int256 y2Coefficient) {
-        bytes memory table = ANTI_LOG_TABLES;
-        bytes memory tableSmall = ANTI_LOG_TABLES_SMALL;
+    function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx)
+        internal
+        view
+        returns (int256 y1Coefficient, int256 y2Coefficient)
+    {
         assembly ("memory-safe") {
-            function lookupTableVal(mainTable, smallTable, index) -> result {
-                let mainIndex := div(index, 10)
+            //slither-disable-next-line divide-before-multiply
+            function lookupTableVal(tables, index) -> result {
+                // 1 byte for start of data contract
+                // + 1800 for log tables
+                // + 900 for small log tables
+                // + 100 for alt small log tables
+                let offset := 2801
+                mstore(0, 0)
+                extcodecopy(tables, 30, add(offset, mul(div(index, 10), 2)), 2)
+                let mainTableVal := mload(0)
 
-                let mainTableVal := and(mload(add(mainTable, mul(2, add(mainIndex, 1)))), 0xFFFF)
-
-                // Slither false positive because the truncation is deliberate
-                // here.
-                //slither-disable-next-line divide-before-multiply
-                let smallTableOffset := add(1, mul(div(index, 100), 10))
-                let smallTableVal := byte(31, mload(add(smallTable, add(mod(index, 10), smallTableOffset))))
-
-                result := add(mainTableVal, smallTableVal)
+                offset := add(offset, 2000)
+                mstore(0, 0)
+                extcodecopy(tables, 31, add(offset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
+                result := add(mainTableVal, mload(0))
             }
 
-            y1Coefficient := lookupTableVal(table, tableSmall, idx)
-            y2Coefficient := lookupTableVal(table, tableSmall, add(idx, 1))
+            y1Coefficient := lookupTableVal(tablesDataContract, idx)
+            y2Coefficient := lookupTableVal(tablesDataContract, add(idx, 1))
         }
     }
 

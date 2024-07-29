@@ -18,6 +18,8 @@ solc = "0.8.25"
 optimizer = true
 optimizer_runs = 1000000
 
+evm_version = "cancun"
+
 bytecode_hash = "none"
 cbor_metadata = false
 

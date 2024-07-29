@@ -4,3 +4,6 @@
 [submodule "lib/rain.sol.codegen"]
 	path = lib/rain.sol.codegen
 	url = https://github.com/rainlanguage/rain.sol.codegen
+[submodule "lib/rain.datacontract"]
+	path = lib/rain.datacontract
+	url = https://github.com/rainlanguage/rain.datacontract
