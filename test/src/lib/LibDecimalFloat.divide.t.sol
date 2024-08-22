@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {THREES, ONES} from "../lib/LibCommonResults.sol";
+import {THREES, ONES} from "../../lib/LibCommonResults.sol";
 import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";

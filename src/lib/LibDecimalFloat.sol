@@ -9,7 +9,11 @@ import {
     ANTI_LOG_TABLES_SMALL
 } from "../generated/LogTables.pointers.sol";
 import {
-    ExponentOverflow, Log10Negative, Log10Zero, NegativeFixedDecimalConversion
+    ExponentOverflow,
+    Log10Negative,
+    Log10Zero,
+    NegativeFixedDecimalConversion,
+    LossyConversionFromFloat
 } from "../error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
@@ -130,6 +134,20 @@ library LibDecimalFloat {
         }
     }
 
+    /// Lossless version of `fromFixedDecimalLossy`. This will revert if the
+    /// conversion is lossy.
+    /// @param value As per `fromFixedDecimalLossy`.
+    /// @param decimals As per `fromFixedDecimalLossy`.
+    /// @return signedCoefficient As per `fromFixedDecimalLossy`.
+    /// @return exponent As per `fromFixedDecimalLossy`.
+    function fromFixedDecimalLossless(uint256 value, uint8 decimals) internal pure returns (int256, int256) {
+        (int256 signedCoefficient, int256 exponent, bool lossless) = fromFixedDecimalLossy(value, decimals);
+        if (!lossless) {
+            revert LossyConversionFromFloat(signedCoefficient, exponent);
+        }
+        return (signedCoefficient, exponent);
+    }
+
     /// Convert a signed coefficient and exponent to a fixed point decimal value.
     /// The conversion is impossible and will revert if the signed coefficient is
     /// negative. If the conversion overflows it will also revert.
@@ -203,6 +221,24 @@ library LibDecimalFloat {
                 return (unsignedCoefficient, true);
             }
         }
+    }
+
+    /// Lossless version of `toFixedDecimalLossy`. This will revert if the
+    /// conversion is lossy.
+    /// @param signedCoefficient As per `toFixedDecimalLossy`.
+    /// @param exponent As per `toFixedDecimalLossy`.
+    /// @param decimals As per `toFixedDecimalLossy`.
+    /// @return value As per `toFixedDecimalLossy`.
+    function toFixedDecimalLossless(int256 signedCoefficient, int256 exponent, uint8 decimals)
+        internal
+        pure
+        returns (uint256)
+    {
+        (uint256 value, bool lossless) = toFixedDecimalLossy(signedCoefficient, exponent, decimals);
+        if (!lossless) {
+            revert LossyConversionFromFloat(signedCoefficient, exponent);
+        }
+        return value;
     }
 
     /// Pack a signed coefficient and exponent into a single uint256. Clearly
