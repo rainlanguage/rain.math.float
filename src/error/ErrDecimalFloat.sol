@@ -13,3 +13,11 @@ error Log10Zero();
 
 /// @dev Thrown when attempting to calculate the log of a negative number.
 error Log10Negative(int256 signedCoefficient, int256 exponent);
+
+/// @dev Thrown when converting some value to a float when the conversion
+/// is lossy.
+error LossyConversionToFloat(int256 signedCoefficient, int256 exponent);
+
+/// @dev Thrown when converting a float to some value when the conversion
+/// is lossy.
+error LossyConversionFromFloat(int256 signedCoefficient, int256 exponent);

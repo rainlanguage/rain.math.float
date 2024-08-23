@@ -9,7 +9,12 @@ import {
     ANTI_LOG_TABLES_SMALL
 } from "../generated/LogTables.pointers.sol";
 import {
-    ExponentOverflow, Log10Negative, Log10Zero, NegativeFixedDecimalConversion
+    ExponentOverflow,
+    Log10Negative,
+    Log10Zero,
+    NegativeFixedDecimalConversion,
+    LossyConversionFromFloat,
+    LossyConversionToFloat
 } from "../error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
@@ -19,7 +24,8 @@ import {
     EXPONENT_MAX,
     NORMALIZED_MIN,
     NORMALIZED_MAX,
-    EXPONENT_STEP_SIZE
+    EXPONENT_STEP_SIZE,
+    SIGNED_NORMALIZED_MAX
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 37;
@@ -80,10 +86,8 @@ int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT
 /// scope of the typical user of Rainlang.
 library LibDecimalFloat {
     /// Convert a fixed point decimal value to a signed coefficient and exponent.
-    /// The returned value will be normalized and the conversion is lossy if this
-    /// results in a division that causes truncation. This can only happen if the
-    /// value is greater than `NORMALIZED_MAX`, which is 10^38 - 1. For most use
-    /// cases, this is not a concern and the conversion will always be lossless.
+    /// The conversion can be lossy if the unsigned value is too large to fit in
+    /// the signed coefficient.
     /// @param value The fixed point decimal value to convert.
     /// @param decimals The number of decimals in the fixed point representation.
     /// e.g. If 1e18 represents 1 this would be 18 decimals.
@@ -98,36 +102,25 @@ library LibDecimalFloat {
             // Catch an edge case where unsigned value looks like a negative
             // value when coerced.
             if (value > uint256(type(int256).max)) {
-                value /= 10;
-                exponent += 1;
+                return (int256(value / 10), exponent + 1, value % 10 == 0);
+            } else {
+                return (int256(value), exponent, true);
             }
-
-            // Safe to do this conversion of `value` because we've truncated
-            // anything above `type(int256).max` above by 1 OOM.
-            (int256 signedCoefficient, int256 finalExponent) =
-                LibDecimalFloatImplementation.normalize(int256(value), exponent);
-
-            return (
-                signedCoefficient,
-                finalExponent,
-                value <= uint256(NORMALIZED_MAX)
-                // We only hit this if value is greater than NORMALIZED_MAX.
-                //
-                // This means that finalExponent is larger than exponent due
-                // to the normalization. Therefore, we will never attempt to
-                // cast a negative number to an unsigned number.
-                //
-                // It also means that the greatest possible diff between
-                // value and the normalized value is the difference in OOMs
-                // between the two due to normalization, which is max at
-                // rescaling `type(uint256).max`, i.e. ~1.15e77 down to
-                // ~1.15e37, which is a loss of 40 OOMs. While this is large,
-                // 40 OOMs is not enough to cause 10 ** 40 to overflow a
-                // uint256, and we never scale up by more than we first
-                // scaled down, so we can't overflow the uint256 space.
-                || uint256(signedCoefficient) * (10 ** uint256(finalExponent - exponent)) == value
-            );
         }
+    }
+
+    /// Lossless version of `fromFixedDecimalLossy`. This will revert if the
+    /// conversion is lossy.
+    /// @param value As per `fromFixedDecimalLossy`.
+    /// @param decimals As per `fromFixedDecimalLossy`.
+    /// @return signedCoefficient As per `fromFixedDecimalLossy`.
+    /// @return exponent As per `fromFixedDecimalLossy`.
+    function fromFixedDecimalLossless(uint256 value, uint8 decimals) internal pure returns (int256, int256) {
+        (int256 signedCoefficient, int256 exponent, bool lossless) = fromFixedDecimalLossy(value, decimals);
+        if (!lossless) {
+            revert LossyConversionToFloat(signedCoefficient, exponent);
+        }
+        return (signedCoefficient, exponent);
     }
 
     /// Convert a signed coefficient and exponent to a fixed point decimal value.
@@ -203,6 +196,24 @@ library LibDecimalFloat {
                 return (unsignedCoefficient, true);
             }
         }
+    }
+
+    /// Lossless version of `toFixedDecimalLossy`. This will revert if the
+    /// conversion is lossy.
+    /// @param signedCoefficient As per `toFixedDecimalLossy`.
+    /// @param exponent As per `toFixedDecimalLossy`.
+    /// @param decimals As per `toFixedDecimalLossy`.
+    /// @return value As per `toFixedDecimalLossy`.
+    function toFixedDecimalLossless(int256 signedCoefficient, int256 exponent, uint8 decimals)
+        internal
+        pure
+        returns (uint256)
+    {
+        (uint256 value, bool lossless) = toFixedDecimalLossy(signedCoefficient, exponent, decimals);
+        if (!lossless) {
+            revert LossyConversionFromFloat(signedCoefficient, exponent);
+        }
+        return value;
     }
 
     /// Pack a signed coefficient and exponent into a single uint256. Clearly

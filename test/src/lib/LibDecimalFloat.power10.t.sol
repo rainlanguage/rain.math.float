@@ -2,7 +2,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, EXPONENT_MIN} from "src/lib/LibDecimalFloat.sol";
-import {LogTest} from "../abstract/LogTest.sol";
+import {LogTest} from "../../abstract/LogTest.sol";
 
 import {console2} from "forge-std/Test.sol";
 
