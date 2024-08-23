@@ -8,7 +8,7 @@ import {
     EXPONENT_MIN,
     EXPONENT_MAX
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloatImplementationSlow} from "../../lib/implementation/LibDecimalFloatImplementationSlow.sol";
+import {LibDecimalFloatImplementationSlow} from "../../../lib/implementation/LibDecimalFloatImplementationSlow.sol";
 
 contract LibDecimalFloatImplementationNormalizeTest is Test {
     /// isNormalized reference.
