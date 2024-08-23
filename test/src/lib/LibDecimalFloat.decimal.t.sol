@@ -45,7 +45,6 @@ contract LibDecimalFloatDecimalTest is Test {
         assertEq(signedCoefficient, expectedCoefficient, "signedCoefficient");
         assertEq(exponent, expectedExponent, "exponent");
         assertEq(lossless, true, "lossless");
-        assert(LibDecimalFloatImplementation.isNormalized(signedCoefficient, exponent));
     }
 
     function checkFromFixedDecimalLossy(
@@ -74,19 +73,19 @@ contract LibDecimalFloatDecimalTest is Test {
 
     function testFromFixedDecimalLossyOne() external pure {
         for (uint8 i = 0; i < type(uint8).max; i++) {
-            checkFromFixedDecimalLossless(1, i, 1e37, -37 - int256(uint256(i)));
+            checkFromFixedDecimalLossless(1, i, 1, 0 - int256(uint256(i)));
         }
     }
 
     function testFromFixedDecimalLossyOneMillion() external pure {
         for (uint8 i = 0; i < type(uint8).max; i++) {
-            checkFromFixedDecimalLossless(1e6, i, 1e37, -37 + 6 - int256(uint256(i)));
+            checkFromFixedDecimalLossless(1e6, i, 1e6, 0 - int256(uint256(i)));
         }
     }
 
     function testFromFixedDecimalLossyComplicated() external pure {
         for (uint8 i = 0; i < type(uint8).max; i++) {
-            checkFromFixedDecimalLossless(123456789, i, 1.23456789e37, -37 + 8 - int256(uint256(i)));
+            checkFromFixedDecimalLossless(123456789, i, 123456789, 0 - int256(uint256(i)));
         }
     }
 
@@ -103,7 +102,7 @@ contract LibDecimalFloatDecimalTest is Test {
     /// significant digit is 0.
     function testFromFixedDecimalLossyNormalizedMaxPlusOne() external pure {
         for (uint8 i = 0; i < type(uint8).max; i++) {
-            checkFromFixedDecimalLossless(uint256(NORMALIZED_MAX) + 1, i, 1e37, 1 - int256(uint256(i)));
+            checkFromFixedDecimalLossless(uint256(NORMALIZED_MAX) + 1, i, 1e38, 0 - int256(uint256(i)));
         }
     }
 
@@ -111,7 +110,7 @@ contract LibDecimalFloatDecimalTest is Test {
         for (uint8 i = 0; i < type(uint8).max; i++) {
             // +2 because this produces a value that actually truncates to
             // something different to the original value.
-            checkFromFixedDecimalLossy(uint256(NORMALIZED_MAX) + 2, i, 1e37, 1 - int256(uint256(i)));
+            checkFromFixedDecimalLossy(uint256(1e77) + 2, i, 1e76, 1 - int256(uint256(i)));
         }
     }
 
@@ -143,7 +142,7 @@ contract LibDecimalFloatDecimalTest is Test {
         // lossy round trip.
         uint256 expectedValue = value;
         bool expectedLossless = true;
-        while (expectedValue > uint256(NORMALIZED_MAX)) {
+        while (expectedValue > uint256(type(int256).max)) {
             uint256 nextValue = expectedValue / 10;
             if (nextValue * 10 != expectedValue) {
                 expectedLossless = false;
