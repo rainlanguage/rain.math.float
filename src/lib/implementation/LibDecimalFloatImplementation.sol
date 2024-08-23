@@ -47,6 +47,7 @@ int256 constant SIGNED_NORMALIZED_MIN = 1e37;
 uint256 constant NORMALIZED_MAX = 1e38 - 1;
 int256 constant SIGNED_NORMALIZED_MAX = 1e38 - 1;
 uint256 constant NORMALIZED_MAX_PLUS_ONE = 1e38;
+int256 constant SIGNED_NORMALIZED_MAX_PLUS_ONE = 1e38;
 
 /// @dev The signed coefficient of zero when normalized.
 int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
@@ -85,25 +86,45 @@ library LibDecimalFloatImplementation {
                 revert ExponentOverflow(signedCoefficient, exponent);
             }
 
-            if (signedCoefficient / (SIGNED_NORMALIZED_MAX + 1) != 0) {
-                while (signedCoefficient / NORMALIZED_JUMP_DOWN_THRESHOLD != 0) {
-                    signedCoefficient /= PRECISION_JUMP_MULTIPLIER;
-                    exponent += EXPONENT_JUMP_SIZE;
+            if (signedCoefficient / SIGNED_NORMALIZED_MAX_PLUS_ONE != 0) {
+                if (signedCoefficient / 1e56 != 0) {
+                    signedCoefficient /= 1e19;
+                    exponent += 19;
                 }
 
-                while (signedCoefficient / (SIGNED_NORMALIZED_MAX + 1) != 0) {
-                    signedCoefficient /= EXPONENT_STEP_MULTIPLIER;
-                    exponent += EXPONENT_STEP_SIZE;
+                if (signedCoefficient / 1e46 != 0) {
+                    signedCoefficient /= 1e9;
+                    exponent += 9;
+                }
+
+                while (signedCoefficient / 1e39 != 0) {
+                    signedCoefficient /= 100;
+                    exponent += 2;
+                }
+
+                if (signedCoefficient / 1e38 != 0) {
+                    signedCoefficient /= 10;
+                    exponent += 1;
                 }
             } else {
-                while (NORMALIZED_JUMP_UP_THRESHOLD / signedCoefficient != 0) {
-                    signedCoefficient *= PRECISION_JUMP_MULTIPLIER;
-                    exponent -= EXPONENT_JUMP_SIZE;
+                if (signedCoefficient / 1e18 == 0) {
+                    signedCoefficient *= 1e19;
+                    exponent -= 19;
                 }
 
-                while ((SIGNED_NORMALIZED_MIN - 1) / signedCoefficient != 0) {
-                    signedCoefficient *= EXPONENT_STEP_MULTIPLIER;
-                    exponent -= EXPONENT_STEP_SIZE;
+                if (signedCoefficient / 1e28 == 0) {
+                    signedCoefficient *= 1e9;
+                    exponent -= 9;
+                }
+
+                while (signedCoefficient / 1e36 == 0) {
+                    signedCoefficient *= 100;
+                    exponent -= 2;
+                }
+
+                if (signedCoefficient / 1e37 == 0) {
+                    signedCoefficient *= 10;
+                    exponent -= 1;
                 }
             }
 
@@ -272,23 +293,28 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+    function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256, bool) {
         unchecked {
-            if (exponent <= -4) {
+            if (exponent == -4) {
+                return (signedCoefficient, false);
+            } else if (exponent < -4) {
                 if (exponent < -80) {
-                    return 0;
+                    return (0, signedCoefficient != 0);
                 }
-                return signedCoefficient / int256(10 ** uint256(-(exponent + 4)));
+                int256 scale = int256(10 ** uint256(-(exponent + 4)));
+                //slither-disable-next-line divide-before-multiply
+                int256 rescaled = signedCoefficient / scale;
+                return (rescaled, rescaled * scale != signedCoefficient);
             } else if (exponent >= 0) {
-                return 0;
+                return (0, false);
             } else {
                 // exponent is [-3, -1]
-                return signedCoefficient * int256(10 ** uint256(4 + exponent));
+                return (signedCoefficient * int256(10 ** uint256(4 + exponent)), false);
             }
         }
     }
 
-    function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx)
+    function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx, bool lossyIdx)
         internal
         view
         returns (int256 y1Coefficient, int256 y2Coefficient)
@@ -312,7 +338,7 @@ library LibDecimalFloatImplementation {
             }
 
             y1Coefficient := lookupTableVal(tablesDataContract, idx)
-            y2Coefficient := lookupTableVal(tablesDataContract, add(idx, 1))
+            if lossyIdx { y2Coefficient := lookupTableVal(tablesDataContract, add(idx, 1)) }
         }
     }
 
