@@ -7,3 +7,6 @@
 [submodule "lib/rain.datacontract"]
 	path = lib/rain.datacontract
 	url = https://github.com/rainlanguage/rain.datacontract
+[submodule "lib/rain.string"]
+	path = lib/rain.string
+	url = https://github.com/rainlanguage/rain.string

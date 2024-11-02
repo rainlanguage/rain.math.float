@@ -8,9 +8,9 @@ import {
     ANTI_LOG_TABLES,
     ANTI_LOG_TABLES_SMALL
 } from "../generated/LogTables.pointers.sol";
-import {LibDataContract, DataContractMemoryContainer, Pointer} from "rain.datacontract/lib/LibDataContract.sol";
+import {LibDataContract, DataContractMemoryContainer} from "rain.datacontract/lib/LibDataContract.sol";
 import {LibBytes} from "rain.solmem/lib/LibBytes.sol";
-import {LibMemCpy} from "rain.solmem/lib/LibMemCpy.sol";
+import {LibMemCpy, Pointer} from "rain.solmem/lib/LibMemCpy.sol";
 
 library LibDecimalFloatDeploy {
     function combinedTables() internal pure returns (bytes memory) {
