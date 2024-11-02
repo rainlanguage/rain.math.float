@@ -6,6 +6,8 @@ import {Test} from "forge-std/Test.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain.solmem/lib/LibBytes.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
+import {ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
+import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoint} from "src/error/ErrParse.sol";
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
@@ -19,10 +21,21 @@ contract LibParseDecimalFloatTest is Test {
     ) internal pure {
         uint256 cursor = Pointer.unwrap(bytes(data).dataPointer());
         (bytes4 errorSelector, uint256 cursorAfter, int256 signedCoefficient, int256 exponent) =
-        LibParseDecimalFloat.parseDecimalFloat(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
+            LibParseDecimalFloat.parseDecimalFloat(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
         assertEq(errorSelector, bytes4(0));
         assertEq(signedCoefficient, expectedSignedCoefficient);
         assertEq(exponent, expectedExponent);
+        assertEq(cursorAfter - cursor, expectedCursorAfter);
+    }
+
+    function checkParseDecimalFloatFail(string memory data, bytes4 expectedErrorSelector, uint256 expectedCursorAfter)
+        internal
+        pure
+    {
+        uint256 cursor = Pointer.unwrap(bytes(data).dataPointer());
+        (bytes4 errorSelector, uint256 cursorAfter,,) =
+            LibParseDecimalFloat.parseDecimalFloat(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
+        assertEq(errorSelector, expectedErrorSelector);
         assertEq(cursorAfter - cursor, expectedCursorAfter);
     }
 
@@ -225,5 +238,106 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloat("1.1e1hello", 11, 0, 5);
         checkParseDecimalFloat("1.1e-1hello", 11, -2, 6);
         checkParseDecimalFloat("-1.1e-1hello", -11, -2, 7);
+    }
+
+    /// An empty string should fail.
+    function testParseDecimalFloatEmpty() external pure {
+        checkParseDecimalFloatFail("", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// A non decimal string should revert.
+    function testParseDecimalFloatNonDecimal() external pure {
+        checkParseDecimalFloatFail("hello", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// e without a number should revert.
+    function testParseDecimalFloatExponentRevert() external pure {
+        checkParseDecimalFloatFail("e", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// e with a left digit but not right should revert.
+    function testParseDecimalFloatExponentRevert2() external pure {
+        checkParseDecimalFloatFail("1e", MalformedExponentDigits.selector, 2);
+    }
+
+    /// e with a left digit but not right should revert. Add a negative sign.
+    function testParseDecimalFloatExponentRevert3() external pure {
+        checkParseDecimalFloatFail("1e-", MalformedExponentDigits.selector, 3);
+    }
+
+    /// e with a right digit but not left should revert.
+    function testParseDecimalFloatExponentRevert4() external pure {
+        checkParseDecimalFloatFail("e1", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// e with a right digit but not left should revert.
+    /// two digits.
+    function testParseLiteralDecimalFloatExponentRevert5() external pure {
+        checkParseDecimalFloatFail("e10", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// e with a right digit but not left should revert.
+    /// two digits with negative sign.
+    function testParseLiteralDecimalFloatExponentRevert6() external pure {
+        checkParseDecimalFloatFail("e-10", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// Dot without digits should revert.
+    function testParseLiteralDecimalFloatDotRevert() external pure {
+        checkParseDecimalFloatFail(".", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// Dot without leading digits should revert.
+    function testParseLiteralDecimalFloatDotRevert2() external pure {
+        checkParseDecimalFloatFail(".1", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// Dot without trailing digits should revert.
+    function testParseLiteralDecimalFloatDotRevert3() external pure {
+        checkParseDecimalFloatFail("1.", MalformedDecimalPoint.selector, 2);
+    }
+
+    /// Dot e is an error.
+    function testParseLiteralDecimalFloatDotE() external pure {
+        checkParseDecimalFloatFail(".e", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// Dot e0 is an error.
+    function testParseLiteralDecimalFloatDotE0() external pure {
+        checkParseDecimalFloatFail(".e0", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// e dot is an error.
+    function testParseLiteralDecimalFloatEDot() external pure {
+        checkParseDecimalFloatFail("e.", ParseEmptyDecimalString.selector, 0);
+    }
+
+    /// Negative e with no digits is an error.
+    function testParseLiteralDecimalFloatNegativeE() external pure {
+        checkParseDecimalFloatFail("0.0e-", MalformedExponentDigits.selector, 5);
+    }
+
+    /// Negative frac is an error.
+    function testParseLiteralDecimalFloatNegativeFrac() external pure {
+        checkParseDecimalFloatFail("0.-1", MalformedDecimalPoint.selector, 2);
+    }
+
+    /// Can't have more than max total precision. Add decimals after the max int.
+    function testParseLiteralDecimalFloatPrecisionRevert0() external pure {
+        checkParseDecimalFloatFail(
+            "57896044618658097711785492504343953926634992332820282019728792003956564819967.1",
+            ParseDecimalPrecisionLoss.selector,
+            79
+        );
+    }
+
+    /// Can't have more than max total precision. Have an int that makes it
+    /// impossible to fit the max decimals.
+    function testParseLiteralDecimalFloatPrecisionRevert1() external pure {
+        checkParseDecimalFloatFail(
+            "1.57896044618658097711785492504343953926634992332820282019728792003956564819967",
+            ParseDecimalPrecisionLoss.selector,
+            79
+        );
     }
 }
