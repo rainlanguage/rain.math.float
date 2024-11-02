@@ -28,6 +28,7 @@ fs_permissions = [
 ]
 
 remappings = [
+    "rain.solmem/=lib/rain.datacontract/lib/rain.solmem/src/",
 ]
 
 [fuzz]
