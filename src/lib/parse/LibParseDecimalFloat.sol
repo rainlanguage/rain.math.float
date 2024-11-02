@@ -69,6 +69,7 @@ library LibParseDecimalFloat {
 
             int256 fracValue = int256(LibParseChar.isMask(cursor, end, CMASK_DECIMAL_POINT));
             if (fracValue != 0) {
+                fracValue = 0;
                 cursor++;
                 uint256 fracStart = cursor;
                 cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);
@@ -82,7 +83,7 @@ library LibParseDecimalFloat {
                     nonZeroCursor--;
                 }
 
-                {
+                if (nonZeroCursor != fracStart) {
                     (bytes4 fracErrorSelector, int256 fracValueTmp) =
                         LibParseDecimal.unsafeDecimalStringToSignedInt(fracStart, nonZeroCursor);
                     if (fracErrorSelector != 0) {
