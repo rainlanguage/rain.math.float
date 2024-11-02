@@ -15,7 +15,6 @@ import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoin
 import {ParseDecimalOverflow, ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
-import {console2} from "forge-std/Test.sol";
 
 library LibParseDecimalFloat {
     function parseDecimalFloatPacked(uint256 start, uint256 end) internal pure returns (bytes4, uint256, uint256) {
@@ -56,7 +55,6 @@ library LibParseDecimalFloat {
                 uint256 intStart = cursor;
                 cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);
                 if (cursor == intStart) {
-                    console2.log("ParseEmptyDecimalString", cursor);
                     return (ParseEmptyDecimalString.selector, cursor, 0, 0);
                 }
             }
@@ -64,7 +62,6 @@ library LibParseDecimalFloat {
                 (bytes4 signedCoefficientErrorSelector, int256 signedCoefficientTmp) =
                     LibParseDecimal.unsafeDecimalStringToSignedInt(start, cursor);
                 if (signedCoefficientErrorSelector != 0) {
-                    console2.log("ParseDecimalOverflow", cursor);
                     return (signedCoefficientErrorSelector, cursor, 0, 0);
                 }
                 signedCoefficient = signedCoefficientTmp;
@@ -77,7 +74,6 @@ library LibParseDecimalFloat {
                 uint256 fracStart = cursor;
                 cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);
                 if (cursor == fracStart) {
-                    console2.log("MalformedDecimalPoint", cursor);
                     return (MalformedDecimalPoint.selector, cursor, 0, 0);
                 }
                 // Trailing zeros are allowed in fractional literals but should
@@ -91,7 +87,6 @@ library LibParseDecimalFloat {
                     (bytes4 fracErrorSelector, int256 fracValueTmp) =
                         LibParseDecimal.unsafeDecimalStringToSignedInt(fracStart, nonZeroCursor);
                     if (fracErrorSelector != 0) {
-                        console2.log("fracErrorSelector", cursor);
                         return (fracErrorSelector, cursor, 0, 0);
                     }
                     fracValue = fracValueTmp;
