@@ -55,14 +55,14 @@ library LibParseDecimalFloat {
                 uint256 intStart = cursor;
                 cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);
                 if (cursor == intStart) {
-                    return (ParseEmptyDecimalString.selector, 0, 0, 0);
+                    return (ParseEmptyDecimalString.selector, cursor, 0, 0);
                 }
             }
             {
                 (bytes4 signedCoefficientErrorSelector, int256 signedCoefficientTmp) =
                     LibParseDecimal.unsafeDecimalStringToSignedInt(start, cursor);
                 if (signedCoefficientErrorSelector != 0) {
-                    return (signedCoefficientErrorSelector, 0, 0, 0);
+                    return (signedCoefficientErrorSelector, cursor, 0, 0);
                 }
                 signedCoefficient = signedCoefficientTmp;
             }
@@ -73,7 +73,7 @@ library LibParseDecimalFloat {
                 uint256 fracStart = cursor;
                 cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);
                 if (cursor == fracStart) {
-                    return (MalformedDecimalPoint.selector, 0, 0, 0);
+                    return (MalformedDecimalPoint.selector, cursor, 0, 0);
                 }
                 // Trailing zeros are allowed in fractional literals but should
                 // not be counted in the precision.
@@ -86,13 +86,13 @@ library LibParseDecimalFloat {
                     (bytes4 fracErrorSelector, int256 fracValueTmp) =
                         LibParseDecimal.unsafeDecimalStringToSignedInt(fracStart, nonZeroCursor);
                     if (fracErrorSelector != 0) {
-                        return (fracErrorSelector, 0, 0, 0);
+                        return (fracErrorSelector, cursor, 0, 0);
                     }
                     fracValue = fracValueTmp;
                 }
                 // Frac value inherits its sign from the coefficient.
                 if (fracValue < 0) {
-                    return (MalformedDecimalPoint.selector, 0, 0, 0);
+                    return (MalformedDecimalPoint.selector, cursor, 0, 0);
                 }
                 if (signedCoefficient < 0) {
                     fracValue = -fracValue;
@@ -103,12 +103,12 @@ library LibParseDecimalFloat {
                 exponent = int256(fracStart) - int256(nonZeroCursor);
                 uint256 scale = uint256(-exponent);
                 if (scale >= 77 && signedCoefficient != 0) {
-                    return (ParseDecimalPrecisionLoss.selector, 0, 0, 0);
+                    return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
                 }
                 scale = 10 ** scale;
                 int256 rescaledIntValue = signedCoefficient * int256(scale);
                 if (rescaledIntValue / int256(scale) != signedCoefficient) {
-                    return (ParseDecimalPrecisionLoss.selector, 0, 0, 0);
+                    return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
                 }
                 signedCoefficient = rescaledIntValue + fracValue;
             }
@@ -122,7 +122,7 @@ library LibParseDecimalFloat {
                     uint256 digitsStart = cursor;
                     cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);
                     if (cursor == digitsStart) {
-                        return (MalformedExponentDigits.selector, 0, 0, 0);
+                        return (MalformedExponentDigits.selector, cursor, 0, 0);
                     }
                 }
 
@@ -130,7 +130,7 @@ library LibParseDecimalFloat {
                     (bytes4 eErrorSelector, int256 eValueTmp) =
                         LibParseDecimal.unsafeDecimalStringToSignedInt(eStart, cursor);
                     if (eErrorSelector != 0) {
-                        return (eErrorSelector, 0, 0, 0);
+                        return (eErrorSelector, cursor, 0, 0);
                     }
                     eValue = eValueTmp;
                 }
