@@ -13,15 +13,15 @@ import {
 import {LibParseDecimal} from "rain.string/lib/parse/LibParseDecimal.sol";
 import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoint} from "../../error/ErrParse.sol";
 import {ParseDecimalOverflow, ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
-import {LibDecimalFloat} from "../LibDecimalFloat.sol";
+import {LibDecimalFloat, PackedFloat} from "../LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
 
 library LibParseDecimalFloat {
-    function parseDecimalFloatPacked(uint256 start, uint256 end) internal pure returns (bytes4, uint256, uint256) {
+    function parseDecimalFloatPacked(uint256 start, uint256 end) internal pure returns (bytes4, uint256, PackedFloat) {
         (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
             parseDecimalFloat(start, end);
         if (errorSelector != 0) {
-            return (errorSelector, cursor, 0);
+            return (errorSelector, cursor, PackedFloat.wrap(0));
         }
 
         // Prenormalize signed coefficients that are smaller than their
@@ -33,11 +33,11 @@ library LibParseDecimalFloat {
             (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
         }
 
-        uint256 packedFloat = LibDecimalFloat.pack(signedCoefficient, exponent);
+        PackedFloat packedFloat = LibDecimalFloat.pack(signedCoefficient, exponent);
 
         (int256 unpackedSignedCoefficient, int256 unpackedExponent) = LibDecimalFloat.unpack(packedFloat);
         if (unpackedSignedCoefficient != signedCoefficient || unpackedExponent != exponent) {
-            return (ParseDecimalPrecisionLoss.selector, cursor, 0);
+            return (ParseDecimalPrecisionLoss.selector, cursor, PackedFloat.wrap(0));
         }
 
         return (0, cursor, packedFloat);
