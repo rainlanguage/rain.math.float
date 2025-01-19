@@ -28,6 +28,8 @@ import {
     SIGNED_NORMALIZED_MAX
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
+type PackedFloat is bytes32;
+
 uint256 constant ADD_MAX_EXPONENT_DIFF = 37;
 
 /// @dev When normalizing a number, how far we "leap" when very far from
@@ -230,7 +232,7 @@ library LibDecimalFloat {
     /// @param exponent The exponent of the floating point representation.
     /// @return packed The packed representation of the signed coefficient and
     /// exponent.
-    function pack(int256 signedCoefficient, int256 exponent) internal pure returns (uint256 packed) {
+    function pack(int256 signedCoefficient, int256 exponent) internal pure returns (PackedFloat packed) {
         if (int128(signedCoefficient) != signedCoefficient || int128(exponent) != exponent) {
             (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
         }
@@ -248,7 +250,7 @@ library LibDecimalFloat {
     /// @return signedCoefficient The signed coefficient of the floating point
     /// representation.
     /// @return exponent The exponent of the floating point representation.
-    function unpack(uint256 packed) internal pure returns (int256 signedCoefficient, int256 exponent) {
+    function unpack(PackedFloat packed) internal pure returns (int256 signedCoefficient, int256 exponent) {
         uint256 mask = type(uint128).max;
         assembly ("memory-safe") {
             signedCoefficient := signextend(0x0F, and(packed, mask))
