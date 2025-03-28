@@ -1,12 +1,38 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {console} from "forge-std/Test.sol";
 
 contract LibDecimalFloatLog10Test is LogTest {
+    using LibDecimalFloat for Float;
+
+    function log10External(int256 signedCoefficient, int256 exponent) external returns (int256, int256) {
+        address tables = logTables();
+        return LibDecimalFloat.log10(tables, signedCoefficient, exponent);
+    }
+
+    function log10External(Float memory float) external returns (Float memory) {
+        address tables = logTables();
+        return LibDecimalFloat.log10(tables, float);
+    }
+    /// Stack and mem are the same.
+
+    function testLog10Mem(Float memory float) external {
+        try this.log10External(float.signedCoefficient, float.exponent) returns (
+            int256 signedCoefficient, int256 exponent
+        ) {
+            Float memory floatLog10 = this.log10External(float);
+            assertEq(signedCoefficient, floatLog10.signedCoefficient);
+            assertEq(exponent, floatLog10.exponent);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.log10External(float);
+        }
+    }
+
     function checkLog10(
         int256 signedCoefficient,
         int256 exponent,

@@ -3,11 +3,38 @@ pragma solidity =0.8.25;
 
 import {LogTest} from "../../abstract/LogTest.sol";
 
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 import {console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPowerTest is LogTest {
+    using LibDecimalFloat for Float;
+
+    function powerExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        returns (int256, int256)
+    {
+        return LibDecimalFloat.power(logTables(), signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function powerExternal(Float memory floatA, Float memory floatB) external returns (Float memory) {
+        return LibDecimalFloat.power(logTables(), floatA, floatB);
+    }
+    /// Stack and mem are the same.
+
+    function testPowerMem(Float memory a, Float memory b) external {
+        try this.powerExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
+            int256 signedCoefficient, int256 exponent
+        ) {
+            Float memory float = this.powerExternal(a, b);
+            assertEq(signedCoefficient, float.signedCoefficient);
+            assertEq(exponent, float.exponent);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.powerExternal(a, b);
+        }
+    }
+
     function checkPower(
         int256 signedCoefficientA,
         int256 exponentA,

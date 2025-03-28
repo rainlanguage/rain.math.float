@@ -1,13 +1,38 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatLtTest is Test {
+    using LibDecimalFloat for Float;
+
+    function ltExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (bool)
+    {
+        return LibDecimalFloat.lt(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function ltExternal(Float memory floatA, Float memory floatB) external pure returns (bool) {
+        return LibDecimalFloat.lt(floatA, floatB);
+    }
+    /// Stack and mem are the same.
+
+    function testLtMem(Float memory a, Float memory b) external {
+        try this.ltExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (bool lt) {
+            bool actual = this.ltExternal(a, b);
+            assertEq(lt, actual);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.ltExternal(a, b);
+        }
+    }
+
     function testLtReference(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         external
         pure

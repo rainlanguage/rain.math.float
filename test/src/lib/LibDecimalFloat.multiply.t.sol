@@ -2,7 +2,10 @@
 pragma solidity =0.8.25;
 
 import {
-    LibDecimalFloat, NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT
+    LibDecimalFloat,
+    NORMALIZED_ZERO_SIGNED_COEFFICIENT,
+    NORMALIZED_ZERO_EXPONENT,
+    Float
 } from "src/lib/LibDecimalFloat.sol";
 import {
     EXPONENT_MIN,
@@ -14,6 +17,34 @@ import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatMultiplyTest is Test {
+    using LibDecimalFloat for Float;
+
+    function multiplyExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (int256, int256)
+    {
+        return LibDecimalFloat.multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function multiplyExternal(Float memory floatA, Float memory floatB) external pure returns (Float memory) {
+        return LibDecimalFloat.multiply(floatA, floatB);
+    }
+
+    /// Stack and mem are the same.
+    function testMultiplyMem(Float memory a, Float memory b) external {
+        try this.multiplyExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
+            int256 signedCoefficient, int256 exponent
+        ) {
+            Float memory float = this.multiplyExternal(a, b);
+            assertEq(signedCoefficient, float.signedCoefficient);
+            assertEq(exponent, float.exponent);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.multiplyExternal(a, b);
+        }
+    }
+
     /// Simple 0 multiply 0
     /// 0 * 0 = 0
     function testMultiplyZero0Exponent() external pure {

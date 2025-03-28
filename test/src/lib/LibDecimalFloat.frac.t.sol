@@ -1,11 +1,35 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatFracTest is Test {
+    using LibDecimalFloat for Float;
+
+    function fracExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
+        return LibDecimalFloat.frac(signedCoefficient, exponent);
+    }
+
+    function fracExternal(Float memory float) external pure returns (Float memory) {
+        return LibDecimalFloat.frac(float);
+    }
+    /// Stack and mem are the same.
+
+    function testFracMem(Float memory float) external {
+        try this.fracExternal(float.signedCoefficient, float.exponent) returns (
+            int256 signedCoefficient, int256 exponent
+        ) {
+            Float memory floatFrac = this.fracExternal(float);
+            assertEq(signedCoefficient, floatFrac.signedCoefficient);
+            assertEq(exponent, floatFrac.exponent);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.fracExternal(float);
+        }
+    }
+
     function testFracNotReverts(int256 x, int256 exponentX) external pure {
         LibDecimalFloat.frac(x, exponentX);
     }

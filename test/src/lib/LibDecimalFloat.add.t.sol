@@ -1,12 +1,40 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX, ADD_MAX_EXPONENT_DIFF} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX, ADD_MAX_EXPONENT_DIFF, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatDecimalAddTest is Test {
+    using LibDecimalFloat for Float;
+
+    function addExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (int256, int256)
+    {
+        return LibDecimalFloat.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function addExternal(Float memory a, Float memory b) external pure returns (int256, int256) {
+        return LibDecimalFloat.add(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    }
+
+    /// Stack and mem are the same.
+    function testAddMem(Float memory a, Float memory b) external {
+        try this.addExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
+            int256 signedCoefficient, int256 exponent
+        ) {
+            Float memory resultMem = a.add(b);
+            assertEq(signedCoefficient, resultMem.signedCoefficient);
+            assertEq(exponent, resultMem.exponent);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            a.add(b);
+        }
+    }
+
     /// Simple 0 add 0
     /// 0 + 0 = 0
     function testAddZero() external pure {

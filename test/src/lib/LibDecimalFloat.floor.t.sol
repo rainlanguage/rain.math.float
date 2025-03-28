@@ -1,11 +1,35 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatFloorTest is Test {
+    using LibDecimalFloat for Float;
+
+    function floorExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
+        return LibDecimalFloat.floor(signedCoefficient, exponent);
+    }
+
+    function floorExternal(Float memory float) external pure returns (Float memory) {
+        return LibDecimalFloat.floor(float);
+    }
+    /// Stack and mem are the same.
+
+    function testFloorMem(Float memory float) external {
+        try this.floorExternal(float.signedCoefficient, float.exponent) returns (
+            int256 signedCoefficient, int256 exponent
+        ) {
+            Float memory floatFloor = this.floorExternal(float);
+            assertEq(signedCoefficient, floatFloor.signedCoefficient);
+            assertEq(exponent, floatFloor.exponent);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.floorExternal(float);
+        }
+    }
+
     function testFloorNotReverts(int256 x, int256 exponentX) external pure {
         LibDecimalFloat.floor(x, exponentX);
     }

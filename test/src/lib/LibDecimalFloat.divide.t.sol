@@ -2,11 +2,39 @@
 pragma solidity =0.8.25;
 
 import {THREES, ONES} from "../../lib/LibCommonResults.sol";
-import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX, Float} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatDivideTest is Test {
+    using LibDecimalFloat for Float;
+
+    function divideExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (int256, int256)
+    {
+        return LibDecimalFloat.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function divideExternal(Float memory floatA, Float memory floatB) external pure returns (Float memory) {
+        return LibDecimalFloat.divide(floatA, floatB);
+    }
+    /// Stack and mem are the same.
+
+    function testDivideMem(Float memory a, Float memory b) external {
+        try this.divideExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
+            int256 signedCoefficient, int256 exponent
+        ) {
+            Float memory float = this.divideExternal(a, b);
+            assertEq(signedCoefficient, float.signedCoefficient);
+            assertEq(exponent, float.exponent);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.divideExternal(a, b);
+        }
+    }
+
     function checkDivision(
         int256 signedCoefficientA,
         int256 exponentA,

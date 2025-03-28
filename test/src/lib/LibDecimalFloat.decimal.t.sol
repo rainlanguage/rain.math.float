@@ -6,19 +6,52 @@ import {
     ExponentOverflow,
     NORMALIZED_MAX,
     NORMALIZED_MIN,
-    NegativeFixedDecimalConversion
+    NegativeFixedDecimalConversion,
+    Float
 } from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test, console2, stdError} from "forge-std/Test.sol";
 
 contract LibDecimalFloatDecimalTest is Test {
+    using LibDecimalFloat for Float;
+
     function toFixedDecimalLossyExternal(int256 signedCoefficient, int256 exponent, uint8 decimals)
         external
         pure
         returns (uint256, bool)
     {
         return LibDecimalFloat.toFixedDecimalLossy(signedCoefficient, exponent, decimals);
+    }
+
+    function toFixedDecimalLossyExternal(Float memory float, uint8 decimals) external pure returns (uint256, bool) {
+        return float.toFixedDecimalLossy(decimals);
+    }
+
+    /// Memory version of from behaves same as stack version.
+    function testFromFixedDecimalLossyMem(uint256 value, uint8 decimals) external pure {
+        (int256 signedCoefficient, int256 exponent, bool lossless) =
+            LibDecimalFloat.fromFixedDecimalLossy(value, decimals);
+
+        (Float memory float, bool floatLossless) = LibDecimalFloat.fromFixedDecimalLossyMem(value, decimals);
+        assertEq(float.signedCoefficient, signedCoefficient, "signedCoefficient");
+        assertEq(float.exponent, exponent, "exponent");
+        assertEq(floatLossless, lossless, "lossless");
+    }
+
+    /// Memory version of to behaves same as stack version.
+    function testToFixedDecimalLossyMem(Float memory float, uint8 decimals) external {
+        try this.toFixedDecimalLossyExternal(float.signedCoefficient, float.exponent, decimals) returns (
+            uint256 value, bool lossless
+        ) {
+            (uint256 valueOut, bool losslessOut) = float.toFixedDecimalLossy(decimals);
+            assertEq(value, valueOut, "value");
+            assertEq(lossless, losslessOut, "lossless");
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            (uint256 valueOut, bool losslessOut) = this.toFixedDecimalLossyExternal(float, decimals);
+            (valueOut, losslessOut);
+        }
     }
 
     /// Round trip from/to decimal values without precision loss
