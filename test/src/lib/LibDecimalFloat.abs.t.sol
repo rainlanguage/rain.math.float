@@ -3,9 +3,34 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std/Test.sol";
 
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 contract LibDecimalFloatAbsTest is Test {
+    using LibDecimalFloat for Float;
+
+    function absExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
+        return LibDecimalFloat.abs(signedCoefficient, exponent);
+    }
+
+    function absExternal(Float memory float) external pure returns (Float memory) {
+        return LibDecimalFloat.abs(float);
+    }
+    /// Validate that operations using stack-based parameters (int256, int256)
+    /// and memory-based parameters (Float struct) yield identical results.
+
+    function testAbsMem(Float memory float) external {
+        try this.absExternal(float.signedCoefficient, float.exponent) returns (
+            int256 signedCoefficient, int256 exponent
+        ) {
+            Float memory floatAbs = this.absExternal(float);
+            assertEq(signedCoefficient, floatAbs.signedCoefficient);
+            assertEq(exponent, floatAbs.exponent);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.absExternal(float);
+        }
+    }
+
     /// Anything non negative is identity.
     function testAbsNonNegative(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 0, type(int256).max);

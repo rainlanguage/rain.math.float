@@ -1,13 +1,38 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatEqTest is Test {
+    using LibDecimalFloat for Float;
+
+    function eqExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (bool)
+    {
+        return LibDecimalFloat.eq(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function eqExternal(Float memory floatA, Float memory floatB) external pure returns (bool) {
+        return LibDecimalFloat.eq(floatA, floatB);
+    }
+    /// Test to verify that stack-based and memory-based implementations produce the same results.
+
+    function testEqMem(Float memory a, Float memory b) external {
+        try this.eqExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (bool eq) {
+            bool actual = this.eqExternal(a, b);
+            assertEq(eq, actual);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.eqExternal(a, b);
+        }
+    }
+
     function testEqReference(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         external
         pure
