@@ -38,6 +38,12 @@ int256 constant EXPONENT_LEAP_SIZE = 24;
 /// @dev The multiplier for the leap size, calculated at compile time.
 int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_LEAP_SIZE)));
 
+/// @dev An in memory representation of a float. This is more gas intensive but
+/// helps mitigate stack depth issues, and is more ergonomic for the caller.
+/// This is not a packed representation, so it is not normalized.
+/// @param signedCoefficient The signed coefficient of the floating point
+/// representation.
+/// @param exponent The exponent of the floating point representation.
 struct Float {
     int256 signedCoefficient;
     int256 exponent;
