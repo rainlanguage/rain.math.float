@@ -15,8 +15,7 @@ contract LibDecimalFloatFracTest is Test {
     function fracExternal(Float memory float) external pure returns (Float memory) {
         return LibDecimalFloat.frac(float);
     }
-    /// Stack and mem are the same.
-
+    /// Test to verify that stack-based and memory-based implementations produce the same results.
     function testFracMem(Float memory float) external {
         try this.fracExternal(float.signedCoefficient, float.exponent) returns (
             int256 signedCoefficient, int256 exponent

@@ -21,7 +21,7 @@ contract LibDecimalFloatSubTest is Test {
         return LibDecimalFloat.sub(floatA, floatB);
     }
 
-    /// Stack and mem are the same.
+    /// Test to verify that stack-based and memory-based implementations produce the same results.
     function testSubMem(Float memory a, Float memory b) external {
         try this.subExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
             int256 signedCoefficient, int256 exponent

@@ -15,7 +15,8 @@ contract LibDecimalFloatAbsTest is Test {
     function absExternal(Float memory float) external pure returns (Float memory) {
         return LibDecimalFloat.abs(float);
     }
-    /// Stack and mem are the same.
+    /// Validate that operations using stack-based parameters (int256, int256) 
+    /// and memory-based parameters (Float struct) yield identical results.
 
     function testAbsMem(Float memory float) external {
         try this.absExternal(float.signedCoefficient, float.exponent) returns (

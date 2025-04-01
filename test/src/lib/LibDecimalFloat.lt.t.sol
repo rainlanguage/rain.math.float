@@ -21,8 +21,7 @@ contract LibDecimalFloatLtTest is Test {
     function ltExternal(Float memory floatA, Float memory floatB) external pure returns (bool) {
         return LibDecimalFloat.lt(floatA, floatB);
     }
-    /// Stack and mem are the same.
-
+    /// Test to verify that stack-based and memory-based implementations produce the same results.
     function testLtMem(Float memory a, Float memory b) external {
         try this.ltExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (bool lt) {
             bool actual = this.ltExternal(a, b);

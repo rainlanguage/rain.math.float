@@ -21,8 +21,7 @@ contract LibDecimalFloatEqTest is Test {
     function eqExternal(Float memory floatA, Float memory floatB) external pure returns (bool) {
         return LibDecimalFloat.eq(floatA, floatB);
     }
-    /// Stack and mem are the same.
-
+    /// Test to verify that stack-based and memory-based implementations produce the same results.
     function testEqMem(Float memory a, Float memory b) external {
         try this.eqExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (bool eq) {
             bool actual = this.eqExternal(a, b);
