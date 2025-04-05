@@ -14,10 +14,12 @@ contract LibDecimalFloatMaxTest is Test {
     {
         return LibDecimalFloat.max(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
+
     function maxExternal(Float memory floatA, Float memory floatB) external pure returns (Float memory) {
         return floatA.max(floatB);
     }
     /// Test to verify that stack-based and memory-based implementations produce the same results.
+
     function testMaxMem(Float memory a, Float memory b) external {
         try this.maxExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
             int256 signedCoefficient, int256 exponent
@@ -31,17 +33,20 @@ contract LibDecimalFloatMaxTest is Test {
         }
     }
     /// x.max(x)
+
     function testMaxX(Float memory x) external pure {
         Float memory y = x.max(x);
         assertTrue(y.eq(x), "x.max(x) != x");
     }
     /// x.max(y) == y.max(x)
+
     function testMaxXY(Float memory x, Float memory y) external pure {
         Float memory maxXY = x.max(y);
         Float memory maxYX = y.max(x);
         assertTrue(maxXY.eq(maxYX), "maxXY != maxYX");
     }
     /// x.max(y) for x == y
+
     function testMaxXYEqual(Float memory x) external pure {
         Float memory y = Float(x.signedCoefficient, x.exponent);
         Float memory z = x.max(y);
@@ -49,6 +54,7 @@ contract LibDecimalFloatMaxTest is Test {
         assertTrue(z.eq(y), "x.max(y) != y");
     }
     /// x.max(y) for x > y
+
     function testMaxXYGreater(Float memory x, Float memory y) external pure {
         vm.assume(x.gt(y));
         Float memory z = x.max(y);
@@ -56,6 +62,7 @@ contract LibDecimalFloatMaxTest is Test {
         assertTrue(!z.eq(y), "x.max(y) != y");
     }
     /// x.max(y) for x < y
+
     function testMaxXYLess(Float memory x, Float memory y) external pure {
         vm.assume(x.lt(y));
         Float memory z = x.max(y);
