@@ -1108,4 +1108,72 @@ library LibDecimalFloat {
         (result.signedCoefficient, result.exponent) =
             power(tablesDataContract, a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
     }
+
+    /// Returns the minimum of two values.
+    /// Convenience for `a < b ? a : b`.
+    /// @param signedCoefficientA The signed coefficient of the first floating
+    /// point number.
+    /// @param exponentA The exponent of the first floating point number.
+    /// @param signedCoefficientB The signed coefficient of the second floating
+    /// point number.
+    /// @param exponentB The exponent of the second floating point number.
+    /// @return signedCoefficient The signed coefficient of the minimum value.
+    /// @return exponent The exponent of the minimum value.
+    function min(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (int256, int256)
+    {
+        if (lt(signedCoefficientA, exponentA, signedCoefficientB, exponentB)) {
+            return (signedCoefficientA, exponentA);
+        } else {
+            return (signedCoefficientB, exponentB);
+        }
+    }
+
+    /// Same as min, but accepts a Float struct instead of separate values.
+    /// Costs more gas but helps mitigate stack depth issues, and is more
+    /// ergonomic for the caller.
+    /// @param a The Float struct containing the signed coefficient and
+    /// exponent of the first floating point number.
+    /// @param b The Float struct containing the signed coefficient and
+    /// exponent of the second floating point number.
+    function min(Float memory a, Float memory b) internal pure returns (Float memory result) {
+        (result.signedCoefficient, result.exponent) =
+            min(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    }
+
+    /// Returns the maximum of two values.
+    /// Convenience for `a > b ? a : b`.
+    /// @param signedCoefficientA The signed coefficient of the first floating
+    /// point number.
+    /// @param exponentA The exponent of the first floating point number.
+    /// @param signedCoefficientB The signed coefficient of the second floating
+    /// point number.
+    /// @param exponentB The exponent of the second floating point number.
+    /// @return signedCoefficient The signed coefficient of the maximum value.
+    /// @return exponent The exponent of the maximum value.
+    function max(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (int256, int256)
+    {
+        if (gt(signedCoefficientA, exponentA, signedCoefficientB, exponentB)) {
+            return (signedCoefficientA, exponentA);
+        } else {
+            return (signedCoefficientB, exponentB);
+        }
+    }
+
+    /// Same as max, but accepts a Float struct instead of separate values.
+    /// Costs more gas but helps mitigate stack depth issues, and is more
+    /// ergonomic for the caller.
+    /// @param a The Float struct containing the signed coefficient and
+    /// exponent of the first floating point number.
+    /// @param b The Float struct containing the signed coefficient and
+    /// exponent of the second floating point number.
+    function max(Float memory a, Float memory b) internal pure returns (Float memory result) {
+        (result.signedCoefficient, result.exponent) =
+            max(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    }
 }
