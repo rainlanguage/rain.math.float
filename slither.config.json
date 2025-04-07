@@ -1,4 +1,4 @@
 {
     "detectors_to_exclude": "unused-imports,solc-version,dead-code,different-pragma-directives-are-used,assembly-usage,similar-names,naming-convention",
-    "filter_paths": "test/,lib/forge-std"
+    "filter_paths": "test/,lib/forge-std,lib/rain.math.fixedpoint,openzeppelin-contracts"
 }
