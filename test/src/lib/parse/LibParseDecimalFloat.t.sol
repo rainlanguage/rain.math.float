@@ -8,10 +8,44 @@ import {LibBytes, Pointer} from "rain.solmem/lib/LibBytes.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 import {ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
 import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoint} from "src/error/ErrParse.sol";
+import {Float} from "src/lib/LibDecimalFloat.sol";
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
     using Strings for uint256;
+
+    function parseDecimalFloatExternal(string memory data)
+        external
+        pure
+        returns (bytes4 errorSelector, uint256 cursorAfter, int256 signedCoefficient, int256 exponent)
+    {
+        uint256 cursor = Pointer.unwrap(bytes(data).dataPointer());
+        (errorSelector, cursorAfter, signedCoefficient, exponent) =
+            LibParseDecimalFloat.parseDecimalFloat(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
+    }
+
+    function parseDecimalFloatExternalMem(string memory data)
+        external
+        pure
+        returns (bytes4 errorSelector, Float memory float)
+    {
+        (errorSelector, float) = LibParseDecimalFloat.parseDecimalFloat(data);
+    }
+
+    /// Check that the memory version matches the stack version.
+    function testParseMem(string memory data) external {
+        try this.parseDecimalFloatExternal(data) returns (
+            bytes4 errorSelector, uint256 cursorAfter, int256 signedCoefficient, int256 exponent
+        ) {
+            (bytes4 errorSelectorMem, Float memory float) = this.parseDecimalFloatExternalMem(data);
+            assertEq(errorSelector, errorSelectorMem, "Error selector mismatch");
+            assertEq(signedCoefficient, float.signedCoefficient, "Signed coefficient mismatch");
+            assertEq(exponent, float.exponent, "Exponent mismatch");
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.parseDecimalFloatExternalMem(data);
+        }
+    }
 
     function checkParseDecimalFloat(
         string memory data,

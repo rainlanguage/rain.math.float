@@ -13,7 +13,7 @@ import {
 import {LibParseDecimal} from "rain.string/lib/parse/LibParseDecimal.sol";
 import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoint} from "../../error/ErrParse.sol";
 import {ParseDecimalOverflow, ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
-import {LibDecimalFloat, PackedFloat} from "../LibDecimalFloat.sol";
+import {LibDecimalFloat, PackedFloat, Float} from "../LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
 
 library LibParseDecimalFloat {
@@ -139,5 +139,17 @@ library LibParseDecimalFloat {
                 exponent += eValue;
             }
         }
+    }
+
+    function parseDecimalFloat(string memory str) internal pure returns (bytes4 errorSelector, Float memory float) {
+        uint256 start;
+        uint256 end;
+        assembly {
+            start := add(str, 0x20)
+            end := add(start, mload(str))
+        }
+        uint256 cursor;
+        (errorSelector, cursor, float.signedCoefficient, float.exponent) = parseDecimalFloat(start, end);
+        (cursor);
     }
 }

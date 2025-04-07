@@ -10,3 +10,6 @@
 [submodule "lib/rain.string"]
 	path = lib/rain.string
 	url = https://github.com/rainlanguage/rain.string
+[submodule "lib/rain.math.fixedpoint"]
+	path = lib/rain.math.fixedpoint
+	url = https://github.com/rainlanguage/rain.math.fixedpoint
