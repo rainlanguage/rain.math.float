@@ -1176,4 +1176,14 @@ library LibDecimalFloat {
         (result.signedCoefficient, result.exponent) =
             max(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
     }
+
+    /// Same as normalize, but accepts a Float struct instead of separate values.
+    /// Costs more gas but helps mitigate stack depth issues, and is more
+    /// ergonomic for the caller.
+    /// @param float The Float struct containing the signed coefficient and
+    /// exponent of the floating point number.
+    function normalize(Float memory float) internal pure returns (Float memory result) {
+        (result.signedCoefficient, result.exponent) =
+            LibDecimalFloatImplementation.normalize(float.signedCoefficient, float.exponent);
+    }
 }
