@@ -37,6 +37,7 @@ contract LibParseDecimalFloatTest is Test {
         try this.parseDecimalFloatExternal(data) returns (
             bytes4 errorSelector, uint256 cursorAfter, int256 signedCoefficient, int256 exponent
         ) {
+            (cursorAfter);
             (bytes4 errorSelectorMem, Float memory float) = this.parseDecimalFloatExternalMem(data);
             assertEq(errorSelector, errorSelectorMem, "Error selector mismatch");
             assertEq(signedCoefficient, float.signedCoefficient, "Signed coefficient mismatch");

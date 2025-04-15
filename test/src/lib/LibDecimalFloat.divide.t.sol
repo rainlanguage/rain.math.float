@@ -2,7 +2,7 @@
 pragma solidity =0.8.25;
 
 import {THREES, ONES} from "../../lib/LibCommonResults.sol";
-import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std/Test.sol";
 
@@ -120,8 +120,8 @@ contract LibDecimalFloatDivideTest is Test {
 
     /// forge-config: default.fuzz.runs = 100
     function testUnnormalizedThreesDivision0(int256 exponentA, int256 exponentB) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
-        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
+        exponentA = bound(exponentA, EXPONENT_MIN / 2, EXPONENT_MAX / 2);
+        exponentB = bound(exponentB, EXPONENT_MIN / 2, EXPONENT_MAX / 2);
 
         int256 d = 3;
         int256 di = 0;

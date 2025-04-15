@@ -5,13 +5,11 @@ import {
     LibDecimalFloat,
     NORMALIZED_ZERO_SIGNED_COEFFICIENT,
     NORMALIZED_ZERO_EXPONENT,
-    Float
-} from "src/lib/LibDecimalFloat.sol";
-import {
+    Float,
     EXPONENT_MIN,
-    EXPONENT_MAX,
-    LibDecimalFloatImplementation
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+    EXPONENT_MAX
+} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 
 import {Test} from "forge-std/Test.sol";

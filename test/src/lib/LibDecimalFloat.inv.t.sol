@@ -2,7 +2,7 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std/Test.sol";
-import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, EXPONENT_MIN, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 
 contract LibDecimalFloatInvTest is Test {

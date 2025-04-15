@@ -20,12 +20,12 @@ import {
     LibDecimalFloatImplementation,
     NORMALIZED_ZERO_SIGNED_COEFFICIENT,
     NORMALIZED_ZERO_EXPONENT,
-    EXPONENT_MIN,
-    EXPONENT_MAX,
     NORMALIZED_MIN,
     NORMALIZED_MAX,
     EXPONENT_STEP_SIZE,
-    SIGNED_NORMALIZED_MAX
+    SIGNED_NORMALIZED_MAX,
+    EXPONENT_MAX,
+    EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
 type PackedFloat is bytes32;
@@ -51,8 +51,8 @@ struct Float {
 
 /// @title LibDecimalFloat
 /// Floating point math library for Rainlang.
-/// Broadly implements decimal floating point math with 128 signed bits for the
-/// coefficient and 128 signed bits for the exponent. Notably the implementation
+/// Broadly implements decimal floating point math with 224 signed bits for the
+/// coefficient and 32 signed bits for the exponent. Notably the implementation
 /// differs from standard specifications in a few key areas:
 ///
 /// - There is no concept of NaN or Infinity.
@@ -283,8 +283,9 @@ library LibDecimalFloat {
         return toFixedDecimalLossless(float.signedCoefficient, float.exponent, decimals);
     }
 
-    /// Pack a signed coefficient and exponent into a single uint256. Clearly
-    /// this involves fitting 64 bytes into 32 bytes, so there will be data loss.
+    /// Pack a signed coefficient and exponent into a single `PackedFloat`.
+    /// Clearly this involves fitting 64 bytes into 32 bytes, so there will be
+    /// data loss.
     /// Normalized numbers are guaranteed to round trip through pack/unpack in
     /// a lossless manner. The normalization process will _truncate_ on precision
     /// loss if required, which is significantly better than potentially
@@ -298,12 +299,31 @@ library LibDecimalFloat {
     /// @return packed The packed representation of the signed coefficient and
     /// exponent.
     function pack(int256 signedCoefficient, int256 exponent) internal pure returns (PackedFloat packed) {
-        if (int128(signedCoefficient) != signedCoefficient || int128(exponent) != exponent) {
-            (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+        if (signedCoefficient == 0) {
+            return PackedFloat.wrap(0);
         }
-        uint256 mask = type(uint128).max;
+
+        if (int224(signedCoefficient) != signedCoefficient) {
+            if (signedCoefficient / 1e72 != 0) {
+                signedCoefficient /= 1e5;
+                exponent += 5;
+            }
+
+            while (int224(signedCoefficient) != signedCoefficient) {
+                signedCoefficient /= 10;
+                ++exponent;
+            }
+        }
+
+        if (int32(exponent) != exponent) {
+            revert ExponentOverflow(signedCoefficient, exponent);
+        }
+
+        // Need a mask to zero out the bits that could be set to 1 if the
+        // coefficient is negative.
+        uint256 mask = type(uint224).max;
         assembly ("memory-safe") {
-            packed := or(and(signedCoefficient, mask), shl(0x80, exponent))
+            packed := or(and(signedCoefficient, mask), shl(0xe0, exponent))
         }
     }
 
@@ -320,10 +340,10 @@ library LibDecimalFloat {
     /// representation.
     /// @return exponent The exponent of the floating point representation.
     function unpack(PackedFloat packed) internal pure returns (int256 signedCoefficient, int256 exponent) {
-        uint256 mask = type(uint128).max;
+        uint256 mask = type(uint224).max;
         assembly ("memory-safe") {
-            signedCoefficient := signextend(0x0F, and(packed, mask))
-            exponent := sar(0x80, packed)
+            signedCoefficient := signextend(27, and(packed, mask))
+            exponent := sar(0xe0, packed)
         }
     }
 

@@ -13,16 +13,16 @@ import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
-/// @dev The minimum exponent that can be normalized.
-/// This is crazy small, so should never be a problem for any real use case.
-/// We need it to guard against overflow when normalizing.
-int256 constant EXPONENT_MIN = type(int128).min + 79;
-
 /// @dev The maximum exponent that can be normalized.
 /// This is crazy large, so should never be a problem for any real use case.
 /// We need it to guard against overflow when normalizing.
-int256 constant EXPONENT_MAX = type(int128).max - 78;
+int256 constant EXPONENT_MAX = type(int256).max / 2;
 int256 constant EXPONENT_MAX_PLUS_ONE = EXPONENT_MAX + 1;
+
+/// @dev The minimum exponent that can be normalized.
+/// This is crazy small, so should never be a problem for any real use case.
+/// We need it to guard against overflow when normalizing.
+int256 constant EXPONENT_MIN = -EXPONENT_MAX;
 
 /// @dev When normalizing a number, how far we "step" when close to normalized.
 int256 constant EXPONENT_STEP_SIZE = 1;
