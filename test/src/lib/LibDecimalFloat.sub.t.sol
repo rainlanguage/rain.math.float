@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std/Test.sol";
@@ -40,8 +40,8 @@ contract LibDecimalFloatSubTest is Test {
         external
         pure
     {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponentA = bound(exponentA, -EXPONENT_MAX / 10, EXPONENT_MAX / 10);
+        exponentB = bound(exponentB, -EXPONENT_MAX / 10, EXPONENT_MAX / 10);
 
         // The min signed value cannot be negated directly so we can't test it
         // in this function.
@@ -57,8 +57,8 @@ contract LibDecimalFloatSubTest is Test {
 
     /// We can sub the min signed value as it will be normalized.
     function testSubMinSignedValue(int256 signedCoefficientA, int256 exponentA, int256 exponentB) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponentA = bound(exponentA, -EXPONENT_MAX / 10, EXPONENT_MAX / 10);
+        exponentB = bound(exponentB, -EXPONENT_MAX / 10, EXPONENT_MAX / 10);
 
         // Able to sub the non-normalized min signed value.
         int256 signedCoefficientB = type(int256).min;

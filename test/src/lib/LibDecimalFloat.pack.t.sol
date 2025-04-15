@@ -1,14 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {
-    LibDecimalFloat,
-    ExponentOverflow,
-    EXPONENT_MIN,
-    EXPONENT_MAX,
-    PackedFloat,
-    Float
-} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, ExponentOverflow, PackedFloat, Float, EXPONENT_MAX} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std/Test.sol";
 
@@ -30,24 +23,34 @@ contract LibDecimalFloatPackTest is Test {
     }
 
     /// Round trip from/to parts.
-    function testPartsRoundTrip(int128 signedCoefficient, int128 exponent) external pure {
+    function testPartsRoundTrip(int224 signedCoefficient, int32 exponent) external pure {
         PackedFloat packed = LibDecimalFloat.pack(signedCoefficient, exponent);
         (int256 signedCoefficientOut, int256 exponentOut) = LibDecimalFloat.unpack(packed);
 
         assertEq(signedCoefficient, signedCoefficientOut, "coefficient");
-        assertEq(exponent, exponentOut, "exponent");
+        if (signedCoefficient != 0) {
+            assertEq(exponent, exponentOut, "exponent");
+        } else {
+            // 0 exponent is always 0.
+            assertEq(exponentOut, 0, "exponent");
+        }
     }
 
-    /// Can round trip any normalized number.
-    function testNormalizedRoundTrip(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+    /// Can round trip any normalized number provided the exponent is in range.
+    function testNormalizedRoundTrip(int256 signedCoefficient, int32 exponent) external pure {
+        (int256 signedCoefficientNormalized, int256 exponentNormalized) =
+            LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+        vm.assume(int32(exponentNormalized) == exponentNormalized);
 
-        PackedFloat packed = LibDecimalFloat.pack(signedCoefficient, exponent);
-        (int256 signedCoefficientOut, int256 exponentOut) = LibDecimalFloat.unpack(packed);
+        PackedFloat packed = LibDecimalFloat.pack(signedCoefficientNormalized, exponentNormalized);
+        (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = LibDecimalFloat.unpack(packed);
 
-        assertEq(signedCoefficient, signedCoefficientOut, "coefficient");
-        assertEq(exponent, exponentOut, "exponent");
+        assertTrue(
+            LibDecimalFloat.eq(
+                signedCoefficientNormalized, exponentNormalized, signedCoefficientUnpacked, exponentUnpacked
+            ),
+            "eq"
+        );
     }
 
     /// Mem and stack versions behave the same for pack.

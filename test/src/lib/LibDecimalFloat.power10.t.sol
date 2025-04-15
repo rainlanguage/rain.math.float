@@ -1,10 +1,8 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, EXPONENT_MIN, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LogTest} from "../../abstract/LogTest.sol";
-
-import {console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPower10Test is LogTest {
     using LibDecimalFloat for Float;
@@ -40,11 +38,8 @@ contract LibDecimalFloatPower10Test is LogTest {
         int256 expectedExponent
     ) internal {
         address tables = logTables();
-        uint256 a = gasleft();
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloat.power10(tables, signedCoefficient, exponent);
-        uint256 b = gasleft();
-        console2.log("%d %d Gas used: %d", uint256(signedCoefficient), uint256(exponent), a - b);
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
         assertEq(actualExponent, expectedExponent, "exponent");
     }
