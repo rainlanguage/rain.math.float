@@ -303,9 +303,16 @@ library LibDecimalFloat {
             return PackedFloat.wrap(0);
         }
 
-        while (int224(signedCoefficient) != signedCoefficient) {
-            signedCoefficient /= 10;
-            ++exponent;
+        if (int224(signedCoefficient) != signedCoefficient) {
+            if (signedCoefficient / 1e72 != 0) {
+                signedCoefficient /= 1e5;
+                exponent += 5;
+            }
+
+            while (int224(signedCoefficient) != signedCoefficient) {
+                signedCoefficient /= 10;
+                ++exponent;
+            }
         }
 
         if (int32(exponent) != exponent) {
