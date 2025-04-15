@@ -6,6 +6,7 @@ import {
     NORMALIZED_ZERO_SIGNED_COEFFICIENT,
     NORMALIZED_ZERO_EXPONENT,
     Float,
+    EXPONENT_MIN,
     EXPONENT_MAX
 } from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
@@ -125,8 +126,8 @@ contract LibDecimalFloatMultiplyTest is Test {
         int256 signedCoefficientB,
         int256 exponentB
     ) external pure {
-        exponentA = bound(exponentA, -EXPONENT_MAX, EXPONENT_MAX);
-        exponentB = bound(exponentB, -EXPONENT_MAX, EXPONENT_MAX);
+        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
+        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloat.multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (int256 expectedSignedCoefficient, int256 expectedExponent) =

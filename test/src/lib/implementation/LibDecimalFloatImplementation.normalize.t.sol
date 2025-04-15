@@ -3,7 +3,11 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std/Test.sol";
 
-import {LibDecimalFloatImplementation, EXPONENT_MAX} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    EXPONENT_MIN,
+    EXPONENT_MAX
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloatImplementationSlow} from "../../../lib/implementation/LibDecimalFloatImplementationSlow.sol";
 
 contract LibDecimalFloatImplementationNormalizeTest is Test {
@@ -16,7 +20,7 @@ contract LibDecimalFloatImplementationNormalizeTest is Test {
 
     /// Every normalized number is normalized.
     function testNormalized(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, -EXPONENT_MAX, EXPONENT_MAX);
+        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
         assertTrue(LibDecimalFloatImplementation.isNormalized(actualSignedCoefficient, actualExponent));

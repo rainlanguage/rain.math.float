@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, EXPONENT_MAX, ADD_MAX_EXPONENT_DIFF, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, EXPONENT_MIN, EXPONENT_MAX, ADD_MAX_EXPONENT_DIFF, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std/Test.sol";
@@ -46,7 +46,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
     /// 0 add 0 any exponent
     /// 0 + 0 = 0
     function testAddZeroAnyExponent(int128 inputExponent) external pure {
-        inputExponent = int128(bound(inputExponent, EXPONENT_MAX, EXPONENT_MAX));
+        inputExponent = int128(bound(inputExponent, EXPONENT_MIN, EXPONENT_MAX));
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.add(0, inputExponent, 0, 0);
         assertEq(signedCoefficient, 0);
         assertEq(exponent, 0);
@@ -113,8 +113,8 @@ contract LibDecimalFloatDecimalAddTest is Test {
         int256 signedCoefficientB,
         int256 exponentB
     ) external pure {
-        exponentA = bound(exponentA, -EXPONENT_MAX / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, -EXPONENT_MAX / 10, EXPONENT_MAX / 10);
+        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
 
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloat.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
@@ -127,8 +127,8 @@ contract LibDecimalFloatDecimalAddTest is Test {
         int256 signedCoefficientB,
         int256 exponentB
     ) public pure {
-        exponentA = bound(exponentA, -EXPONENT_MAX / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, -EXPONENT_MAX / 10, EXPONENT_MAX / 10);
+        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         vm.assume(signedCoefficientA != 0);
         vm.assume(signedCoefficientB != 0);
 
@@ -227,8 +227,8 @@ contract LibDecimalFloatDecimalAddTest is Test {
 
     /// Adding any zero to any value returns the non-zero value.
     function testAddZeroToAnyNonZero(int256 exponentZero, int256 signedCoefficient, int256 exponent) external pure {
-        exponentZero = bound(exponentZero, -EXPONENT_MAX / 10, EXPONENT_MAX / 10);
-        exponent = bound(exponent, -EXPONENT_MAX / 10, EXPONENT_MAX / 10);
+        exponentZero = bound(exponentZero, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponent = bound(exponent, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
 
         vm.assume(signedCoefficient != 0);
 
