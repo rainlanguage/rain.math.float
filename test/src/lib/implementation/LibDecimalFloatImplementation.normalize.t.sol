@@ -43,9 +43,22 @@ contract LibDecimalFloatImplementationNormalizeTest is Test {
         checkNormalized(1e37, 0, 1e37, 0);
         checkNormalized(type(int256).max, 0, 5.7896044618658097711785492504343953926e37, 39);
         checkNormalized(type(int256).min, 0, -5.7896044618658097711785492504343953926e37, 39);
+        checkNormalized(42, 0, 42e36, -36);
+        checkNormalized(42e36, -36, 42e36, -36);
 
         for (int256 i = 76; i >= 0; i--) {
             checkNormalized(int256(10 ** uint256(i)), 0, 1e37, i - 37);
         }
+    }
+
+    /// Normalization should be idempotent.
+    function testIdempotent(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
+        (int256 normalizedSignedCoefficient, int256 normalizedExponent) =
+            LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+        (int256 actualSignedCoefficient, int256 actualExponent) =
+            LibDecimalFloatImplementation.normalize(normalizedSignedCoefficient, normalizedExponent);
+        assertEq(actualSignedCoefficient, normalizedSignedCoefficient);
+        assertEq(actualExponent, normalizedExponent);
     }
 }
