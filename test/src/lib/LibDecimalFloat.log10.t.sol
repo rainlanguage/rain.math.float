@@ -14,19 +14,21 @@ contract LibDecimalFloatLog10Test is LogTest {
         return LibDecimalFloat.log10(tables, signedCoefficient, exponent);
     }
 
-    function log10External(Float memory float) external returns (Float memory) {
+    function log10External(Float float) external returns (Float) {
         address tables = logTables();
         return LibDecimalFloat.log10(tables, float);
     }
     /// Stack and mem are the same.
 
-    function testLog10Mem(Float memory float) external {
-        try this.log10External(float.signedCoefficient, float.exponent) returns (
-            int256 signedCoefficient, int256 exponent
+    function testLog10Mem(Float float) external {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        try this.log10External(signedCoefficient, exponent) returns (
+            int256 signedCoefficientResult, int256 exponentResult
         ) {
-            Float memory floatLog10 = this.log10External(float);
-            assertEq(signedCoefficient, floatLog10.signedCoefficient);
-            assertEq(exponent, floatLog10.exponent);
+            Float floatLog10 = this.log10External(float);
+            (int256 signedCoefficientResultUnpacked, int256 exponentResultUnpacked) = floatLog10.unpack();
+            assertEq(signedCoefficientResultUnpacked, signedCoefficientResult);
+            assertEq(exponentResultUnpacked, exponentResult);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.log10External(float);

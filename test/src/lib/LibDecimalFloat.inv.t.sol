@@ -12,18 +12,20 @@ contract LibDecimalFloatInvTest is Test {
         return LibDecimalFloat.inv(signedCoefficient, exponent);
     }
 
-    function invExternal(Float memory float) external pure returns (Float memory) {
+    function invExternal(Float float) external pure returns (Float) {
         return LibDecimalFloat.inv(float);
     }
     /// Stack and mem are the same.
 
-    function testInvMem(Float memory float) external {
-        try this.invExternal(float.signedCoefficient, float.exponent) returns (
-            int256 signedCoefficient, int256 exponent
+    function testInvMem(Float float) external {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        try this.invExternal(signedCoefficient, exponent) returns (
+            int256 signedCoefficientResult, int256 exponentResult
         ) {
-            Float memory floatInv = this.invExternal(float);
-            assertEq(signedCoefficient, floatInv.signedCoefficient);
-            assertEq(exponent, floatInv.exponent);
+            Float floatInv = this.invExternal(float);
+            (int256 signedCoefficientResultUnpacked, int256 exponentResultUnpacked) = floatInv.unpack();
+            assertEq(signedCoefficientResultUnpacked, signedCoefficientResult);
+            assertEq(exponentResultUnpacked, exponentResult);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.invExternal(float);

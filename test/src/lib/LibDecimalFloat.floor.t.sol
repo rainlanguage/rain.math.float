@@ -12,18 +12,20 @@ contract LibDecimalFloatFloorTest is Test {
         return LibDecimalFloat.floor(signedCoefficient, exponent);
     }
 
-    function floorExternal(Float memory float) external pure returns (Float memory) {
+    function floorExternal(Float float) external pure returns (Float) {
         return LibDecimalFloat.floor(float);
     }
     /// Stack and mem are the same.
 
-    function testFloorMem(Float memory float) external {
-        try this.floorExternal(float.signedCoefficient, float.exponent) returns (
-            int256 signedCoefficient, int256 exponent
+    function testFloorMem(Float float) external {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        try this.floorExternal(signedCoefficient, exponent) returns (
+            int256 signedCoefficientFloor, int256 exponentFloor
         ) {
-            Float memory floatFloor = this.floorExternal(float);
-            assertEq(signedCoefficient, floatFloor.signedCoefficient);
-            assertEq(exponent, floatFloor.exponent);
+            Float floatFloor = this.floorExternal(float);
+            (int256 signedCoefficientFloorUnpacked, int256 exponentFloorUnpacked) = floatFloor.unpack();
+            assertEq(signedCoefficientFloor, signedCoefficientFloorUnpacked);
+            assertEq(exponentFloor, exponentFloorUnpacked);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.floorExternal(float);

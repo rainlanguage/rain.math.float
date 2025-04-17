@@ -10,6 +10,7 @@ import {
 } from "../generated/LogTables.pointers.sol";
 import {
     ExponentOverflow,
+    CoefficientOverflow,
     Log10Negative,
     Log10Zero,
     NegativeFixedDecimalConversion,
@@ -28,7 +29,7 @@ import {
     EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
-type PackedFloat is bytes32;
+type Float is bytes32;
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 37;
 
@@ -38,16 +39,16 @@ int256 constant EXPONENT_LEAP_SIZE = 24;
 /// @dev The multiplier for the leap size, calculated at compile time.
 int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_LEAP_SIZE)));
 
-/// @dev An in memory representation of a float. This is more gas intensive but
-/// helps mitigate stack depth issues, and is more ergonomic for the caller.
-/// This is not a packed representation, so it is not normalized.
-/// @param signedCoefficient The signed coefficient of the floating point
-/// representation.
-/// @param exponent The exponent of the floating point representation.
-struct Float {
-    int256 signedCoefficient;
-    int256 exponent;
-}
+// /// @dev An in memory representation of a float. This is more gas intensive but
+// /// helps mitigate stack depth issues, and is more ergonomic for the caller.
+// /// This is not a packed representation, so it is not normalized.
+// /// @param signedCoefficient The signed coefficient of the floating point
+// /// representation.
+// /// @param exponent The exponent of the floating point representation.
+// struct Float {
+//     int256 signedCoefficient;
+//     int256 exponent;
+// }
 
 /// @title LibDecimalFloat
 /// Floating point math library for Rainlang.
@@ -98,6 +99,8 @@ struct Float {
 /// applied without rigourous testing/mathematical models that are beyond the
 /// scope of the typical user of Rainlang.
 library LibDecimalFloat {
+    using LibDecimalFloat for Float;
+
     /// Convert a fixed point decimal value to a signed coefficient and exponent.
     /// The conversion can be lossy if the unsigned value is too large to fit in
     /// the signed coefficient.
@@ -131,12 +134,9 @@ library LibDecimalFloat {
     /// e.g. If 1e18 represents 1 this would be 18 decimals.
     /// @return float The Float struct containing the signed coefficient and
     /// exponent.
-    function fromFixedDecimalLossyMem(uint256 value, uint8 decimals)
-        internal
-        pure
-        returns (Float memory float, bool lossless)
-    {
-        (float.signedCoefficient, float.exponent, lossless) = fromFixedDecimalLossy(value, decimals);
+    function fromFixedDecimalLossyPacked(uint256 value, uint8 decimals) internal pure returns (Float, bool) {
+        (int256 signedCoefficient, int256 exponent, bool lossless) = fromFixedDecimalLossy(value, decimals);
+        return (pack(signedCoefficient, exponent), lossless);
     }
 
     /// Lossless version of `fromFixedDecimalLossy`. This will revert if the
@@ -159,8 +159,9 @@ library LibDecimalFloat {
     /// @param decimals As per `fromFixedDecimalLossyMem`.
     /// @return float The Float struct containing the signed coefficient and
     /// exponent.
-    function fromFixedDecimalLosslessMem(uint256 value, uint8 decimals) internal pure returns (Float memory float) {
-        (float.signedCoefficient, float.exponent) = fromFixedDecimalLossless(value, decimals);
+    function fromFixedDecimalLosslessPacked(uint256 value, uint8 decimals) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = fromFixedDecimalLossless(value, decimals);
+        return pack(signedCoefficient, exponent);
     }
 
     /// Convert a signed coefficient and exponent to a fixed point decimal value.
@@ -248,8 +249,9 @@ library LibDecimalFloat {
     /// e.g. If 1e18 represents 1 this would be 18 decimals.
     /// @return value The fixed point decimal value.
     /// @return lossless `true` if the conversion is lossless.
-    function toFixedDecimalLossy(Float memory float, uint8 decimals) internal pure returns (uint256, bool) {
-        return toFixedDecimalLossy(float.signedCoefficient, float.exponent, decimals);
+    function toFixedDecimalLossy(Float float, uint8 decimals) internal pure returns (uint256, bool) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        return toFixedDecimalLossy(signedCoefficient, exponent, decimals);
     }
 
     /// Lossless version of `toFixedDecimalLossy`. This will revert if the
@@ -279,8 +281,9 @@ library LibDecimalFloat {
     /// @param decimals The number of decimals in the fixed point representation.
     /// e.g. If 1e18 represents 1 this would be 18 decimals.
     /// @return value The fixed point decimal value.
-    function toFixedDecimalLossless(Float memory float, uint8 decimals) internal pure returns (uint256) {
-        return toFixedDecimalLossless(float.signedCoefficient, float.exponent, decimals);
+    function toFixedDecimalLossless(Float float, uint8 decimals) internal pure returns (uint256) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        return toFixedDecimalLossless(signedCoefficient, exponent, decimals);
     }
 
     /// Pack a signed coefficient and exponent into a single `PackedFloat`.
@@ -296,23 +299,11 @@ library LibDecimalFloat {
     /// @param signedCoefficient The signed coefficient of the floating point
     /// representation.
     /// @param exponent The exponent of the floating point representation.
-    /// @return packed The packed representation of the signed coefficient and
+    /// @return float The packed representation of the signed coefficient and
     /// exponent.
-    function pack(int256 signedCoefficient, int256 exponent) internal pure returns (PackedFloat packed) {
-        if (signedCoefficient == 0) {
-            return PackedFloat.wrap(0);
-        }
-
+    function pack(int256 signedCoefficient, int256 exponent) internal pure returns (Float float) {
         if (int224(signedCoefficient) != signedCoefficient) {
-            if (signedCoefficient / 1e72 != 0) {
-                signedCoefficient /= 1e5;
-                exponent += 5;
-            }
-
-            while (int224(signedCoefficient) != signedCoefficient) {
-                signedCoefficient /= 10;
-                ++exponent;
-            }
+            revert CoefficientOverflow(signedCoefficient, exponent);
         }
 
         if (int32(exponent) != exponent) {
@@ -323,32 +314,24 @@ library LibDecimalFloat {
         // coefficient is negative.
         uint256 mask = type(uint224).max;
         assembly ("memory-safe") {
-            packed := or(and(signedCoefficient, mask), shl(0xe0, exponent))
+            float := or(and(signedCoefficient, mask), shl(0xe0, exponent))
         }
     }
 
-    function pack(Float memory float) internal pure returns (PackedFloat) {
-        return pack(float.signedCoefficient, float.exponent);
-    }
-
-    /// Unpack a packed uint256 into a signed coefficient and exponent. This is
+    /// Unpack a packed bytes32 into a signed coefficient and exponent. This is
     /// the inverse of `pack`. Note that the unpacked values are not necessarily
     /// normalized, especially if their provenance is unknown or user input.
-    /// @param packed The packed representation of the signed coefficient and
+    /// @param float The packed representation of the signed coefficient and
     /// exponent.
     /// @return signedCoefficient The signed coefficient of the floating point
     /// representation.
     /// @return exponent The exponent of the floating point representation.
-    function unpack(PackedFloat packed) internal pure returns (int256 signedCoefficient, int256 exponent) {
+    function unpack(Float float) internal pure returns (int256 signedCoefficient, int256 exponent) {
         uint256 mask = type(uint224).max;
         assembly ("memory-safe") {
-            signedCoefficient := signextend(27, and(packed, mask))
-            exponent := sar(0xe0, packed)
+            signedCoefficient := signextend(27, and(float, mask))
+            exponent := sar(0xe0, float)
         }
-    }
-
-    function unpackMem(PackedFloat packed) internal pure returns (Float memory float) {
-        (float.signedCoefficient, float.exponent) = unpack(packed);
     }
 
     /// Add two floats together as a normalized result.
@@ -479,9 +462,11 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function add(Float memory a, Float memory b) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) =
-            add(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function add(Float a, Float b) internal pure returns (Float) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 signedCoefficient, int256 exponent) = add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return pack(signedCoefficient, exponent);
     }
 
     /// Subtract two floats together as a normalized result.
@@ -512,9 +497,11 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function sub(Float memory a, Float memory b) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) =
-            sub(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function sub(Float a, Float b) internal pure returns (Float result) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 signedCoefficient, int256 exponent) = sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return pack(signedCoefficient, exponent);
     }
 
     /// Negates and normalizes a float.
@@ -554,8 +541,10 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    function minus(Float memory float) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) = minus(float.signedCoefficient, float.exponent);
+    function minus(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (signedCoefficient, exponent) = minus(signedCoefficient, exponent);
+        return pack(signedCoefficient, exponent);
     }
 
     /// Returns the absolute value of a float.
@@ -582,8 +571,10 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    function abs(Float memory float) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) = abs(float.signedCoefficient, float.exponent);
+    function abs(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (signedCoefficient, exponent) = abs(signedCoefficient, exponent);
+        return pack(signedCoefficient, exponent);
     }
 
     /// https://speleotrove.com/decimal/daops.html#refmult
@@ -648,9 +639,12 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function multiply(Float memory a, Float memory b) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) =
-            multiply(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function multiply(Float a, Float b) internal pure returns (Float) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 signedCoefficient, int256 exponent) =
+            multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return pack(signedCoefficient, exponent);
     }
 
     /// https://speleotrove.com/decimal/daops.html#refdivide
@@ -725,9 +719,12 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function divide(Float memory a, Float memory b) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) =
-            divide(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function divide(Float a, Float b) internal pure returns (Float) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 signedCoefficient, int256 exponent) =
+            divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return pack(signedCoefficient, exponent);
     }
 
     /// Inverts a float. Equivalent to `1 / x` with modest gas optimizations.
@@ -745,8 +742,10 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    function inv(Float memory float) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) = inv(float.signedCoefficient, float.exponent);
+    function inv(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
+        return pack(signedCoefficient, exponent);
     }
 
     /// Numeric equality for floats.
@@ -780,8 +779,10 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function eq(Float memory a, Float memory b) internal pure returns (bool) {
-        return eq(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function eq(Float a, Float b) internal pure returns (bool) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        return eq(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Numeric less than for floats.
@@ -815,8 +816,10 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function lt(Float memory a, Float memory b) internal pure returns (bool) {
-        return lt(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function lt(Float a, Float b) internal pure returns (bool) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        return lt(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Numeric greater than for floats.
@@ -850,8 +853,10 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function gt(Float memory a, Float memory b) internal pure returns (bool) {
-        return gt(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function gt(Float a, Float b) internal pure returns (bool) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        return gt(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Fractional component of a float.
@@ -873,8 +878,10 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    function frac(Float memory float) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) = frac(float.signedCoefficient, float.exponent);
+    function frac(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (signedCoefficient, exponent) = frac(signedCoefficient, exponent);
+        return pack(signedCoefficient, exponent);
     }
 
     /// Integer component of a float.
@@ -896,8 +903,10 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    function floor(Float memory float) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) = floor(float.signedCoefficient, float.exponent);
+    function floor(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (signedCoefficient, exponent) = floor(signedCoefficient, exponent);
+        return pack(signedCoefficient, exponent);
     }
 
     /// 10^x for a float x.
@@ -957,9 +966,10 @@ library LibDecimalFloat {
     /// logarithm tables.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    function power10(address tablesDataContract, Float memory float) internal view returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) =
-            power10(tablesDataContract, float.signedCoefficient, float.exponent);
+    function power10(address tablesDataContract, Float float) internal view returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (signedCoefficient, exponent) = power10(tablesDataContract, signedCoefficient, exponent);
+        return pack(signedCoefficient, exponent);
     }
 
     /// log10(x) for a float x.
@@ -1079,8 +1089,10 @@ library LibDecimalFloat {
     /// logarithm tables.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    function log10(address tablesDataContract, Float memory float) internal view returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) = log10(tablesDataContract, float.signedCoefficient, float.exponent);
+    function log10(address tablesDataContract, Float float) internal view returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
+        return pack(signedCoefficient, exponent);
     }
 
     /// x^y = 10^(y * log10(x))
@@ -1120,13 +1132,12 @@ library LibDecimalFloat {
     /// exponent of the base.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the exponent.
-    function power(address tablesDataContract, Float memory a, Float memory b)
-        internal
-        view
-        returns (Float memory result)
-    {
-        (result.signedCoefficient, result.exponent) =
-            power(tablesDataContract, a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function power(address tablesDataContract, Float a, Float b) internal view returns (Float) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 signedCoefficient, int256 exponent) =
+            power(tablesDataContract, signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return pack(signedCoefficient, exponent);
     }
 
     /// Returns the minimum of two values.
@@ -1158,9 +1169,11 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function min(Float memory a, Float memory b) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) =
-            min(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function min(Float a, Float b) internal pure returns (Float) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 signedCoefficient, int256 exponent) = min(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return pack(signedCoefficient, exponent);
     }
 
     /// Returns the maximum of two values.
@@ -1192,9 +1205,11 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function max(Float memory a, Float memory b) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) =
-            max(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function max(Float a, Float b) internal pure returns (Float result) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 signedCoefficient, int256 exponent) = max(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return pack(signedCoefficient, exponent);
     }
 
     /// Same as normalize, but accepts a Float struct instead of separate values.
@@ -1202,8 +1217,10 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    function normalize(Float memory float) internal pure returns (Float memory result) {
-        (result.signedCoefficient, result.exponent) =
-            LibDecimalFloatImplementation.normalize(float.signedCoefficient, float.exponent);
+    function normalize(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (int256 signedCoefficientNormalized, int256 exponentNormalized) =
+            LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+        return pack(signedCoefficientNormalized, exponentNormalized);
     }
 }

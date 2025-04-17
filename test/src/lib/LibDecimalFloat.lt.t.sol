@@ -18,13 +18,14 @@ contract LibDecimalFloatLtTest is Test {
         return LibDecimalFloat.lt(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    function ltExternal(Float memory floatA, Float memory floatB) external pure returns (bool) {
+    function ltExternal(Float floatA, Float floatB) external pure returns (bool) {
         return LibDecimalFloat.lt(floatA, floatB);
     }
-    /// Test to verify that stack-based and memory-based implementations produce the same results.
 
-    function testLtMem(Float memory a, Float memory b) external {
-        try this.ltExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (bool lt) {
+    function testLtMem(Float a, Float b) external {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        try this.ltExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (bool lt) {
             bool actual = this.ltExternal(a, b);
             assertEq(lt, actual);
         } catch (bytes memory err) {

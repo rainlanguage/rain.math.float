@@ -13,18 +13,20 @@ contract LibDecimalFloatMinusTest is Test {
         return LibDecimalFloat.minus(signedCoefficient, exponent);
     }
 
-    function minusExternal(Float memory float) external pure returns (Float memory) {
+    function minusExternal(Float float) external pure returns (Float) {
         return LibDecimalFloat.minus(float);
     }
     /// Stack and mem are the same.
 
-    function testMinusMem(Float memory float) external {
-        try this.minusExternal(float.signedCoefficient, float.exponent) returns (
+    function testMinusMem(Float float) external {
+        (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
+        try this.minusExternal(signedCoefficientFloat, exponentFloat) returns (
             int256 signedCoefficient, int256 exponent
         ) {
-            Float memory floatMinus = this.minusExternal(float);
-            assertEq(signedCoefficient, floatMinus.signedCoefficient);
-            assertEq(exponent, floatMinus.exponent);
+            Float floatMinus = this.minusExternal(float);
+            (int256 signedCoefficientMinus, int256 exponentMinus) = floatMinus.unpack();
+            assertEq(signedCoefficient, signedCoefficientMinus);
+            assertEq(exponent, exponentMinus);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.minusExternal(float);

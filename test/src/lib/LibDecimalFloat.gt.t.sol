@@ -18,13 +18,15 @@ contract LibDecimalFloatGtTest is Test {
         return LibDecimalFloat.gt(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    function gtExternal(Float memory floatA, Float memory floatB) external pure returns (bool) {
+    function gtExternal(Float floatA, Float floatB) external pure returns (bool) {
         return LibDecimalFloat.gt(floatA, floatB);
     }
     /// Stack and mem are the same.
 
-    function testGtMem(Float memory a, Float memory b) external {
-        try this.gtExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (bool gt) {
+    function testGtMem(Float a, Float b) external {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        try this.gtExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (bool gt) {
             bool actual = this.gtExternal(a, b);
             assertEq(gt, actual);
         } catch (bytes memory err) {

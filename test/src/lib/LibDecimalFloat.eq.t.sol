@@ -18,13 +18,14 @@ contract LibDecimalFloatEqTest is Test {
         return LibDecimalFloat.eq(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    function eqExternal(Float memory floatA, Float memory floatB) external pure returns (bool) {
+    function eqExternal(Float floatA, Float floatB) external pure returns (bool) {
         return LibDecimalFloat.eq(floatA, floatB);
     }
-    /// Test to verify that stack-based and memory-based implementations produce the same results.
 
-    function testEqMem(Float memory a, Float memory b) external {
-        try this.eqExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (bool eq) {
+    function testEqPacked(Float a, Float b) external {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        try this.eqExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (bool eq) {
             bool actual = this.eqExternal(a, b);
             assertEq(eq, actual);
         } catch (bytes memory err) {

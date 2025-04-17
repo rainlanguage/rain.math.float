@@ -25,18 +25,21 @@ contract LibDecimalFloatMultiplyTest is Test {
         return LibDecimalFloat.multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    function multiplyExternal(Float memory floatA, Float memory floatB) external pure returns (Float memory) {
+    function multiplyExternal(Float floatA, Float floatB) external pure returns (Float) {
         return LibDecimalFloat.multiply(floatA, floatB);
     }
 
     /// Stack and mem are the same.
-    function testMultiplyMem(Float memory a, Float memory b) external {
-        try this.multiplyExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
+    function testMultiplyMem(Float a, Float b) external {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        try this.multiplyExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
             int256 signedCoefficient, int256 exponent
         ) {
-            Float memory float = this.multiplyExternal(a, b);
-            assertEq(signedCoefficient, float.signedCoefficient);
-            assertEq(exponent, float.exponent);
+            Float float = this.multiplyExternal(a, b);
+            (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = float.unpack();
+            assertEq(signedCoefficient, signedCoefficientUnpacked);
+            assertEq(exponent, exponentUnpacked);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.multiplyExternal(a, b);

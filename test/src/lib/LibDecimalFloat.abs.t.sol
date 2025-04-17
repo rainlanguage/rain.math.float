@@ -12,19 +12,15 @@ contract LibDecimalFloatAbsTest is Test {
         return LibDecimalFloat.abs(signedCoefficient, exponent);
     }
 
-    function absExternal(Float memory float) external pure returns (Float memory) {
+    function absExternal(Float float) external pure returns (Float) {
         return LibDecimalFloat.abs(float);
     }
-    /// Validate that operations using stack-based parameters (int256, int256)
-    /// and memory-based parameters (Float struct) yield identical results.
 
-    function testAbsMem(Float memory float) external {
-        try this.absExternal(float.signedCoefficient, float.exponent) returns (
-            int256 signedCoefficient, int256 exponent
-        ) {
-            Float memory floatAbs = this.absExternal(float);
-            assertEq(signedCoefficient, floatAbs.signedCoefficient);
-            assertEq(exponent, floatAbs.exponent);
+    function testAbsPacked(Float float) external {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
+        try this.absExternal(signedCoefficient, exponent) returns (int256 signedCoefficientAbs, int256 exponentAbs) {
+            Float floatAbs = this.absExternal(float);
+            assertEq(Float.unwrap(floatAbs), Float.unwrap(LibDecimalFloat.pack(signedCoefficientAbs, exponentAbs)));
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.absExternal(float);

@@ -12,19 +12,21 @@ contract LibDecimalFloatPower10Test is LogTest {
         return LibDecimalFloat.power10(tables, signedCoefficient, exponent);
     }
 
-    function power10External(Float memory float) external returns (Float memory) {
+    function power10External(Float float) external returns (Float) {
         address tables = logTables();
         return LibDecimalFloat.power10(tables, float);
     }
     /// Stack and mem are the same.
 
-    function testPower10Mem(Float memory float) external {
-        try this.power10External(float.signedCoefficient, float.exponent) returns (
+    function testPower10Mem(Float float) external {
+        (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
+        try this.power10External(signedCoefficientFloat, exponentFloat) returns (
             int256 signedCoefficient, int256 exponent
         ) {
-            Float memory floatPower10 = this.power10External(float);
-            assertEq(signedCoefficient, floatPower10.signedCoefficient);
-            assertEq(exponent, floatPower10.exponent);
+            Float floatPower10 = this.power10External(float);
+            (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = floatPower10.unpack();
+            assertEq(signedCoefficient, signedCoefficientUnpacked);
+            assertEq(exponent, exponentUnpacked);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.power10External(float);

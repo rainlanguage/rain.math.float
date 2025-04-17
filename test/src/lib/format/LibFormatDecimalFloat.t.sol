@@ -17,13 +17,14 @@ contract LibFormatDecimalFloatTest is Test {
         return LibFormatDecimalFloat.toDecimalString(signedCoefficient, exponent);
     }
 
-    function toString(Float memory float) external pure returns (string memory) {
+    function toString(Float float) external pure returns (string memory) {
         return LibFormatDecimalFloat.toDecimalString(float);
     }
 
     /// Check that the memory version matches the stack version.
-    function testFormatMem(Float memory float) external {
-        try this.toDecimalStringExternal(float.signedCoefficient, float.exponent) returns (string memory formatted) {
+    function testFormatMem(Float float) external {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        try this.toDecimalStringExternal(signedCoefficient, exponent) returns (string memory formatted) {
             string memory actual = this.toString(float);
             assertEq(formatted, actual, "Formatted value mismatch");
         } catch (bytes memory err) {
@@ -37,9 +38,9 @@ contract LibFormatDecimalFloatTest is Test {
         // Dividing by 10 here keeps us clearly within the range of lossless
         // conversions.
         value = bound(value, 0, type(uint256).max / 10);
-        Float memory float = LibDecimalFloat.fromFixedDecimalLosslessMem(value, 18);
+        Float float = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, 18);
         string memory formatted = LibFormatDecimalFloat.toDecimalString(float);
-        (bytes4 errorCode, Float memory parsed) = LibParseDecimalFloat.parseDecimalFloat(formatted);
+        (bytes4 errorCode, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(formatted);
         assertEq(errorCode, 0, "Parse error");
         assertTrue(float.eq(parsed), "Round trip failed");
     }

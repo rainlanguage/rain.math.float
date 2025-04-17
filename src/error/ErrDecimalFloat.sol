@@ -2,6 +2,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 thedavidmeister
 pragma solidity ^0.8.25;
 
+/// @dev Thrown when a coefficient overflows.
+error CoefficientOverflow(int256 signedCoefficient, int256 exponent);
+
 /// @dev Thrown when an exponent overflows.
 error ExponentOverflow(int256 signedCoefficient, int256 exponent);
 

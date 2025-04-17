@@ -17,18 +17,21 @@ contract LibDecimalFloatSubTest is Test {
         return LibDecimalFloat.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    function subExternal(Float memory floatA, Float memory floatB) external pure returns (Float memory) {
+    function subExternal(Float floatA, Float floatB) external pure returns (Float) {
         return LibDecimalFloat.sub(floatA, floatB);
     }
 
     /// Test to verify that stack-based and memory-based implementations produce the same results.
-    function testSubMem(Float memory a, Float memory b) external {
-        try this.subExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
+    function testSubMem(Float a, Float b) external {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        try this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
             int256 signedCoefficient, int256 exponent
         ) {
-            Float memory float = this.subExternal(a, b);
-            assertEq(signedCoefficient, float.signedCoefficient);
-            assertEq(exponent, float.exponent);
+            Float float = this.subExternal(a, b);
+            (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = float.unpack();
+            assertEq(signedCoefficient, signedCoefficientUnpacked);
+            assertEq(exponent, exponentUnpacked);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.subExternal(a, b);

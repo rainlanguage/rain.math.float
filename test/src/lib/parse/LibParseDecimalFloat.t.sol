@@ -8,11 +8,12 @@ import {LibBytes, Pointer} from "rain.solmem/lib/LibBytes.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 import {ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
 import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoint} from "src/error/ErrParse.sol";
-import {Float} from "src/lib/LibDecimalFloat.sol";
+import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
     using Strings for uint256;
+    using LibDecimalFloat for Float;
 
     function parseDecimalFloatExternal(string memory data)
         external
@@ -24,10 +25,10 @@ contract LibParseDecimalFloatTest is Test {
             LibParseDecimalFloat.parseDecimalFloat(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
     }
 
-    function parseDecimalFloatExternalMem(string memory data)
+    function parseDecimalFloatExternalPacked(string memory data)
         external
         pure
-        returns (bytes4 errorSelector, Float memory float)
+        returns (bytes4 errorSelector, Float float)
     {
         (errorSelector, float) = LibParseDecimalFloat.parseDecimalFloat(data);
     }
@@ -38,13 +39,14 @@ contract LibParseDecimalFloatTest is Test {
             bytes4 errorSelector, uint256 cursorAfter, int256 signedCoefficient, int256 exponent
         ) {
             (cursorAfter);
-            (bytes4 errorSelectorMem, Float memory float) = this.parseDecimalFloatExternalMem(data);
-            assertEq(errorSelector, errorSelectorMem, "Error selector mismatch");
-            assertEq(signedCoefficient, float.signedCoefficient, "Signed coefficient mismatch");
-            assertEq(exponent, float.exponent, "Exponent mismatch");
+            (bytes4 errorSelectorPacked, Float float) = this.parseDecimalFloatExternalPacked(data);
+            assertEq(errorSelector, errorSelectorPacked, "Error selector mismatch");
+            (int256 signedCoefficientPacked, int256 exponentPacked) = float.unpack();
+            assertEq(signedCoefficient, signedCoefficientPacked, "Signed coefficient mismatch");
+            assertEq(exponent, exponentPacked, "Exponent mismatch");
         } catch (bytes memory err) {
             vm.expectRevert(err);
-            this.parseDecimalFloatExternalMem(data);
+            this.parseDecimalFloatExternal(data);
         }
     }
 

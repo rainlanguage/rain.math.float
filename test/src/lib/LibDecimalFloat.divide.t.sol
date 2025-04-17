@@ -17,18 +17,20 @@ contract LibDecimalFloatDivideTest is Test {
         return LibDecimalFloat.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    function divideExternal(Float memory floatA, Float memory floatB) external pure returns (Float memory) {
+    function divideExternal(Float floatA, Float floatB) external pure returns (Float) {
         return LibDecimalFloat.divide(floatA, floatB);
     }
-    /// Stack and mem are the same.
 
-    function testDivideMem(Float memory a, Float memory b) external {
-        try this.divideExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
+    function testDividePacked(Float a, Float b) external {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        try this.divideExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
             int256 signedCoefficient, int256 exponent
         ) {
-            Float memory float = this.divideExternal(a, b);
-            assertEq(signedCoefficient, float.signedCoefficient);
-            assertEq(exponent, float.exponent);
+            Float float = this.divideExternal(a, b);
+            (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
+            assertEq(signedCoefficient, signedCoefficientFloat);
+            assertEq(exponent, exponentFloat);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.divideExternal(a, b);

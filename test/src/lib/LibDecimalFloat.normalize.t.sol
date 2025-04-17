@@ -12,18 +12,20 @@ contract LibDecimalFloatNormalizeTest is Test {
         return LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
     }
 
-    function normalizeExternal(Float memory float) external pure returns (Float memory) {
+    function normalizeExternal(Float float) external pure returns (Float) {
         return LibDecimalFloat.normalize(float);
     }
     /// Stack and mem are the same.
 
-    function testNormalizeMem(Float memory float) external {
-        try this.normalizeExternal(float.signedCoefficient, float.exponent) returns (
-            int256 signedCoefficient, int256 exponent
+    function testNormalizeMem(Float float) external {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        try this.normalizeExternal(signedCoefficient, exponent) returns (
+            int256 signedCoefficientNormalized, int256 exponentNormalized
         ) {
-            Float memory floatNormalized = this.normalizeExternal(float);
-            assertEq(signedCoefficient, floatNormalized.signedCoefficient);
-            assertEq(exponent, floatNormalized.exponent);
+            Float floatNormalized = this.normalizeExternal(float);
+            (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = floatNormalized.unpack();
+            assertEq(signedCoefficientNormalized, signedCoefficientUnpacked);
+            assertEq(exponentNormalized, exponentUnpacked);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.normalizeExternal(float);

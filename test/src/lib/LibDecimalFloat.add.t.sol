@@ -17,21 +17,36 @@ contract LibDecimalFloatDecimalAddTest is Test {
         return LibDecimalFloat.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    function addExternal(Float memory a, Float memory b) external pure returns (int256, int256) {
-        return LibDecimalFloat.add(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent);
+    function addExternal(Float a, Float b) external pure returns (Float) {
+        return LibDecimalFloat.add(a, b);
     }
 
-    /// Stack and mem are the same.
-    function testAddMem(Float memory a, Float memory b) external {
-        try this.addExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
+    function testAddPacked(Float a, Float b) external {
+        (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloat.unpack(a);
+        (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloat.unpack(b);
+        try this.addExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
             int256 signedCoefficient, int256 exponent
         ) {
-            Float memory resultMem = a.add(b);
-            assertEq(signedCoefficient, resultMem.signedCoefficient);
-            assertEq(exponent, resultMem.exponent);
+            Float resultMem = a.add(b);
+            assertEq(Float.unwrap(resultMem), Float.unwrap(LibDecimalFloat.pack(signedCoefficient, exponent)));
         } catch (bytes memory err) {
             vm.expectRevert(err);
             a.add(b);
+        }
+    }
+
+    function testAddUnpacked(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+    {
+        try this.addExternal(
+            LibDecimalFloat.pack(signedCoefficientA, exponentA), LibDecimalFloat.pack(signedCoefficientB, exponentB)
+        ) returns (Float resultPacked) {
+            (int256 signedCoefficient, int256 exponent) =
+                this.addExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            assertEq(Float.unwrap(resultPacked), Float.unwrap(LibDecimalFloat.pack(signedCoefficient, exponent)));
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            this.addExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         }
     }
 

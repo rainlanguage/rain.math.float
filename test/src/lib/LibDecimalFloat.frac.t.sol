@@ -12,18 +12,19 @@ contract LibDecimalFloatFracTest is Test {
         return LibDecimalFloat.frac(signedCoefficient, exponent);
     }
 
-    function fracExternal(Float memory float) external pure returns (Float memory) {
+    function fracExternal(Float float) external pure returns (Float) {
         return LibDecimalFloat.frac(float);
     }
-    /// Test to verify that stack-based and memory-based implementations produce the same results.
 
-    function testFracMem(Float memory float) external {
-        try this.fracExternal(float.signedCoefficient, float.exponent) returns (
-            int256 signedCoefficient, int256 exponent
+    function testFracMem(Float float) external {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        try this.fracExternal(signedCoefficient, exponent) returns (
+            int256 signedCoefficientResult, int256 exponentResult
         ) {
-            Float memory floatFrac = this.fracExternal(float);
-            assertEq(signedCoefficient, floatFrac.signedCoefficient);
-            assertEq(exponent, floatFrac.exponent);
+            Float floatFrac = this.fracExternal(float);
+            (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = floatFrac.unpack();
+            assertEq(signedCoefficientResult, signedCoefficientUnpacked);
+            assertEq(exponentResult, exponentUnpacked);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.fracExternal(float);

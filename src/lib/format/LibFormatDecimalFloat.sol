@@ -20,7 +20,8 @@ library LibFormatDecimalFloat {
         return LibFixedPointDecimalFormat.fixedPointToDecimalString(decimal18Value);
     }
 
-    function toDecimalString(Float memory float) internal pure returns (string memory) {
-        return toDecimalString(float.signedCoefficient, float.exponent);
+    function toDecimalString(Float float) internal pure returns (string memory) {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
+        return toDecimalString(signedCoefficient, exponent);
     }
 }
