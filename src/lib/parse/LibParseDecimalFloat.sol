@@ -24,7 +24,7 @@ library LibParseDecimalFloat {
             return (errorSelector, cursor, Float.wrap(0));
         }
 
-        return (0, cursor, LibDecimalFloat.pack(signedCoefficient, exponent));
+        return (0, cursor, LibDecimalFloat.packLossless(signedCoefficient, exponent));
     }
 
     function parseDecimalFloat(uint256 start, uint256 end)
@@ -135,6 +135,6 @@ library LibParseDecimalFloat {
         (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
             parseDecimalFloat(start, end);
         (cursor);
-        return (errorSelector, LibDecimalFloat.pack(signedCoefficient, exponent));
+        return (errorSelector, LibDecimalFloat.packLossless(signedCoefficient, exponent));
     }
 }

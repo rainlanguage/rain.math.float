@@ -2,9 +2,11 @@
 pragma solidity ^0.8.25;
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 library LibDecimalFloatSlow {
+    using LibDecimalFloat for Float;
+
     function multiplySlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -38,7 +40,7 @@ library LibDecimalFloatSlow {
     }
 
     function invSlow(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        return LibDecimalFloat.divide(1e37, -37, signedCoefficient, exponent);
+        return LibDecimalFloatImplementation.divide(1e37, -37, signedCoefficient, exponent);
     }
 
     function eqSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)

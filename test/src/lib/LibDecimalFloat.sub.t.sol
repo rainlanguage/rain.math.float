@@ -14,15 +14,14 @@ contract LibDecimalFloatSubTest is Test {
         pure
         returns (int256, int256)
     {
-        return LibDecimalFloat.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     function subExternal(Float floatA, Float floatB) external pure returns (Float) {
         return LibDecimalFloat.sub(floatA, floatB);
     }
 
-    /// Test to verify that stack-based and memory-based implementations produce the same results.
-    function testSubMem(Float a, Float b) external {
+    function testSubPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         try this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
@@ -36,43 +35,5 @@ contract LibDecimalFloatSubTest is Test {
             vm.expectRevert(err);
             this.subExternal(a, b);
         }
-    }
-
-    /// Sub is the same as add, but with the second coefficient negated.
-    function testSubIsAdd(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
-        external
-        pure
-    {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-
-        // The min signed value cannot be negated directly so we can't test it
-        // in this function.
-        vm.assume(signedCoefficientB != type(int256).min);
-
-        (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloat.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloat.add(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
-        assertEq(signedCoefficient, expectedSignedCoefficient);
-        assertEq(exponent, expectedExponent);
-    }
-
-    /// We can sub the min signed value as it will be normalized.
-    function testSubMinSignedValue(int256 signedCoefficientA, int256 exponentA, int256 exponentB) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-
-        // Able to sub the non-normalized min signed value.
-        int256 signedCoefficientB = type(int256).min;
-        (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloat.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-
-        // Minus will just shift the max min value one exponent internally.
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloat.add(signedCoefficientA, exponentA, -(signedCoefficientB / 10), exponentB + 1);
-
-        assertEq(signedCoefficient, expectedSignedCoefficient);
-        assertEq(exponent, expectedExponent);
     }
 }
