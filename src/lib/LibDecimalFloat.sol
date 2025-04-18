@@ -301,21 +301,41 @@ library LibDecimalFloat {
     /// @param exponent The exponent of the floating point representation.
     /// @return float The packed representation of the signed coefficient and
     /// exponent.
-    function pack(int256 signedCoefficient, int256 exponent) internal pure returns (Float float) {
-        if (int224(signedCoefficient) != signedCoefficient) {
-            revert CoefficientOverflow(signedCoefficient, exponent);
-        }
+    function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
+        unchecked {
+            lossless = int224(signedCoefficient) == signedCoefficient;
 
-        if (int32(exponent) != exponent) {
-            revert ExponentOverflow(signedCoefficient, exponent);
-        }
+            // The reason that we can do unchecked exponent addition here is that
+            // when it overflows it will wrap to a very large negative number.
+            // This will get caught below when we check if the exponent fits in
+            // int32.
+            if (!lossless) {
+                if (signedCoefficient / 1e72 != 0) {
+                    signedCoefficient /= 1e5;
+                    exponent += 5;
+                }
 
-        // Need a mask to zero out the bits that could be set to 1 if the
-        // coefficient is negative.
-        uint256 mask = type(uint224).max;
-        assembly ("memory-safe") {
-            float := or(and(signedCoefficient, mask), shl(0xe0, exponent))
+                while (int224(signedCoefficient) != signedCoefficient) {
+                    signedCoefficient /= 10;
+                    ++exponent;
+                }
+            }
+
+            if (int32(exponent) != exponent) {
+                revert ExponentOverflow(signedCoefficient, exponent);
+            }
+
+            // Need a mask to zero out the bits that could be set to 1 if the
+            // coefficient is negative.
+            uint256 mask = type(uint224).max;
+            assembly ("memory-safe") {
+                float := or(and(signedCoefficient, mask), shl(0xe0, exponent))
+            }
         }
+    }
+
+    function packLossless(int256 signedCoefficient, int256 exponent) internal pure returns (Float float) {
+        return packLossy(signedCoefficient, exponent);
     }
 
     /// Unpack a packed bytes32 into a signed coefficient and exponent. This is
@@ -846,67 +866,44 @@ library LibDecimalFloat {
         return signedCoefficientA > signedCoefficientB;
     }
 
-    /// Same as gt, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
-    /// @param a The Float struct containing the signed coefficient and
-    /// exponent of the first floating point number.
-    /// @param b The Float struct containing the signed coefficient and
-    /// exponent of the second floating point number.
+    /// Numeric greater than for floats.
+    /// A float is greater than another if its numeric value is greater than the
+    /// other. For example, 1e3 is greater than 1e2, and 2e2 is greater than 1e2.
+    /// Any representable value can be compared without precision loss, e.g. no
+    /// normalization is done internally.
+    /// @param a The first float to compare.
+    /// @param b The second float to compare.
     function gt(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        return gt(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return signedCoefficientA > signedCoefficientB;
     }
 
     /// Fractional component of a float.
-    /// @param signedCoefficient The signed coefficient of the floating point
-    /// number.
-    /// @param exponent The exponent of the floating point number.
-    /// @return signedCoefficient The signed coefficient of the fractional
-    /// component.
-    /// @return exponent The exponent of the fractional component.
-    function frac(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    /// @param float The float to frac.
+    function frac(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
         (int256 characteristic, int256 mantissa) =
             LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
         (characteristic);
-        return (mantissa, exponent);
-    }
-
-    /// Same as frac, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
-    /// @param float The Float struct containing the signed coefficient and
-    /// exponent of the floating point number.
-    function frac(Float float) internal pure returns (Float) {
-        (int256 signedCoefficient, int256 exponent) = float.unpack();
-        (signedCoefficient, exponent) = frac(signedCoefficient, exponent);
-        return pack(signedCoefficient, exponent);
+        (Float result, bool lossless) = packLossy(mantissa, exponent);
+        // Frac is lossy by definition.
+        (lossless);
+        return result;
     }
 
     /// Integer component of a float.
-    /// @param signedCoefficient The signed coefficient of the floating point
-    /// number.
-    /// @param exponent The exponent of the floating point number.
-    /// @return signedCoefficient The signed coefficient of the integer
-    /// component.
-    /// @return exponent The exponent of the integer component.
-    function floor(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (int256 characteristic, int256 mantissa) =
-            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
-        (mantissa);
-        return (characteristic, exponent);
-    }
-
-    /// Same as floor, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
-    /// @param float The Float struct containing the signed coefficient and
-    /// exponent of the floating point number.
+    /// @param float The float to floor.
     function floor(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
-        (signedCoefficient, exponent) = floor(signedCoefficient, exponent);
-        return pack(signedCoefficient, exponent);
+        (int256 characteristic, int256 mantissa) =
+            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
+        (Float result, bool lossless) = packLossy(characteristic, exponent);
+        // Flooring is lossy by definition.
+        (lossless);
+        return result;
     }
 
     /// 10^x for a float x.
@@ -969,7 +966,11 @@ library LibDecimalFloat {
     function power10(address tablesDataContract, Float float) internal view returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) = power10(tablesDataContract, signedCoefficient, exponent);
-        return pack(signedCoefficient, exponent);
+        (Float result, bool lossless) = packLossy(signedCoefficient, exponent);
+        // We don't care if power10 is lossy because it's an approximation
+        // anyway.
+        (lossless);
+        return result;
     }
 
     /// log10(x) for a float x.
@@ -1089,13 +1090,16 @@ library LibDecimalFloat {
     /// logarithm tables.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    function log10(address tablesDataContract, Float float) internal view returns (Float) {
-        (int256 signedCoefficient, int256 exponent) = float.unpack();
+    function log10(address tablesDataContract, Float a) internal view returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
         (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
-        return pack(signedCoefficient, exponent);
+        (Float result, bool lossless) = packLossy(signedCoefficient, exponent);
+        // We don't care if log10 is lossy because it's an approximation anyway.
+        (lossless);
+        return result;
     }
 
-    /// x^y = 10^(y * log10(x))
+    /// a^b = 10^(b * log10(a))
     ///
     /// Due to the inaccuraces of log10 and power10, this is not perfectly
     /// accurate, a round trip like x^y^(1/y) will typically be within half a
@@ -1104,123 +1108,48 @@ library LibDecimalFloat {
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
-    ///
-    /// @param signedCoefficientA The signed coefficient of the base.
-    /// @param exponentA The exponent of the base.
-    /// @param signedCoefficientB The signed coefficient of the exponent.
-    /// @param exponentB The exponent of the exponent.
-    /// @return signedCoefficient The signed coefficient of the result.
-    /// @return exponent The exponent of the result.
-    function power(
-        address tablesDataContract,
-        int256 signedCoefficientA,
-        int256 exponentA,
-        int256 signedCoefficientB,
-        int256 exponentB
-    ) internal view returns (int256, int256) {
-        (int256 signedCoefficient, int256 exponent) = log10(tablesDataContract, signedCoefficientA, exponentA);
-        (signedCoefficient, exponent) = multiply(signedCoefficient, exponent, signedCoefficientB, exponentB);
-        return power10(tablesDataContract, signedCoefficient, exponent);
-    }
-
-    /// Same as power, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
-    /// @param a The Float struct containing the signed coefficient and
-    /// exponent of the base.
-    /// @param b The Float struct containing the signed coefficient and
-    /// exponent of the exponent.
+    /// @param a The float `a` in `a^b`.
+    /// @param b The float `b` in `a^b`.
     function power(address tablesDataContract, Float a, Float b) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientC, int256 exponentC) = log10(tablesDataContract, signedCoefficientA, exponentA);
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (int256 signedCoefficient, int256 exponent) =
-            power(tablesDataContract, signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return pack(signedCoefficient, exponent);
+        (signedCoefficientC, exponentC) = multiply(signedCoefficientC, exponentC, signedCoefficientB, exponentB);
+        (signedCoefficientC, exponentC) = power10(tablesDataContract, signedCoefficientC, exponentC);
+        (Float c, bool lossless) = packLossy(signedCoefficientC, exponentC);
+        // We don't care if power is lossy because it's an approximation anyway.
+        (lossless);
+        return c;
     }
 
     /// Returns the minimum of two values.
     /// Convenience for `a < b ? a : b`.
-    /// @param signedCoefficientA The signed coefficient of the first floating
-    /// point number.
-    /// @param exponentA The exponent of the first floating point number.
-    /// @param signedCoefficientB The signed coefficient of the second floating
-    /// point number.
-    /// @param exponentB The exponent of the second floating point number.
-    /// @return signedCoefficient The signed coefficient of the minimum value.
-    /// @return exponent The exponent of the minimum value.
-    function min(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
-        internal
-        pure
-        returns (int256, int256)
-    {
-        if (lt(signedCoefficientA, exponentA, signedCoefficientB, exponentB)) {
-            return (signedCoefficientA, exponentA);
-        } else {
-            return (signedCoefficientB, exponentB);
-        }
-    }
-
-    /// Same as min, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
-    /// @param a The Float struct containing the signed coefficient and
-    /// exponent of the first floating point number.
-    /// @param b The Float struct containing the signed coefficient and
-    /// exponent of the second floating point number.
+    /// @param a The first float to compare.
+    /// @param b The second float to compare.
+    /// @return The minimum of the two floats.
     function min(Float a, Float b) internal pure returns (Float) {
-        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (int256 signedCoefficient, int256 exponent) = min(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return pack(signedCoefficient, exponent);
+        return lt(a, b) ? a : b;
     }
 
     /// Returns the maximum of two values.
     /// Convenience for `a > b ? a : b`.
-    /// @param signedCoefficientA The signed coefficient of the first floating
-    /// point number.
-    /// @param exponentA The exponent of the first floating point number.
-    /// @param signedCoefficientB The signed coefficient of the second floating
-    /// point number.
-    /// @param exponentB The exponent of the second floating point number.
-    /// @return signedCoefficient The signed coefficient of the maximum value.
-    /// @return exponent The exponent of the maximum value.
-    function max(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
-        internal
-        pure
-        returns (int256, int256)
-    {
-        if (gt(signedCoefficientA, exponentA, signedCoefficientB, exponentB)) {
-            return (signedCoefficientA, exponentA);
-        } else {
-            return (signedCoefficientB, exponentB);
-        }
+    /// @param a The first float to compare.
+    /// @param b The second float to compare.
+    function max(Float a, Float b) internal pure returns (Float) {
+        return gt(a, b) ? a : b;
     }
 
-    /// Same as max, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
-    /// @param a The Float struct containing the signed coefficient and
-    /// exponent of the first floating point number.
-    /// @param b The Float struct containing the signed coefficient and
-    /// exponent of the second floating point number.
-    function max(Float a, Float b) internal pure returns (Float result) {
-        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (int256 signedCoefficient, int256 exponent) = max(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return pack(signedCoefficient, exponent);
-    }
-
-    /// Same as normalize, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
-    /// @param float The Float struct containing the signed coefficient and
-    /// exponent of the floating point number.
-    function normalize(Float float) internal pure returns (Float) {
-        (int256 signedCoefficient, int256 exponent) = float.unpack();
-        (int256 signedCoefficientNormalized, int256 exponentNormalized) =
-            LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
-        return pack(signedCoefficientNormalized, exponentNormalized);
-    }
+    // /// Same as normalize, but accepts a Float struct instead of separate values.
+    // /// Costs more gas but helps mitigate stack depth issues, and is more
+    // /// ergonomic for the caller.
+    // /// @param float The Float struct containing the signed coefficient and
+    // /// exponent of the floating point number.
+    // function normalize(Float float) internal pure returns (Float) {
+    //     (int256 signedCoefficient, int256 exponent) = float.unpack();
+    //     (int256 signedCoefficientNormalized, int256 exponentNormalized) =
+    //         LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+    //     return pack(signedCoefficientNormalized, exponentNormalized);
+    // }
 }
