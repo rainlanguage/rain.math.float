@@ -136,8 +136,8 @@ library LibDecimalFloatImplementation {
             // cannot overflow, so this will always succeed, provided the
             // exponents are not out of bounds.
             if (didOverflow) {
-                (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
-                (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
+                (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
+                (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
                 return multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             }
             return (signedCoefficient, exponent);
@@ -200,8 +200,8 @@ library LibDecimalFloatImplementation {
         returns (int256, int256)
     {
         unchecked {
-            (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
-            (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
+            (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
+            (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
 
             int256 signedCoefficient = (signedCoefficientA * 1e38) / signedCoefficientB;
             int256 exponent = exponentA - exponentB - 38;
@@ -289,8 +289,8 @@ library LibDecimalFloatImplementation {
         // Normalizing A and B gives us similar coefficients, which simplifies
         // detecting when their exponents are too far apart to add without
         // simply ignoring one of them.
-        (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
-        (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
+        (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
+        (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
 
         // We want A to represent the larger exponent. If this is not the case
         // then swap them.
@@ -366,14 +366,14 @@ library LibDecimalFloatImplementation {
         returns (bool)
     {
         (signedCoefficientA, signedCoefficientB) =
-            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
         return signedCoefficientA == signedCoefficientB;
     }
 
     /// Inverts a float. Equivalent to `1 / x` with modest gas optimizations.
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
 
         signedCoefficient = 1e75 / signedCoefficient;
         exponent = -exponent - 75;
@@ -399,7 +399,7 @@ library LibDecimalFloatImplementation {
     {
         unchecked {
             {
-                (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
+                (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
 
                 if (signedCoefficient <= 0) {
                     if (signedCoefficient == 0) {
@@ -471,7 +471,7 @@ library LibDecimalFloatImplementation {
                 }
 
                 if (interpolate) {
-                    (signedCoefficient, exponent) = LibDecimalFloatImplementation.unitLinearInterpolation(
+                    (signedCoefficient, exponent) = unitLinearInterpolation(
                         signedCoefficient, exponent, x1Coefficient, exponent, -39, y1Coefficient, y2Coefficient, -38
                     );
                 } else {
@@ -516,15 +516,15 @@ library LibDecimalFloatImplementation {
 
             // Table lookup.
             (int256 characteristicCoefficient, int256 mantissaCoefficient) =
-                LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
+                characteristicMantissa(signedCoefficient, exponent);
             int256 characteristicExponent = exponent;
             {
-                (int256 idx, bool interpolate) = LibDecimalFloatImplementation.mantissa4(mantissaCoefficient, exponent);
+                (int256 idx, bool interpolate) = mantissa4(mantissaCoefficient, exponent);
                 (int256 y1Coefficient, int256 y2Coefficient) =
-                    LibDecimalFloatImplementation.lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
+                    lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
 
                 if (interpolate) {
-                    (signedCoefficient, exponent) = LibDecimalFloatImplementation.unitLinearInterpolation(
+                    (signedCoefficient, exponent) = unitLinearInterpolation(
                         mantissaCoefficient, exponent, idx, -4, -41, y1Coefficient, y2Coefficient, -4
                     );
                 } else {
@@ -535,8 +535,7 @@ library LibDecimalFloatImplementation {
 
             return (
                 signedCoefficient,
-                1 + exponent
-                    + LibDecimalFloatImplementation.withTargetExponent(characteristicCoefficient, characteristicExponent, 0)
+                1 + exponent + withTargetExponent(characteristicCoefficient, characteristicExponent, 0)
             );
         }
     }

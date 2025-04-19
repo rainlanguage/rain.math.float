@@ -4,8 +4,11 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../../abstract/LogTest.sol";
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationPower10Test is LogTest {
+    using LibDecimalFloat for Float;
+
     function checkPower10(
         int256 signedCoefficient,
         int256 exponent,
@@ -63,17 +66,17 @@ contract LibDecimalFloatImplementationPower10Test is LogTest {
         checkPower10(123456789, -5, 36979e37, 1193);
     }
 
-    // function boundFloat(int256 x, int256 exponent) internal pure returns (int256, int256) {
-    //     exponent = bound(exponent, -76, 76);
-    //     vm.assume(LibDecimalFloat.gt(x, exponent, -1e38, 0));
-    //     vm.assume(LibDecimalFloat.lt(x, exponent, type(int256).max, 0));
-    //     return (x, exponent);
-    // }
+    function boundFloat(int224 x, int32 exponent) internal pure returns (int224, int32) {
+        exponent = int32(bound(exponent, -76, 76));
+        Float a = LibDecimalFloat.packLossless(x, exponent);
+        vm.assume(a.gt(LibDecimalFloat.packLossless(-1e38, 0)));
+        vm.assume(a.lt(LibDecimalFloat.packLossless(type(int224).max, 0)));
+        return (x, exponent);
+    }
 
     /// Test the current range that we can handle power10 over does not revert.
-    function testNoRevert(int256 x, int256 exponent) external {
-        address tables = logTables();
-        // (x, exponent) = boundFloat(x, exponent);
-        LibDecimalFloatImplementation.power10(tables, x, exponent);
+    function testNoRevert(int224 x, int32 exponent) external {
+        (x, exponent) = boundFloat(x, exponent);
+        LibDecimalFloatImplementation.power10(logTables(), x, exponent);
     }
 }
