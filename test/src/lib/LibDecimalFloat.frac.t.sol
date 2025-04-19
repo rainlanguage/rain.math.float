@@ -8,36 +8,15 @@ import {Test} from "forge-std/Test.sol";
 contract LibDecimalFloatFracTest is Test {
     using LibDecimalFloat for Float;
 
-    function fracExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
-        return LibDecimalFloat.frac(signedCoefficient, exponent);
-    }
-
-    function fracExternal(Float memory float) external pure returns (Float memory) {
-        return LibDecimalFloat.frac(float);
-    }
-    /// Test to verify that stack-based and memory-based implementations produce the same results.
-
-    function testFracMem(Float memory float) external {
-        try this.fracExternal(float.signedCoefficient, float.exponent) returns (
-            int256 signedCoefficient, int256 exponent
-        ) {
-            Float memory floatFrac = this.fracExternal(float);
-            assertEq(signedCoefficient, floatFrac.signedCoefficient);
-            assertEq(exponent, floatFrac.exponent);
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            this.fracExternal(float);
-        }
-    }
-
-    function testFracNotReverts(int256 x, int256 exponentX) external pure {
-        LibDecimalFloat.frac(x, exponentX);
+    function testFracNotReverts(Float x) external pure {
+        x.frac();
     }
 
     function checkFrac(int256 x, int256 exponent, int256 expectedFrac, int256 expectedFracExponent) internal pure {
-        (x, exponent) = LibDecimalFloat.frac(x, exponent);
-        assertEq(x, expectedFrac);
-        assertEq(exponent, expectedFracExponent);
+        Float a = LibDecimalFloat.packLossless(x, exponent);
+        (int256 actualFrac, int256 actualFracExponent) = a.frac().unpack();
+        assertEq(actualFrac, expectedFrac);
+        assertEq(actualFracExponent, expectedFracExponent);
     }
 
     /// Every non negative exponent has no fractional component.
@@ -91,14 +70,17 @@ contract LibDecimalFloatFracTest is Test {
     }
 
     function testFracGasZero() external pure {
-        LibDecimalFloat.frac(0, 0);
+        Float a = LibDecimalFloat.packLossless(0, 0);
+        a.frac();
     }
 
     function testFracGasTiny() external pure {
-        LibDecimalFloat.frac(1, -100);
+        Float a = LibDecimalFloat.packLossless(1, -100);
+        a.frac();
     }
 
     function testFracGas0() external pure {
-        LibDecimalFloat.frac(2.5e37, -37);
+        Float a = LibDecimalFloat.packLossless(2.5e37, -37);
+        a.frac();
     }
 }

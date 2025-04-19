@@ -8,34 +8,13 @@ import {Test} from "forge-std/Test.sol";
 contract LibDecimalFloatFloorTest is Test {
     using LibDecimalFloat for Float;
 
-    function floorExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
-        return LibDecimalFloat.floor(signedCoefficient, exponent);
-    }
-
-    function floorExternal(Float memory float) external pure returns (Float memory) {
-        return LibDecimalFloat.floor(float);
-    }
-    /// Stack and mem are the same.
-
-    function testFloorMem(Float memory float) external {
-        try this.floorExternal(float.signedCoefficient, float.exponent) returns (
-            int256 signedCoefficient, int256 exponent
-        ) {
-            Float memory floatFloor = this.floorExternal(float);
-            assertEq(signedCoefficient, floatFloor.signedCoefficient);
-            assertEq(exponent, floatFloor.exponent);
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            this.floorExternal(float);
-        }
-    }
-
-    function testFloorNotReverts(int256 x, int256 exponentX) external pure {
-        LibDecimalFloat.floor(x, exponentX);
+    function testFloorNotReverts(Float x) external pure {
+        x.floor();
     }
 
     function checkFloor(int256 x, int256 exponent, int256 expectedFrac, int256 expectedFracExponent) internal pure {
-        (x, exponent) = LibDecimalFloat.floor(x, exponent);
+        Float a = LibDecimalFloat.packLossless(x, exponent);
+        (x, exponent) = a.floor().unpack();
         assertEq(x, expectedFrac);
         assertEq(exponent, expectedFracExponent);
     }
@@ -97,14 +76,17 @@ contract LibDecimalFloatFloorTest is Test {
     }
 
     function testFloorGasZero() external pure {
-        LibDecimalFloat.floor(0, 0);
+        Float a = LibDecimalFloat.packLossless(0, 0);
+        a.floor();
     }
 
     function testFloorGasTiny() external pure {
-        LibDecimalFloat.floor(1, -100);
+        Float a = LibDecimalFloat.packLossless(1, -100);
+        a.floor();
     }
 
     function testFloorGas0() external pure {
-        LibDecimalFloat.floor(2.5e37, -37);
+        Float a = LibDecimalFloat.packLossless(2.5e37, -37);
+        a.floor();
     }
 }

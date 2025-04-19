@@ -18,8 +18,8 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         return LibDecimalFloat.fromFixedDecimalLossless(value, decimals);
     }
 
-    function fromFixedDecimalLosslessMemExternal(uint256 value, uint8 decimals) external pure returns (Float memory) {
-        return LibDecimalFloat.fromFixedDecimalLosslessMem(value, decimals);
+    function fromFixedDecimalLosslessPackedExternal(uint256 value, uint8 decimals) external pure returns (Float) {
+        return LibDecimalFloat.fromFixedDecimalLosslessPacked(value, decimals);
     }
 
     function toFixedDecimalLosslessExternal(int256 signedCoefficient, int256 exponent, uint8 decimals)
@@ -30,7 +30,7 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         return LibDecimalFloat.toFixedDecimalLossless(signedCoefficient, exponent, decimals);
     }
 
-    function toFixedDecimalLosslessMemExternal(Float memory float, uint8 decimals) external pure returns (uint256) {
+    function toFixedDecimalLosslessMemExternal(Float float, uint8 decimals) external pure returns (uint256) {
         return float.toFixedDecimalLossless(decimals);
     }
 
@@ -42,17 +42,17 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
                 abi.encodeWithSelector(LossyConversionToFloat.selector, value / 10, 1 - int256(uint256(decimals)))
             );
         }
-        (Float memory float) = LibDecimalFloat.fromFixedDecimalLosslessMem(value, decimals);
+        Float float = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, decimals);
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.fromFixedDecimalLossless(value, decimals);
-        assertEq(float.signedCoefficient, signedCoefficient);
-        assertEq(float.exponent, exponent);
+        (int256 signedCoefficientPacked, int256 exponentPacked) = float.unpack();
+        assertEq(signedCoefficient, signedCoefficientPacked);
+        assertEq(exponent, exponentPacked);
     }
 
     /// Memory version of to behaves the same as stack version.
-    function testToFixedDecimalLosslessMem(Float memory float, uint8 decimals) external {
-        try this.toFixedDecimalLosslessExternal(float.signedCoefficient, float.exponent, decimals) returns (
-            uint256 value
-        ) {
+    function testToFixedDecimalLosslessMem(Float float, uint8 decimals) external {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        try this.toFixedDecimalLosslessExternal(signedCoefficient, exponent, decimals) returns (uint256 value) {
             uint256 valueFloat = float.toFixedDecimalLossless(decimals);
             assertEq(valueFloat, value);
         } catch (bytes memory err) {

@@ -24,24 +24,26 @@ contract LibDecimalFloatDecimalTest is Test {
         return LibDecimalFloat.toFixedDecimalLossy(signedCoefficient, exponent, decimals);
     }
 
-    function toFixedDecimalLossyExternal(Float memory float, uint8 decimals) external pure returns (uint256, bool) {
+    function toFixedDecimalLossyExternal(Float float, uint8 decimals) external pure returns (uint256, bool) {
         return float.toFixedDecimalLossy(decimals);
     }
 
     /// Memory version of from behaves same as stack version.
-    function testFromFixedDecimalLossyMem(uint256 value, uint8 decimals) external pure {
+    function testFromFixedDecimalLossyPacked(uint256 value, uint8 decimals) external pure {
         (int256 signedCoefficient, int256 exponent, bool lossless) =
             LibDecimalFloat.fromFixedDecimalLossy(value, decimals);
 
-        (Float memory float, bool floatLossless) = LibDecimalFloat.fromFixedDecimalLossyMem(value, decimals);
-        assertEq(float.signedCoefficient, signedCoefficient, "signedCoefficient");
-        assertEq(float.exponent, exponent, "exponent");
+        (Float float, bool floatLossless) = LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
+        (int256 signedCoefficientFloat, int256 exponentFloat) = LibDecimalFloat.unpack(float);
+        assertEq(signedCoefficientFloat, signedCoefficient, "signedCoefficient");
+        assertEq(exponentFloat, exponent, "exponent");
         assertEq(floatLossless, lossless, "lossless");
     }
 
     /// Memory version of to behaves same as stack version.
-    function testToFixedDecimalLossyMem(Float memory float, uint8 decimals) external {
-        try this.toFixedDecimalLossyExternal(float.signedCoefficient, float.exponent, decimals) returns (
+    function testToFixedDecimalLossyPacked(Float float, uint8 decimals) external {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
+        try this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals) returns (
             uint256 value, bool lossless
         ) {
             (uint256 valueOut, bool losslessOut) = float.toFixedDecimalLossy(decimals);

@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std/Test.sol";
+// Re-export console2 here for convenience.
+import {Test, console2} from "forge-std/Test.sol";
 import {DataContractMemoryContainer, LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
 import {LibDecimalFloatDeploy} from "src/lib/LibDecimalFloatDeploy.sol";
 

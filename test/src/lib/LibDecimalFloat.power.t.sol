@@ -4,36 +4,12 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPowerTest is LogTest {
     using LibDecimalFloat for Float;
-
-    function powerExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
-        external
-        returns (int256, int256)
-    {
-        return LibDecimalFloat.power(logTables(), signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-    }
-
-    function powerExternal(Float memory floatA, Float memory floatB) external returns (Float memory) {
-        return LibDecimalFloat.power(logTables(), floatA, floatB);
-    }
-    /// Stack and mem are the same.
-
-    function testPowerMem(Float memory a, Float memory b) external {
-        try this.powerExternal(a.signedCoefficient, a.exponent, b.signedCoefficient, b.exponent) returns (
-            int256 signedCoefficient, int256 exponent
-        ) {
-            Float memory float = this.powerExternal(a, b);
-            assertEq(signedCoefficient, float.signedCoefficient);
-            assertEq(exponent, float.exponent);
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            this.powerExternal(a, b);
-        }
-    }
 
     function checkPower(
         int256 signedCoefficientA,
@@ -43,12 +19,14 @@ contract LibDecimalFloatPowerTest is LogTest {
         int256 expectedSignedCoefficient,
         int256 expectedExponent
     ) internal {
+        Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
+        Float b = LibDecimalFloat.packLossless(signedCoefficientB, exponentB);
         address tables = logTables();
-        uint256 a = gasleft();
-        (int256 actualSignedCoefficient, int256 actualExponent) =
-            LibDecimalFloat.power(tables, signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        uint256 b = gasleft();
-        console2.log("%d %d Gas used: %d", uint256(signedCoefficientA), uint256(exponentA), a - b);
+        uint256 beforeGas = gasleft();
+        Float c = a.power(b, tables);
+        uint256 afterGas = gasleft();
+        console2.log("%d %d Gas used: %d", uint256(signedCoefficientA), uint256(exponentA), beforeGas - afterGas);
+        (int256 actualSignedCoefficient, int256 actualExponent) = c.unpack();
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
         assertEq(actualExponent, expectedExponent, "exponent");
     }
@@ -58,18 +36,17 @@ contract LibDecimalFloatPowerTest is LogTest {
         checkPower(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
     }
 
-    function checkRoundTrip(int256 x, int256 exponentX, int256 y, int256 exponentY) internal {
+    function checkRoundTrip(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+    {
+        Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
+        Float b = LibDecimalFloat.packLossless(signedCoefficientB, exponentB);
         address tables = logTables();
-        (int256 result, int256 exponent) = LibDecimalFloat.power(tables, x, exponentX, y, exponentY);
-        (y, exponentY) = LibDecimalFloat.inv(y, exponentY);
-        (int256 roundTrip, int256 roundTripExponent) = LibDecimalFloat.power(tables, result, exponent, y, exponentY);
+        Float c = a.power(b, tables);
+        Float roundTrip = c.power(b.inv(), tables);
+        Float diff = a.divide(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
 
-        (int256 diff, int256 diffExponent) = LibDecimalFloat.divide(x, exponentX, roundTrip, roundTripExponent);
-        (diff, diffExponent) = LibDecimalFloat.sub(diff, diffExponent, 1, 0);
-        (diff, diffExponent) = LibDecimalFloat.abs(diff, diffExponent);
-        console2.log(diff);
-        console2.log(diffExponent);
-        assertTrue(LibDecimalFloat.lt(diff, diffExponent, 0.0025e4, -4), "diff");
+        assertTrue(diff.lt(LibDecimalFloat.packLossless(0.0025e4, -4)), "diff");
     }
 
     /// X^Y^(1/Y) = X
