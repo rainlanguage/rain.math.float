@@ -35,9 +35,7 @@ contract LibFormatDecimalFloatTest is Test {
 
     /// Test round tripping a value through parse and format.
     function testFormatDecimalRoundTrip(uint256 value) external pure {
-        // Dividing by 10 here keeps us clearly within the range of lossless
-        // conversions.
-        value = bound(value, 0, type(uint256).max / 10);
+        value = bound(value, 0, uint256(int256(type(int224).max)));
         Float float = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, 18);
         string memory formatted = LibFormatDecimalFloat.toDecimalString(float);
         (bytes4 errorCode, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(formatted);

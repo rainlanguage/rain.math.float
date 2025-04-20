@@ -28,9 +28,9 @@ contract LibDecimalFloatSubTest is Test {
             int256 signedCoefficient, int256 exponent
         ) {
             Float float = this.subExternal(a, b);
-            (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = float.unpack();
-            assertEq(signedCoefficient, signedCoefficientUnpacked);
-            assertEq(exponent, exponentUnpacked);
+            (Float floatImplementation, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+            (lossless);
+            assertTrue(float.eq(floatImplementation));
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.subExternal(a, b);

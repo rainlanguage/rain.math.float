@@ -64,6 +64,8 @@ contract LibDecimalFloatImplementationPower10Test is LogTest {
         checkPower10(1.55555e37, -37, 35935e37, -40);
         // 10^1234.56789
         checkPower10(123456789, -5, 36979e37, 1193);
+        // ~= 10 (fuzzing found this edge case).
+        checkPower10(99999999999999999999999999999999999997448, -41, 99999999999999999999999999999999999991000, -40);
     }
 
     function boundFloat(int224 x, int32 exponent) internal pure returns (int224, int32) {

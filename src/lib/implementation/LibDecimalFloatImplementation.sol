@@ -11,6 +11,8 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
+import {console2} from "forge-std/Test.sol";
+
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 37;
@@ -378,6 +380,10 @@ library LibDecimalFloatImplementation {
         signedCoefficient = 1e75 / signedCoefficient;
         exponent = -exponent - 75;
 
+        console2.log("inv");
+        console2.logInt(signedCoefficient);
+        console2.logInt(exponent);
+
         return (signedCoefficient, exponent);
     }
 
@@ -509,6 +515,7 @@ library LibDecimalFloatImplementation {
     {
         unchecked {
             if (signedCoefficient < 0) {
+                console2.log("power10 negative");
                 (signedCoefficient, exponent) = minus(signedCoefficient, exponent);
                 (signedCoefficient, exponent) = power10(tablesDataContract, signedCoefficient, exponent);
                 return inv(signedCoefficient, exponent);
@@ -517,11 +524,20 @@ library LibDecimalFloatImplementation {
             // Table lookup.
             (int256 characteristicCoefficient, int256 mantissaCoefficient) =
                 characteristicMantissa(signedCoefficient, exponent);
+            console2.log("table lookup");
+            console2.logInt(characteristicCoefficient);
+            console2.logInt(mantissaCoefficient);
             int256 characteristicExponent = exponent;
             {
                 (int256 idx, bool interpolate) = mantissa4(mantissaCoefficient, exponent);
+                console2.log("index");
+                console2.logInt(idx);
+                console2.logBool(interpolate);
                 (int256 y1Coefficient, int256 y2Coefficient) =
                     lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
+                console2.log("y1 y2");
+                console2.logInt(y1Coefficient);
+                console2.logInt(y2Coefficient);
 
                 if (interpolate) {
                     (signedCoefficient, exponent) = unitLinearInterpolation(
@@ -532,6 +548,12 @@ library LibDecimalFloatImplementation {
                     exponent = -4;
                 }
             }
+
+            console2.log("after");
+            console2.logInt(signedCoefficient);
+            console2.logInt(exponent);
+            console2.logInt(characteristicCoefficient);
+            console2.logInt(characteristicExponent);
 
             return (
                 signedCoefficient,
@@ -816,7 +838,7 @@ library LibDecimalFloatImplementation {
                 extcodecopy(tables, 30, add(offset, mul(div(index, 10), 2)), 2)
                 let mainTableVal := mload(0)
 
-                offset := add(offset, 2000)
+                offset := add(offset, 2020)
                 mstore(0, 0)
                 extcodecopy(tables, 31, add(offset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
                 result := add(mainTableVal, mload(0))

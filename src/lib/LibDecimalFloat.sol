@@ -28,6 +28,8 @@ import {
     EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
+import {console2} from "forge-std/Test.sol";
+
 type Float is bytes32;
 
 /// @dev When normalizing a number, how far we "leap" when very far from
@@ -585,13 +587,33 @@ library LibDecimalFloat {
     /// logarithm tables.
     function power(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        console2.log("power a");
+        console2.logInt(signedCoefficientA);
+        console2.logInt(exponentA);
+
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
+        console2.log("power log 10");
+        console2.logInt(signedCoefficientC);
+        console2.logInt(exponentC);
+
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        console2.log("power b");
+        console2.logInt(signedCoefficientB);
+        console2.logInt(exponentB);
+
         (signedCoefficientC, exponentC) =
             LibDecimalFloatImplementation.multiply(signedCoefficientC, exponentC, signedCoefficientB, exponentB);
+        console2.log("power multiply");
+        console2.logInt(signedCoefficientC);
+        console2.logInt(exponentC);
+
         (signedCoefficientC, exponentC) =
             LibDecimalFloatImplementation.power10(tablesDataContract, signedCoefficientC, exponentC);
+        console2.log("power power 10");
+        console2.logInt(signedCoefficientC);
+        console2.logInt(exponentC);
+
         (Float c, bool lossless) = packLossy(signedCoefficientC, exponentC);
         // We don't care if power is lossy because it's an approximation anyway.
         (lossless);
@@ -613,5 +635,14 @@ library LibDecimalFloat {
     /// @param b The second float to compare.
     function max(Float a, Float b) internal pure returns (Float) {
         return gt(a, b) ? a : b;
+    }
+
+    function isZero(Float a) internal pure returns (bool result) {
+        uint256 mask = type(uint224).max;
+        assembly ("memory-safe") {
+            // Don't need to signextend here because we only care if the value
+            // is zero or not.
+            result := iszero(and(a, mask))
+        }
     }
 }
