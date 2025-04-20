@@ -34,6 +34,7 @@ contract LibDecimalFloatPowerTest is LogTest {
     function testPowers() external {
         checkPower(5e37, -38, 3e37, -36, 9.3283582089552238805970149253731343283e37, -47);
         checkPower(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
+        checkPower(99999, 0, 12182, 0, 1000, 60907);
     }
 
     function checkRoundTrip(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -46,11 +47,11 @@ contract LibDecimalFloatPowerTest is LogTest {
         Float roundTrip = c.power(b.inv(), tables);
         Float diff = a.divide(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
 
-        assertTrue(diff.lt(LibDecimalFloat.packLossless(0.0025e4, -4)), "diff");
+        assertTrue(!diff.gt(LibDecimalFloat.packLossless(0.002e3, -3)), "diff");
     }
 
     /// X^Y^(1/Y) = X
-    /// Can generally round trip whatever within 1% of the original value.
+    /// Can generally round trip whatever within 0.25% of the original value.
     function testRoundTrip() external {
         checkRoundTrip(5, 0, 2, 0);
         checkRoundTrip(5, 0, 3, 0);
@@ -70,14 +71,10 @@ contract LibDecimalFloatPowerTest is LogTest {
             // If b is zero we'll divide by zero on the inv.
             // If c is 1 then it's not round trippable because 1^x = 1 for all x.
             // C will be 1 when a is 1 or b is 0 (or very close to either).
-            if (b.isZero() || c.eq(LibDecimalFloat.packLossless(1, 0))) {
-            }
-            else {
+            if (b.isZero() || c.eq(LibDecimalFloat.packLossless(1, 0))) {} else {
                 Float inv = b.inv();
                 try this.powerExternal(c, inv) returns (Float roundTrip) {
-                    if (roundTrip.isZero()) {
-                    }
-                    else {
+                    if (roundTrip.isZero()) {} else {
                         Float diff = a.divide(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
                         console2.log("a");
                         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
@@ -104,12 +101,10 @@ contract LibDecimalFloatPowerTest is LogTest {
                         console2.logInt(signedCoefficientDiff);
                         console2.logInt(exponentDiff);
 
-                        assertTrue(diff.lt(LibDecimalFloat.packLossless(10, 0)), "diff");
+                        assertTrue(!diff.gt(LibDecimalFloat.packLossless(0.9e1, -1)), "diff");
                     }
-                } catch (bytes memory err) {
-                }
+                } catch (bytes memory err) {}
             }
-        } catch (bytes memory err) {
-        }
+        } catch (bytes memory err) {}
     }
 }

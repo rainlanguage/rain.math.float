@@ -11,8 +11,6 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
-import {console2} from "forge-std/Test.sol";
-
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 37;
@@ -380,10 +378,6 @@ library LibDecimalFloatImplementation {
         signedCoefficient = 1e75 / signedCoefficient;
         exponent = -exponent - 75;
 
-        console2.log("inv");
-        console2.logInt(signedCoefficient);
-        console2.logInt(exponent);
-
         return (signedCoefficient, exponent);
     }
 
@@ -442,13 +436,13 @@ library LibDecimalFloatImplementation {
                             let mainTableVal := mload(0)
 
                             result := and(mainTableVal, 0x7FFF)
-                            // Skip first byte of data contract then 1800 bytes
+                            // Skip first byte of data contract then 1820 bytes
                             // of the log tables.
-                            let smallTableOffset := 1801
+                            let smallTableOffset := 1821
                             if iszero(iszero(and(mainTableVal, 0x8000))) {
                                 // Small table is half the size of the main
                                 // table.
-                                smallTableOffset := add(smallTableOffset, 900)
+                                smallTableOffset := add(smallTableOffset, 910)
                             }
 
                             mstore(0, 0)
@@ -515,7 +509,6 @@ library LibDecimalFloatImplementation {
     {
         unchecked {
             if (signedCoefficient < 0) {
-                console2.log("power10 negative");
                 (signedCoefficient, exponent) = minus(signedCoefficient, exponent);
                 (signedCoefficient, exponent) = power10(tablesDataContract, signedCoefficient, exponent);
                 return inv(signedCoefficient, exponent);
@@ -524,21 +517,11 @@ library LibDecimalFloatImplementation {
             // Table lookup.
             (int256 characteristicCoefficient, int256 mantissaCoefficient) =
                 characteristicMantissa(signedCoefficient, exponent);
-            console2.log("table lookup");
-            console2.logInt(characteristicCoefficient);
-            console2.logInt(mantissaCoefficient);
             int256 characteristicExponent = exponent;
             {
                 (int256 idx, bool interpolate) = mantissa4(mantissaCoefficient, exponent);
-                console2.log("index");
-                console2.logInt(idx);
-                console2.logBool(interpolate);
                 (int256 y1Coefficient, int256 y2Coefficient) =
                     lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
-                console2.log("y1 y2");
-                console2.logInt(y1Coefficient);
-                console2.logInt(y2Coefficient);
-
                 if (interpolate) {
                     (signedCoefficient, exponent) = unitLinearInterpolation(
                         mantissaCoefficient, exponent, idx, -4, -41, y1Coefficient, y2Coefficient, -4
@@ -548,12 +531,6 @@ library LibDecimalFloatImplementation {
                     exponent = -4;
                 }
             }
-
-            console2.log("after");
-            console2.logInt(signedCoefficient);
-            console2.logInt(exponent);
-            console2.logInt(characteristicCoefficient);
-            console2.logInt(characteristicExponent);
 
             return (
                 signedCoefficient,
@@ -830,10 +807,10 @@ library LibDecimalFloatImplementation {
             //slither-disable-next-line divide-before-multiply
             function lookupTableVal(tables, index) -> result {
                 // 1 byte for start of data contract
-                // + 1800 for log tables
-                // + 900 for small log tables
+                // + 1820 for log tables
+                // + 910 for small log tables
                 // + 100 for alt small log tables
-                let offset := 2801
+                let offset := 2831
                 mstore(0, 0)
                 extcodecopy(tables, 30, add(offset, mul(div(index, 10), 2)), 2)
                 let mainTableVal := mload(0)
