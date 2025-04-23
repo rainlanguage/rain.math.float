@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: CAL
 pragma solidity ^0.8.25;
 
-import {console} from "forge-std/console.sol";
-
 uint16 constant ALT_TABLE_FLAG = 0x8000;
 
 /// @dev https://icap.org.pk/files/per/students/exam/notices/log-table.pdf

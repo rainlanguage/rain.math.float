@@ -34,7 +34,9 @@ contract LibDecimalFloatPowerTest is LogTest {
     function testPowers() external {
         checkPower(5e37, -38, 3e37, -36, 9.3283582089552238805970149253731343283e37, -47);
         checkPower(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
+        // // Issues found in fuzzing from here.
         checkPower(99999, 0, 12182, 0, 1000, 60907);
+        checkPower(1785215562, 0, 18, 0, 3388, 163);
     }
 
     function checkRoundTrip(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -44,7 +46,17 @@ contract LibDecimalFloatPowerTest is LogTest {
         Float b = LibDecimalFloat.packLossless(signedCoefficientB, exponentB);
         address tables = logTables();
         Float c = a.power(b, tables);
+        (int256 signedCoefficientC, int256 exponentC) = c.unpack();
+        console2.log("c");
+        console2.logInt(signedCoefficientC);
+        console2.logInt(exponentC);
         Float roundTrip = c.power(b.inv(), tables);
+
+        (int256 signedCoefficientRoundTrip, int256 exponentRoundTrip) = roundTrip.unpack();
+        console2.log("round trip");
+        console2.logInt(signedCoefficientRoundTrip);
+        console2.logInt(exponentRoundTrip);
+
         Float diff = a.divide(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
 
         assertTrue(!diff.gt(LibDecimalFloat.packLossless(0.002e3, -3)), "diff");
@@ -52,7 +64,7 @@ contract LibDecimalFloatPowerTest is LogTest {
 
     /// X^Y^(1/Y) = X
     /// Can generally round trip whatever within 0.25% of the original value.
-    function testRoundTrip() external {
+    function testRoundTripSimple() external {
         checkRoundTrip(5, 0, 2, 0);
         checkRoundTrip(5, 0, 3, 0);
         checkRoundTrip(50, 0, 40, 0);
@@ -101,7 +113,7 @@ contract LibDecimalFloatPowerTest is LogTest {
                         console2.logInt(signedCoefficientDiff);
                         console2.logInt(exponentDiff);
 
-                        assertTrue(!diff.gt(LibDecimalFloat.packLossless(0.9e1, -1)), "diff");
+                        assertTrue(!diff.gt(LibDecimalFloat.packLossless(285, -4)), "diff");
                     }
                 } catch (bytes memory err) {}
             }
