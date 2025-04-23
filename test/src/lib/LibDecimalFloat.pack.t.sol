@@ -21,11 +21,6 @@ contract LibDecimalFloatPackTest is Test {
 
         assertTrue(lossless, "lossless");
         assertEq(signedCoefficient, signedCoefficientOut, "coefficient");
-        if (signedCoefficient != 0) {
-            assertEq(exponent, exponentOut, "exponent");
-        } else {
-            // 0 exponent is always 0.
-            assertEq(exponentOut, 0, "exponent");
-        }
+        assertEq(exponent, exponentOut, "exponent");
     }
 }

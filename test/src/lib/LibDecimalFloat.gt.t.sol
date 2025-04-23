@@ -10,7 +10,7 @@ import {Test} from "forge-std/Test.sol";
 contract LibDecimalFloatGtTest is Test {
     using LibDecimalFloat for Float;
 
-    function testGtReference(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    function testGtReference(int224 signedCoefficientA, int32 exponentA, int224 signedCoefficientB, int32 exponentB)
         external
         pure
     {

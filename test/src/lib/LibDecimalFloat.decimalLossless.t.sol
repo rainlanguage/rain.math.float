@@ -30,12 +30,12 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         return LibDecimalFloat.toFixedDecimalLossless(signedCoefficient, exponent, decimals);
     }
 
-    function toFixedDecimalLosslessMemExternal(Float float, uint8 decimals) external pure returns (uint256) {
+    function toFixedDecimalLosslessExternal(Float float, uint8 decimals) external pure returns (uint256) {
         return float.toFixedDecimalLossless(decimals);
     }
 
-    /// Memory version of from behaves the same as stack version.
     function testFromFixedDecimalLosslessMem(uint256 value, uint8 decimals) external {
+        value = bound(value, 0, uint256(int256(type(int224).max)));
         (,, bool losslessPreflight) = LibDecimalFloat.fromFixedDecimalLossy(value, decimals);
         if (!losslessPreflight) {
             vm.expectRevert(
@@ -49,15 +49,14 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         assertEq(exponent, exponentPacked);
     }
 
-    /// Memory version of to behaves the same as stack version.
-    function testToFixedDecimalLosslessMem(Float float, uint8 decimals) external {
+    function testToFixedDecimalLosslessPacked(Float float, uint8 decimals) external {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         try this.toFixedDecimalLosslessExternal(signedCoefficient, exponent, decimals) returns (uint256 value) {
             uint256 valueFloat = float.toFixedDecimalLossless(decimals);
             assertEq(valueFloat, value);
         } catch (bytes memory err) {
             vm.expectRevert(err);
-            uint256 valueFloat = this.toFixedDecimalLosslessMemExternal(float, decimals);
+            uint256 valueFloat = this.toFixedDecimalLosslessExternal(float, decimals);
             (valueFloat);
         }
     }

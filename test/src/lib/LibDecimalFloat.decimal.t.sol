@@ -28,8 +28,9 @@ contract LibDecimalFloatDecimalTest is Test {
         return float.toFixedDecimalLossy(decimals);
     }
 
-    /// Memory version of from behaves same as stack version.
     function testFromFixedDecimalLossyPacked(uint256 value, uint8 decimals) external pure {
+        // Above this bound the conversion will be lossy.
+        value = bound(value, 0, type(uint224).max / 10);
         (int256 signedCoefficient, int256 exponent, bool lossless) =
             LibDecimalFloat.fromFixedDecimalLossy(value, decimals);
 

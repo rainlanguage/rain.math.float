@@ -12,9 +12,13 @@ contract LibDecimalFloatMultiplyTest is Test {
     function multiplyExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         external
         pure
-        returns (int256, int256)
+        returns (Float)
     {
-        return LibDecimalFloatImplementation.multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficientC, int256 exponentC) =
+            LibDecimalFloatImplementation.multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (Float c, bool lossless) = LibDecimalFloat.packLossy(signedCoefficientC, exponentC);
+        (lossless);
+        return c;
     }
 
     function multiplyExternal(Float floatA, Float floatB) external pure returns (Float) {
@@ -25,8 +29,9 @@ contract LibDecimalFloatMultiplyTest is Test {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         try this.multiplyExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
-            int256 signedCoefficient, int256 exponent
+            Float floatExternal
         ) {
+            (int256 signedCoefficient, int256 exponent) = floatExternal.unpack();
             Float float = this.multiplyExternal(a, b);
             (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = float.unpack();
             assertEq(signedCoefficient, signedCoefficientUnpacked);

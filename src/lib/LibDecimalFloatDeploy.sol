@@ -12,8 +12,6 @@ import {LibDataContract, DataContractMemoryContainer} from "rain.datacontract/li
 import {LibBytes} from "rain.solmem/lib/LibBytes.sol";
 import {LibMemCpy, Pointer} from "rain.solmem/lib/LibMemCpy.sol";
 
-import {console2} from "forge-std/Test.sol";
-
 library LibDecimalFloatDeploy {
     function combinedTables() internal pure returns (bytes memory) {
         return
@@ -22,7 +20,6 @@ library LibDecimalFloatDeploy {
 
     function dataContract() internal pure returns (DataContractMemoryContainer) {
         bytes memory tables = combinedTables();
-        console2.logBytes(tables);
         (DataContractMemoryContainer container, Pointer pointer) = LibDataContract.newContainer(tables.length);
         LibMemCpy.unsafeCopyBytesTo(LibBytes.dataPointer(tables), pointer, tables.length);
         return container;

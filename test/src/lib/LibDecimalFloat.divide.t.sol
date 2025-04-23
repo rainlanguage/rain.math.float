@@ -12,9 +12,13 @@ contract LibDecimalFloatDivideTest is Test {
     function divideExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         external
         pure
-        returns (int256, int256)
+        returns (Float)
     {
-        return LibDecimalFloatImplementation.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficientC, int256 exponentC) =
+            LibDecimalFloatImplementation.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (Float c, bool lossless) = LibDecimalFloat.packLossy(signedCoefficientC, exponentC);
+        (lossless);
+        return c;
     }
 
     function divideExternal(Float floatA, Float floatB) external pure returns (Float) {
@@ -25,8 +29,9 @@ contract LibDecimalFloatDivideTest is Test {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         try this.divideExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
-            int256 signedCoefficient, int256 exponent
+            Float resultParts
         ) {
+            (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(resultParts);
             Float float = this.divideExternal(a, b);
             (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
             assertEq(signedCoefficient, signedCoefficientFloat);

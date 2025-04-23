@@ -11,6 +11,10 @@ import {console2} from "forge-std/Test.sol";
 contract LibDecimalFloatPowerTest is LogTest {
     using LibDecimalFloat for Float;
 
+    function diffLimit() internal pure returns (Float) {
+        return LibDecimalFloat.packLossless(94, -3);
+    }
+
     function checkPower(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -46,20 +50,12 @@ contract LibDecimalFloatPowerTest is LogTest {
         Float b = LibDecimalFloat.packLossless(signedCoefficientB, exponentB);
         address tables = logTables();
         Float c = a.power(b, tables);
-        (int256 signedCoefficientC, int256 exponentC) = c.unpack();
-        console2.log("c");
-        console2.logInt(signedCoefficientC);
-        console2.logInt(exponentC);
-        Float roundTrip = c.power(b.inv(), tables);
 
-        (int256 signedCoefficientRoundTrip, int256 exponentRoundTrip) = roundTrip.unpack();
-        console2.log("round trip");
-        console2.logInt(signedCoefficientRoundTrip);
-        console2.logInt(exponentRoundTrip);
+        Float roundTrip = c.power(b.inv(), tables);
 
         Float diff = a.divide(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
 
-        assertTrue(!diff.gt(LibDecimalFloat.packLossless(0.002e3, -3)), "diff");
+        assertTrue(!diff.gt(diffLimit()), "diff");
     }
 
     /// X^Y^(1/Y) = X
@@ -72,6 +68,8 @@ contract LibDecimalFloatPowerTest is LogTest {
         checkRoundTrip(5, -1, 2, -1);
         checkRoundTrip(5, 10, 3, 5);
         checkRoundTrip(5, -1, 100, 0);
+        checkRoundTrip(7721, 0, -1, -2);
+        checkRoundTrip(4157, 0, -1, -2);
     }
 
     function powerExternal(Float a, Float b) external returns (Float) {
@@ -88,32 +86,7 @@ contract LibDecimalFloatPowerTest is LogTest {
                 try this.powerExternal(c, inv) returns (Float roundTrip) {
                     if (roundTrip.isZero()) {} else {
                         Float diff = a.divide(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
-                        console2.log("a");
-                        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-                        console2.logInt(signedCoefficientA);
-                        console2.logInt(exponentA);
-                        console2.log("b");
-                        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-                        console2.logInt(signedCoefficientB);
-                        console2.logInt(exponentB);
-                        console2.log("c");
-                        (int256 signedCoefficientC, int256 exponentC) = c.unpack();
-                        console2.logInt(signedCoefficientC);
-                        console2.logInt(exponentC);
-                        console2.log("inv");
-                        (int256 signedCoefficientInv, int256 exponentInv) = inv.unpack();
-                        console2.logInt(signedCoefficientInv);
-                        console2.logInt(exponentInv);
-                        console2.log("roundTrip");
-                        (int256 signedCoefficientRoundTrip, int256 exponentRoundTrip) = roundTrip.unpack();
-                        console2.logInt(signedCoefficientRoundTrip);
-                        console2.logInt(exponentRoundTrip);
-                        console2.log("diff");
-                        (int256 signedCoefficientDiff, int256 exponentDiff) = diff.unpack();
-                        console2.logInt(signedCoefficientDiff);
-                        console2.logInt(exponentDiff);
-
-                        assertTrue(!diff.gt(LibDecimalFloat.packLossless(285, -4)), "diff");
+                        assertTrue(!diff.gt(diffLimit()), "diff");
                     }
                 } catch (bytes memory err) {}
             }

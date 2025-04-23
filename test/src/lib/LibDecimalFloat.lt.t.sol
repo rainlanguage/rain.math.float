@@ -34,7 +34,7 @@ contract LibDecimalFloatLtTest is Test {
     }
 
     /// xeX < xeY if X < Y && x > 0
-    function testLtXEAnyVsXEAny(int256 x, int256 exponentA, int256 exponentB) external pure {
+    function testLtXEAnyVsXEAny(int256 x, int32 exponentA, int32 exponentB) external pure {
         x = bound(x, 1, type(int224).max);
 
         Float a = LibDecimalFloat.packLossless(x, exponentA);

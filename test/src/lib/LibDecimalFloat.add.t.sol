@@ -15,9 +15,13 @@ contract LibDecimalFloatDecimalAddTest is Test {
     function addExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         external
         pure
-        returns (int256, int256)
+        returns (Float)
     {
-        return LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficientC, int256 exponentC) =
+            LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (Float c, bool lossless) = LibDecimalFloat.packLossy(signedCoefficientC, exponentC);
+        (lossless);
+        return c;
     }
 
     function addExternal(Float a, Float b) external pure returns (Float) {
@@ -27,9 +31,8 @@ contract LibDecimalFloatDecimalAddTest is Test {
     function testAddPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloat.unpack(a);
         (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloat.unpack(b);
-        try this.addExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
-            int256 signedCoefficient, int256 exponent
-        ) {
+        try this.addExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (Float resultParts) {
+            (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(resultParts);
             Float result = this.addExternal(a, b);
             (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = LibDecimalFloat.unpack(result);
             assertEq(signedCoefficient, signedCoefficientUnpacked);

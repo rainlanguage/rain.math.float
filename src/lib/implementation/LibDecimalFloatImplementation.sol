@@ -10,7 +10,6 @@ import {
     ANTI_LOG_TABLES_SMALL
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
-import {console2} from "forge-std/Test.sol";
 
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
@@ -398,9 +397,6 @@ library LibDecimalFloatImplementation {
         view
         returns (int256, int256)
     {
-        console2.log("log10 start");
-        console2.logInt(signedCoefficient);
-        console2.logInt(exponent);
         unchecked {
             {
                 (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
@@ -413,9 +409,6 @@ library LibDecimalFloatImplementation {
                     }
                 }
             }
-            console2.log("normalized");
-            console2.logInt(signedCoefficient);
-            console2.logInt(exponent);
 
             // This is a positive log. i.e. log(x) where x >= 1.
             if (exponent > -38) {
@@ -434,7 +427,6 @@ library LibDecimalFloatImplementation {
                 // Table lookup.
                 {
                     uint256 scale = 1e34;
-                    uint256 idx;
                     assembly ("memory-safe") {
                         //slither-disable-next-line divide-before-multiply
                         function lookupTableVal(tables, index) -> result {
@@ -467,7 +459,7 @@ library LibDecimalFloatImplementation {
                         // deliberate here.
                         //slither-disable-next-line divide-before-multiply
                         x1Coefficient := div(signedCoefficient, scale)
-                        idx := sub(x1Coefficient, 1000)
+                        let idx := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
                         x2Coefficient := add(x1Coefficient, scale)
                         interpolate := iszero(eq(x1Coefficient, signedCoefficient))
@@ -476,20 +468,9 @@ library LibDecimalFloatImplementation {
 
                         if interpolate { y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1))) }
                     }
-                    console2.log("index");
-                    console2.logUint(idx);
                 }
 
-                console2.log("lookup");
-                console2.logInt(x1Coefficient);
-                console2.logInt(x1Exponent);
-                console2.logInt(y1Coefficient);
-                console2.logInt(y2Coefficient);
-
                 if (interpolate) {
-                    console2.log("yes interpolate");
-                    console2.logInt(signedCoefficient);
-                    console2.logInt(exponent);
                     (signedCoefficient, exponent) = unitLinearInterpolation(
                         x1Coefficient, signedCoefficient, x2Coefficient, exponent, y1Coefficient, y2Coefficient, -38
                     );
@@ -497,10 +478,6 @@ library LibDecimalFloatImplementation {
                     signedCoefficient = y1Coefficient;
                     exponent = -38;
                 }
-
-                console2.log("interpolated");
-                console2.logInt(signedCoefficient);
-                console2.logInt(exponent);
 
                 return add(signedCoefficient, exponent, x1Exponent + 37, 0);
             }
@@ -545,19 +522,11 @@ library LibDecimalFloatImplementation {
                 (int256 idx, bool interpolate, int256 scale) = mantissa4(mantissaCoefficient, exponent);
                 (int256 y1Coefficient, int256 y2Coefficient) =
                     lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
-                console2.log("power10 interpolation");
-                console2.logInt(mantissaCoefficient);
-                console2.logInt(exponent);
-                console2.logInt(idx);
-                console2.logInt(idx * scale);
-                console2.logInt(y1Coefficient);
-                console2.logInt(y2Coefficient);
                 if (interpolate) {
                     (signedCoefficient, exponent) = unitLinearInterpolation(
                         idx * scale, mantissaCoefficient, (idx + 1) * scale, exponent, y1Coefficient, y2Coefficient, -4
                     );
                 } else {
-                    console2.log("not interpolate");
                     signedCoefficient = y1Coefficient;
                     exponent = -4;
                 }
@@ -873,29 +842,22 @@ library LibDecimalFloatImplementation {
 
         {
             // x - x1
-            (int256 xDiffCoefficient, int256 xDiffExponent) = sub(xCoefficient, xExponent, x1Coefficient, xExponent);
-            // console2.log("x - x1");
-            // console2.logInt(xCoefficient);
-            // console2.logInt(xExponent);
-            // console2.logInt(x1Coefficient);
-            // console2.logInt(x1Exponent);
-            // console2.logInt(xDiffCoefficient);
-            // console2.logInt(xDiffExponent);
+            (int256 xDiffCoefficient0, int256 xDiffExponent0) = sub(xCoefficient, xExponent, x1Coefficient, xExponent);
 
             // y2 - y1
             (int256 yDiffCoefficient, int256 yDiffExponent) = sub(y2Coefficient, yExponent, y1Coefficient, yExponent);
 
             // (x - x1) * (y2 - y1)
             (numeratorSignedCoefficient, numeratorExponent) =
-                multiply(xDiffCoefficient, xDiffExponent, yDiffCoefficient, yDiffExponent);
+                multiply(xDiffCoefficient0, xDiffExponent0, yDiffCoefficient, yDiffExponent);
         }
 
         // x2 - x1
-        (int256 xDiffCoefficient, int256 xDiffExponent) = sub(x2Coefficient, xExponent, x1Coefficient, xExponent);
+        (int256 xDiffCoefficient1, int256 xDiffExponent1) = sub(x2Coefficient, xExponent, x1Coefficient, xExponent);
 
         // ((x - x1) * (y2 - y1)) / (x2 - x1)
         (int256 yMarginalSignedCoefficient, int256 yMarginalExponent) =
-            divide(numeratorSignedCoefficient, numeratorExponent, xDiffCoefficient, xDiffExponent);
+            divide(numeratorSignedCoefficient, numeratorExponent, xDiffCoefficient1, xDiffExponent1);
 
         // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
         (int256 signedCoefficient, int256 exponent) =
