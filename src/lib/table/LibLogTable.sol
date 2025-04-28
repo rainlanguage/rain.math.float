@@ -446,7 +446,7 @@ library LibLogTable {
             [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
             [0, 0, 1, 1, 2, 2, 3, 3, 3, 4],
             // This row is a placeholder for when we interpolate past the last
-            // entry in the table. The last entry is 10000, so we just use that.
+            // entry in the table.
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         ];
     }
