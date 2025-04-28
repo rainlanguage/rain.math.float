@@ -15,6 +15,7 @@ import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoin
 import {ParseDecimalOverflow, ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
+import {console2} from "forge-std/Test.sol";
 
 library LibParseDecimalFloat {
     function parseDecimalFloatPacked(uint256 start, uint256 end) internal pure returns (bytes4, uint256, Float) {

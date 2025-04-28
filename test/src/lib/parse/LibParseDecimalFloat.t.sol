@@ -372,9 +372,9 @@ contract LibParseDecimalFloatTest is Test {
     /// impossible to fit the max decimals.
     function testParseLiteralDecimalFloatPrecisionRevert1() external pure {
         checkParseDecimalFloatFail(
-            "1.57896044618658097711785492504343953926634992332820282019728792003956564819967",
+            "1.5789604461865809771178549250434395392663499233282028201972879200395",
             ParseDecimalPrecisionLoss.selector,
-            79
+            69
         );
     }
 }
