@@ -29,7 +29,9 @@ contract LibDecimalFloatPowerTest is LogTest {
         uint256 beforeGas = gasleft();
         Float c = a.power(b, tables);
         uint256 afterGas = gasleft();
-        console2.log("%d %d Gas used: %d", uint256(signedCoefficientA), uint256(exponentA), beforeGas - afterGas);
+        console2.log("Gas used:", beforeGas - afterGas);
+        console2.logInt(signedCoefficientA);
+        console2.logInt(exponentA);
         (int256 actualSignedCoefficient, int256 actualExponent) = c.unpack();
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
         assertEq(actualExponent, expectedExponent, "exponent");
