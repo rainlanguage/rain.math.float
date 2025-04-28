@@ -4,7 +4,6 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {console2} from "forge-std/Test.sol";
 
