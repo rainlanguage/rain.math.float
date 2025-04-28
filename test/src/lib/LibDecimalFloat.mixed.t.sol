@@ -1,20 +1,25 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {THREES, ONES} from "../../lib/LibCommonResults.sol";
 
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatMixedTest is Test {
+    using LibDecimalFloat for Float;
+
     /// (1 / 3) * 555e18
     function testDivide1Over3() external pure {
-        (int256 signedCoefficientDiv, int256 exponentDiv) = LibDecimalFloat.divide(1, 0, 3, 0);
+        Float a = LibDecimalFloat.packLossless(1, 0);
+        Float b = LibDecimalFloat.packLossless(3, 0);
+        Float c = a.divide(b);
+        (int256 signedCoefficientDiv, int256 exponentDiv) = LibDecimalFloat.unpack(c);
         assertEq(signedCoefficientDiv, THREES, "coefficient");
         assertEq(exponentDiv, -38, "exponent");
 
-        (int256 signedCoefficientMul, int256 exponentMul) =
-            LibDecimalFloat.multiply(signedCoefficientDiv, exponentDiv, 555, 18);
+        Float d = c.multiply(LibDecimalFloat.packLossless(555, 18));
+        (int256 signedCoefficientMul, int256 exponentMul) = LibDecimalFloat.unpack(d);
 
         assertEq(signedCoefficientMul, 18499999999999999999999999999999999999815);
         assertEq(exponentMul, -20);

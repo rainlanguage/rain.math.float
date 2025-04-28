@@ -13,34 +13,19 @@ import {
 import {LibParseDecimal} from "rain.string/lib/parse/LibParseDecimal.sol";
 import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoint} from "../../error/ErrParse.sol";
 import {ParseDecimalOverflow, ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
-import {LibDecimalFloat, PackedFloat, Float} from "../LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
+import {console2} from "forge-std/Test.sol";
 
 library LibParseDecimalFloat {
-    function parseDecimalFloatPacked(uint256 start, uint256 end) internal pure returns (bytes4, uint256, PackedFloat) {
+    function parseDecimalFloatPacked(uint256 start, uint256 end) internal pure returns (bytes4, uint256, Float) {
         (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
             parseDecimalFloat(start, end);
         if (errorSelector != 0) {
-            return (errorSelector, cursor, PackedFloat.wrap(0));
+            return (errorSelector, cursor, Float.wrap(0));
         }
 
-        // Prenormalize signed coefficients that are smaller than their
-        // normalized form at parse time, as this can save runtime gas that would
-        // be needed to normalize the value at runtime.
-        // We only do normalization that will scale up, to avoid causing
-        // unneccessary precision loss.
-        if (-1e37 < signedCoefficient && signedCoefficient < 1e37) {
-            (signedCoefficient, exponent) = LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
-        }
-
-        PackedFloat packedFloat = LibDecimalFloat.pack(signedCoefficient, exponent);
-
-        (int256 unpackedSignedCoefficient, int256 unpackedExponent) = LibDecimalFloat.unpack(packedFloat);
-        if (unpackedSignedCoefficient != signedCoefficient || unpackedExponent != exponent) {
-            return (ParseDecimalPrecisionLoss.selector, cursor, PackedFloat.wrap(0));
-        }
-
-        return (0, cursor, packedFloat);
+        return (0, cursor, LibDecimalFloat.packLossless(signedCoefficient, exponent));
     }
 
     function parseDecimalFloat(uint256 start, uint256 end)
@@ -103,7 +88,7 @@ library LibParseDecimalFloat {
                 // fractional part.
                 exponent = int256(fracStart) - int256(nonZeroCursor);
                 uint256 scale = uint256(-exponent);
-                if (scale >= 77 && signedCoefficient != 0) {
+                if (scale >= 67 && signedCoefficient != 0) {
                     return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
                 }
                 scale = 10 ** scale;
@@ -141,15 +126,16 @@ library LibParseDecimalFloat {
         }
     }
 
-    function parseDecimalFloat(string memory str) internal pure returns (bytes4 errorSelector, Float memory float) {
+    function parseDecimalFloat(string memory str) internal pure returns (bytes4, Float) {
         uint256 start;
         uint256 end;
         assembly {
             start := add(str, 0x20)
             end := add(start, mload(str))
         }
-        uint256 cursor;
-        (errorSelector, cursor, float.signedCoefficient, float.exponent) = parseDecimalFloat(start, end);
+        (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
+            parseDecimalFloat(start, end);
         (cursor);
+        return (errorSelector, LibDecimalFloat.packLossless(signedCoefficient, exponent));
     }
 }

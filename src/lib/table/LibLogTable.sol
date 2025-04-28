@@ -1,22 +1,20 @@
 // SPDX-License-Identifier: CAL
 pragma solidity ^0.8.25;
 
-import {console} from "forge-std/console.sol";
-
 uint16 constant ALT_TABLE_FLAG = 0x8000;
 
 /// @dev https://icap.org.pk/files/per/students/exam/notices/log-table.pdf
 library LibLogTable {
-    function toBytes(uint16[10][90] memory table) internal pure returns (bytes memory) {
+    function toBytes(uint16[10][91] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         assembly ("memory-safe") {
             encoded := mload(0x40)
-            mstore(0x40, add(encoded, add(1800, 0x20)))
+            mstore(0x40, add(encoded, add(1820, 0x20)))
 
             let cursor := sub(mload(0x40), 0x20)
 
             for {
-                let i := add(table, mul(0x20, 89))
+                let i := add(table, mul(0x20, 90))
                 let j := mul(0x20, 9)
             } gt(cursor, encoded) {
                 cursor := sub(cursor, 2)
@@ -30,21 +28,21 @@ library LibLogTable {
                 }
             }
 
-            mstore(cursor, 1800)
+            mstore(cursor, 1820)
         }
         return encoded;
     }
 
-    function toBytes(uint8[10][90] memory table) internal pure returns (bytes memory) {
+    function toBytes(uint8[10][91] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         assembly ("memory-safe") {
             encoded := mload(0x40)
-            mstore(0x40, add(encoded, add(900, 0x20)))
+            mstore(0x40, add(encoded, add(910, 0x20)))
 
             let cursor := sub(mload(0x40), 0x20)
 
             for {
-                let i := add(table, mul(0x20, 89))
+                let i := add(table, mul(0x20, 90))
                 let j := mul(0x20, 9)
             } gt(cursor, encoded) {
                 cursor := sub(cursor, 1)
@@ -58,21 +56,21 @@ library LibLogTable {
                 }
             }
 
-            mstore(cursor, 900)
+            mstore(cursor, 910)
         }
         return encoded;
     }
 
-    function toBytes(uint8[10][100] memory table) internal pure returns (bytes memory) {
+    function toBytes(uint8[10][101] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         assembly ("memory-safe") {
             encoded := mload(0x40)
-            mstore(0x40, add(encoded, add(1000, 0x20)))
+            mstore(0x40, add(encoded, add(1010, 0x20)))
 
             let cursor := sub(mload(0x40), 0x20)
 
             for {
-                let i := add(table, mul(0x20, 99))
+                let i := add(table, mul(0x20, 100))
                 let j := mul(0x20, 9)
             } gt(cursor, encoded) {
                 cursor := sub(cursor, 1)
@@ -86,7 +84,7 @@ library LibLogTable {
                 }
             }
 
-            mstore(cursor, 1000)
+            mstore(cursor, 1010)
         }
         return encoded;
     }
@@ -119,16 +117,16 @@ library LibLogTable {
         return encoded;
     }
 
-    function toBytes(uint16[10][100] memory table) internal pure returns (bytes memory) {
+    function toBytes(uint16[10][101] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         assembly ("memory-safe") {
             encoded := mload(0x40)
-            mstore(0x40, add(encoded, add(2000, 0x20)))
+            mstore(0x40, add(encoded, add(2020, 0x20)))
 
             let cursor := sub(mload(0x40), 0x20)
 
             for {
-                let i := add(table, mul(0x20, 99))
+                let i := add(table, mul(0x20, 100))
                 let j := mul(0x20, 9)
             } gt(cursor, encoded) {
                 cursor := sub(cursor, 2)
@@ -142,12 +140,12 @@ library LibLogTable {
                 }
             }
 
-            mstore(cursor, 2000)
+            mstore(cursor, 2020)
         }
         return encoded;
     }
 
-    function logTableDec() internal pure returns (uint16[10][90] memory) {
+    function logTableDec() internal pure returns (uint16[10][91] memory) {
         return [
             [
                 0,
@@ -348,11 +346,14 @@ library LibLogTable {
             [9823, 9827, 9832, 9836, 9841, 9845, 9850, 9854, 9859, 9863],
             [9868, 9872, 9877, 9881, 9886, 9890, 9894, 9899, 9903, 9908],
             [9912, 9917, 9921, 9926, 9930, 9934, 9939, 9943, 9948, 9952],
-            [9956, 9961, 9965, 9969, 9974, 9978, 9983, 9987, 9991, 9996]
+            [9956, 9961, 9965, 9969, 9974, 9978, 9983, 9987, 9991, 9996],
+            // This row is a placeholder for when we interpolate past the last
+            // entry in the table. The last entry is 10000, so we just use that.
+            [10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000]
         ];
     }
 
-    function logTableDecSmall() internal pure returns (uint8[10][90] memory) {
+    function logTableDecSmall() internal pure returns (uint8[10][91] memory) {
         return [
             [0, 4, 9, 13, 17, 21, 26, 30, 34, 38],
             [0, 4, 8, 12, 15, 19, 23, 27, 31, 35],
@@ -443,7 +444,10 @@ library LibLogTable {
             [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
             [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
             [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
-            [0, 0, 1, 1, 2, 2, 3, 3, 3, 4]
+            [0, 0, 1, 1, 2, 2, 3, 3, 3, 4],
+            // This row is a placeholder for when we interpolate past the last
+            // entry in the table.
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         ];
     }
 
@@ -462,7 +466,7 @@ library LibLogTable {
         ];
     }
 
-    function antiLogTableDec() internal pure returns (uint16[10][100] memory) {
+    function antiLogTableDec() internal pure returns (uint16[10][101] memory) {
         return [
             [1000, 1002, 1005, 1007, 1009, 1012, 1014, 1016, 1019, 1021],
             [1023, 1026, 1028, 1030, 1033, 1035, 1038, 1040, 1042, 1045],
@@ -563,11 +567,14 @@ library LibLogTable {
             [9120, 9141, 9162, 9183, 9204, 9226, 9247, 9268, 9290, 9311],
             [9333, 9354, 9376, 9397, 9419, 9441, 9462, 9484, 9506, 9528],
             [9550, 9572, 9594, 9616, 9638, 9661, 9683, 9705, 9727, 9750],
-            [9772, 9795, 9817, 9840, 9863, 9886, 9908, 9931, 9954, 9977]
+            [9772, 9795, 9817, 9840, 9863, 9886, 9908, 9931, 9954, 9977],
+            // This row is a placeholder for when we need to interpolate from
+            // 9999 to 9999+1.
+            [10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000]
         ];
     }
 
-    function antiLogTableDecSmall() internal pure returns (uint8[10][100] memory) {
+    function antiLogTableDecSmall() internal pure returns (uint8[10][101] memory) {
         return [
             [0, 0, 0, 1, 1, 1, 1, 2, 2, 2],
             [0, 0, 0, 1, 1, 1, 1, 2, 2, 2],
@@ -668,7 +675,10 @@ library LibLogTable {
             [0, 2, 4, 6, 8, 11, 13, 15, 17, 19],
             [0, 2, 4, 7, 9, 11, 13, 15, 17, 20],
             [0, 2, 4, 7, 9, 11, 13, 16, 18, 20],
-            [0, 2, 5, 7, 9, 11, 14, 16, 18, 20]
+            [0, 2, 5, 7, 9, 11, 14, 16, 18, 20],
+            // This row is a placeholder for when we need to interpolate from
+            // 9999 to 9999+1.
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
         ];
     }
 }
