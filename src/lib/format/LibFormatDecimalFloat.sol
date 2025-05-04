@@ -16,8 +16,13 @@ library LibFormatDecimalFloat {
     /// @param exponent The exponent of the decimal float.
     /// @return The string representation of the decimal float.
     function toDecimalString(int256 signedCoefficient, int256 exponent) internal pure returns (string memory) {
+        string memory prefix = "";
+        if (signedCoefficient < 0) {
+            prefix = "-";
+            signedCoefficient = -signedCoefficient;
+        }
         uint256 decimal18Value = LibDecimalFloat.toFixedDecimalLossless(signedCoefficient, exponent, 18);
-        return LibFixedPointDecimalFormat.fixedPointToDecimalString(decimal18Value);
+        return string.concat(prefix, LibFixedPointDecimalFormat.fixedPointToDecimalString(decimal18Value));
     }
 
     function toDecimalString(Float float) internal pure returns (string memory) {
