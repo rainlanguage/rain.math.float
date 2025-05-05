@@ -10,6 +10,20 @@ import {Test} from "forge-std/Test.sol";
 contract LibDecimalFloatLtTest is Test {
     using LibDecimalFloat for Float;
 
+    function checkExample(
+        int256 signedCoefficientA,
+        int32 exponentA,
+        int256 signedCoefficientB,
+        int32 exponentB,
+        bool expected
+    ) internal pure {
+        Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
+        Float b = LibDecimalFloat.packLossless(signedCoefficientB, exponentB);
+
+        bool actual = LibDecimalFloat.lt(a, b);
+        assertEq(actual, expected);
+    }
+
     function testLtReference(Float a, Float b) external pure {
         bool actual = LibDecimalFloat.lt(a, b);
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
@@ -138,5 +152,9 @@ contract LibDecimalFloatLtTest is Test {
         LibDecimalFloat.lt(
             LibDecimalFloat.packLossless(1, type(int32).max), LibDecimalFloat.packLossless(1, type(int32).min)
         );
+    }
+
+    function testLtExamples() external pure {
+        checkExample(999999999999974209482711874742541185097679753153111, -51, 0, 0, false);
     }
 }

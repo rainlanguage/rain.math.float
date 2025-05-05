@@ -41,4 +41,15 @@ contract LibDecimalFloatEqTest is Test {
 
         assertEq(eq, !lt && !gt);
     }
+
+    /// Test some zeros.
+    function testEqZero(int32 exponent) external pure {
+        Float wrapZero = Float.wrap(0);
+        Float packZeroBasic = LibDecimalFloat.packLossless(0, 0);
+        Float packZero = LibDecimalFloat.packLossless(0, exponent);
+
+        assertTrue(wrapZero.eq(packZero));
+        assertTrue(wrapZero.eq(packZeroBasic));
+        assertEq(Float.unwrap(wrapZero), Float.unwrap(packZeroBasic));
+    }
 }
