@@ -5,7 +5,6 @@ pragma solidity ^0.8.25;
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 
 import {LibFixedPointDecimalFormat} from "rain.math.fixedpoint/lib/format/LibFixedPointDecimalFormat.sol";
-import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 
 library LibFormatDecimalFloat {
     /// Format a decimal float as a string.
