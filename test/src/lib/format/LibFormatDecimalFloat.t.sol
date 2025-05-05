@@ -14,24 +14,14 @@ contract LibFormatDecimalFloatTest is Test {
     using LibDecimalFloat for Float;
     using LibFormatDecimalFloat for Float;
 
-    function toDecimalStringExternal(int256 signedCoefficient, int256 exponent) external pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(signedCoefficient, exponent);
+    function checkFormat(int256 signedCoefficient, int256 exponent, string memory expected) internal pure {
+        string memory actual =
+            LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(signedCoefficient, exponent));
+        assertEq(actual, expected, "Formatted value mismatch");
     }
 
     function toString(Float float) external pure returns (string memory) {
         return LibFormatDecimalFloat.toDecimalString(float);
-    }
-
-    /// Check that the memory version matches the stack version.
-    function testFormatMem(Float float) external {
-        (int256 signedCoefficient, int256 exponent) = float.unpack();
-        try this.toDecimalStringExternal(signedCoefficient, exponent) returns (string memory formatted) {
-            string memory actual = this.toString(float);
-            assertEq(formatted, actual, "Formatted value mismatch");
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            LibFormatDecimalFloat.toDecimalString(float);
-        }
     }
 
     /// Test round tripping a value through parse and format.
@@ -58,63 +48,30 @@ contract LibFormatDecimalFloatTest is Test {
     /// Test some specific examples.
     function testFormatDecimalExamples() external pure {
         // pos decs
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(123456789012345678901234567890, 0), "123456789012345678901234567890"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(123456789012345678901234567890, -1), "12345678901234567890123456789"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(123456789012345678901234567890, -2), "1234567890123456789012345678.9"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(123456789012345678901234567890, -3), "123456789012345678901234567.89"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(123456789012345678901234567890, -4), "12345678901234567890123456.789"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(123456789012345678901234567890, -5), "1234567890123456789012345.6789"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(123456789012345678901234567890, -6), "123456789012345678901234.56789"
-        );
+        checkFormat(123456789012345678901234567890, 0, "123456789012345678901234567890");
+        checkFormat(123456789012345678901234567890, -1, "12345678901234567890123456789");
+        checkFormat(123456789012345678901234567890, -2, "1234567890123456789012345678.9");
+        checkFormat(123456789012345678901234567890, -3, "123456789012345678901234567.89");
+        checkFormat(123456789012345678901234567890, -4, "12345678901234567890123456.789");
+        checkFormat(123456789012345678901234567890, -5, "1234567890123456789012345.6789");
+        checkFormat(123456789012345678901234567890, -6, "123456789012345678901234.56789");
 
-        // zeros
-        assertEq(LibFormatDecimalFloat.toDecimalString(0, 0), "0");
-        assertEq(LibFormatDecimalFloat.toDecimalString(0, -1), "0");
-        assertEq(LibFormatDecimalFloat.toDecimalString(0, -2), "0");
-        assertEq(LibFormatDecimalFloat.toDecimalString(0, -3), "0");
-        assertEq(LibFormatDecimalFloat.toDecimalString(0, 1), "0");
-        assertEq(LibFormatDecimalFloat.toDecimalString(0, 2), "0");
-        assertEq(LibFormatDecimalFloat.toDecimalString(0, 3), "0");
+        // // zeros
+        checkFormat(0, 0, "0");
+        checkFormat(0, -1, "0");
+        checkFormat(0, -2, "0");
+        checkFormat(0, -3, "0");
+        checkFormat(0, 1, "0");
+        checkFormat(0, 2, "0");
+        checkFormat(0, 3, "0");
 
-        // neg decs
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(-123456789012345678901234567890, 0), "-123456789012345678901234567890"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(-123456789012345678901234567890, -1), "-12345678901234567890123456789"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(-123456789012345678901234567890, -2),
-            "-1234567890123456789012345678.9"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(-123456789012345678901234567890, -3),
-            "-123456789012345678901234567.89"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(-123456789012345678901234567890, -4),
-            "-12345678901234567890123456.789"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(-123456789012345678901234567890, -5),
-            "-1234567890123456789012345.6789"
-        );
-        assertEq(
-            LibFormatDecimalFloat.toDecimalString(-123456789012345678901234567890, -6),
-            "-123456789012345678901234.56789"
-        );
+        // // neg decs
+        checkFormat(-123456789012345678901234567890, 0, "-123456789012345678901234567890");
+        checkFormat(-123456789012345678901234567890, -1, "-12345678901234567890123456789");
+        checkFormat(-123456789012345678901234567890, -2, "-1234567890123456789012345678.9");
+        checkFormat(-123456789012345678901234567890, -3, "-123456789012345678901234567.89");
+        checkFormat(-123456789012345678901234567890, -4, "-12345678901234567890123456.789");
+        checkFormat(-123456789012345678901234567890, -5, "-1234567890123456789012345.6789");
+        checkFormat(-123456789012345678901234567890, -6, "-123456789012345678901234.56789");
     }
 }
