@@ -18,7 +18,7 @@ contract LibDecimalFloatMixedTest is Test {
         assertEq(signedCoefficientDiv, THREES, "coefficient");
         assertEq(exponentDiv, -38, "exponent");
 
-        Float d = c.multiply(LibDecimalFloat.packLossless(555, 18));
+        Float d = c.mul(LibDecimalFloat.packLossless(555, 18));
         (int256 signedCoefficientMul, int256 exponentMul) = LibDecimalFloat.unpack(d);
 
         assertEq(signedCoefficientMul, 18499999999999999999999999999999999999815);

@@ -418,18 +418,32 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Same as multiply, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
+    /// https://speleotrove.com/decimal/daops.html#refmult
+    /// > multiply takes two operands. If either operand is a special value then
+    /// > the general rules apply.
+    /// >
+    /// > Otherwise, the operands are multiplied together
+    /// > (‘long multiplication’), resulting in a number which may be as long as
+    /// > the sum of the lengths of the two operands, as follows:
+    /// >
+    /// > - The coefficient of the result, before rounding, is computed by
+    /// >   multiplying together the coefficients of the operands.
+    /// > - The exponent of the result, before rounding, is the sum of the
+    /// >   exponents of the two operands.
+    /// > - The sign of the result is the exclusive or of the signs of the
+    /// >   operands.
+    /// >
+    /// > The result is then rounded to precision digits if necessary, counting
+    /// > from the most significant digit of the result.
     /// @param a The Float struct containing the signed coefficient and
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function multiply(Float a, Float b) internal pure returns (Float) {
+    function mul(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         // Multiplication is typically lossless, but can be lossy in edge cases.
         (lossless);
@@ -592,7 +606,7 @@ library LibDecimalFloat {
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
 
         (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.multiply(signedCoefficientC, exponentC, signedCoefficientB, exponentB);
+            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientB, exponentB);
 
         (signedCoefficientC, exponentC) =
             LibDecimalFloatImplementation.power10(tablesDataContract, signedCoefficientC, exponentC);

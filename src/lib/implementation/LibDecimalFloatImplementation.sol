@@ -89,24 +89,8 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// https://speleotrove.com/decimal/daops.html#refmult
-    /// > multiply takes two operands. If either operand is a special value then
-    /// > the general rules apply.
-    /// >
-    /// > Otherwise, the operands are multiplied together
-    /// > (‘long multiplication’), resulting in a number which may be as long as
-    /// > the sum of the lengths of the two operands, as follows:
-    /// >
-    /// > - The coefficient of the result, before rounding, is computed by
-    /// >   multiplying together the coefficients of the operands.
-    /// > - The exponent of the result, before rounding, is the sum of the
-    /// >   exponents of the two operands.
-    /// > - The sign of the result is the exclusive or of the signs of the
-    /// >   operands.
-    /// >
-    /// > The result is then rounded to precision digits if necessary, counting
-    /// > from the most significant digit of the result.
-    function multiply(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    /// Stack only implementation of `mul`.
+    function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
         returns (int256, int256)
@@ -138,7 +122,7 @@ library LibDecimalFloatImplementation {
             if (didOverflow) {
                 (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
                 (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
-                return multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                return mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             }
             return (signedCoefficient, exponent);
         }
@@ -849,7 +833,7 @@ library LibDecimalFloatImplementation {
 
             // (x - x1) * (y2 - y1)
             (numeratorSignedCoefficient, numeratorExponent) =
-                multiply(xDiffCoefficient0, xDiffExponent0, yDiffCoefficient, yDiffExponent);
+                mul(xDiffCoefficient0, xDiffExponent0, yDiffCoefficient, yDiffExponent);
         }
 
         // x2 - x1
