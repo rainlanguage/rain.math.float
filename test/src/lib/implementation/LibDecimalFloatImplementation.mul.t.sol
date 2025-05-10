@@ -11,85 +11,85 @@ import {
 import {Test} from "forge-std/Test.sol";
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 
-contract LibDecimalFloatImplementationMultiplyTest is Test {
+contract LibDecimalFloatImplementationMulTest is Test {
     /// Simple 0 multiply 0
     /// 0 * 0 = 0
-    function testMultiplyZero0Exponent() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.multiply(0, 0, 0, 0);
+    function testMulZero0Exponent() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(0, 0, 0, 0);
         assertEq(signedCoefficient, NORMALIZED_ZERO_SIGNED_COEFFICIENT);
         assertEq(exponent, NORMALIZED_ZERO_EXPONENT);
     }
 
     /// 0 multiply 0 any exponent
     /// 0 * 0 = 0
-    function testMultiplyZeroAnyExponent(int64 exponentA, int64 exponentB) external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.multiply(0, exponentA, 0, exponentB);
+    function testMulZeroAnyExponent(int64 exponentA, int64 exponentB) external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(0, exponentA, 0, exponentB);
         assertEq(signedCoefficient, NORMALIZED_ZERO_SIGNED_COEFFICIENT);
         assertEq(exponent, NORMALIZED_ZERO_EXPONENT);
     }
 
     /// 0 multiply 1
     /// 0 * 1 = 0
-    function testMultiplyZeroOne() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.multiply(0, 0, 1, 0);
+    function testMulZeroOne() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(0, 0, 1, 0);
         assertEq(signedCoefficient, NORMALIZED_ZERO_SIGNED_COEFFICIENT);
         assertEq(exponent, NORMALIZED_ZERO_EXPONENT);
     }
 
     /// 1 multiply 0
     /// 1 * 0 = 0
-    function testMultiplyOneZero() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.multiply(1, 0, 0, 0);
+    function testMulOneZero() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(1, 0, 0, 0);
         assertEq(signedCoefficient, NORMALIZED_ZERO_SIGNED_COEFFICIENT);
         assertEq(exponent, NORMALIZED_ZERO_EXPONENT);
     }
 
     /// 1 multiply 1
     /// 1 * 1 = 1
-    function testMultiplyOneOne() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.multiply(1, 0, 1, 0);
+    function testMulOneOne() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(1, 0, 1, 0);
         assertEq(signedCoefficient, 1);
         assertEq(exponent, 0);
     }
 
     /// 123456789 multiply 987654321
     /// 123456789 * 987654321 = 121932631112635269
-    function testMultiply123456789987654321() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.multiply(123456789, 0, 987654321, 0);
+    function testMul123456789987654321() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(123456789, 0, 987654321, 0);
         assertEq(signedCoefficient, 121932631112635269);
         assertEq(exponent, 0);
     }
 
     /// 123456789 multiply 987654321 with exponents
     /// 123456789 * 987654321 = 121932631112635269
-    function testMultiply123456789987654321WithExponents(int128 exponentA, int128 exponentB) external pure {
+    function testMul123456789987654321WithExponents(int128 exponentA, int128 exponentB) external pure {
         exponentA = int128(bound(exponentA, -127, 127));
         exponentB = int128(bound(exponentB, -127, 127));
 
         (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.multiply(123456789, exponentA, 987654321, exponentB);
+            LibDecimalFloatImplementation.mul(123456789, exponentA, 987654321, exponentB);
         assertEq(signedCoefficient, 121932631112635269);
         assertEq(exponent, exponentA + exponentB);
     }
 
     /// 1e18 * 1e-19 = 1e-1
-    function testMultiply1e181e19() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.multiply(1, 18, 1, -19);
+    function testMul1e181e19() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(1, 18, 1, -19);
         assertEq(signedCoefficient, 1);
         assertEq(exponent, -1);
     }
 
-    function testMultiplyGasZero() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.multiply(0, 0, 0, 0);
+    function testMulGasZero() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(0, 0, 0, 0);
         (signedCoefficient, exponent);
     }
 
-    function testMultiplyGasOne() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.multiply(1e37, -37, 1e37, -37);
+    function testMulGasOne() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(1e37, -37, 1e37, -37);
         (signedCoefficient, exponent);
     }
 
-    function testMultiplyNotRevertAnyExpectation(
+    function testMulNotRevertAnyExpectation(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
@@ -98,9 +98,9 @@ contract LibDecimalFloatImplementationMultiplyTest is Test {
         exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
         exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
         (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatSlow.multiplySlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibDecimalFloatSlow.mulSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
         assertEq(signedCoefficient, expectedSignedCoefficient);
         assertEq(exponent, expectedExponent);

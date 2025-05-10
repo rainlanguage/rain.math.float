@@ -6,39 +6,38 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 
 import {Test} from "forge-std/Test.sol";
 
-contract LibDecimalFloatMultiplyTest is Test {
+contract LibDecimalFloatMulTest is Test {
     using LibDecimalFloat for Float;
 
-    function multiplyExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    function mulExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         external
         pure
         returns (Float)
     {
         (int256 signedCoefficientC, int256 exponentC) =
-            LibDecimalFloatImplementation.multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (Float c, bool lossless) = LibDecimalFloat.packLossy(signedCoefficientC, exponentC);
         (lossless);
         return c;
     }
 
-    function multiplyExternal(Float floatA, Float floatB) external pure returns (Float) {
-        return LibDecimalFloat.multiply(floatA, floatB);
+    function mulExternal(Float floatA, Float floatB) external pure returns (Float) {
+        return LibDecimalFloat.mul(floatA, floatB);
     }
 
     function testMultiplyPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        try this.multiplyExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
-            Float floatExternal
-        ) {
+        try this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (Float floatExternal)
+        {
             (int256 signedCoefficient, int256 exponent) = floatExternal.unpack();
-            Float float = this.multiplyExternal(a, b);
+            Float float = this.mulExternal(a, b);
             (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = float.unpack();
             assertEq(signedCoefficient, signedCoefficientUnpacked);
             assertEq(exponent, exponentUnpacked);
         } catch (bytes memory err) {
             vm.expectRevert(err);
-            this.multiplyExternal(a, b);
+            this.mulExternal(a, b);
         }
     }
 }

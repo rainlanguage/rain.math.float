@@ -7,7 +7,7 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 library LibDecimalFloatSlow {
     using LibDecimalFloat for Float;
 
-    function multiplySlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    function mulSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
         returns (int256, int256)
