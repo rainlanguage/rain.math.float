@@ -7,14 +7,14 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 import {console2} from "forge-std/Test.sol";
 
-contract LibDecimalFloatPowerTest is LogTest {
+contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
 
     function diffLimit() internal pure returns (Float) {
         return LibDecimalFloat.packLossless(94, -3);
     }
 
-    function checkPower(
+    function checkPow(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
@@ -26,7 +26,7 @@ contract LibDecimalFloatPowerTest is LogTest {
         Float b = LibDecimalFloat.packLossless(signedCoefficientB, exponentB);
         address tables = logTables();
         uint256 beforeGas = gasleft();
-        Float c = a.power(b, tables);
+        Float c = a.pow(b, tables);
         uint256 afterGas = gasleft();
         console2.log("Gas used:", beforeGas - afterGas);
         console2.logInt(signedCoefficientA);
@@ -36,12 +36,12 @@ contract LibDecimalFloatPowerTest is LogTest {
         assertEq(actualExponent, expectedExponent, "exponent");
     }
 
-    function testPowers() external {
-        checkPower(5e37, -38, 3e37, -36, 9.3283582089552238805970149253731343283e37, -47);
-        checkPower(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
+    function testPows() external {
+        checkPow(5e37, -38, 3e37, -36, 9.3283582089552238805970149253731343283e37, -47);
+        checkPow(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
         // // Issues found in fuzzing from here.
-        checkPower(99999, 0, 12182, 0, 1000, 60907);
-        checkPower(1785215562, 0, 18, 0, 3388, 163);
+        checkPow(99999, 0, 12182, 0, 1000, 60907);
+        checkPow(1785215562, 0, 18, 0, 3388, 163);
     }
 
     function checkRoundTrip(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -50,11 +50,11 @@ contract LibDecimalFloatPowerTest is LogTest {
         Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
         Float b = LibDecimalFloat.packLossless(signedCoefficientB, exponentB);
         address tables = logTables();
-        Float c = a.power(b, tables);
+        Float c = a.pow(b, tables);
 
-        Float roundTrip = c.power(b.inv(), tables);
+        Float roundTrip = c.pow(b.inv(), tables);
 
-        Float diff = a.divide(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
+        Float diff = a.div(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
 
         assertTrue(!diff.gt(diffLimit()), "diff");
     }
@@ -73,20 +73,20 @@ contract LibDecimalFloatPowerTest is LogTest {
         checkRoundTrip(4157, 0, -1, -2);
     }
 
-    function powerExternal(Float a, Float b) external returns (Float) {
-        return a.power(b, logTables());
+    function powExternal(Float a, Float b) external returns (Float) {
+        return a.pow(b, logTables());
     }
 
     function testRoundTripFuzz(Float a, Float b) external {
-        try this.powerExternal(a, b) returns (Float c) {
+        try this.powExternal(a, b) returns (Float c) {
             // If b is zero we'll divide by zero on the inv.
             // If c is 1 then it's not round trippable because 1^x = 1 for all x.
             // C will be 1 when a is 1 or b is 0 (or very close to either).
             if (b.isZero() || c.eq(LibDecimalFloat.packLossless(1, 0))) {} else {
                 Float inv = b.inv();
-                try this.powerExternal(c, inv) returns (Float roundTrip) {
+                try this.powExternal(c, inv) returns (Float roundTrip) {
                     if (roundTrip.isZero()) {} else {
-                        Float diff = a.divide(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
+                        Float diff = a.div(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
                         assertTrue(!diff.gt(diffLimit()), "diff");
                     }
                 } catch (bytes memory err) {}

@@ -89,24 +89,8 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// https://speleotrove.com/decimal/daops.html#refmult
-    /// > multiply takes two operands. If either operand is a special value then
-    /// > the general rules apply.
-    /// >
-    /// > Otherwise, the operands are multiplied together
-    /// > (‘long multiplication’), resulting in a number which may be as long as
-    /// > the sum of the lengths of the two operands, as follows:
-    /// >
-    /// > - The coefficient of the result, before rounding, is computed by
-    /// >   multiplying together the coefficients of the operands.
-    /// > - The exponent of the result, before rounding, is the sum of the
-    /// >   exponents of the two operands.
-    /// > - The sign of the result is the exclusive or of the signs of the
-    /// >   operands.
-    /// >
-    /// > The result is then rounded to precision digits if necessary, counting
-    /// > from the most significant digit of the result.
-    function multiply(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    /// Stack only implementation of `mul`.
+    function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
         returns (int256, int256)
@@ -138,7 +122,7 @@ library LibDecimalFloatImplementation {
             if (didOverflow) {
                 (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
                 (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
-                return multiply(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                return mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             }
             return (signedCoefficient, exponent);
         }
@@ -194,7 +178,7 @@ library LibDecimalFloatImplementation {
     /// > The result is then rounded to precision digits, if necessary, according
     /// > to the rounding algorithm and taking into account the remainder from
     /// > the division.
-    function divide(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    function div(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
         returns (int256, int256)
@@ -484,7 +468,7 @@ library LibDecimalFloatImplementation {
             // This is a negative log. i.e. log(x) where 0 < x < 1.
             // log(x) = -log(1/x)
             else {
-                (signedCoefficient, exponent) = divide(1e37, -37, signedCoefficient, exponent);
+                (signedCoefficient, exponent) = div(1e37, -37, signedCoefficient, exponent);
                 (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
                 return minus(signedCoefficient, exponent);
             }
@@ -502,7 +486,7 @@ library LibDecimalFloatImplementation {
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function power10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
+    function pow10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
         internal
         view
         returns (int256, int256)
@@ -510,7 +494,7 @@ library LibDecimalFloatImplementation {
         unchecked {
             if (signedCoefficient < 0) {
                 (signedCoefficient, exponent) = minus(signedCoefficient, exponent);
-                (signedCoefficient, exponent) = power10(tablesDataContract, signedCoefficient, exponent);
+                (signedCoefficient, exponent) = pow10(tablesDataContract, signedCoefficient, exponent);
                 return inv(signedCoefficient, exponent);
             }
 
@@ -849,7 +833,7 @@ library LibDecimalFloatImplementation {
 
             // (x - x1) * (y2 - y1)
             (numeratorSignedCoefficient, numeratorExponent) =
-                multiply(xDiffCoefficient0, xDiffExponent0, yDiffCoefficient, yDiffExponent);
+                mul(xDiffCoefficient0, xDiffExponent0, yDiffCoefficient, yDiffExponent);
         }
 
         // x2 - x1
@@ -857,7 +841,7 @@ library LibDecimalFloatImplementation {
 
         // ((x - x1) * (y2 - y1)) / (x2 - x1)
         (int256 yMarginalSignedCoefficient, int256 yMarginalExponent) =
-            divide(numeratorSignedCoefficient, numeratorExponent, xDiffCoefficient1, xDiffExponent1);
+            div(numeratorSignedCoefficient, numeratorExponent, xDiffCoefficient1, xDiffExponent1);
 
         // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
         (int256 signedCoefficient, int256 exponent) =

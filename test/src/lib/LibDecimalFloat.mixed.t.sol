@@ -10,15 +10,15 @@ contract LibDecimalFloatMixedTest is Test {
     using LibDecimalFloat for Float;
 
     /// (1 / 3) * 555e18
-    function testDivide1Over3() external pure {
+    function testDiv1Over3() external pure {
         Float a = LibDecimalFloat.packLossless(1, 0);
         Float b = LibDecimalFloat.packLossless(3, 0);
-        Float c = a.divide(b);
+        Float c = a.div(b);
         (int256 signedCoefficientDiv, int256 exponentDiv) = LibDecimalFloat.unpack(c);
         assertEq(signedCoefficientDiv, THREES, "coefficient");
         assertEq(exponentDiv, -38, "exponent");
 
-        Float d = c.multiply(LibDecimalFloat.packLossless(555, 18));
+        Float d = c.mul(LibDecimalFloat.packLossless(555, 18));
         (int256 signedCoefficientMul, int256 exponentMul) = LibDecimalFloat.unpack(d);
 
         assertEq(signedCoefficientMul, 18499999999999999999999999999999999999815);

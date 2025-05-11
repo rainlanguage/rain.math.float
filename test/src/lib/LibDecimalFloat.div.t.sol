@@ -6,39 +6,37 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 
 import {Test} from "forge-std/Test.sol";
 
-contract LibDecimalFloatDivideTest is Test {
+contract LibDecimalFloatDivTest is Test {
     using LibDecimalFloat for Float;
 
-    function divideExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         external
         pure
         returns (Float)
     {
         (int256 signedCoefficientC, int256 exponentC) =
-            LibDecimalFloatImplementation.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (Float c, bool lossless) = LibDecimalFloat.packLossy(signedCoefficientC, exponentC);
         (lossless);
         return c;
     }
 
-    function divideExternal(Float floatA, Float floatB) external pure returns (Float) {
-        return LibDecimalFloat.divide(floatA, floatB);
+    function divExternal(Float floatA, Float floatB) external pure returns (Float) {
+        return LibDecimalFloat.div(floatA, floatB);
     }
 
-    function testDividePacked(Float a, Float b) external {
+    function testDivPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        try this.divideExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
-            Float resultParts
-        ) {
+        try this.divExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (Float resultParts) {
             (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(resultParts);
-            Float float = this.divideExternal(a, b);
+            Float float = this.divExternal(a, b);
             (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
             assertEq(signedCoefficient, signedCoefficientFloat);
             assertEq(exponent, exponentFloat);
         } catch (bytes memory err) {
             vm.expectRevert(err);
-            this.divideExternal(a, b);
+            this.divExternal(a, b);
         }
     }
 }
