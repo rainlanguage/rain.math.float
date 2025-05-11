@@ -1,27 +1,27 @@
 // SPDX-License-Identifier: CAL
 pragma solidity =0.8.25;
 
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std/Test.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
-contract DecimalFloatMulTest is Test {
+contract DecimalFloatMaxTest is Test {
     using LibDecimalFloat for Float;
 
-    function mulExternal(Float a, Float b) external pure returns (Float) {
-        return a.mul(b);
+    function maxExternal(Float a, Float b) external pure returns (Float) {
+        return a.max(b);
     }
 
-    function testMulDeployed(Float a, Float b) external {
+    function testMaxDeployed(Float a, Float b) external {
         DecimalFloat deployed = new DecimalFloat();
 
-        try this.mulExternal(a, b) returns (Float c) {
-            Float deployedC = deployed.mul(a, b);
+        try this.maxExternal(a, b) returns (Float c) {
+            Float deployedC = deployed.max(a, b);
 
             assertEq(Float.unwrap(c), Float.unwrap(deployedC));
         } catch (bytes memory err) {
             vm.expectRevert(err);
-            deployed.mul(a, b);
+            deployed.max(a, b);
         }
     }
 }
