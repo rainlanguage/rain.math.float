@@ -29,6 +29,7 @@ library LibDecimalFloatDeploy {
     }
 
     function decimalFloatZoltu() internal returns (DecimalFloat deployedAddress) {
+        //slither-disable-next-line too-many-digits
         bytes memory code = type(DecimalFloat).creationCode;
         bool success;
         assembly ("memory-safe") {
