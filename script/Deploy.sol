@@ -3,7 +3,7 @@ pragma solidity =0.8.25;
 
 import {Script} from "forge-std/Script.sol";
 import {DataContractMemoryContainer, LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
-import {LibDecimalFloatDeploy} from "../src/lib/LibDecimalFloatDeploy.sol";
+import {LibDecimalFloatDeploy} from "../src/lib/deploy/LibDecimalFloatDeploy.sol";
 
 contract Deploy is Script {
     using LibDataContract for DataContractMemoryContainer;
@@ -16,6 +16,8 @@ contract Deploy is Script {
         vm.startBroadcast(deployerPrivateKey);
 
         container.writeZoltu();
+
+        LibDecimalFloatDeploy.decimalFloatZoltu();
 
         vm.stopBroadcast();
     }

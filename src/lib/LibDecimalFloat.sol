@@ -457,11 +457,11 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
-    function divide(Float a, Float b) internal pure returns (Float) {
+    function div(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.divide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         // Division is often lossy because it is very easy to end up with
         // infinite decimal representations.
@@ -553,14 +553,14 @@ library LibDecimalFloat {
     /// Same as power10, but accepts a Float struct instead of separate values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
-    /// @param tablesDataContract The address of the contract containing the
-    /// logarithm tables.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    function power10(address tablesDataContract, Float float) internal view returns (Float) {
+    /// @param tablesDataContract The address of the contract containing the
+    /// logarithm tables.
+    function pow10(Float float, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) =
-            LibDecimalFloatImplementation.power10(tablesDataContract, signedCoefficient, exponent);
+            LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficient, exponent);
         (Float result, bool lossless) = packLossy(signedCoefficient, exponent);
         // We don't care if power10 is lossy because it's an approximation
         // anyway.
@@ -597,7 +597,7 @@ library LibDecimalFloat {
     /// @param b The float `b` in `a^b`.
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
-    function power(Float a, Float b, address tablesDataContract) internal view returns (Float) {
+    function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
 
         (int256 signedCoefficientC, int256 exponentC) =
@@ -609,7 +609,7 @@ library LibDecimalFloat {
             LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientB, exponentB);
 
         (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.power10(tablesDataContract, signedCoefficientC, exponentC);
+            LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficientC, exponentC);
 
         (Float c, bool lossless) = packLossy(signedCoefficientC, exponentC);
         // We don't care if power is lossy because it's an approximation anyway.
