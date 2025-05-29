@@ -9,6 +9,14 @@ import {
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
+    function withTargetExponentExternal(int256 signedCoefficient, int256 exponent, int256 targetExponent)
+        external
+        pure
+        returns (int256)
+    {
+        return LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
+    }
+
     function testWithTargetExponentSameExponentNoop(int256 signedCoefficient, int256 exponent) external pure {
         (int256 actualSignedCoefficient) =
             LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, exponent);
@@ -35,7 +43,7 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(WithTargetExponentOverflow.selector, signedCoefficient, exponent, targetExponent)
         );
-        LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
+        this.withTargetExponentExternal(signedCoefficient, exponent, targetExponent);
     }
 
     function testWithTargetExponentLargerExponentOverflowRescaleRevert(
@@ -55,7 +63,7 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         vm.expectRevert(
             abi.encodeWithSelector(WithTargetExponentOverflow.selector, signedCoefficient, exponent, targetExponent)
         );
-        LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
+        this.withTargetExponentExternal(signedCoefficient, exponent, targetExponent);
     }
 
     function testWithTargetExponentSmallerExponentNoRevert(

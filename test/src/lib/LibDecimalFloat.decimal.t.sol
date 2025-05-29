@@ -101,7 +101,7 @@ contract LibDecimalFloatDecimalTest is Test {
         int256 exponent,
         uint8 decimals,
         uint256 expectedValue
-    ) internal pure {
+    ) internal view {
         (uint256 value, bool lossless) = LibDecimalFloat.toFixedDecimalLossy(signedCoefficient, exponent, decimals);
         assertEq(value, expectedValue, "value");
         assertEq(lossless, true, "lossless");
@@ -205,7 +205,7 @@ contract LibDecimalFloatDecimalTest is Test {
     function testToFixedDecimalLossyNegative(int256 signedCoefficient, int256 exponent, uint8 decimals) external {
         signedCoefficient = bound(signedCoefficient, type(int256).min, -1);
         vm.expectRevert(abi.encodeWithSelector(NegativeFixedDecimalConversion.selector, signedCoefficient, exponent));
-        (uint256 value, bool lossless) = LibDecimalFloat.toFixedDecimalLossy(signedCoefficient, exponent, decimals);
+        (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
         (value, lossless);
     }
 
@@ -266,7 +266,7 @@ contract LibDecimalFloatDecimalTest is Test {
     }
 
     /// Some examples of lossless truncations.
-    function testToFixedDecimalLossyTruncateLossless() external pure {
+    function testToFixedDecimalLossyTruncateLossless() external view {
         checkToFixedDecimalLossless(123456789e37, -37, 0, 123456789);
         checkToFixedDecimalLossless(123456789e37, -37, 1, 1234567890);
         checkToFixedDecimalLossless(123456789e37, -37, 2, 12345678900);
@@ -279,7 +279,7 @@ contract LibDecimalFloatDecimalTest is Test {
     /// will be scaled up losslessly.
     function testToFixedDecimalLosslessScaleUp(int256 signedCoefficient, int256 exponent, uint8 decimals)
         external
-        pure
+        view
     {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         decimals = uint8(bound(decimals, 0, 77));
@@ -313,6 +313,7 @@ contract LibDecimalFloatDecimalTest is Test {
             vm.assume(c / scale != unsignedCoefficient);
         }
         vm.expectRevert(stdError.arithmeticError);
-        checkToFixedDecimalLossless(signedCoefficient, exponent, decimals, unsignedCoefficient * scale);
+        (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
+        (value, lossless);
     }
 }
