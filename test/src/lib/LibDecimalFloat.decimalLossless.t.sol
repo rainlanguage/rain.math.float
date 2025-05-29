@@ -75,7 +75,7 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
 
     function testToFixedDecimalLosslessFail() external {
         vm.expectRevert(abi.encodeWithSelector(LossyConversionFromFloat.selector, 1, -1));
-        LibDecimalFloat.toFixedDecimalLossless(1, -1, 0);
+        this.toFixedDecimalLosslessExternal(1, -1, 0);
     }
 
     function testFromFixedDecimalLosslessPass(uint256 value, uint8 decimals) external pure {

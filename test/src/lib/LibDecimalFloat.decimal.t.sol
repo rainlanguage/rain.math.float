@@ -205,7 +205,7 @@ contract LibDecimalFloatDecimalTest is Test {
     function testToFixedDecimalLossyNegative(int256 signedCoefficient, int256 exponent, uint8 decimals) external {
         signedCoefficient = bound(signedCoefficient, type(int256).min, -1);
         vm.expectRevert(abi.encodeWithSelector(NegativeFixedDecimalConversion.selector, signedCoefficient, exponent));
-        (uint256 value, bool lossless) = LibDecimalFloat.toFixedDecimalLossy(signedCoefficient, exponent, decimals);
+        (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
         (value, lossless);
     }
 
@@ -313,6 +313,7 @@ contract LibDecimalFloatDecimalTest is Test {
             vm.assume(c / scale != unsignedCoefficient);
         }
         vm.expectRevert(stdError.arithmeticError);
-        checkToFixedDecimalLossless(signedCoefficient, exponent, decimals, unsignedCoefficient * scale);
+        (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
+        (value, lossless);
     }
 }
