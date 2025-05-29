@@ -313,8 +313,7 @@ contract LibDecimalFloatDecimalTest is Test {
             vm.assume(c / scale != unsignedCoefficient);
         }
         vm.expectRevert(stdError.arithmeticError);
-        (uint256 value, bool lossless) =
-            this.toFixedDecimalLossyExternal(signedCoefficient, exponent, unsignedCoefficient * scale);
+        (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
         (value, lossless);
     }
 }
