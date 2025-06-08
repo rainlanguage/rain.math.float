@@ -6,7 +6,8 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest]
-        task: [rainix-sol-test, rainix-sol-static]
+        task:
+          [rainix-sol-test, rainix-sol-static, rainix-rs-test, rainix-rs-static]
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
@@ -29,17 +30,14 @@ jobs:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           # if there's no cache hit, restore a cache by this prefix
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          # collect garbage until the Nix store size (in bytes) is at most this number
-          # before trying to save a new cache
-          # 1G = 1073741824
           gc-max-store-size-linux: 1G
 
       - name: Run ${{ matrix.task }}
         env:
           ETH_RPC_URL: ${{ secrets.CI_DEPLOY_SEPOLIA_RPC_URL || vars.CI_DEPLOY_SEPOLIA_RPC_URL }}
           ETHERSCAN_API_KEY: ${{ secrets.EXPLORER_VERIFICATION_KEY }}
-          DEPLOY_BROADCAST: ''
-          DEPLOY_VERIFIER: ''
+          DEPLOY_BROADCAST: ""
+          DEPLOY_VERIFIER: ""
           DEPLOY_METABOARD_ADDRESS: ${{ vars.CI_DEPLOY_SEPOLIA_METABOARD_ADDRESS }}
           CI_FORK_SEPOLIA_BLOCK_NUMBER: ${{ vars.CI_FORK_SEPOLIA_BLOCK_NUMBER }}
           CI_FORK_SEPOLIA_DEPLOYER_ADDRESS: ${{ vars.CI_FORK_SEPOLIA_DEPLOYER_ADDRESS }}
