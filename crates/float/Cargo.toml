@@ -5,3 +5,5 @@ edition.workspace = true
 
 [dependencies]
 alloy.workspace = true
+revm.workspace = true
+lazy_static.workspace = true
