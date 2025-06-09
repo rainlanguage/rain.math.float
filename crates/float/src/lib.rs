@@ -1,10 +1,7 @@
-use DecimalFloat::Float as SolFloat;
 use alloy::primitives::{Address, Bytes, FixedBytes};
 use alloy::sol_types::SolInterface;
 use alloy::{sol, sol_types::SolCall};
-use revm::context::result::{
-    EVMError, ExecutionResult, HaltReason, Output, ResultAndState, SuccessReason,
-};
+use revm::context::result::{EVMError, ExecutionResult, HaltReason, Output, SuccessReason};
 use revm::context::{BlockEnv, CfgEnv, Evm, TxEnv};
 use revm::database::InMemoryDB;
 use revm::handler::EthPrecompiles;
@@ -38,33 +35,31 @@ pub enum CalculatorError {
     DecimalFloat(DecimalFloat::DecimalFloatErrors),
 }
 
-// type EvmContext = Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>;
-// struct Calculator(Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>);
-
-// impl Calculator {
-//     fn new() -> Result<Self, CalculatorError> {}
-// }
+type EvmContext = Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>;
+pub struct Calculator {
+    evm: Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>,
+}
 
 pub struct Float(FixedBytes<32>);
 
-impl Float {
-    fn as_sol(&self) -> SolFloat {
-        let Float(bytes) = self;
-        SolFloat::from_underlying(*bytes)
-    }
-
-    pub fn parse(str: String) -> Result<Self, CalculatorError> {
+impl Calculator {
+    pub fn new() -> Result<Self, CalculatorError> {
         let mut db = InMemoryDB::default();
         let bytecode = revm::state::Bytecode::new_legacy(DecimalFloat::DEPLOYED_BYTECODE.clone());
         let account_info = revm::state::AccountInfo::default().with_code(bytecode);
         db.insert_account_info(FLOAT_ADDRESS, account_info);
 
-        let mut evm = Context::mainnet().with_db(db).build_mainnet();
+        let evm = Context::mainnet().with_db(db).build_mainnet();
 
+        Ok(Calculator { evm })
+    }
+
+    pub fn parse(&mut self, str: String) -> Result<Float, CalculatorError> {
         let calldata = DecimalFloat::parseCall { str }.abi_encode();
 
-        let result_and_state =
-            evm.transact_system_call_finalize(FLOAT_ADDRESS, Bytes::from(calldata))?;
+        let result_and_state = self
+            .evm
+            .transact_system_call_finalize(FLOAT_ADDRESS, Bytes::from(calldata))?;
 
         match result_and_state.result {
             ExecutionResult::Success {
@@ -93,7 +88,7 @@ impl Float {
         }
     }
 
-    pub fn format(self) -> Result<String, CalculatorError> {
+    pub fn format(&mut self, float: Float) -> Result<String, CalculatorError> {
         let mut db = InMemoryDB::default();
         let bytecode = revm::state::Bytecode::new_legacy(DecimalFloat::DEPLOYED_BYTECODE.clone());
         let account_info = revm::state::AccountInfo::default().with_code(bytecode);
@@ -101,7 +96,7 @@ impl Float {
 
         let mut evm = Context::mainnet().with_db(db).build_mainnet();
 
-        let Float(a) = self;
+        let Float(a) = float;
         let calldata = DecimalFloat::formatCall { a }.abi_encode();
 
         let result_and_state =
@@ -132,8 +127,10 @@ mod tests {
 
     #[test]
     fn test_parse_and_float() {
-        let float = Float::parse("1.23456789".to_string()).unwrap();
-        let string = float.format().unwrap();
+        let mut calculator = Calculator::new().unwrap();
+
+        let float = calculator.parse("1.23456789".to_string()).unwrap();
+        let string = calculator.format(float).unwrap();
         assert_eq!(string, "1.23456789");
     }
 }
