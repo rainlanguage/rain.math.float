@@ -2877,8 +2877,8 @@ name = "rain-math-float"
 version = "0.1.0"
 dependencies = [
  "alloy",
- "lazy_static",
  "revm",
+ "thiserror",
 ]
 
 [[package]]

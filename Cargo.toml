@@ -11,4 +11,4 @@ homepage = "https://github.com/rainprotocol/rain.math.float"
 [workspace.dependencies]
 alloy = { version = "1.0.9", features = ["sol-types", "json", "json-abi"] }
 revm = "25.0.0"
-lazy_static = "1.5.0"
+thiserror = "2.0.12"
