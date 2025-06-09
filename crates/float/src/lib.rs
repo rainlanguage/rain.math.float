@@ -81,4 +81,48 @@ impl Float {
             ExecutionResult::Halt { reason, .. } => Err(FloatError::Halt(reason)),
         }
     }
+
+    pub fn format(self) -> Result<String, FloatError> {
+        let mut db = InMemoryDB::default();
+        let bytecode = revm::state::Bytecode::new_legacy(DecimalFloat::BYTECODE.clone());
+        let account_info = revm::state::AccountInfo::default().with_code(bytecode);
+        db.insert_account_info(FLOAT_ADDRESS, account_info);
+
+        let mut evm = Context::mainnet().with_db(db).build_mainnet();
+
+        let Float(a) = self;
+        let calldata = DecimalFloat::formatCall { a }.abi_encode();
+
+        let result_and_state =
+            evm.transact_system_call_finalize(FLOAT_ADDRESS, Bytes::from(calldata))?;
+
+        match result_and_state.result {
+            ExecutionResult::Success {
+                reason: SuccessReason::Return,
+                output: Output::Call(output),
+                ..
+            } => {
+                let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
+
+                Ok(decoded)
+            }
+            ExecutionResult::Success { reason, output, .. } => {
+                Err(FloatError::UnexpectedSuccess(reason, output))
+            }
+            ExecutionResult::Revert { output, .. } => Err(FloatError::Revert(output)),
+            ExecutionResult::Halt { reason, .. } => Err(FloatError::Halt(reason)),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_and_float() {
+        let float = Float::parse("1.234567890".to_string()).unwrap();
+        let string = float.format().unwrap();
+        assert_eq!(string, "1.234567890");
+    }
 }
