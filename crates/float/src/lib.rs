@@ -54,32 +54,24 @@ impl Calculator {
         Ok(Calculator { evm })
     }
 
-    pub fn parse(&mut self, str: String) -> Result<Float, CalculatorError> {
-        let calldata = DecimalFloat::parseCall { str }.abi_encode();
-
+    fn execute_call<F, T>(
+        &mut self,
+        calldata: Bytes,
+        process_output: F,
+    ) -> Result<T, CalculatorError>
+    where
+        F: FnOnce(Bytes) -> Result<T, CalculatorError>,
+    {
         let result_and_state = self
             .evm
-            .transact_system_call_finalize(FLOAT_ADDRESS, Bytes::from(calldata))?;
+            .transact_system_call_finalize(FLOAT_ADDRESS, calldata)?;
 
         match result_and_state.result {
             ExecutionResult::Success {
                 reason: SuccessReason::Return,
                 output: Output::Call(output),
                 ..
-            } => {
-                let decoded = DecimalFloat::parseCall::abi_decode_returns(output.as_ref())?;
-
-                let error_selector = decoded._0;
-                let parsed_float = decoded._1;
-
-                if error_selector != fixed_bytes!("00000000") {
-                    let decoded_err =
-                        DecimalFloat::DecimalFloatErrors::abi_decode(error_selector.as_slice())?;
-                    return Err(CalculatorError::DecimalFloat(decoded_err));
-                }
-
-                Ok(Float(parsed_float))
-            }
+            } => process_output(output),
             ExecutionResult::Success { reason, output, .. } => {
                 Err(CalculatorError::UnexpectedSuccess(reason, output))
             }
@@ -88,36 +80,33 @@ impl Calculator {
         }
     }
 
+    pub fn parse(&mut self, str: String) -> Result<Float, CalculatorError> {
+        let calldata = DecimalFloat::parseCall { str }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let DecimalFloat::parseReturn {
+                _0: error_selector,
+                _1: parsed_float,
+            } = DecimalFloat::parseCall::abi_decode_returns(output.as_ref())?;
+
+            if error_selector != fixed_bytes!("00000000") {
+                let decoded_err =
+                    DecimalFloat::DecimalFloatErrors::abi_decode(error_selector.as_slice())?;
+                return Err(CalculatorError::DecimalFloat(decoded_err));
+            }
+
+            Ok(Float(parsed_float))
+        })
+    }
+
     pub fn format(&mut self, float: Float) -> Result<String, CalculatorError> {
-        let mut db = InMemoryDB::default();
-        let bytecode = revm::state::Bytecode::new_legacy(DecimalFloat::DEPLOYED_BYTECODE.clone());
-        let account_info = revm::state::AccountInfo::default().with_code(bytecode);
-        db.insert_account_info(FLOAT_ADDRESS, account_info);
-
-        let mut evm = Context::mainnet().with_db(db).build_mainnet();
-
         let Float(a) = float;
         let calldata = DecimalFloat::formatCall { a }.abi_encode();
 
-        let result_and_state =
-            evm.transact_system_call_finalize(FLOAT_ADDRESS, Bytes::from(calldata))?;
-
-        match result_and_state.result {
-            ExecutionResult::Success {
-                reason: SuccessReason::Return,
-                output: Output::Call(output),
-                ..
-            } => {
-                let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
-
-                Ok(decoded)
-            }
-            ExecutionResult::Success { reason, output, .. } => {
-                Err(CalculatorError::UnexpectedSuccess(reason, output))
-            }
-            ExecutionResult::Revert { output, .. } => Err(CalculatorError::Revert(output)),
-            ExecutionResult::Halt { reason, .. } => Err(CalculatorError::Halt(reason)),
-        }
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
     }
 }
 
