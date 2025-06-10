@@ -41,7 +41,7 @@ pub struct Calculator {
     evm: Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, PartialEq)]
 pub struct Float(FixedBytes<32>);
 
 impl fmt::Debug for Float {
@@ -116,6 +116,28 @@ impl Calculator {
             Ok(decoded)
         })
     }
+
+    pub fn add(&mut self, a: Float, b: Float) -> Result<Float, CalculatorError> {
+        let Float(a) = a;
+        let Float(b) = b;
+        let calldata = DecimalFloat::addCall { a, b }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::addCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    pub fn sub(&mut self, a: Float, b: Float) -> Result<Float, CalculatorError> {
+        let Float(a) = a;
+        let Float(b) = b;
+        let calldata = DecimalFloat::subCall { a, b }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::subCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -143,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_and_float() {
+    fn test_parse_and_format() {
         let mut calculator = Calculator::new().unwrap();
 
         let float = calculator.parse("1.23456789".to_string()).unwrap();
@@ -153,12 +175,43 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_parse_format_property(float in valid_float()) {
+        fn test_parse_format(float in valid_float()) {
             let mut calculator = Calculator::new().unwrap();
 
             let formatted = calculator.format(float.clone()).unwrap();
             let parsed = calculator.parse(formatted.clone()).unwrap();
             prop_assert_eq!(float.0, parsed.0);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_add(a in valid_float(), b in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            calculator.add(a.clone(), b.clone()).unwrap();
+        }
+
+        #[test]
+        fn test_sub(a in valid_float(), b in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            calculator.sub(a.clone(), b.clone()).unwrap();
+        }
+
+        #[test]
+        fn test_add_sub(a in valid_float(), b in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let sum = calculator.add(a.clone(), b.clone()).unwrap();
+            let diff = calculator.sub(sum, b.clone()).unwrap();
+            prop_assert_eq!(
+                calculator.format(a).unwrap(),
+                calculator.format(diff).unwrap(),
+                "a: {}, b: {}",
+                calculator.format(a).unwrap(),
+                calculator.format(b).unwrap(),
+            );
         }
     }
 }
