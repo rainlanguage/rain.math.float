@@ -9,6 +9,7 @@ use revm::handler::instructions::EthInstructions;
 use revm::interpreter::interpreter::EthInterpreter;
 use revm::primitives::{address, fixed_bytes};
 use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
+use std::fmt;
 use thiserror::Error;
 
 sol!(
@@ -40,7 +41,14 @@ pub struct Calculator {
     evm: Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>,
 }
 
+#[derive(Copy, Clone)]
 pub struct Float(FixedBytes<32>);
+
+impl fmt::Debug for Float {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_tuple("Float").field(&self.0).finish()
+    }
+}
 
 impl Calculator {
     pub fn new() -> Result<Self, CalculatorError> {
@@ -113,6 +121,26 @@ impl Calculator {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
+
+    prop_compose! {
+        fn valid_float()(
+            int_part in -1_000_000_000_000_000_000_i128..1_000_000_000_000_000_000_i128,
+            decimal_places in 0u8..18u8,
+            decimal_part in 0u64..1_000_000_000_000_000_000u64
+        ) -> Float {
+            let mut calculator = Calculator::new().unwrap();
+
+            let num_str = if decimal_places == 0 {
+                format!("{int_part}")
+            } else {
+                let decimal_str = format!("{decimal_part:0width$}", width = decimal_places as usize);
+                format!("{int_part}.{decimal_str}")
+            };
+
+            calculator.parse(num_str).unwrap()
+        }
+    }
 
     #[test]
     fn test_parse_and_float() {
@@ -121,5 +149,16 @@ mod tests {
         let float = calculator.parse("1.23456789".to_string()).unwrap();
         let string = calculator.format(float).unwrap();
         assert_eq!(string, "1.23456789");
+    }
+
+    proptest! {
+        #[test]
+        fn test_parse_format_property(float in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let formatted = calculator.format(float.clone()).unwrap();
+            let parsed = calculator.parse(formatted.clone()).unwrap();
+            prop_assert_eq!(float.0, parsed.0);
+        }
     }
 }

@@ -59,9 +59,9 @@ dependencies = [
 
 [[package]]
 name = "alloy-chains"
-version = "0.2.3"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d6967ca1ed656766e471bc323da42fb0db320ca5e1418b408650e98e4757b3d2"
+checksum = "19a9cc9d81ace3da457883b0bdf76776e55f1b84219a9e9d55c27ad308548d3f"
 dependencies = [
  "alloy-primitives",
  "num_enum",
@@ -2877,6 +2877,7 @@ name = "rain-math-float"
 version = "0.1.0"
 dependencies = [
  "alloy",
+ "proptest",
  "revm",
  "thiserror",
 ]

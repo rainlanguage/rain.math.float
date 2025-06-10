@@ -71,7 +71,7 @@ int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT
 /// One use case for this number system is representing ratios of tokens that
 /// have both large differences in their decimals and unit value. For example,
 /// at the time of writing, 1 SHIB is worth about 2.7e-10 BTC while the
-/// WTBC contract only supports 8 decimals vs. SHIB's 18 decimals. It's literally
+/// WBTC contract only supports 8 decimals vs. SHIB's 18 decimals. It's literally
 /// not possible to represent a purchase of 1 SHIB (1e18) worth of WBTC, so it's
 /// easy to see how a fixed point decimal system could accidentally round
 /// something down to `0` or up to `1` or similarly bad precision loss, simply
