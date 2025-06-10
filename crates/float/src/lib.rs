@@ -83,7 +83,13 @@ impl Calculator {
             ExecutionResult::Success { reason, output, .. } => {
                 Err(CalculatorError::UnexpectedSuccess(reason, output))
             }
-            ExecutionResult::Revert { output, .. } => Err(CalculatorError::Revert(output)),
+            ExecutionResult::Revert { output, .. } => {
+                if let Ok(error) = DecimalFloat::DecimalFloatErrors::abi_decode(output.as_ref()) {
+                    return Err(CalculatorError::DecimalFloat(error));
+                }
+
+                Err(CalculatorError::Revert(output))
+            }
             ExecutionResult::Halt { reason, .. } => Err(CalculatorError::Halt(reason)),
         }
     }
@@ -98,6 +104,7 @@ impl Calculator {
             } = DecimalFloat::parseCall::abi_decode_returns(output.as_ref())?;
 
             if error_selector != fixed_bytes!("00000000") {
+                // TODO: trying to decode selector as error is incorrect. this needs fixing
                 let decoded_err =
                     DecimalFloat::DecimalFloatErrors::abi_decode(error_selector.as_slice())?;
                 return Err(CalculatorError::DecimalFloat(decoded_err));
