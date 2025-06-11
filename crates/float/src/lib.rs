@@ -339,9 +339,34 @@ mod tests {
         }
     }
 
+    #[test]
+    fn test_lt_eq_gt() {
+        let mut calculator = Calculator::new().unwrap();
+
+        let negone = calculator.parse("-1".to_string()).unwrap();
+        let zero = calculator.parse("0".to_string()).unwrap();
+        let three = calculator.parse("3".to_string()).unwrap();
+
+        assert!(calculator.lt(negone, zero).unwrap());
+        assert!(!calculator.eq(negone, zero).unwrap());
+        assert!(!calculator.gt(negone, zero).unwrap());
+
+        assert!(!calculator.lt(zero, negone).unwrap());
+        assert!(!calculator.eq(zero, negone).unwrap());
+        assert!(calculator.gt(zero, negone).unwrap());
+
+        assert!(!calculator.lt(three, zero).unwrap());
+        assert!(!calculator.eq(three, zero).unwrap());
+        assert!(calculator.gt(three, zero).unwrap());
+
+        assert!(calculator.lt(zero, three).unwrap());
+        assert!(!calculator.eq(zero, three).unwrap());
+        assert!(!calculator.gt(zero, three).unwrap());
+    }
+
     proptest! {
         #[test]
-        fn test_lt_eq_gt(a in valid_float()) {
+        fn test_lt_eq_gt_with_add(a in valid_float()) {
             let mut calculator = Calculator::new().unwrap();
 
             let b = a;
