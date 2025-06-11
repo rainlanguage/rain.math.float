@@ -45,9 +45,11 @@ jobs:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           # if there's no cache hit, restore a cache by this prefix
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          gc-max-store-size-linux: 1G
+          gc-max-store-size-linux: 5G
+          gc-max-store-size-macos: 5G
 
       - run: nix develop -c rainix-sol-prelude
+        if: matrix.task == 'rainix-rs-test' || matrix.task == 'rainix-rs-static' || matrix.task == 'test-wasm-build'
 
       - name: Run ${{ matrix.task }}
         env:
