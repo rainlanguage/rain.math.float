@@ -1,5 +1,5 @@
 use alloy::primitives::{Address, Bytes, FixedBytes};
-use alloy::sol_types::SolInterface;
+use alloy::sol_types::{SolError, SolInterface};
 use alloy::{sol, sol_types::SolCall};
 use revm::context::result::{EVMError, ExecutionResult, HaltReason, Output, SuccessReason};
 use revm::context::{BlockEnv, CfgEnv, Evm, TxEnv};
@@ -9,7 +9,6 @@ use revm::handler::instructions::EthInstructions;
 use revm::interpreter::interpreter::EthInterpreter;
 use revm::primitives::{address, fixed_bytes};
 use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
-use std::fmt;
 use thiserror::Error;
 
 sol!(
@@ -53,19 +52,39 @@ pub enum DecimalFloatErrorSelector {
     WithTargetExponentOverflow,
 }
 
+impl TryFrom<FixedBytes<4>> for DecimalFloatErrorSelector {
+    type Error = FixedBytes<4>;
+
+    fn try_from(error_selector: FixedBytes<4>) -> Result<Self, Self::Error> {
+        let FixedBytes(bytes) = error_selector;
+        match bytes {
+            <DecimalFloat::CoefficientOverflow as SolError>::SELECTOR => {
+                Ok(Self::CoefficientOverflow)
+            }
+            <DecimalFloat::ExponentOverflow as SolError>::SELECTOR => Ok(Self::ExponentOverflow),
+            <DecimalFloat::Log10Negative as SolError>::SELECTOR => Ok(Self::Log10Negative),
+            <DecimalFloat::Log10Zero as SolError>::SELECTOR => Ok(Self::Log10Zero),
+            <DecimalFloat::LossyConversionFromFloat as SolError>::SELECTOR => {
+                Ok(Self::LossyConversionFromFloat)
+            }
+            <DecimalFloat::NegativeFixedDecimalConversion as SolError>::SELECTOR => {
+                Ok(Self::NegativeFixedDecimalConversion)
+            }
+            <DecimalFloat::WithTargetExponentOverflow as SolError>::SELECTOR => {
+                Ok(Self::WithTargetExponentOverflow)
+            }
+            _ => Err(error_selector),
+        }
+    }
+}
+
 type EvmContext = Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>;
 pub struct Calculator {
     evm: Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>,
 }
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Float(FixedBytes<32>);
-
-impl fmt::Debug for Float {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Float").field(&self.0).finish()
-    }
-}
 
 impl Calculator {
     pub fn new() -> Result<Self, CalculatorError> {
@@ -121,32 +140,7 @@ impl Calculator {
             } = DecimalFloat::parseCall::abi_decode_returns(output.as_ref())?;
 
             if error_selector != fixed_bytes!("00000000") {
-                let FixedBytes(bytes) = error_selector;
-                let selector = match bytes {
-                    <DecimalFloat::CoefficientOverflow as alloy::sol_types::SolError>::SELECTOR => {
-                        Ok(DecimalFloatErrorSelector::CoefficientOverflow)
-                    }
-                    <DecimalFloat::ExponentOverflow as alloy::sol_types::SolError>::SELECTOR => {
-                        Ok(DecimalFloatErrorSelector::ExponentOverflow)
-                    }
-                    <DecimalFloat::Log10Negative as alloy::sol_types::SolError>::SELECTOR => {
-                        Ok(DecimalFloatErrorSelector::Log10Negative)
-                    }
-                    <DecimalFloat::Log10Zero as alloy::sol_types::SolError>::SELECTOR => {
-                        Ok(DecimalFloatErrorSelector::Log10Zero)
-                    }
-                    <DecimalFloat::LossyConversionFromFloat as alloy::sol_types::SolError>::SELECTOR => {
-                        Ok(DecimalFloatErrorSelector::LossyConversionFromFloat)
-                    }
-                    <DecimalFloat::NegativeFixedDecimalConversion as alloy::sol_types::SolError>::SELECTOR => {
-                        Ok(DecimalFloatErrorSelector::NegativeFixedDecimalConversion)
-                    }
-                    <DecimalFloat::WithTargetExponentOverflow as alloy::sol_types::SolError>::SELECTOR => {
-                        Ok(DecimalFloatErrorSelector::WithTargetExponentOverflow)
-                    }
-                    _ => Err(FixedBytes(bytes)),
-                };
-
+                let selector = DecimalFloatErrorSelector::try_from(error_selector);
                 return Err(CalculatorError::DecimalFloatSelector(selector));
             }
 
