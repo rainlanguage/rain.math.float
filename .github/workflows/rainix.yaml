@@ -36,6 +36,8 @@ jobs:
           restore-prefixes-first-match: nix-${{ runner.os }}-
           gc-max-store-size-linux: 1G
 
+      - run: nix develop -c rainix-sol-prelude
+
       - name: Run ${{ matrix.task }}
         env:
           ETH_RPC_URL: ${{ secrets.CI_DEPLOY_SEPOLIA_RPC_URL || vars.CI_DEPLOY_SEPOLIA_RPC_URL }}
