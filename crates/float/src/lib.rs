@@ -241,6 +241,16 @@ impl Float {
             Ok(Float(decoded))
         })
     }
+
+    pub fn inv(&mut self, float: Float) -> Result<Float, CalculatorError> {
+        let Float(a) = float;
+        let calldata = DecimalFloat::invCall { a }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::invCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
 }
 
 impl Add for Float {
@@ -635,6 +645,20 @@ mod tests {
             prop_assert_eq!(
                 calculator.format(float).unwrap(),
                 calculator.format(renegated).unwrap(),
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_inv_inv(float in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let inv = calculator.inv(float).unwrap();
+            let inv_inv = calculator.inv(inv).unwrap();
+            prop_assert_eq!(
+                calculator.format(float).unwrap(),
+                calculator.format(inv_inv).unwrap(),
             );
         }
     }
