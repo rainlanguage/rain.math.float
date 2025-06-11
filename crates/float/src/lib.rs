@@ -20,6 +20,8 @@ sol!(
 
 use DecimalFloat::DecimalFloatErrors;
 
+/// Fixed address where the DecimalFloat contract is deployed in the in-memory EVM.
+/// This arbitrary address is used consistently across all Calculator instances.
 const FLOAT_ADDRESS: Address = address!("00000000000000000000000000000000000f10a2");
 
 #[derive(Debug, Error)]
