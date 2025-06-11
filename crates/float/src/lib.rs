@@ -256,7 +256,7 @@ mod tests {
         fn test_parse_format(float in valid_float()) {
             let mut calculator = Calculator::new().unwrap();
 
-            let formatted = calculator.format(float.clone()).unwrap();
+            let formatted = calculator.format(float).unwrap();
             let parsed = calculator.parse(formatted.clone()).unwrap();
             prop_assert_eq!(float.0, parsed.0);
         }
@@ -267,22 +267,22 @@ mod tests {
         fn test_add(a in valid_float(), b in valid_float()) {
             let mut calculator = Calculator::new().unwrap();
 
-            calculator.add(a.clone(), b.clone()).unwrap();
+            calculator.add(a, b).unwrap();
         }
 
         #[test]
         fn test_sub(a in valid_float(), b in valid_float()) {
             let mut calculator = Calculator::new().unwrap();
 
-            calculator.sub(a.clone(), b.clone()).unwrap();
+            calculator.sub(a, b).unwrap();
         }
 
         #[test]
         fn test_add_sub(a in valid_float(), b in valid_float()) {
             let mut calculator = Calculator::new().unwrap();
 
-            let sum = calculator.add(a.clone(), b.clone()).unwrap();
-            let diff = calculator.sub(sum, b.clone()).unwrap();
+            let sum = calculator.add(a, b).unwrap();
+            let diff = calculator.sub(sum, b).unwrap();
             prop_assert_eq!(
                 calculator.format(a).unwrap(),
                 calculator.format(diff).unwrap(),
