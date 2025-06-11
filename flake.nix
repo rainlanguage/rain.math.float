@@ -20,7 +20,7 @@
           };
         };
 
-        devShells = pkgs.mkShell {
+        devShells.default = pkgs.mkShell {
           shellHook = rainix.devShells.${system}.default.shellHook;
           packages = [ packages.test-wasm-build ];
           inputsFrom = [ rainix.devShells.${system}.default ];
