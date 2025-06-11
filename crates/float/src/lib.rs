@@ -212,6 +212,16 @@ impl Calculator {
             Ok(decoded)
         })
     }
+
+    pub fn minus(&mut self, float: Float) -> Result<Float, CalculatorError> {
+        let Float(a) = float;
+        let calldata = DecimalFloat::minusCall { a }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::minusCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -358,6 +368,40 @@ mod tests {
             prop_assert!(!(lt && eq));
             prop_assert!(!(eq && gt));
             prop_assert!(!(lt && gt));
+
+    #[test]
+    fn test_minus_format() {
+        let mut calculator = Calculator::new().unwrap();
+
+        let float = calculator
+            .parse("-123.1234234625468391".to_string())
+            .unwrap();
+        let negated = calculator.minus(float).unwrap();
+        let formatted = calculator.format(negated).unwrap();
+        assert_eq!(formatted, "123.1234234625468391");
+
+        let float = calculator.parse(formatted).unwrap();
+        let negated = calculator.minus(float).unwrap();
+        let formatted = calculator.format(negated).unwrap();
+        assert_eq!(formatted, "-123.1234234625468391");
+
+        let float = calculator.parse("0".to_string()).unwrap();
+        let negated = calculator.minus(float).unwrap();
+        let formatted = calculator.format(negated).unwrap();
+        assert_eq!(formatted, "0");
+    }
+
+    proptest! {
+        #[test]
+        fn test_minus_minus(float in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let negated = calculator.minus(float).unwrap();
+            let renegated = calculator.minus(negated).unwrap();
+            prop_assert_eq!(
+                calculator.format(float).unwrap(),
+                calculator.format(renegated).unwrap(),
+            );
         }
     }
 }
