@@ -207,6 +207,39 @@ impl Sub for Float {
             Ok(Float(decoded))
         })
     }
+
+    pub fn lt(&mut self, a: Float, b: Float) -> Result<bool, CalculatorError> {
+        let Float(a) = a;
+        let Float(b) = b;
+        let calldata = DecimalFloat::ltCall { a, b }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::ltCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn eq(&mut self, a: Float, b: Float) -> Result<bool, CalculatorError> {
+        let Float(a) = a;
+        let Float(b) = b;
+        let calldata = DecimalFloat::eqCall { a, b }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::eqCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn gt(&mut self, a: Float, b: Float) -> Result<bool, CalculatorError> {
+        let Float(a) = a;
+        let Float(b) = b;
+        let calldata = DecimalFloat::gtCall { a, b }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::gtCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
 }
 
 #[cfg(test)]
@@ -303,6 +336,45 @@ mod tests {
                 a.format().unwrap(),
                 b.format().unwrap(),
             );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_lt_eq_gt(a in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let b = a;
+            let eq = calculator.eq(a, a).unwrap();
+            prop_assert!(eq);
+
+            let one = calculator.parse("1".to_string()).unwrap();
+
+            let a = calculator.sub(a, one).unwrap();
+            let lt = calculator.lt(a, b).unwrap();
+            prop_assert!(lt);
+
+            let a = calculator.add(a, one).unwrap();
+            let eq = calculator.eq(a, b).unwrap();
+            prop_assert!(eq);
+
+            let a = calculator.add(a, one).unwrap();
+            let gt = calculator.gt(a, b).unwrap();
+            prop_assert!(gt);
+        }
+
+        #[test]
+        fn test_exactly_one_lt_eq_gt(a in valid_float(), b in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let eq = calculator.eq(a, a).unwrap();
+            let lt = calculator.lt(a, b).unwrap();
+            let gt = calculator.gt(a, b).unwrap();
+
+            prop_assert!(lt || eq || gt);
+            prop_assert!(!(lt && eq));
+            prop_assert!(!(eq && gt));
+            prop_assert!(!(lt && gt));
         }
     }
 }
