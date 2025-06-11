@@ -9,9 +9,20 @@ jobs:
   rainix:
     strategy:
       matrix:
-        os: [ubuntu-latest]
-        task:
-          [rainix-sol-test, rainix-sol-static, rainix-rs-test, rainix-rs-static]
+        os: [ubuntu-latest, macos-latest]
+        task: [rainix-rs-test]
+        include:
+          # Solidity doesn't need to be tested on multiple platforms
+          - os: ubuntu-latest
+            task: rainix-sol-test
+          - os: ubuntu-latest
+            task: rainix-sol-static
+          # We don't need to do rust static analysis on multiple platforms
+          - os: ubuntu-latest
+            task: rainix-rs-static
+          # We don't need to do build for wasm32 on multiple platforms
+          - os: ubuntu-latest
+            task: test-wasm-build
       fail-fast: false
     runs-on: ${{ matrix.os }}
     env:
