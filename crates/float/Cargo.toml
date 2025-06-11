@@ -8,5 +8,8 @@ alloy.workspace = true
 revm.workspace = true
 thiserror.workspace = true
 
+[target.'cfg(target_family = "wasm")'.dependencies]
+getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
+
 [dev-dependencies]
 proptest.workspace = true

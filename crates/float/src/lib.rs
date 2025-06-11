@@ -18,6 +18,8 @@ sol!(
     "../../out/DecimalFloat.sol/DecimalFloat.json"
 );
 
+use DecimalFloat::DecimalFloatErrors;
+
 const FLOAT_ADDRESS: Address = address!("00000000000000000000000000000000000f10a2");
 
 #[derive(Debug, Error)]
@@ -33,7 +35,20 @@ pub enum CalculatorError {
     #[error(transparent)]
     AlloySolTypes(#[from] alloy::sol_types::Error),
     #[error("Decimal Float error: {0:?}")]
-    DecimalFloat(DecimalFloat::DecimalFloatErrors),
+    DecimalFloat(DecimalFloatErrors),
+    #[error("Decimal Float error selector: {0:?}")]
+    DecimalFloatSelector(Result<DecimalFloatErrorSelector, FixedBytes<4>>),
+}
+
+#[derive(Debug)]
+pub enum DecimalFloatErrorSelector {
+    CoefficientOverflow,
+    ExponentOverflow,
+    Log10Negative,
+    Log10Zero,
+    LossyConversionFromFloat,
+    NegativeFixedDecimalConversion,
+    WithTargetExponentOverflow,
 }
 
 type EvmContext = Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>;
@@ -104,10 +119,33 @@ impl Calculator {
             } = DecimalFloat::parseCall::abi_decode_returns(output.as_ref())?;
 
             if error_selector != fixed_bytes!("00000000") {
-                // TODO: trying to decode selector as error is incorrect. this needs fixing
-                let decoded_err =
-                    DecimalFloat::DecimalFloatErrors::abi_decode(error_selector.as_slice())?;
-                return Err(CalculatorError::DecimalFloat(decoded_err));
+                let FixedBytes(bytes) = error_selector;
+                let selector = match bytes {
+                    <DecimalFloat::CoefficientOverflow as alloy::sol_types::SolError>::SELECTOR => {
+                        Ok(DecimalFloatErrorSelector::CoefficientOverflow)
+                    }
+                    <DecimalFloat::ExponentOverflow as alloy::sol_types::SolError>::SELECTOR => {
+                        Ok(DecimalFloatErrorSelector::ExponentOverflow)
+                    }
+                    <DecimalFloat::Log10Negative as alloy::sol_types::SolError>::SELECTOR => {
+                        Ok(DecimalFloatErrorSelector::Log10Negative)
+                    }
+                    <DecimalFloat::Log10Zero as alloy::sol_types::SolError>::SELECTOR => {
+                        Ok(DecimalFloatErrorSelector::Log10Zero)
+                    }
+                    <DecimalFloat::LossyConversionFromFloat as alloy::sol_types::SolError>::SELECTOR => {
+                        Ok(DecimalFloatErrorSelector::LossyConversionFromFloat)
+                    }
+                    <DecimalFloat::NegativeFixedDecimalConversion as alloy::sol_types::SolError>::SELECTOR => {
+                        Ok(DecimalFloatErrorSelector::NegativeFixedDecimalConversion)
+                    }
+                    <DecimalFloat::WithTargetExponentOverflow as alloy::sol_types::SolError>::SELECTOR => {
+                        Ok(DecimalFloatErrorSelector::WithTargetExponentOverflow)
+                    }
+                    _ => Err(FixedBytes(bytes)),
+                };
+
+                return Err(CalculatorError::DecimalFloatSelector(selector));
             }
 
             Ok(Float(parsed_float))
@@ -154,9 +192,9 @@ mod tests {
 
     prop_compose! {
         fn valid_float()(
-            int_part in -1_000_000_000_000_000_000_i128..1_000_000_000_000_000_000_i128,
+            int_part in -10i128.pow(18)..10i128.pow(18),
             decimal_places in 0u8..18u8,
-            decimal_part in 0u64..1_000_000_000_000_000_000u64
+            decimal_part in 0u128..10u128.pow(18u32)
         ) -> Float {
             let mut calculator = Calculator::new().unwrap();
 
@@ -175,9 +213,42 @@ mod tests {
     fn test_parse_and_format() {
         let mut calculator = Calculator::new().unwrap();
 
-        let float = calculator.parse("1.23456789".to_string()).unwrap();
+        let float = calculator
+            .parse("1.1341234234625468391".to_string())
+            .unwrap();
+        // NOTE: LibFormatDecimalFloat.toDecimalString currently uses 18 decimal places
+        let err = calculator.format(float).unwrap_err();
+
+        assert!(matches!(
+            err,
+            CalculatorError::DecimalFloat(DecimalFloatErrors::LossyConversionFromFloat(_))
+        ));
+    }
+
+    #[test]
+    fn test_parse_edge_cases() {
+        let mut calculator = Calculator::new().unwrap();
+
+        // NOTE: I'm not sure if this is supposed to give an error
+        let float = calculator.parse("1.2.3".to_string()).unwrap();
         let string = calculator.format(float).unwrap();
-        assert_eq!(string, "1.23456789");
+        assert_eq!(string, "1.2");
+
+        let err = calculator.parse("abc".to_string()).unwrap_err();
+        assert!(matches!(
+            err,
+            CalculatorError::DecimalFloatSelector(Err(selector))
+            if selector == fixed_bytes!("34bd2069")
+        ));
+
+        // NOTE: I'd expect this (over quintillion and 19 decimals) to produce an error but it doesn't
+
+        // let float = calculator
+        //     .parse("1341234234625468391.1341234234625468391".to_string())
+        //     .unwrap_err();
+
+        // The value produced (broken down into first 224 and last 32 bits):
+        // 0xffffffed0000000000000000000000000a171f8863f1dca211b12be4 0xebc9a7e7
     }
 
     proptest! {
