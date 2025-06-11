@@ -212,6 +212,16 @@ impl Calculator {
             Ok(decoded)
         })
     }
+
+    pub fn abs(&mut self, float: Float) -> Result<Float, CalculatorError> {
+        let Float(a) = float;
+        let calldata = DecimalFloat::absCall { a }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::absCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
 }
 
 #[cfg(test)]
@@ -358,6 +368,46 @@ mod tests {
             prop_assert!(!(lt && eq));
             prop_assert!(!(eq && gt));
             prop_assert!(!(lt && gt));
+        }
+    }
+
+    #[test]
+    fn test_abs() {
+        let mut calculator = Calculator::new().unwrap();
+
+        let float = calculator.parse("-3613.1324123".to_string()).unwrap();
+        let abs = calculator.abs(float).unwrap();
+        let formatted = calculator.format(abs).unwrap();
+        assert_eq!(formatted, "3613.1324123");
+
+        let float = calculator.parse("3613.1324123".to_string()).unwrap();
+        let abs = calculator.abs(float).unwrap();
+        let formatted = calculator.format(abs).unwrap();
+        assert_eq!(formatted, "3613.1324123");
+
+        let float = calculator.parse("0".to_string()).unwrap();
+        let abs = calculator.abs(float).unwrap();
+        let formatted = calculator.format(abs).unwrap();
+        assert_eq!(formatted, "0");
+    }
+
+    proptest! {
+        #[test]
+        fn test_abs_no_minus_sign(float in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let abs = calculator.abs(float).unwrap();
+            let formatted = calculator.format(abs).unwrap();
+            prop_assert!(!formatted.starts_with("-"));
+        }
+
+        #[test]
+        fn test_abs_abs(float in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let abs = calculator.abs(float).unwrap();
+            let abs_abs = calculator.abs(abs).unwrap();
+            prop_assert!(calculator.eq(abs, abs_abs).unwrap());
         }
     }
 }
