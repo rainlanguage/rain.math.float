@@ -6,6 +6,8 @@ import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 
+import {F} from "test/src/concrete/TestUtilsLib.sol";
+
 contract DecimalFloatParseTest is Test {
     using LibDecimalFloat for Float;
 
@@ -35,11 +37,6 @@ contract DecimalFloatParseTest is Test {
 
         assertEq(errorSelector, bytes4(0));
         assertEq(Float.unwrap(float), Float.unwrap(expectedFloat));
-    }
-
-    // Helper function
-    function F(uint256 x) internal pure returns (Float) {
-        return Float.wrap(bytes32(x));
     }
 
     function testParseExternalIntegers() external pure {
