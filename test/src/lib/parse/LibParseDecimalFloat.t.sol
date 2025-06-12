@@ -262,9 +262,10 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloat("1.1e1", 11, 0, 5);
         checkParseDecimalFloat("1.1e-1", 11, -2, 6);
 
-        // Some negatives.
+        // // Some negatives.
         checkParseDecimalFloat("-1.1e-1", -11, -2, 7);
         checkParseDecimalFloat("-10.01e-1", -1001, -3, 9);
+        checkParseDecimalFloat("-0.1", -1, -1, 4);
     }
 
     /// Test some unrelated data after the decimal.
@@ -376,5 +377,9 @@ contract LibParseDecimalFloatTest is Test {
             ParseDecimalPrecisionLoss.selector,
             69
         );
+    }
+
+    function testParseLiteralDecimalFloatPrecisionRevert2() external pure {
+        checkParseDecimalFloatFail("1341234234625468391.1341234234625468391", ParseDecimalPrecisionLoss.selector, 158);
     }
 }
