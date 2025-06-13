@@ -245,9 +245,12 @@ mod tests {
 
     #[test]
     fn test_parse_edge_cases() {
-        let float = Float::parse("1.2.3".to_string()).unwrap();
-        let string = float.format().unwrap();
-        assert_eq!(string, "1.2");
+        let err = Float::parse("1.2.3".to_string()).unwrap_err();
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloatSelector(Err(selector))
+            if selector == fixed_bytes!("ad384e87")
+        ));
 
         let err = Float::parse("abc".to_string()).unwrap_err();
         assert!(matches!(
