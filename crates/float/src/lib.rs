@@ -13,6 +13,7 @@ use revm::interpreter::interpreter::EthInterpreter;
 use revm::primitives::{address, fixed_bytes};
 use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
 use std::cell::RefCell;
+use std::ops::{Add, Sub};
 use std::thread::AccessError;
 use thiserror::Error;
 
@@ -177,8 +178,12 @@ impl Float {
             Ok(decoded)
         })
     }
+}
 
-    pub fn add(self, b: Self) -> Result<Self, FloatError> {
+impl Add for Float {
+    type Output = Result<Self, FloatError>;
+
+    fn add(self, b: Self) -> Self::Output {
         let Float(a) = self;
         let Float(b) = b;
         let calldata = DecimalFloat::addCall { a, b }.abi_encode();
@@ -188,8 +193,12 @@ impl Float {
             Ok(Float(decoded))
         })
     }
+}
 
-    pub fn sub(self: Self, b: Self) -> Result<Self, FloatError> {
+impl Sub for Float {
+    type Output = Result<Self, FloatError>;
+
+    fn sub(self, b: Self) -> Self::Output {
         let Float(a) = self;
         let Float(b) = b;
         let calldata = DecimalFloat::subCall { a, b }.abi_encode();
@@ -272,22 +281,22 @@ mod tests {
     proptest! {
         #[test]
         fn test_add(a in reasonable_float(), b in reasonable_float()) {
-            a.add(b).unwrap();
+            (a + b).unwrap();
         }
     }
 
     proptest! {
         #[test]
         fn test_sub(a in reasonable_float(), b in reasonable_float()) {
-            a.sub(b).unwrap();
+            (a - b).unwrap();
         }
     }
 
     proptest! {
         #[test]
         fn test_add_sub(a in reasonable_float(), b in reasonable_float()) {
-            let sum = a.add(b).unwrap();
-            let diff = sum.sub(b).unwrap();
+            let sum = (a + b).unwrap();
+            let diff = (sum - b).unwrap();
             prop_assert_eq!(
                 a.format().unwrap(),
                 diff.format().unwrap(),

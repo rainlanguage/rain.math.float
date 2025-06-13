@@ -7,14 +7,24 @@ homepage.workspace = true
 
 [dependencies]
 alloy.workspace = true
-once_cell = "1.21.3"
+once_cell.workspace = true
 thiserror.workspace = true
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-revm = { workspace = true, features = ["c-kzg", "portable", "std", "tracer"] }
+revm = { workspace = true, default-features = false, features = [
+    "c-kzg",
+    "portable",
+    "std",
+    "tracer",
+] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-revm = { workspace = true, features = ["kzg-rs", "portable", "std", "tracer"] }
+revm = { workspace = true, default-features = false, features = [
+    "kzg-rs",
+    "portable",
+    "std",
+    "tracer",
+] }
 getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
 
 [dev-dependencies]
