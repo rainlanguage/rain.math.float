@@ -3166,7 +3166,6 @@ version = "0.1.0"
 dependencies = [
  "alloy",
  "getrandom 0.2.16",
- "once_cell",
  "proptest",
  "revm",
  "thiserror",

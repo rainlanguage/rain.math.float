@@ -3,7 +3,6 @@ use alloy::primitives::aliases::I224;
 use alloy::primitives::{Address, Bytes, FixedBytes};
 use alloy::sol_types::{SolError, SolInterface};
 use alloy::{sol, sol_types::SolCall};
-use once_cell::unsync::Lazy;
 use revm::context::result::{EVMError, ExecutionResult, HaltReason, Output, SuccessReason};
 use revm::context::{BlockEnv, CfgEnv, Evm, TxEnv};
 use revm::database::InMemoryDB;
@@ -27,7 +26,7 @@ type EvmContext = Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>;
 type LocalEvm = Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>;
 
 thread_local! {
-    static LOCAL_EVM: Lazy<RefCell<LocalEvm>> = Lazy::new(|| {
+    static LOCAL_EVM: RefCell<LocalEvm> = {
         let mut db = InMemoryDB::default();
         let bytecode = revm::state::Bytecode::new_legacy(DecimalFloat::DEPLOYED_BYTECODE.clone());
         let account_info = revm::state::AccountInfo::default().with_code(bytecode);
@@ -35,7 +34,7 @@ thread_local! {
 
         let evm = Context::mainnet().with_db(db).build_mainnet();
         RefCell::new(evm)
-    });
+    };
 }
 
 use DecimalFloat::DecimalFloatErrors;
