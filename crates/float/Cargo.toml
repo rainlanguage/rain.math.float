@@ -17,4 +17,5 @@ revm = { workspace = true, features = ["kzg-rs", "portable", "std", "tracer"] }
 getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
 
 [dev-dependencies]
+alloy = { workspace = true, features = ["sol-types", "json-rpc", "arbitrary"] }
 proptest.workspace = true

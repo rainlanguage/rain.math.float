@@ -221,16 +221,14 @@ mod tests {
     prop_compose! {
         fn reasonable_float()(
             int_part in -10i128.pow(18)..10i128.pow(18),
-            decimal_places in 0u8..18u8,
             decimal_part in 0u128..10u128.pow(18u32)
         ) -> Float {
             let mut calculator = Calculator::new().unwrap();
 
-            let num_str = if decimal_places == 0 {
+            let num_str = if decimal_part == 0 {
                 format!("{int_part}")
             } else {
-                let decimal_str = format!("{decimal_part:0width$}", width = decimal_places as usize);
-                format!("{int_part}.{decimal_str}")
+                format!("{int_part}.{decimal_part}")
             };
 
             calculator.parse(num_str).unwrap()
@@ -245,6 +243,7 @@ mod tests {
             .parse("1.1341234234625468391".to_string())
             .unwrap();
         // NOTE: LibFormatDecimalFloat.toDecimalString currently uses 18 decimal places
+        // TODO: make this fail on a separate PR
         let err = calculator.format(float).unwrap_err();
 
         assert!(matches!(
@@ -258,6 +257,7 @@ mod tests {
         let mut calculator = Calculator::new().unwrap();
 
         // NOTE: I'm not sure if this is supposed to give an error
+        // TODO: make this fail on a separate PR
         let float = calculator.parse("1.2.3".to_string()).unwrap();
         let string = calculator.format(float).unwrap();
         assert_eq!(string, "1.2");
@@ -268,11 +268,6 @@ mod tests {
             CalculatorError::DecimalFloatSelector(Err(selector))
             if selector == fixed_bytes!("34bd2069")
         ));
-
-        // // NOTE: I'd expect this (over quintillion and 19 decimals) to produce an error but it doesn't
-        // let float = calculator
-        //     .parse("100000000000000000000.1341234234625468391".to_string())
-        //     .unwrap();
     }
 
     proptest! {
