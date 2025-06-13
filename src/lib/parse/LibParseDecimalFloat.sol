@@ -15,20 +15,10 @@ import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoin
 import {ParseDecimalOverflow, ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
-import {console2} from "forge-std/Test.sol";
+import {ParseDecimalFloatExcessCharacters} from "../../error/ErrParse.sol";
 
 library LibParseDecimalFloat {
-    function parseDecimalFloatPacked(uint256 start, uint256 end) internal pure returns (bytes4, uint256, Float) {
-        (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
-            parseDecimalFloat(start, end);
-        if (errorSelector != 0) {
-            return (errorSelector, cursor, Float.wrap(0));
-        }
-
-        return (0, cursor, LibDecimalFloat.packLossless(signedCoefficient, exponent));
-    }
-
-    function parseDecimalFloat(uint256 start, uint256 end)
+    function parseDecimalFloatInline(uint256 start, uint256 end)
         internal
         pure
         returns (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent)
@@ -36,14 +26,14 @@ library LibParseDecimalFloat {
         unchecked {
             cursor = start;
             cursor = LibParseChar.skipMask(cursor, end, CMASK_NEGATIVE_SIGN);
+            bool isNegative = cursor != start;
             {
                 uint256 intStart = cursor;
                 cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);
                 if (cursor == intStart) {
                     return (ParseEmptyDecimalString.selector, cursor, 0, 0);
                 }
-            }
-            {
+
                 (bytes4 signedCoefficientErrorSelector, int256 signedCoefficientTmp) =
                     LibParseDecimal.unsafeDecimalStringToSignedInt(start, cursor);
                 if (signedCoefficientErrorSelector != 0) {
@@ -80,7 +70,7 @@ library LibParseDecimalFloat {
                 if (fracValue < 0) {
                     return (MalformedDecimalPoint.selector, cursor, 0, 0);
                 }
-                if (signedCoefficient < 0) {
+                if (isNegative) {
                     fracValue = -fracValue;
                 }
 
@@ -134,8 +124,19 @@ library LibParseDecimalFloat {
             end := add(start, mload(str))
         }
         (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
-            parseDecimalFloat(start, end);
-        (cursor);
-        return (errorSelector, LibDecimalFloat.packLossless(signedCoefficient, exponent));
+            parseDecimalFloatInline(start, end);
+        if (errorSelector == 0) {
+            if (cursor == end) {
+                // If we consumed the whole string, we can return the parsed value.
+                return (0, LibDecimalFloat.packLossless(signedCoefficient, exponent));
+            } else {
+                // If we didn't consume the whole string, it is malformed.
+                return (ParseDecimalFloatExcessCharacters.selector, Float.wrap(0));
+            }
+        } else {
+            // If we encountered an error, we return the error selector and a
+            // zero float.
+            return (errorSelector, Float.wrap(0));
+        }
     }
 }
