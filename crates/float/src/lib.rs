@@ -1,0 +1,431 @@
+use alloy::primitives::{Address, Bytes, FixedBytes};
+use alloy::sol_types::{SolError, SolInterface};
+use alloy::{sol, sol_types::SolCall};
+use revm::context::result::{EVMError, ExecutionResult, HaltReason, Output, SuccessReason};
+use revm::context::{BlockEnv, CfgEnv, Evm, TxEnv};
+use revm::database::InMemoryDB;
+use revm::handler::EthPrecompiles;
+use revm::handler::instructions::EthInstructions;
+use revm::interpreter::interpreter::EthInterpreter;
+use revm::primitives::{address, fixed_bytes};
+use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
+use thiserror::Error;
+
+sol!(
+    #![sol(all_derives = true)]
+    DecimalFloat,
+    "../../out/DecimalFloat.sol/DecimalFloat.json"
+);
+
+use DecimalFloat::DecimalFloatErrors;
+
+/// Fixed address where the DecimalFloat contract is deployed in the in-memory EVM.
+/// This arbitrary address is used consistently across all Calculator instances.
+const FLOAT_ADDRESS: Address = address!("00000000000000000000000000000000000f10a2");
+
+#[derive(Debug, Error)]
+pub enum CalculatorError {
+    #[error("EVM error: {0}")]
+    Evm(#[from] EVMError<std::convert::Infallible>),
+    #[error("Float execution reverted with output: {0}")]
+    Revert(Bytes),
+    #[error("Float execution halted with reason: {0:?}")]
+    Halt(HaltReason),
+    #[error("Execution ended for non-return reason. Reason: {0:?}. Output: {1:?}")]
+    UnexpectedSuccess(SuccessReason, Output),
+    #[error(transparent)]
+    AlloySolTypes(#[from] alloy::sol_types::Error),
+    #[error("Decimal Float error: {0:?}")]
+    DecimalFloat(DecimalFloatErrors),
+    #[error("Decimal Float error selector: {0:?}")]
+    DecimalFloatSelector(Result<DecimalFloatErrorSelector, FixedBytes<4>>),
+}
+
+#[derive(Debug)]
+pub enum DecimalFloatErrorSelector {
+    CoefficientOverflow,
+    ExponentOverflow,
+    Log10Negative,
+    Log10Zero,
+    LossyConversionFromFloat,
+    NegativeFixedDecimalConversion,
+    WithTargetExponentOverflow,
+}
+
+impl TryFrom<FixedBytes<4>> for DecimalFloatErrorSelector {
+    type Error = FixedBytes<4>;
+
+    fn try_from(error_selector: FixedBytes<4>) -> Result<Self, Self::Error> {
+        let FixedBytes(bytes) = error_selector;
+        match bytes {
+            <DecimalFloat::CoefficientOverflow as SolError>::SELECTOR => {
+                Ok(Self::CoefficientOverflow)
+            }
+            <DecimalFloat::ExponentOverflow as SolError>::SELECTOR => Ok(Self::ExponentOverflow),
+            <DecimalFloat::Log10Negative as SolError>::SELECTOR => Ok(Self::Log10Negative),
+            <DecimalFloat::Log10Zero as SolError>::SELECTOR => Ok(Self::Log10Zero),
+            <DecimalFloat::LossyConversionFromFloat as SolError>::SELECTOR => {
+                Ok(Self::LossyConversionFromFloat)
+            }
+            <DecimalFloat::NegativeFixedDecimalConversion as SolError>::SELECTOR => {
+                Ok(Self::NegativeFixedDecimalConversion)
+            }
+            <DecimalFloat::WithTargetExponentOverflow as SolError>::SELECTOR => {
+                Ok(Self::WithTargetExponentOverflow)
+            }
+            _ => Err(error_selector),
+        }
+    }
+}
+
+type EvmContext = Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>;
+pub struct Calculator {
+    evm: Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub struct Float(FixedBytes<32>);
+
+impl Calculator {
+    pub fn new() -> Result<Self, CalculatorError> {
+        let mut db = InMemoryDB::default();
+        let bytecode = revm::state::Bytecode::new_legacy(DecimalFloat::DEPLOYED_BYTECODE.clone());
+        let account_info = revm::state::AccountInfo::default().with_code(bytecode);
+        db.insert_account_info(FLOAT_ADDRESS, account_info);
+
+        let evm = Context::mainnet().with_db(db).build_mainnet();
+
+        Ok(Calculator { evm })
+    }
+
+    fn execute_call<F, T>(
+        &mut self,
+        calldata: Bytes,
+        process_output: F,
+    ) -> Result<T, CalculatorError>
+    where
+        F: FnOnce(Bytes) -> Result<T, CalculatorError>,
+    {
+        let result_and_state = self
+            .evm
+            .transact_system_call_finalize(FLOAT_ADDRESS, calldata)?;
+
+        match result_and_state.result {
+            ExecutionResult::Success {
+                reason: SuccessReason::Return,
+                output: Output::Call(output),
+                ..
+            } => process_output(output),
+            ExecutionResult::Success { reason, output, .. } => {
+                Err(CalculatorError::UnexpectedSuccess(reason, output))
+            }
+            ExecutionResult::Revert { output, .. } => {
+                if let Ok(error) = DecimalFloat::DecimalFloatErrors::abi_decode(output.as_ref()) {
+                    return Err(CalculatorError::DecimalFloat(error));
+                }
+
+                Err(CalculatorError::Revert(output))
+            }
+            ExecutionResult::Halt { reason, .. } => Err(CalculatorError::Halt(reason)),
+        }
+    }
+
+    pub fn parse(&mut self, str: String) -> Result<Float, CalculatorError> {
+        let calldata = DecimalFloat::parseCall { str }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let DecimalFloat::parseReturn {
+                _0: error_selector,
+                _1: parsed_float,
+            } = DecimalFloat::parseCall::abi_decode_returns(output.as_ref())?;
+
+            if error_selector != fixed_bytes!("00000000") {
+                let selector = DecimalFloatErrorSelector::try_from(error_selector);
+                return Err(CalculatorError::DecimalFloatSelector(selector));
+            }
+
+            Ok(Float(parsed_float))
+        })
+    }
+
+    pub fn format(&mut self, float: Float) -> Result<String, CalculatorError> {
+        let Float(a) = float;
+        let calldata = DecimalFloat::formatCall { a }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn add(&mut self, a: Float, b: Float) -> Result<Float, CalculatorError> {
+        let Float(a) = a;
+        let Float(b) = b;
+        let calldata = DecimalFloat::addCall { a, b }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::addCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    pub fn sub(&mut self, a: Float, b: Float) -> Result<Float, CalculatorError> {
+        let Float(a) = a;
+        let Float(b) = b;
+        let calldata = DecimalFloat::subCall { a, b }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::subCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    pub fn lt(&mut self, a: Float, b: Float) -> Result<bool, CalculatorError> {
+        let Float(a) = a;
+        let Float(b) = b;
+        let calldata = DecimalFloat::ltCall { a, b }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::ltCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn eq(&mut self, a: Float, b: Float) -> Result<bool, CalculatorError> {
+        let Float(a) = a;
+        let Float(b) = b;
+        let calldata = DecimalFloat::eqCall { a, b }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::eqCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn gt(&mut self, a: Float, b: Float) -> Result<bool, CalculatorError> {
+        let Float(a) = a;
+        let Float(b) = b;
+        let calldata = DecimalFloat::gtCall { a, b }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::gtCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn minus(&mut self, float: Float) -> Result<Float, CalculatorError> {
+        let Float(a) = float;
+        let calldata = DecimalFloat::minusCall { a }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::minusCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    pub fn inv(&mut self, float: Float) -> Result<Float, CalculatorError> {
+        let Float(a) = float;
+        let calldata = DecimalFloat::invCall { a }.abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::invCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    prop_compose! {
+        fn valid_float()(
+            int_part in -10i128.pow(18)..10i128.pow(18),
+            decimal_places in 0u8..18u8,
+            decimal_part in 0u128..10u128.pow(18u32)
+        ) -> Float {
+            let mut calculator = Calculator::new().unwrap();
+
+            let num_str = if decimal_places == 0 {
+                format!("{int_part}")
+            } else {
+                let decimal_str = format!("{decimal_part:0width$}", width = decimal_places as usize);
+                format!("{int_part}.{decimal_str}")
+            };
+
+            calculator.parse(num_str).unwrap()
+        }
+    }
+
+    #[test]
+    fn test_parse_and_format() {
+        let mut calculator = Calculator::new().unwrap();
+
+        let float = calculator
+            .parse("1.1341234234625468391".to_string())
+            .unwrap();
+        // NOTE: LibFormatDecimalFloat.toDecimalString currently uses 18 decimal places
+        let err = calculator.format(float).unwrap_err();
+
+        assert!(matches!(
+            err,
+            CalculatorError::DecimalFloat(DecimalFloatErrors::LossyConversionFromFloat(_))
+        ));
+    }
+
+    #[test]
+    fn test_parse_edge_cases() {
+        let mut calculator = Calculator::new().unwrap();
+
+        // NOTE: I'm not sure if this is supposed to give an error
+        let float = calculator.parse("1.2.3".to_string()).unwrap();
+        let string = calculator.format(float).unwrap();
+        assert_eq!(string, "1.2");
+
+        let err = calculator.parse("abc".to_string()).unwrap_err();
+        assert!(matches!(
+            err,
+            CalculatorError::DecimalFloatSelector(Err(selector))
+            if selector == fixed_bytes!("34bd2069")
+        ));
+
+        // NOTE: I'd expect this (over quintillion and 19 decimals) to produce an error but it doesn't
+
+        // let float = calculator
+        //     .parse("1341234234625468391.1341234234625468391".to_string())
+        //     .unwrap_err();
+
+        // The value produced (broken down into first 224 and last 32 bits):
+        // 0xffffffed0000000000000000000000000a171f8863f1dca211b12be4 0xebc9a7e7
+    }
+
+    proptest! {
+        #[test]
+        fn test_parse_format(float in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let formatted = calculator.format(float).unwrap();
+            let parsed = calculator.parse(formatted.clone()).unwrap();
+            prop_assert_eq!(float.0, parsed.0);
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_add(a in valid_float(), b in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            calculator.add(a, b).unwrap();
+        }
+
+        #[test]
+        fn test_sub(a in valid_float(), b in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            calculator.sub(a, b).unwrap();
+        }
+
+        #[test]
+        fn test_add_sub(a in valid_float(), b in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let sum = calculator.add(a, b).unwrap();
+            let diff = calculator.sub(sum, b).unwrap();
+            prop_assert_eq!(
+                calculator.format(a).unwrap(),
+                calculator.format(diff).unwrap(),
+                "a: {}, b: {}",
+                calculator.format(a).unwrap(),
+                calculator.format(b).unwrap(),
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_lt_eq_gt(a in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let b = a;
+            let eq = calculator.eq(a, a).unwrap();
+            prop_assert!(eq);
+
+            let one = calculator.parse("1".to_string()).unwrap();
+
+            let a = calculator.sub(a, one).unwrap();
+            let lt = calculator.lt(a, b).unwrap();
+            prop_assert!(lt);
+
+            let a = calculator.add(a, one).unwrap();
+            let eq = calculator.eq(a, b).unwrap();
+            prop_assert!(eq);
+
+            let a = calculator.add(a, one).unwrap();
+            let gt = calculator.gt(a, b).unwrap();
+            prop_assert!(gt);
+        }
+
+        #[test]
+        fn test_exactly_one_lt_eq_gt(a in valid_float(), b in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let eq = calculator.eq(a, a).unwrap();
+            let lt = calculator.lt(a, b).unwrap();
+            let gt = calculator.gt(a, b).unwrap();
+
+            prop_assert!(lt || eq || gt);
+            prop_assert!(!(lt && eq));
+            prop_assert!(!(eq && gt));
+            prop_assert!(!(lt && gt));
+
+    #[test]
+    fn test_minus_format() {
+        let mut calculator = Calculator::new().unwrap();
+
+        let float = calculator
+            .parse("-123.1234234625468391".to_string())
+            .unwrap();
+        let negated = calculator.minus(float).unwrap();
+        let formatted = calculator.format(negated).unwrap();
+        assert_eq!(formatted, "123.1234234625468391");
+
+        let float = calculator.parse(formatted).unwrap();
+        let negated = calculator.minus(float).unwrap();
+        let formatted = calculator.format(negated).unwrap();
+        assert_eq!(formatted, "-123.1234234625468391");
+
+        let float = calculator.parse("0".to_string()).unwrap();
+        let negated = calculator.minus(float).unwrap();
+        let formatted = calculator.format(negated).unwrap();
+        assert_eq!(formatted, "0");
+    }
+
+    proptest! {
+        #[test]
+        fn test_minus_minus(float in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let negated = calculator.minus(float).unwrap();
+            let renegated = calculator.minus(negated).unwrap();
+            prop_assert_eq!(
+                calculator.format(float).unwrap(),
+                calculator.format(renegated).unwrap(),
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_inv_inv(float in valid_float()) {
+            let mut calculator = Calculator::new().unwrap();
+
+            let inv = calculator.inv(float).unwrap();
+            let inv_inv = calculator.inv(inv).unwrap();
+            prop_assert_eq!(
+                calculator.format(float).unwrap(),
+                calculator.format(inv_inv).unwrap(),
+            );
+        }
+    }
+}

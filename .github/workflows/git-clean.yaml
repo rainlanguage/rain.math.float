@@ -1,6 +1,10 @@
 name: Git is clean
 on: [push]
 
+concurrency:
+  group: ${{ github.ref }}-git-clean
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   git-clean:
     runs-on: ubuntu-latest
@@ -22,9 +26,6 @@ jobs:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           # if there's no cache hit, restore a cache by this prefix
           restore-prefixes-first-match: nix-${{ runner.os }}-
-          # collect garbage until the Nix store size (in bytes) is at most this number
-          # before trying to save a new cache
-          # 1G = 1073741824
           gc-max-store-size-linux: 1G
 
       - run: nix develop -c forge script ./script/BuildPointers.sol
