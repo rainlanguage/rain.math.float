@@ -125,11 +125,18 @@ library LibParseDecimalFloat {
         }
         (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
             parseDecimalFloatInline(start, end);
-        if (cursor != end && errorSelector == 0) {
-            // If we didn't consume the whole string, it is malformed.
-            return (ParseDecimalFloatExcessCharacters.selector, Float.wrap(0));
+        if (errorSelector == 0) {
+            if (cursor == end) {
+                // If we consumed the whole string, we can return the parsed value.
+                return (0, LibDecimalFloat.packLossless(signedCoefficient, exponent));
+            } else {
+                // If we didn't consume the whole string, it is malformed.
+                return (ParseDecimalFloatExcessCharacters.selector, Float.wrap(0));
+            }
         } else {
-            return (errorSelector, LibDecimalFloat.packLossless(signedCoefficient, exponent));
+            // If we encountered an error, we return the error selector and a
+            // zero float.
+            return (errorSelector, Float.wrap(0));
         }
     }
 }
