@@ -1,3 +1,5 @@
+#[cfg(test)]
+use alloy::primitives::aliases::I224;
 use alloy::primitives::{Address, Bytes, FixedBytes};
 use alloy::sol_types::{SolError, SolInterface};
 use alloy::{sol, sol_types::SolCall};
@@ -130,6 +132,25 @@ impl Calculator {
         }
     }
 
+    #[allow(dead_code)] // will be used in future tests
+    #[cfg(test)]
+    fn pack_lossless(
+        &mut self,
+        coefficient: I224,
+        exponent: i32,
+    ) -> Result<Float, CalculatorError> {
+        let calldata = DecimalFloat::packLosslessCall {
+            coefficient,
+            exponent,
+        }
+        .abi_encode();
+
+        self.execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::packLosslessCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
     pub fn parse(&mut self, str: String) -> Result<Float, CalculatorError> {
         let calldata = DecimalFloat::parseCall { str }.abi_encode();
 
@@ -187,7 +208,18 @@ mod tests {
     use proptest::prelude::*;
 
     prop_compose! {
-        fn valid_float()(
+        fn arb_float()(
+            coefficient in any::<I224>(),
+            exponent in any::<i32>(),
+        ) -> Float {
+            let mut calculator = Calculator::new().unwrap();
+
+            calculator.pack_lossless(coefficient, exponent).unwrap()
+        }
+    }
+
+    prop_compose! {
+        fn reasonable_float()(
             int_part in -10i128.pow(18)..10i128.pow(18),
             decimal_places in 0u8..18u8,
             decimal_part in 0u128..10u128.pow(18u32)
@@ -237,19 +269,15 @@ mod tests {
             if selector == fixed_bytes!("34bd2069")
         ));
 
-        // NOTE: I'd expect this (over quintillion and 19 decimals) to produce an error but it doesn't
-
+        // // NOTE: I'd expect this (over quintillion and 19 decimals) to produce an error but it doesn't
         // let float = calculator
-        //     .parse("1341234234625468391.1341234234625468391".to_string())
-        //     .unwrap_err();
-
-        // The value produced (broken down into first 224 and last 32 bits):
-        // 0xffffffed0000000000000000000000000a171f8863f1dca211b12be4 0xebc9a7e7
+        //     .parse("100000000000000000000.1341234234625468391".to_string())
+        //     .unwrap();
     }
 
     proptest! {
         #[test]
-        fn test_parse_format(float in valid_float()) {
+        fn test_parse_format(float in reasonable_float()) {
             let mut calculator = Calculator::new().unwrap();
 
             let formatted = calculator.format(float).unwrap();
@@ -260,21 +288,25 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_add(a in valid_float(), b in valid_float()) {
+        fn test_add(a in reasonable_float(), b in reasonable_float()) {
             let mut calculator = Calculator::new().unwrap();
 
             calculator.add(a, b).unwrap();
         }
+    }
 
+    proptest! {
         #[test]
-        fn test_sub(a in valid_float(), b in valid_float()) {
+        fn test_sub(a in reasonable_float(), b in reasonable_float()) {
             let mut calculator = Calculator::new().unwrap();
 
             calculator.sub(a, b).unwrap();
         }
+    }
 
+    proptest! {
         #[test]
-        fn test_add_sub(a in valid_float(), b in valid_float()) {
+        fn test_add_sub(a in reasonable_float(), b in reasonable_float()) {
             let mut calculator = Calculator::new().unwrap();
 
             let sum = calculator.add(a, b).unwrap();
