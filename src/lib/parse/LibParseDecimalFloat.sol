@@ -36,14 +36,14 @@ library LibParseDecimalFloat {
         unchecked {
             cursor = start;
             cursor = LibParseChar.skipMask(cursor, end, CMASK_NEGATIVE_SIGN);
+            bool isNegative = cursor != start;
             {
                 uint256 intStart = cursor;
                 cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);
                 if (cursor == intStart) {
                     return (ParseEmptyDecimalString.selector, cursor, 0, 0);
                 }
-            }
-            {
+
                 (bytes4 signedCoefficientErrorSelector, int256 signedCoefficientTmp) =
                     LibParseDecimal.unsafeDecimalStringToSignedInt(start, cursor);
                 if (signedCoefficientErrorSelector != 0) {
@@ -80,7 +80,7 @@ library LibParseDecimalFloat {
                 if (fracValue < 0) {
                     return (MalformedDecimalPoint.selector, cursor, 0, 0);
                 }
-                if (signedCoefficient < 0) {
+                if (isNegative) {
                     fracValue = -fracValue;
                 }
 

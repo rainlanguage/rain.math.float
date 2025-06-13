@@ -265,6 +265,7 @@ contract LibParseDecimalFloatTest is Test {
         // Some negatives.
         checkParseDecimalFloat("-1.1e-1", -11, -2, 7);
         checkParseDecimalFloat("-10.01e-1", -1001, -3, 9);
+        checkParseDecimalFloat("-0.1", -1, -1, 4);
     }
 
     /// Test some unrelated data after the decimal.
