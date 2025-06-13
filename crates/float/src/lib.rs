@@ -3,6 +3,7 @@ use alloy::primitives::aliases::I224;
 use alloy::primitives::{Address, Bytes, FixedBytes};
 use alloy::sol_types::{SolError, SolInterface};
 use alloy::{sol, sol_types::SolCall};
+use once_cell::unsync::Lazy;
 use revm::context::result::{EVMError, ExecutionResult, HaltReason, Output, SuccessReason};
 use revm::context::{BlockEnv, CfgEnv, Evm, TxEnv};
 use revm::database::InMemoryDB;
@@ -11,13 +12,30 @@ use revm::handler::instructions::EthInstructions;
 use revm::interpreter::interpreter::EthInterpreter;
 use revm::primitives::{address, fixed_bytes};
 use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
+use std::cell::RefCell;
+use std::thread::AccessError;
 use thiserror::Error;
 
 sol!(
-    #![sol(all_derives = true)]
+    #![sol(all_derives)]
     DecimalFloat,
     "../../out/DecimalFloat.sol/DecimalFloat.json"
 );
+
+type EvmContext = Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>;
+type LocalEvm = Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>;
+
+thread_local! {
+    static LOCAL_EVM: Lazy<RefCell<LocalEvm>> = Lazy::new(|| {
+        let mut db = InMemoryDB::default();
+        let bytecode = revm::state::Bytecode::new_legacy(DecimalFloat::DEPLOYED_BYTECODE.clone());
+        let account_info = revm::state::AccountInfo::default().with_code(bytecode);
+        db.insert_account_info(FLOAT_ADDRESS, account_info);
+
+        let evm = Context::mainnet().with_db(db).build_mainnet();
+        RefCell::new(evm)
+    });
+}
 
 use DecimalFloat::DecimalFloatErrors;
 
@@ -26,7 +44,7 @@ use DecimalFloat::DecimalFloatErrors;
 const FLOAT_ADDRESS: Address = address!("00000000000000000000000000000000000f10a2");
 
 #[derive(Debug, Error)]
-pub enum CalculatorError {
+pub enum FloatError {
     #[error("EVM error: {0}")]
     Evm(#[from] EVMError<std::convert::Infallible>),
     #[error("Float execution reverted with output: {0}")]
@@ -41,6 +59,8 @@ pub enum CalculatorError {
     DecimalFloat(DecimalFloatErrors),
     #[error("Decimal Float error selector: {0:?}")]
     DecimalFloatSelector(Result<DecimalFloatErrorSelector, FixedBytes<4>>),
+    #[error(transparent)]
+    Access(#[from] AccessError),
 }
 
 #[derive(Debug)]
@@ -80,81 +100,60 @@ impl TryFrom<FixedBytes<4>> for DecimalFloatErrorSelector {
     }
 }
 
-type EvmContext = Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>;
-pub struct Calculator {
-    evm: Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>,
+fn execute_call<F, T>(calldata: Bytes, process_output: F) -> Result<T, FloatError>
+where
+    F: FnOnce(Bytes) -> Result<T, FloatError>,
+{
+    let result = LOCAL_EVM.try_with(|evm| {
+        let evm = &mut *evm.borrow_mut();
+        let result_and_state = evm.transact_system_call_finalize(FLOAT_ADDRESS, calldata)?;
+
+        Ok::<_, FloatError>(result_and_state.result)
+    })??;
+
+    match result {
+        ExecutionResult::Success {
+            reason: SuccessReason::Return,
+            output: Output::Call(output),
+            ..
+        } => process_output(output),
+        ExecutionResult::Success { reason, output, .. } => {
+            Err(FloatError::UnexpectedSuccess(reason, output))
+        }
+        ExecutionResult::Revert { output, .. } => {
+            if let Ok(error) = DecimalFloat::DecimalFloatErrors::abi_decode(output.as_ref()) {
+                return Err(FloatError::DecimalFloat(error));
+            }
+
+            Err(FloatError::Revert(output))
+        }
+        ExecutionResult::Halt { reason, .. } => Err(FloatError::Halt(reason)),
+    }
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Float(FixedBytes<32>);
 
-impl Calculator {
-    pub fn new() -> Result<Self, CalculatorError> {
-        let mut db = InMemoryDB::default();
-        let bytecode = revm::state::Bytecode::new_legacy(DecimalFloat::DEPLOYED_BYTECODE.clone());
-        let account_info = revm::state::AccountInfo::default().with_code(bytecode);
-        db.insert_account_info(FLOAT_ADDRESS, account_info);
-
-        let evm = Context::mainnet().with_db(db).build_mainnet();
-
-        Ok(Calculator { evm })
-    }
-
-    fn execute_call<F, T>(
-        &mut self,
-        calldata: Bytes,
-        process_output: F,
-    ) -> Result<T, CalculatorError>
-    where
-        F: FnOnce(Bytes) -> Result<T, CalculatorError>,
-    {
-        let result_and_state = self
-            .evm
-            .transact_system_call_finalize(FLOAT_ADDRESS, calldata)?;
-
-        match result_and_state.result {
-            ExecutionResult::Success {
-                reason: SuccessReason::Return,
-                output: Output::Call(output),
-                ..
-            } => process_output(output),
-            ExecutionResult::Success { reason, output, .. } => {
-                Err(CalculatorError::UnexpectedSuccess(reason, output))
-            }
-            ExecutionResult::Revert { output, .. } => {
-                if let Ok(error) = DecimalFloat::DecimalFloatErrors::abi_decode(output.as_ref()) {
-                    return Err(CalculatorError::DecimalFloat(error));
-                }
-
-                Err(CalculatorError::Revert(output))
-            }
-            ExecutionResult::Halt { reason, .. } => Err(CalculatorError::Halt(reason)),
-        }
-    }
-
+impl Float {
     #[allow(dead_code)] // will be used in future tests
     #[cfg(test)]
-    fn pack_lossless(
-        &mut self,
-        coefficient: I224,
-        exponent: i32,
-    ) -> Result<Float, CalculatorError> {
+    fn pack_lossless(coefficient: I224, exponent: i32) -> Result<Self, FloatError> {
         let calldata = DecimalFloat::packLosslessCall {
             coefficient,
             exponent,
         }
         .abi_encode();
 
-        self.execute_call(Bytes::from(calldata), |output| {
+        execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::packLosslessCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
     }
 
-    pub fn parse(&mut self, str: String) -> Result<Float, CalculatorError> {
+    pub fn parse(str: String) -> Result<Self, FloatError> {
         let calldata = DecimalFloat::parseCall { str }.abi_encode();
 
-        self.execute_call(Bytes::from(calldata), |output| {
+        execute_call(Bytes::from(calldata), |output| {
             let DecimalFloat::parseReturn {
                 _0: error_selector,
                 _1: parsed_float,
@@ -162,40 +161,40 @@ impl Calculator {
 
             if error_selector != fixed_bytes!("00000000") {
                 let selector = DecimalFloatErrorSelector::try_from(error_selector);
-                return Err(CalculatorError::DecimalFloatSelector(selector));
+                return Err(FloatError::DecimalFloatSelector(selector));
             }
 
             Ok(Float(parsed_float))
         })
     }
 
-    pub fn format(&mut self, float: Float) -> Result<String, CalculatorError> {
-        let Float(a) = float;
+    pub fn format(self) -> Result<String, FloatError> {
+        let Float(a) = self;
         let calldata = DecimalFloat::formatCall { a }.abi_encode();
 
-        self.execute_call(Bytes::from(calldata), |output| {
+        execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
             Ok(decoded)
         })
     }
 
-    pub fn add(&mut self, a: Float, b: Float) -> Result<Float, CalculatorError> {
-        let Float(a) = a;
+    pub fn add(self, b: Self) -> Result<Self, FloatError> {
+        let Float(a) = self;
         let Float(b) = b;
         let calldata = DecimalFloat::addCall { a, b }.abi_encode();
 
-        self.execute_call(Bytes::from(calldata), |output| {
+        execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::addCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
     }
 
-    pub fn sub(&mut self, a: Float, b: Float) -> Result<Float, CalculatorError> {
-        let Float(a) = a;
+    pub fn sub(self: Self, b: Self) -> Result<Self, FloatError> {
+        let Float(a) = self;
         let Float(b) = b;
         let calldata = DecimalFloat::subCall { a, b }.abi_encode();
 
-        self.execute_call(Bytes::from(calldata), |output| {
+        execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::subCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
@@ -212,9 +211,7 @@ mod tests {
             coefficient in any::<I224>(),
             exponent in any::<i32>(),
         ) -> Float {
-            let mut calculator = Calculator::new().unwrap();
-
-            calculator.pack_lossless(coefficient, exponent).unwrap()
+            Float::pack_lossless(coefficient, exponent).unwrap()
         }
     }
 
@@ -223,49 +220,39 @@ mod tests {
             int_part in -10i128.pow(18)..10i128.pow(18),
             decimal_part in 0u128..10u128.pow(18u32)
         ) -> Float {
-            let mut calculator = Calculator::new().unwrap();
-
             let num_str = if decimal_part == 0 {
                 format!("{int_part}")
             } else {
                 format!("{int_part}.{decimal_part}")
             };
 
-            calculator.parse(num_str).unwrap()
+            Float::parse(num_str).unwrap()
         }
     }
 
     #[test]
     fn test_parse_and_format() {
-        let mut calculator = Calculator::new().unwrap();
-
-        let float = calculator
-            .parse("1.1341234234625468391".to_string())
-            .unwrap();
+        let float = Float::parse("1.1341234234625468391".to_string()).unwrap();
         // NOTE: LibFormatDecimalFloat.toDecimalString currently uses 18 decimal places
         // TODO: make this fail on a separate PR
-        let err = calculator.format(float).unwrap_err();
+        let err = float.format().unwrap_err();
 
         assert!(matches!(
             err,
-            CalculatorError::DecimalFloat(DecimalFloatErrors::LossyConversionFromFloat(_))
+            FloatError::DecimalFloat(DecimalFloatErrors::LossyConversionFromFloat(_))
         ));
     }
 
     #[test]
     fn test_parse_edge_cases() {
-        let mut calculator = Calculator::new().unwrap();
-
-        // NOTE: I'm not sure if this is supposed to give an error
-        // TODO: make this fail on a separate PR
-        let float = calculator.parse("1.2.3".to_string()).unwrap();
-        let string = calculator.format(float).unwrap();
+        let float = Float::parse("1.2.3".to_string()).unwrap();
+        let string = float.format().unwrap();
         assert_eq!(string, "1.2");
 
-        let err = calculator.parse("abc".to_string()).unwrap_err();
+        let err = Float::parse("abc".to_string()).unwrap_err();
         assert!(matches!(
             err,
-            CalculatorError::DecimalFloatSelector(Err(selector))
+            FloatError::DecimalFloatSelector(Err(selector))
             if selector == fixed_bytes!("34bd2069")
         ));
     }
@@ -273,10 +260,8 @@ mod tests {
     proptest! {
         #[test]
         fn test_parse_format(float in reasonable_float()) {
-            let mut calculator = Calculator::new().unwrap();
-
-            let formatted = calculator.format(float).unwrap();
-            let parsed = calculator.parse(formatted.clone()).unwrap();
+            let formatted = float.format().unwrap();
+            let parsed = Float::parse(formatted.clone()).unwrap();
             prop_assert_eq!(float.0, parsed.0);
         }
     }
@@ -284,34 +269,28 @@ mod tests {
     proptest! {
         #[test]
         fn test_add(a in reasonable_float(), b in reasonable_float()) {
-            let mut calculator = Calculator::new().unwrap();
-
-            calculator.add(a, b).unwrap();
+            a.add(b).unwrap();
         }
     }
 
     proptest! {
         #[test]
         fn test_sub(a in reasonable_float(), b in reasonable_float()) {
-            let mut calculator = Calculator::new().unwrap();
-
-            calculator.sub(a, b).unwrap();
+            a.sub(b).unwrap();
         }
     }
 
     proptest! {
         #[test]
         fn test_add_sub(a in reasonable_float(), b in reasonable_float()) {
-            let mut calculator = Calculator::new().unwrap();
-
-            let sum = calculator.add(a, b).unwrap();
-            let diff = calculator.sub(sum, b).unwrap();
+            let sum = a.add(b).unwrap();
+            let diff = sum.sub(b).unwrap();
             prop_assert_eq!(
-                calculator.format(a).unwrap(),
-                calculator.format(diff).unwrap(),
+                a.format().unwrap(),
+                diff.format().unwrap(),
                 "a: {}, b: {}",
-                calculator.format(a).unwrap(),
-                calculator.format(b).unwrap(),
+                a.format().unwrap(),
+                b.format().unwrap(),
             );
         }
     }

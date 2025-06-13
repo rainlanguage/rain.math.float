@@ -17,3 +17,4 @@ revm = { version = "25.0.0", default-features = false, features = [
 ] }
 thiserror = "2.0.12"
 proptest = "1.7.0"
+once_cell = "1.21.3"
