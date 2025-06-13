@@ -14,3 +14,6 @@ error MalformedExponentDigits(uint256 position);
 /// the decimal float representation.
 /// @param position The position in the string where the error occurred.
 error ParseDecimalPrecisionLoss(uint256 position);
+
+/// @dev Thrown when the string contains characters after the float.
+error ParseDecimalFloatExcessCharacters();
