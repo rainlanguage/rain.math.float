@@ -163,4 +163,12 @@ contract DecimalFloat {
     function isZero(Float a) external pure returns (bool) {
         return a.isZero();
     }
+
+    /// Exposes `LibDecimalFloat.packLossless` for offchain use.
+    /// @param coefficient The coefficient to pack.
+    /// @param exponent The exponent to pack.
+    /// @return The packed float.
+    function packLossless(int224 coefficient, int32 exponent) external pure returns (Float) {
+        return LibDecimalFloat.packLossless(coefficient, exponent);
+    }
 }
