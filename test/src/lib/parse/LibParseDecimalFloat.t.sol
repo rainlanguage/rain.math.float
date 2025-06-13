@@ -7,7 +7,12 @@ import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain.solmem/lib/LibBytes.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 import {ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
-import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoint} from "src/error/ErrParse.sol";
+import {
+    MalformedExponentDigits,
+    ParseDecimalPrecisionLoss,
+    MalformedDecimalPoint,
+    ParseDecimalFloatExcessCharacters
+} from "src/error/ErrParse.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 
 contract LibParseDecimalFloatTest is Test {
@@ -15,31 +20,40 @@ contract LibParseDecimalFloatTest is Test {
     using Strings for uint256;
     using LibDecimalFloat for Float;
 
-    function parseDecimalFloatExternal(string memory data)
+    function parseDecimalFloatInlineExternal(string memory data)
         external
         pure
         returns (bytes4 errorSelector, uint256 cursorAfter, int256 signedCoefficient, int256 exponent)
     {
         uint256 cursor = Pointer.unwrap(bytes(data).dataPointer());
+        uint256 start = cursor;
         (errorSelector, cursorAfter, signedCoefficient, exponent) =
-            LibParseDecimalFloat.parseDecimalFloat(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
+            LibParseDecimalFloat.parseDecimalFloatInline(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
+        // Pragmatically the length of the inline movement is more useful than
+        // the raw cursor because the external function has different memory
+        // positions than the caller.
+        cursorAfter -= start;
     }
 
-    function parseDecimalFloatExternalPacked(string memory data)
-        external
-        pure
-        returns (bytes4 errorSelector, Float float)
-    {
+    function parseDecimalFloatExternal(string memory data) external pure returns (bytes4 errorSelector, Float float) {
         (errorSelector, float) = LibParseDecimalFloat.parseDecimalFloat(data);
     }
 
-    /// Check that the memory version matches the stack version.
-    function testParseMem(string memory data) external {
-        try this.parseDecimalFloatExternal(data) returns (
-            bytes4 errorSelector, uint256 cursorAfter, int256 signedCoefficient, int256 exponent
+    /// Check that the packed version matches the inline version.
+    function testParsePacked(string memory data) external {
+        try this.parseDecimalFloatInlineExternal(data) returns (
+            bytes4 errorSelector, uint256 cursorMove, int256 signedCoefficient, int256 exponent
         ) {
-            (cursorAfter);
-            (bytes4 errorSelectorPacked, Float float) = this.parseDecimalFloatExternalPacked(data);
+            // Inline parsing doesn't treat a partially consumed string as an
+            // error, but the external parsing does, so we have to special case
+            // that check.
+            if (errorSelector == bytes4(0) && cursorMove != bytes(data).length) {
+                errorSelector = ParseDecimalFloatExcessCharacters.selector;
+                signedCoefficient = 0;
+                exponent = 0;
+            }
+
+            (bytes4 errorSelectorPacked, Float float) = this.parseDecimalFloatExternal(data);
             assertEq(errorSelector, errorSelectorPacked, "Error selector mismatch");
             (int256 signedCoefficientPacked, int256 exponentPacked) = float.unpack();
             assertEq(signedCoefficient, signedCoefficientPacked, "Signed coefficient mismatch");
@@ -58,7 +72,7 @@ contract LibParseDecimalFloatTest is Test {
     ) internal pure {
         uint256 cursor = Pointer.unwrap(bytes(data).dataPointer());
         (bytes4 errorSelector, uint256 cursorAfter, int256 signedCoefficient, int256 exponent) =
-            LibParseDecimalFloat.parseDecimalFloat(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
+            LibParseDecimalFloat.parseDecimalFloatInline(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
         assertEq(errorSelector, bytes4(0));
         assertEq(signedCoefficient, expectedSignedCoefficient);
         assertEq(exponent, expectedExponent);
@@ -71,7 +85,7 @@ contract LibParseDecimalFloatTest is Test {
     {
         uint256 cursor = Pointer.unwrap(bytes(data).dataPointer());
         (bytes4 errorSelector, uint256 cursorAfter,,) =
-            LibParseDecimalFloat.parseDecimalFloat(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
+            LibParseDecimalFloat.parseDecimalFloatInline(cursor, Pointer.unwrap(bytes(data).endDataPointer()));
         assertEq(errorSelector, expectedErrorSelector);
         assertEq(cursorAfter - cursor, expectedCursorAfter);
     }
@@ -276,6 +290,10 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloat("1.1e1hello", 11, 0, 5);
         checkParseDecimalFloat("1.1e-1hello", 11, -2, 6);
         checkParseDecimalFloat("-1.1e-1hello", -11, -2, 7);
+        checkParseDecimalFloat("1.2.3", 12, -1, 3);
+        checkParseDecimalFloat("1.2.3e4", 12, -1, 3);
+        checkParseDecimalFloat("-1.2.3", -12, -1, 4);
+        checkParseDecimalFloat("1.2e3.4", 12, 2, 5);
     }
 
     /// An empty string should fail.
