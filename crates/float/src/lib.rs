@@ -177,6 +177,39 @@ impl Float {
             Ok(decoded)
         })
     }
+
+    pub fn lt(self, b: Self) -> Result<bool, FloatError> {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::ltCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::ltCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn eq(self, b: Self) -> Result<bool, FloatError> {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::eqCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::eqCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn gt(self, b: Self) -> Result<bool, FloatError> {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::gtCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::gtCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
 }
 
 impl Add for Float {
@@ -205,39 +238,6 @@ impl Sub for Float {
         execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::subCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
-        })
-    }
-
-    pub fn lt(&mut self, a: Float, b: Float) -> Result<bool, CalculatorError> {
-        let Float(a) = a;
-        let Float(b) = b;
-        let calldata = DecimalFloat::ltCall { a, b }.abi_encode();
-
-        self.execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::ltCall::abi_decode_returns(output.as_ref())?;
-            Ok(decoded)
-        })
-    }
-
-    pub fn eq(&mut self, a: Float, b: Float) -> Result<bool, CalculatorError> {
-        let Float(a) = a;
-        let Float(b) = b;
-        let calldata = DecimalFloat::eqCall { a, b }.abi_encode();
-
-        self.execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::eqCall::abi_decode_returns(output.as_ref())?;
-            Ok(decoded)
-        })
-    }
-
-    pub fn gt(&mut self, a: Float, b: Float) -> Result<bool, CalculatorError> {
-        let Float(a) = a;
-        let Float(b) = b;
-        let calldata = DecimalFloat::gtCall { a, b }.abi_encode();
-
-        self.execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::gtCall::abi_decode_returns(output.as_ref())?;
-            Ok(decoded)
         })
     }
 }
@@ -341,65 +341,58 @@ mod tests {
 
     #[test]
     fn test_lt_eq_gt() {
-        let mut calculator = Calculator::new().unwrap();
+        let negone = Float::parse("-1".to_string()).unwrap();
+        let zero = Float::parse("0".to_string()).unwrap();
+        let three = Float::parse("3".to_string()).unwrap();
 
-        let negone = calculator.parse("-1".to_string()).unwrap();
-        let zero = calculator.parse("0".to_string()).unwrap();
-        let three = calculator.parse("3".to_string()).unwrap();
+        assert!(negone.lt(zero).unwrap());
+        assert!(!negone.eq(zero).unwrap());
+        assert!(!negone.gt(zero).unwrap());
 
-        assert!(calculator.lt(negone, zero).unwrap());
-        assert!(!calculator.eq(negone, zero).unwrap());
-        assert!(!calculator.gt(negone, zero).unwrap());
+        assert!(!three.lt(zero).unwrap());
+        assert!(!three.eq(zero).unwrap());
+        assert!(three.gt(zero).unwrap());
 
-        assert!(!calculator.lt(zero, negone).unwrap());
-        assert!(!calculator.eq(zero, negone).unwrap());
-        assert!(calculator.gt(zero, negone).unwrap());
-
-        assert!(!calculator.lt(three, zero).unwrap());
-        assert!(!calculator.eq(three, zero).unwrap());
-        assert!(calculator.gt(three, zero).unwrap());
-
-        assert!(calculator.lt(zero, three).unwrap());
-        assert!(!calculator.eq(zero, three).unwrap());
-        assert!(!calculator.gt(zero, three).unwrap());
+        assert!(zero.lt(three).unwrap());
+        assert!(!zero.eq(three).unwrap());
+        assert!(!zero.gt(three).unwrap());
     }
 
     proptest! {
         #[test]
-        fn test_lt_eq_gt_with_add(a in valid_float()) {
-            let mut calculator = Calculator::new().unwrap();
-
+        fn test_lt_eq_gt_with_add(a in reasonable_float()) {
             let b = a;
-            let eq = calculator.eq(a, a).unwrap();
+            let eq = a.eq(b).unwrap();
             prop_assert!(eq);
 
-            let one = calculator.parse("1".to_string()).unwrap();
+            let one = Float::parse("1".to_string()).unwrap();
 
-            let a = calculator.sub(a, one).unwrap();
-            let lt = calculator.lt(a, b).unwrap();
+            let a = (a - one).unwrap();
+            let lt = a.lt(b).unwrap();
             prop_assert!(lt);
 
-            let a = calculator.add(a, one).unwrap();
-            let eq = calculator.eq(a, b).unwrap();
+            let a = (a + one).unwrap();
+            let eq = a.eq(b).unwrap();
             prop_assert!(eq);
 
-            let a = calculator.add(a, one).unwrap();
-            let gt = calculator.gt(a, b).unwrap();
+            let a = (a + one).unwrap();
+            let gt = a.gt(b).unwrap();
             prop_assert!(gt);
         }
 
         #[test]
-        fn test_exactly_one_lt_eq_gt(a in valid_float(), b in valid_float()) {
-            let mut calculator = Calculator::new().unwrap();
+        fn test_exactly_one_lt_eq_gt(a in reasonable_float(), b in reasonable_float()) {
+            let eq = a.eq(a).unwrap();
+            let lt = a.lt(b).unwrap();
+            let gt = a.gt(b).unwrap();
 
-            let eq = calculator.eq(a, a).unwrap();
-            let lt = calculator.lt(a, b).unwrap();
-            let gt = calculator.gt(a, b).unwrap();
+            let a_str = a.format().unwrap();
+            let b_str = b.format().unwrap();
 
-            prop_assert!(lt || eq || gt);
-            prop_assert!(!(lt && eq));
-            prop_assert!(!(eq && gt));
-            prop_assert!(!(lt && gt));
+            prop_assert!(lt || eq || gt, "a: {a_str}, b: {b_str}");
+            prop_assert!(!(lt && eq), "a: {a_str}, b: {b_str}");
+            prop_assert!(!(eq && gt), "a: {a_str}, b: {b_str}");
+            prop_assert!(!(lt && gt), "a: {a_str}, b: {b_str}");
         }
     }
 }
