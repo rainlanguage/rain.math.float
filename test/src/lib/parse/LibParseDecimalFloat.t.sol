@@ -276,6 +276,7 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloat("1.1e1hello", 11, 0, 5);
         checkParseDecimalFloat("1.1e-1hello", 11, -2, 6);
         checkParseDecimalFloat("-1.1e-1hello", -11, -2, 7);
+        checkParseDecimalFloat("1.2.3", 12, -1, 3);
     }
 
     /// An empty string should fail.
