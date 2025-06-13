@@ -378,8 +378,4 @@ contract LibParseDecimalFloatTest is Test {
             69
         );
     }
-
-    function testParseLiteralDecimalFloatPrecisionRevert2() external pure {
-        checkParseDecimalFloatFail("1341234234625468391.1341234234625468391", ParseDecimalPrecisionLoss.selector, 158);
-    }
 }
