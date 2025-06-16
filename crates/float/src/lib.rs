@@ -232,21 +232,21 @@ impl Float {
         })
     }
 
-    pub fn minus(&mut self, float: Float) -> Result<Float, CalculatorError> {
-        let Float(a) = float;
+    pub fn minus(self) -> Result<Self, FloatError> {
+        let Float(a) = self;
         let calldata = DecimalFloat::minusCall { a }.abi_encode();
 
-        self.execute_call(Bytes::from(calldata), |output| {
+        execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::minusCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
     }
 
-    pub fn inv(&mut self, float: Float) -> Result<Float, CalculatorError> {
-        let Float(a) = float;
+    pub fn inv(self) -> Result<Self, FloatError> {
+        let Float(a) = self;
         let calldata = DecimalFloat::invCall { a }.abi_encode();
 
-        self.execute_call(Bytes::from(calldata), |output| {
+        execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::invCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
@@ -525,24 +525,41 @@ mod tests {
 
     #[test]
     fn test_minus_format() {
-        let mut calculator = Calculator::new().unwrap();
-
-        let float = calculator
-            .parse("-123.1234234625468391".to_string())
-            .unwrap();
-        let negated = calculator.minus(float).unwrap();
-        let formatted = calculator.format(negated).unwrap();
+        let float = Float::parse("-123.1234234625468391".to_string()).unwrap();
+        let negated = float.minus().unwrap();
+        let formatted = negated.format().unwrap();
         assert_eq!(formatted, "123.1234234625468391");
 
-        let float = calculator.parse(formatted).unwrap();
-        let negated = calculator.minus(float).unwrap();
-        let formatted = calculator.format(negated).unwrap();
+        let float = Float::parse(formatted).unwrap();
+        let negated = float.minus().unwrap();
+        let formatted = negated.format().unwrap();
         assert_eq!(formatted, "-123.1234234625468391");
 
-        let float = calculator.parse("0".to_string()).unwrap();
-        let negated = calculator.minus(float).unwrap();
-        let formatted = calculator.format(negated).unwrap();
+        let float = Float::parse("0".to_string()).unwrap();
+        let negated = float.minus().unwrap();
+        let formatted = negated.format().unwrap();
         assert_eq!(formatted, "0");
+    }
+
+    proptest! {
+        #[test]
+        fn test_minus_minus(float in arb_float()) {
+            let negated = float.minus().unwrap();
+            let renegated = negated.minus().unwrap();
+            prop_assert!(float.eq(renegated).unwrap());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_inv_inv(float in reasonable_float()) {
+            let inv = float.inv().unwrap();
+            let inv_inv = inv.inv().unwrap();
+            prop_assert_eq!(
+                float.format().unwrap(),
+                inv_inv.format().unwrap(),
+            );
+        }
     }
 
     proptest! {
@@ -645,20 +662,6 @@ mod tests {
             prop_assert_eq!(
                 calculator.format(float).unwrap(),
                 calculator.format(renegated).unwrap(),
-            );
-        }
-    }
-
-    proptest! {
-        #[test]
-        fn test_inv_inv(float in valid_float()) {
-            let mut calculator = Calculator::new().unwrap();
-
-            let inv = calculator.inv(float).unwrap();
-            let inv_inv = calculator.inv(inv).unwrap();
-            prop_assert_eq!(
-                calculator.format(float).unwrap(),
-                calculator.format(inv_inv).unwrap(),
             );
         }
     }
