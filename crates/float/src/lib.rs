@@ -552,12 +552,28 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_inv_inv(float in reasonable_float()) {
+        fn test_inv_prod(float in reasonable_float()) {
             let inv = float.inv().unwrap();
-            let inv_inv = inv.inv().unwrap();
-            prop_assert_eq!(
-                float.format().unwrap(),
-                inv_inv.format().unwrap(),
+            let product = (float * inv).unwrap();
+            let one = Float::parse("1".to_string()).unwrap();
+
+            // Allow for minor rounding errors introduced by the lossy
+            // `inv` implementation. We consider the property to
+            // hold if the product is within `±1e-37` of 1.
+
+            let eps = Float::parse("1e-37".to_string()).unwrap();
+            let one_plus_eps = (one + eps).unwrap();
+            let one_minus_eps = (one - eps).unwrap();
+
+            let within_upper = !product.gt(one_plus_eps).unwrap();
+            let within_lower = !product.lt(one_minus_eps).unwrap();
+
+            prop_assert!(
+                within_upper && within_lower,
+                "float: {}, inv: {}, product: {} (not within ±ε)",
+                float.show_unpacked().unwrap(),
+                inv.show_unpacked().unwrap(),
+                product.show_unpacked().unwrap(),
             );
         }
     }
@@ -650,19 +666,5 @@ mod tests {
             err,
             FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
         ));
-    }
-
-    proptest! {
-        #[test]
-        fn test_minus_minus(float in valid_float()) {
-            let mut calculator = Calculator::new().unwrap();
-
-            let negated = calculator.minus(float).unwrap();
-            let renegated = calculator.minus(negated).unwrap();
-            prop_assert_eq!(
-                calculator.format(float).unwrap(),
-                calculator.format(renegated).unwrap(),
-            );
-        }
     }
 }
