@@ -135,7 +135,6 @@ where
 pub struct Float(FixedBytes<32>);
 
 impl Float {
-    #[allow(dead_code)] // will be used in future tests
     #[cfg(test)]
     fn pack_lossless(coefficient: I224, exponent: i32) -> Result<Self, FloatError> {
         let calldata = DecimalFloat::packLosslessCall {
@@ -148,6 +147,27 @@ impl Float {
             let decoded = DecimalFloat::packLosslessCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
+    }
+
+    #[cfg(test)]
+    fn unpack(self) -> Result<(I224, i32), FloatError> {
+        let Float(float) = self;
+        let calldata = DecimalFloat::unpackCall { float }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let DecimalFloat::unpackReturn {
+                _0: coefficient,
+                _1: exponent,
+            } = DecimalFloat::unpackCall::abi_decode_returns(output.as_ref())?;
+
+            Ok((coefficient, exponent))
+        })
+    }
+
+    #[cfg(test)]
+    fn show_unpacked(self) -> Result<String, FloatError> {
+        let (coefficient, exponent) = self.unpack()?;
+        Ok(format!("{coefficient}e{exponent}"))
     }
 
     pub fn parse(str: String) -> Result<Self, FloatError> {
@@ -386,13 +406,13 @@ mod tests {
             let lt = a.lt(b).unwrap();
             let gt = a.gt(b).unwrap();
 
-            let a_str = a.format().unwrap();
-            let b_str = b.format().unwrap();
+            let a_str = a.show_unpacked().unwrap();
+            let b_str = b.show_unpacked().unwrap();
 
             prop_assert!(lt || eq || gt, "a: {a_str}, b: {b_str}");
-            prop_assert!(!(lt && eq), "a: {a_str}, b: {b_str}");
-            prop_assert!(!(eq && gt), "a: {a_str}, b: {b_str}");
-            prop_assert!(!(lt && gt), "a: {a_str}, b: {b_str}");
+            prop_assert!(!(lt && eq), "both less than and equal: a: {a_str}, b: {b_str}");
+            prop_assert!(!(eq && gt), "both equal and greater than: a: {a_str}, b: {b_str}");
+            prop_assert!(!(lt && gt), "both less than and greater than: a: {a_str}, b: {b_str}");
         }
     }
 }
