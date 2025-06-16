@@ -333,6 +333,38 @@ impl Float {
             Ok(Float(decoded))
         })
     }
+
+    pub fn min(self, b: Self) -> Result<Self, FloatError> {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::minCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::minCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    pub fn max(self, b: Self) -> Result<Self, FloatError> {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::maxCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::maxCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    pub fn is_zero(self) -> Result<bool, FloatError> {
+        let Float(a) = self;
+        let calldata = DecimalFloat::isZeroCall { a }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::isZeroCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
 }
 
 #[cfg(test)]
