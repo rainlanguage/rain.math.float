@@ -402,7 +402,7 @@ mod tests {
 
         #[test]
         fn test_exactly_one_lt_eq_gt(a in arb_float(), b in arb_float()) {
-            let eq = a.eq(a).unwrap();
+            let eq = a.eq(b).unwrap();
             let lt = a.lt(b).unwrap();
             let gt = a.gt(b).unwrap();
 
