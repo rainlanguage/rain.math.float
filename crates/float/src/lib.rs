@@ -188,6 +188,7 @@ impl Float {
         })
     }
 
+    // NOTE: LibFormatDecimalFloat.toDecimalString currently uses 18 decimal places
     pub fn format(self) -> Result<String, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::formatCall { a }.abi_encode();
@@ -324,13 +325,28 @@ mod tests {
     #[test]
     fn test_parse_and_format() {
         let float = Float::parse("1.1341234234625468391".to_string()).unwrap();
-        // NOTE: LibFormatDecimalFloat.toDecimalString currently uses 18 decimal places
-        // TODO: make this fail on a separate PR
         let err = float.format().unwrap_err();
 
         assert!(matches!(
             err,
             FloatError::DecimalFloat(DecimalFloatErrors::LossyConversionFromFloat(_))
+        ));
+    }
+
+    #[test]
+    fn test_parse_empty_string_error() {
+        let err = Float::parse("".to_string()).unwrap_err();
+        // We don't know the exact selector here, just ensure the error path is hit.
+        assert!(matches!(err, FloatError::DecimalFloatSelector(_)));
+    }
+
+    #[test]
+    fn test_parse_exponent_overflow_error() {
+        // Extremely large exponent expected to overflow (exponent >> i32::MAX).
+        let err = Float::parse("1e3000000000".to_string()).unwrap_err();
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
         ));
     }
 
@@ -496,5 +512,19 @@ mod tests {
 
         assert!(two.eq((six / three).unwrap()).unwrap());
         assert!(six.eq((two * three).unwrap()).unwrap());
+    }
+
+    #[test]
+    fn test_divide_by_zero_error() {
+        let one = Float::parse("1".to_string()).unwrap();
+        let zero = Float::parse("0".to_string()).unwrap();
+        let err = (one / zero).unwrap_err();
+        // Division by zero should revert or return a DecimalFloat error/selector.
+        match err {
+            FloatError::DecimalFloat(_)
+            | FloatError::DecimalFloatSelector(_)
+            | FloatError::Revert(_) => {}
+            _ => panic!("Unexpected error type: {err:?}"),
+        }
     }
 }
