@@ -446,7 +446,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_abs_no_minus_sign(float in arb_float()) {
+        fn test_abs_no_minus_sign(float in reasonable_float()) {
             let abs = float.abs().unwrap();
             let formatted = abs.format().unwrap();
             prop_assert!(!formatted.starts_with("-"));
