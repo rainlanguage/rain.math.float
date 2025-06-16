@@ -296,6 +296,7 @@ impl Div for Float {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::str::FromStr;
     use proptest::prelude::*;
 
     prop_compose! {
@@ -374,6 +375,39 @@ mod tests {
             let parsed = Float::parse(formatted.clone()).unwrap();
             prop_assert_eq!(float.0, parsed.0);
         }
+    }
+
+    #[test]
+    fn test_add_exponent_overflow_error() {
+        let max_coeff_str = "13479973333575319897333507543509815336818572211270286240551805124607";
+        let large_coeff_i224 = I224::from_str(max_coeff_str).unwrap();
+        let exponent_max = i32::MAX;
+
+        let a = Float::pack_lossless(large_coeff_i224, exponent_max).unwrap();
+
+        let err = (a + a).unwrap_err();
+
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
+        ));
+    }
+
+    #[test]
+    fn test_sub_exponent_overflow_error() {
+        let max_coeff_str = "13479973333575319897333507543509815336818572211270286240551805124607";
+        let large_coeff_i224 = I224::from_str(max_coeff_str).unwrap();
+        let exponent_max = i32::MAX;
+
+        let a = Float::pack_lossless(large_coeff_i224, exponent_max).unwrap();
+        let b = Float::pack_lossless(-large_coeff_i224, exponent_max).unwrap();
+
+        let err = (b - a).unwrap_err();
+
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
+        ));
     }
 
     proptest! {
