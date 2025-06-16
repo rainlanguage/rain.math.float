@@ -519,12 +519,43 @@ mod tests {
         let one = Float::parse("1".to_string()).unwrap();
         let zero = Float::parse("0".to_string()).unwrap();
         let err = (one / zero).unwrap_err();
-        // Division by zero should revert or return a DecimalFloat error/selector.
-        match err {
-            FloatError::DecimalFloat(_)
-            | FloatError::DecimalFloatSelector(_)
-            | FloatError::Revert(_) => {}
-            _ => panic!("Unexpected error type: {err:?}"),
-        }
+
+        assert!(matches!(err, FloatError::Revert(_)));
+    }
+
+    #[test]
+    fn test_mul_exponent_overflow_error() {
+        let near_max_exp = Float::parse("1e2147483646".to_string()).unwrap();
+        let one_e_two = Float::parse("1e2".to_string()).unwrap();
+
+        let err = (near_max_exp * one_e_two).unwrap_err();
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
+        ));
+    }
+
+    #[test]
+    fn test_div_exponent_overflow_error() {
+        let near_max_exp = Float::parse("1e2147483646".to_string()).unwrap();
+        let one_e_neg_hundred = Float::parse("1e-100".to_string()).unwrap();
+
+        let err = (near_max_exp / one_e_neg_hundred).unwrap_err();
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
+        ));
+    }
+
+    #[test]
+    fn test_mul_exponent_underflow_error() {
+        let near_min_exp = Float::parse("1e-2147483646".to_string()).unwrap();
+        let one_e_neg_three = Float::parse("1e-3".to_string()).unwrap();
+
+        let err = (near_min_exp * one_e_neg_three).unwrap_err();
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
+        ));
     }
 }
