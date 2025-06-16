@@ -12,7 +12,7 @@ use revm::interpreter::interpreter::EthInterpreter;
 use revm::primitives::{address, fixed_bytes};
 use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
 use std::cell::RefCell;
-use std::ops::{Add, Sub};
+use std::ops::{Add, Div, Mul, Sub};
 use std::thread::AccessError;
 use thiserror::Error;
 
@@ -262,6 +262,36 @@ impl Sub for Float {
     }
 }
 
+impl Mul for Float {
+    type Output = Result<Self, FloatError>;
+
+    fn mul(self, b: Self) -> Self::Output {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::mulCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::mulCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+}
+
+impl Div for Float {
+    type Output = Result<Self, FloatError>;
+
+    fn div(self, b: Self) -> Self::Output {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::divCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::divCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -414,5 +444,57 @@ mod tests {
             prop_assert!(!(eq && gt), "both equal and greater than: a: {a_str}, b: {b_str}");
             prop_assert!(!(lt && gt), "both less than and greater than: a: {a_str}, b: {b_str}");
         }
+    }
+
+    proptest! {
+        #[test]
+        fn test_mul(a in reasonable_float(), b in reasonable_float()) {
+            (a * b).unwrap();
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_div(a in reasonable_float(), b in reasonable_float()) {
+            let zero = Float::parse("0".to_string()).unwrap();
+            prop_assume!(!b.eq(zero).unwrap());
+
+            (a / b).unwrap();
+        }
+    }
+
+    prop_compose! {
+        fn small_int_float()(int_part in -1_000_000_000_000i128..1_000_000_000_000i128) -> Float {
+            Float::parse(int_part.to_string()).unwrap()
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_mul_div_int(a in small_int_float(), b in small_int_float()) {
+            let zero = Float::parse("0".to_string()).unwrap();
+            prop_assume!(!b.eq(zero).unwrap());
+
+            let product = (a * b).unwrap();
+            let quotient = (product / b).unwrap();
+
+            prop_assert!(
+                a.eq(quotient).unwrap(),
+                "a: {}, quotient: {}, b: {}",
+                a.show_unpacked().unwrap(),
+                quotient.show_unpacked().unwrap(),
+                b.show_unpacked().unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn test_mul_div_manual() {
+        let two = Float::parse("2".to_string()).unwrap();
+        let three = Float::parse("3".to_string()).unwrap();
+        let six = Float::parse("6".to_string()).unwrap();
+
+        assert!(two.eq((six / three).unwrap()).unwrap());
+        assert!(six.eq((two * three).unwrap()).unwrap());
     }
 }
