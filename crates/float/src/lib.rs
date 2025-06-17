@@ -11,6 +11,7 @@ use revm::handler::instructions::EthInstructions;
 use revm::interpreter::interpreter::EthInterpreter;
 use revm::primitives::{U256, address, fixed_bytes};
 use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
+use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 use std::ops::{Add, Div, Mul, Sub};
 use std::thread::AccessError;
@@ -131,7 +132,7 @@ where
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Float(B256);
 
 impl From<Float> for B256 {
@@ -316,6 +317,7 @@ mod tests {
     use super::*;
     use core::str::FromStr;
     use proptest::prelude::*;
+    use serde_json::json;
 
     prop_compose! {
         fn arb_float()(
@@ -338,6 +340,29 @@ mod tests {
             };
 
             Float::parse(num_str).unwrap()
+        }
+    }
+
+    #[test]
+    fn test_serde() {
+        let float = Float::parse("1.1341234234625468391".to_string()).unwrap();
+        let serialized = serde_json::to_string(&float).unwrap();
+        assert_eq!(
+            serialized,
+            json!("0xffffffed00000000000000000000000000000000000000009d642872ad59a7e7").to_string()
+        );
+        let deserialized: Float = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(float, deserialized);
+    }
+
+    proptest! {
+        #[test]
+        fn proptest_serde(float in arb_float()) {
+            let serialized = serde_json::to_string(&float).unwrap();
+            let deserialized: Float = serde_json::from_str(&serialized).unwrap();
+            prop_assert!(float.eq(deserialized).unwrap());
+            let re_serialized = serde_json::to_string(&deserialized).unwrap();
+            prop_assert_eq!(serialized, re_serialized);
         }
     }
 
