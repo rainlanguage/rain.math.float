@@ -9,7 +9,7 @@ use revm::database::InMemoryDB;
 use revm::handler::EthPrecompiles;
 use revm::handler::instructions::EthInstructions;
 use revm::interpreter::interpreter::EthInterpreter;
-use revm::primitives::{address, fixed_bytes};
+use revm::primitives::{U256, address, fixed_bytes};
 use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
 use std::cell::RefCell;
 use std::ops::{Add, Div, Mul, Sub};
@@ -135,6 +135,18 @@ where
 pub struct Float(FixedBytes<32>);
 
 impl Float {
+    pub fn from_fixed_decimal(value: U256, decimals: u8) -> Result<Self, FloatError> {
+        let calldata =
+            DecimalFloat::fromFixedDecimalLosslessPackedCall { value, decimals }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::fromFixedDecimalLosslessPackedCall::abi_decode_returns(
+                output.as_ref(),
+            )?;
+            Ok(Float(decoded))
+        })
+    }
+
     #[cfg(test)]
     fn pack_lossless(coefficient: I224, exponent: i32) -> Result<Self, FloatError> {
         let calldata = DecimalFloat::packLosslessCall {
@@ -591,5 +603,46 @@ mod tests {
             err,
             FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
         ));
+    }
+
+    #[test]
+    fn test_from_fixed_decimal() {
+        let cases = vec![
+            (U256::from(0u128), 0u8, "0"),
+            (U256::from(0u128), 18u8, "0"),
+            (U256::from(1u128), 18u8, "1e-18"),
+            (U256::from(123456789u128), 0u8, "123456789"),
+            (U256::from(123456789u128), 2u8, "123456789e-2"),
+            (U256::from(1000000000000000000u128), 18u8, "1"),
+        ];
+
+        for (amount, decimals, expected) in cases {
+            let float = Float::from_fixed_decimal(amount, decimals).expect("should convert");
+            let expected = Float::parse(expected.to_string()).unwrap();
+            assert!(float.eq(expected).unwrap());
+        }
+    }
+
+    #[test]
+    fn test_from_fixed_decimal_err() {
+        let err = Float::from_fixed_decimal(U256::MAX, 1).unwrap_err();
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloat(DecimalFloatErrors::LossyConversionToFloat(_))
+        ));
+    }
+
+    proptest! {
+        #[test]
+        fn test_from_fixed_decimal_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
+            prop_assume!(coeff >= I224::ZERO);
+
+            let exponent = -(decimals as i32);
+            let value = U256::from(coeff);
+
+            let float = Float::from_fixed_decimal(value, decimals).unwrap();
+            let expected = Float::pack_lossless(coeff, exponent).unwrap();
+            prop_assert!(float.eq(expected).unwrap());
+        }
     }
 }
