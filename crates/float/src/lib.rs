@@ -1,6 +1,6 @@
 #[cfg(test)]
 use alloy::primitives::aliases::I224;
-use alloy::primitives::{Address, Bytes, FixedBytes};
+use alloy::primitives::{Address, B256, Bytes, FixedBytes};
 use alloy::sol_types::{SolError, SolInterface};
 use alloy::{sol, sol_types::SolCall};
 use revm::context::result::{EVMError, ExecutionResult, HaltReason, Output, SuccessReason};
@@ -132,7 +132,13 @@ where
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub struct Float(FixedBytes<32>);
+pub struct Float(B256);
+
+impl From<Float> for B256 {
+    fn from(float: Float) -> Self {
+        float.0
+    }
+}
 
 impl Float {
     pub fn from_fixed_decimal(value: U256, decimals: u8) -> Result<Self, FloatError> {
