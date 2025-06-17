@@ -135,7 +135,6 @@ where
 pub struct Float(FixedBytes<32>);
 
 impl Float {
-    #[allow(dead_code)] // will be used in future tests
     #[cfg(test)]
     fn pack_lossless(coefficient: I224, exponent: i32) -> Result<Self, FloatError> {
         let calldata = DecimalFloat::packLosslessCall {
@@ -148,6 +147,27 @@ impl Float {
             let decoded = DecimalFloat::packLosslessCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
+    }
+
+    #[cfg(test)]
+    fn unpack(self) -> Result<(I224, i32), FloatError> {
+        let Float(float) = self;
+        let calldata = DecimalFloat::unpackCall { float }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let DecimalFloat::unpackReturn {
+                _0: coefficient,
+                _1: exponent,
+            } = DecimalFloat::unpackCall::abi_decode_returns(output.as_ref())?;
+
+            Ok((coefficient, exponent))
+        })
+    }
+
+    #[cfg(test)]
+    fn show_unpacked(self) -> Result<String, FloatError> {
+        let (coefficient, exponent) = self.unpack()?;
+        Ok(format!("{coefficient}e{exponent}"))
     }
 
     pub fn parse(str: String) -> Result<Self, FloatError> {
@@ -174,6 +194,39 @@ impl Float {
 
         execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn lt(self, b: Self) -> Result<bool, FloatError> {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::ltCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::ltCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn eq(self, b: Self) -> Result<bool, FloatError> {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::eqCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::eqCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    pub fn gt(self, b: Self) -> Result<bool, FloatError> {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::gtCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::gtCall::abi_decode_returns(output.as_ref())?;
             Ok(decoded)
         })
     }
@@ -303,6 +356,63 @@ mod tests {
                 a.format().unwrap(),
                 b.format().unwrap(),
             );
+        }
+    }
+
+    #[test]
+    fn test_lt_eq_gt() {
+        let negone = Float::parse("-1".to_string()).unwrap();
+        let zero = Float::parse("0".to_string()).unwrap();
+        let three = Float::parse("3".to_string()).unwrap();
+
+        assert!(negone.lt(zero).unwrap());
+        assert!(!negone.eq(zero).unwrap());
+        assert!(!negone.gt(zero).unwrap());
+
+        assert!(!three.lt(zero).unwrap());
+        assert!(!three.eq(zero).unwrap());
+        assert!(three.gt(zero).unwrap());
+
+        assert!(zero.lt(three).unwrap());
+        assert!(!zero.eq(three).unwrap());
+        assert!(!zero.gt(three).unwrap());
+    }
+
+    proptest! {
+        #[test]
+        fn test_lt_eq_gt_with_add(a in reasonable_float()) {
+            let b = a;
+            let eq = a.eq(b).unwrap();
+            prop_assert!(eq);
+
+            let one = Float::parse("1".to_string()).unwrap();
+
+            let a = (a - one).unwrap();
+            let lt = a.lt(b).unwrap();
+            prop_assert!(lt);
+
+            let a = (a + one).unwrap();
+            let eq = a.eq(b).unwrap();
+            prop_assert!(eq);
+
+            let a = (a + one).unwrap();
+            let gt = a.gt(b).unwrap();
+            prop_assert!(gt);
+        }
+
+        #[test]
+        fn test_exactly_one_lt_eq_gt(a in arb_float(), b in arb_float()) {
+            let eq = a.eq(b).unwrap();
+            let lt = a.lt(b).unwrap();
+            let gt = a.gt(b).unwrap();
+
+            let a_str = a.show_unpacked().unwrap();
+            let b_str = b.show_unpacked().unwrap();
+
+            prop_assert!(lt || eq || gt, "a: {a_str}, b: {b_str}");
+            prop_assert!(!(lt && eq), "both less than and equal: a: {a_str}, b: {b_str}");
+            prop_assert!(!(eq && gt), "both equal and greater than: a: {a_str}, b: {b_str}");
+            prop_assert!(!(lt && gt), "both less than and greater than: a: {a_str}, b: {b_str}");
         }
     }
 }

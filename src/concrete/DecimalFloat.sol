@@ -171,4 +171,13 @@ contract DecimalFloat {
     function packLossless(int224 coefficient, int32 exponent) external pure returns (Float) {
         return LibDecimalFloat.packLossless(coefficient, exponent);
     }
+
+    /// Exposes `LibDecimalFloat.unpack` for offchain use.
+    /// @param float The float to unpack.
+    /// @return coefficient The coefficient of the float.
+    /// @return exponent The exponent of the float.
+    function unpack(Float float) external pure returns (int224, int32) {
+        (int256 coefficient, int256 exponent) = LibDecimalFloat.unpack(float);
+        return (int224(coefficient), int32(exponent));
+    }
 }
