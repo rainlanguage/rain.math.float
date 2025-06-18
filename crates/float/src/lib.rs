@@ -585,6 +585,9 @@ mod tests {
     proptest! {
         #[test]
         fn test_inv_prod(float in reasonable_float()) {
+            let zero = Float::parse("0".to_string()).unwrap();
+            prop_assume!(!float.eq(zero).unwrap());
+
             let inv = float.inv().unwrap();
             let product = (float * inv).unwrap();
             let one = Float::parse("1".to_string()).unwrap();
