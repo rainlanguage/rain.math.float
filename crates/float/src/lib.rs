@@ -132,14 +132,8 @@ where
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Float(B256);
-
-impl From<Float> for B256 {
-    fn from(float: Float) -> Self {
-        float.0
-    }
-}
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+pub struct Float(pub B256);
 
 impl Float {
     pub fn from_fixed_decimal(value: U256, decimals: u8) -> Result<Self, FloatError> {
