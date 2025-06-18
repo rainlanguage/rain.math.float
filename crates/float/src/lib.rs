@@ -12,7 +12,7 @@ use revm::interpreter::interpreter::EthInterpreter;
 use revm::primitives::{address, fixed_bytes};
 use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
 use std::cell::RefCell;
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{Add, Div, Mul, Neg, Sub};
 use std::thread::AccessError;
 use thiserror::Error;
 
@@ -232,16 +232,6 @@ impl Float {
         })
     }
 
-    pub fn minus(self) -> Result<Self, FloatError> {
-        let Float(a) = self;
-        let calldata = DecimalFloat::minusCall { a }.abi_encode();
-
-        execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::minusCall::abi_decode_returns(output.as_ref())?;
-            Ok(Float(decoded))
-        })
-    }
-
     pub fn inv(self) -> Result<Self, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::invCall { a }.abi_encode();
@@ -318,6 +308,20 @@ impl Div for Float {
 
         execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::divCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+}
+
+impl Neg for Float {
+    type Output = Result<Self, FloatError>;
+
+    fn neg(self) -> Self::Output {
+        let Float(a) = self;
+        let calldata = DecimalFloat::minusCall { a }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::minusCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
     }
@@ -554,17 +558,17 @@ mod tests {
     #[test]
     fn test_minus_format() {
         let float = Float::parse("-123.1234234625468391".to_string()).unwrap();
-        let negated = float.minus().unwrap();
+        let negated = float.neg().unwrap();
         let formatted = negated.format().unwrap();
         assert_eq!(formatted, "123.1234234625468391");
 
         let float = Float::parse(formatted).unwrap();
-        let negated = float.minus().unwrap();
+        let negated = float.neg().unwrap();
         let formatted = negated.format().unwrap();
         assert_eq!(formatted, "-123.1234234625468391");
 
         let float = Float::parse("0".to_string()).unwrap();
-        let negated = float.minus().unwrap();
+        let negated = float.neg().unwrap();
         let formatted = negated.format().unwrap();
         assert_eq!(formatted, "0");
     }
@@ -572,8 +576,8 @@ mod tests {
     proptest! {
         #[test]
         fn test_minus_minus(float in arb_float()) {
-            let negated = float.minus().unwrap();
-            let renegated = negated.minus().unwrap();
+            let negated = float.neg().unwrap();
+            let renegated = negated.neg().unwrap();
             prop_assert!(float.eq(renegated).unwrap());
         }
     }
