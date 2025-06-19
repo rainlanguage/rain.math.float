@@ -232,16 +232,6 @@ impl Float {
         })
     }
 
-    pub fn minus(self) -> Result<Self, FloatError> {
-        let Float(a) = self;
-        let calldata = DecimalFloat::minusCall { a }.abi_encode();
-
-        execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::minusCall::abi_decode_returns(output.as_ref())?;
-            Ok(Float(decoded))
-        })
-    }
-
     pub fn inv(self) -> Result<Self, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::invCall { a }.abi_encode();
@@ -817,7 +807,7 @@ mod tests {
             );
 
             let one = Float::parse("1".to_string()).unwrap();
-            let neg_one = one.minus().unwrap();
+            let neg_one = one.neg().unwrap();
             prop_assert!(
                 frac.lt(one).unwrap(),
                 "frac not < 1: {}",
