@@ -1,4 +1,3 @@
-#[cfg(test)]
 use alloy::primitives::aliases::I224;
 use alloy::primitives::{Address, B256, Bytes, FixedBytes};
 use alloy::sol_types::{SolError, SolInterface};
@@ -148,8 +147,7 @@ impl Float {
         })
     }
 
-    #[cfg(test)]
-    fn pack_lossless(coefficient: I224, exponent: i32) -> Result<Self, FloatError> {
+    pub fn pack_lossless(coefficient: I224, exponent: i32) -> Result<Self, FloatError> {
         let calldata = DecimalFloat::packLosslessCall {
             coefficient,
             exponent,
@@ -346,7 +344,7 @@ mod tests {
             json!("0xffffffed00000000000000000000000000000000000000009d642872ad59a7e7").to_string()
         );
         let deserialized: Float = serde_json::from_str(&serialized).unwrap();
-        assert_eq!(float, deserialized);
+        assert!(float.eq(deserialized).unwrap());
     }
 
     proptest! {
