@@ -313,6 +313,28 @@ impl Div for Float {
     }
 }
 
+impl Float {
+    pub fn frac(self) -> Result<Float, FloatError> {
+        let Float(a) = self;
+        let calldata = DecimalFloat::fracCall { a }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::fracCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    pub fn floor(self) -> Result<Float, FloatError> {
+        let Float(a) = self;
+        let calldata = DecimalFloat::floorCall { a }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::floorCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+}
+
 impl Neg for Float {
     type Output = Result<Self, FloatError>;
 
@@ -717,5 +739,85 @@ mod tests {
             err,
             FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
         ));
+    }
+
+    #[test]
+    fn test_frac_and_floor_integers() {
+        let int_float = Float::parse("12345".to_string()).unwrap();
+        let floor = int_float.floor().unwrap();
+        let frac = int_float.frac().unwrap();
+        let zero = Float::parse("0".to_string()).unwrap();
+
+        assert!(int_float.eq(floor).unwrap());
+        assert!(frac.eq(zero).unwrap());
+
+        let int_float = Float::parse("-98765".to_string()).unwrap();
+        let floor = int_float.floor().unwrap();
+        let frac = int_float.frac().unwrap();
+        let zero = Float::parse("0".to_string()).unwrap();
+
+        assert!(int_float.eq(floor).unwrap());
+        assert!(frac.eq(zero).unwrap());
+
+        let recombined = (floor + frac).unwrap();
+        assert!(int_float.eq(recombined).unwrap());
+    }
+
+    #[test]
+    fn test_frac_and_floor_floats() {
+        let float = Float::parse("12345.6789".to_string()).unwrap();
+        let floor = float.floor().unwrap();
+        let frac = float.frac().unwrap();
+
+        let expected_floor = Float::parse("12345".to_string()).unwrap();
+        let expected_frac = Float::parse("0.6789".to_string()).unwrap();
+
+        assert!(floor.eq(expected_floor).unwrap());
+        assert!(frac.eq(expected_frac).unwrap());
+    }
+
+    proptest! {
+        #[test]
+        fn test_frac_floor_properties(float in arb_float()) {
+            let floor = float.floor().unwrap();
+            let frac = float.frac().unwrap();
+
+            let zero = Float::parse("0".to_string()).unwrap();
+
+            prop_assert!(
+                floor.frac().unwrap().eq(zero).unwrap(),
+                "floor.frac() is not zero: {}",
+                floor.show_unpacked().unwrap()
+            );
+
+            prop_assert!(
+                frac.floor().unwrap().eq(zero).unwrap(),
+                "frac.floor() is not zero: {}",
+                frac.show_unpacked().unwrap()
+            );
+
+            let recombined = (floor + frac).unwrap();
+            prop_assert!(
+                float.eq(recombined).unwrap(),
+                "original: {}, floor: {}, frac: {}, recombined: {}",
+                float.show_unpacked().unwrap(),
+                floor.show_unpacked().unwrap(),
+                frac.show_unpacked().unwrap(),
+                recombined.show_unpacked().unwrap()
+            );
+
+            let one = Float::parse("1".to_string()).unwrap();
+            let neg_one = one.neg().unwrap();
+            prop_assert!(
+                frac.lt(one).unwrap(),
+                "frac not < 1: {}",
+                frac.show_unpacked().unwrap()
+            );
+            prop_assert!(
+                frac.gt(neg_one).unwrap(),
+                "frac not > -1: {}",
+                frac.show_unpacked().unwrap()
+            );
+        }
     }
 }
