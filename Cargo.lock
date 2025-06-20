@@ -3168,6 +3168,8 @@ dependencies = [
  "getrandom 0.2.16",
  "proptest",
  "revm",
+ "serde",
+ "serde_json",
  "thiserror",
 ]
 

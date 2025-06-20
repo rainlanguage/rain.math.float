@@ -180,4 +180,15 @@ contract DecimalFloat {
         (int256 coefficient, int256 exponent) = LibDecimalFloat.unpack(float);
         return (int224(coefficient), int32(exponent));
     }
+
+    /// Exposes `LibDecimalFloat.fromFixedDecimalLosslessPacked` for offchain
+    /// use.
+    /// @param value The fixed point decimal value to convert.
+    /// @param decimals The number of decimals in the fixed point
+    /// representation. e.g. If 1e18 represents 1 this would be 18 decimals.
+    /// @return float The Float struct containing the signed coefficient and
+    /// exponent.
+    function fromFixedDecimalLosslessPacked(uint256 value, uint8 decimals) external pure returns (Float) {
+        return LibDecimalFloat.fromFixedDecimalLosslessPacked(value, decimals);
+    }
 }

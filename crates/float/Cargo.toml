@@ -8,6 +8,7 @@ homepage.workspace = true
 [dependencies]
 alloy.workspace = true
 thiserror.workspace = true
+serde.workspace = true
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 revm = { workspace = true, default-features = false, features = [
@@ -29,3 +30,4 @@ getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
 [dev-dependencies]
 alloy = { workspace = true, features = ["sol-types", "json-rpc", "arbitrary"] }
 proptest.workspace = true
+serde_json = "1.0.140"
