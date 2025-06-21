@@ -131,7 +131,7 @@ where
     }
 }
 
-#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
 pub struct Float(pub B256);
 
 impl Float {
@@ -344,6 +344,12 @@ mod tests {
     use core::str::FromStr;
     use proptest::prelude::*;
     use serde_json::json;
+
+    #[test]
+    fn test_default() {
+        let zero = Float::parse("0".to_string()).unwrap();
+        assert!(zero.eq(Float::default()).unwrap());
+    }
 
     prop_compose! {
         fn arb_float()(
