@@ -344,6 +344,38 @@ impl Float {
             Ok(Float(decoded))
         })
     }
+
+    pub fn min(self, b: Self) -> Result<Self, FloatError> {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::minCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::minCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    pub fn max(self, b: Self) -> Result<Self, FloatError> {
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::maxCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::maxCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    pub fn is_zero(self) -> Result<bool, FloatError> {
+        let Float(a) = self;
+        let calldata = DecimalFloat::isZeroCall { a }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::isZeroCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
 }
 
 impl Neg for Float {
@@ -899,6 +931,104 @@ mod tests {
                 frac.gt(neg_one).unwrap(),
                 "frac not > -1: {}",
                 frac.show_unpacked().unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn test_min_max_manual() {
+        let negone = Float::parse("-1".to_string()).unwrap();
+        let zero = Float::parse("0".to_string()).unwrap();
+        let three = Float::parse("3".to_string()).unwrap();
+        let seven = Float::parse("7".to_string()).unwrap();
+
+        // --- min ---
+        assert!(negone.eq(negone.min(zero).unwrap()).unwrap());
+        assert!(negone.eq(negone.min(three).unwrap()).unwrap());
+        assert!(zero.eq(zero.min(three).unwrap()).unwrap());
+        // min with identical arguments should return that argument
+        assert!(seven.eq(seven.min(seven).unwrap()).unwrap());
+
+        // --- max ---
+        assert!(zero.eq(negone.max(zero).unwrap()).unwrap());
+        assert!(three.eq(negone.max(three).unwrap()).unwrap());
+        assert!(three.eq(zero.max(three).unwrap()).unwrap());
+        // max with identical arguments should return that argument
+        assert!(seven.eq(seven.max(seven).unwrap()).unwrap());
+    }
+
+    #[test]
+    fn test_is_zero_manual() {
+        let zero = Float::parse("0".to_string()).unwrap();
+        assert!(zero.is_zero().unwrap());
+
+        // Alternative zero representations that should also be considered zero.
+        let neg_zero = Float::parse("-0".to_string()).unwrap();
+        assert!(neg_zero.is_zero().unwrap());
+        let zero_point = Float::parse("0.0".to_string()).unwrap();
+        assert!(zero_point.is_zero().unwrap());
+
+        let one = Float::parse("1".to_string()).unwrap();
+        assert!(!one.is_zero().unwrap());
+    }
+
+    proptest! {
+        #[test]
+        fn test_min_max_properties(a in reasonable_float(), b in reasonable_float()) {
+            let min = a.min(b).unwrap();
+            let max = a.max(b).unwrap();
+
+            prop_assert!(
+                !min.gt(a).unwrap(),
+                "min > a: min={}, a={}",
+                min.show_unpacked().unwrap(),
+                a.show_unpacked().unwrap()
+            );
+            prop_assert!(
+                !min.gt(b).unwrap(),
+                "min > b: min={}, b={}",
+                min.show_unpacked().unwrap(),
+                b.show_unpacked().unwrap()
+            );
+
+            prop_assert!(
+                !max.lt(a).unwrap(),
+                "max < a: max={}, a={}",
+                max.show_unpacked().unwrap(),
+                a.show_unpacked().unwrap()
+            );
+            prop_assert!(
+                !max.lt(b).unwrap(),
+                "max < b: max={}, b={}",
+                max.show_unpacked().unwrap(),
+                b.show_unpacked().unwrap()
+            );
+
+            let min_is_a = min.eq(a).unwrap();
+            let min_is_b = min.eq(b).unwrap();
+            prop_assert!(
+                min_is_a || min_is_b,
+                "min is not equal to either operand: a={}, b={}, min={}",
+                a.show_unpacked().unwrap(),
+                b.show_unpacked().unwrap(),
+                min.show_unpacked().unwrap()
+            );
+
+            let max_is_a = max.eq(a).unwrap();
+            let max_is_b = max.eq(b).unwrap();
+            prop_assert!(
+                max_is_a || max_is_b,
+                "max is not equal to either operand: a={}, b={}, max={}",
+                a.show_unpacked().unwrap(),
+                b.show_unpacked().unwrap(),
+                max.show_unpacked().unwrap()
+            );
+
+            prop_assert!(
+                !min.gt(max).unwrap(),
+                "min > max: min={}, max={}",
+                min.show_unpacked().unwrap(),
+                max.show_unpacked().unwrap()
             );
         }
     }
