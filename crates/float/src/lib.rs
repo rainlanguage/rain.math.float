@@ -135,6 +135,17 @@ where
 pub struct Float(pub B256);
 
 impl Float {
+    /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The fixed-point decimal value as a `U256`.
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The resulting `Float` value.
+    /// * `Err(FloatError)` - If the conversion fails.
     pub fn from_fixed_decimal(value: U256, decimals: u8) -> Result<Self, FloatError> {
         let calldata =
             DecimalFloat::fromFixedDecimalLosslessPackedCall { value, decimals }.abi_encode();
@@ -147,6 +158,17 @@ impl Float {
         })
     }
 
+    /// Packs a coefficient and exponent into a `Float` in a lossless manner.
+    ///
+    /// # Arguments
+    ///
+    /// * `coefficient` - The coefficient as an `I224`.
+    /// * `exponent` - The exponent as an `i32`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The packed float.
+    /// * `Err(FloatError)` - If the packing fails (e.g., overflow).
     pub fn pack_lossless(coefficient: I224, exponent: i32) -> Result<Self, FloatError> {
         let calldata = DecimalFloat::packLosslessCall {
             coefficient,
@@ -160,6 +182,12 @@ impl Float {
         })
     }
 
+    /// Unpacks a `Float` into its coefficient and exponent.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok((I224, i32))` - The unpacked coefficient and exponent.
+    /// * `Err(FloatError)` - If the unpacking fails.
     #[cfg(test)]
     fn unpack(self) -> Result<(I224, i32), FloatError> {
         let Float(float) = self;
@@ -175,12 +203,28 @@ impl Float {
         })
     }
 
+    /// Returns a string representation of the unpacked float in scientific notation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The string representation, e.g., "123e4".
+    /// * `Err(FloatError)` - If unpacking fails.
     #[cfg(test)]
     fn show_unpacked(self) -> Result<String, FloatError> {
         let (coefficient, exponent) = self.unpack()?;
         Ok(format!("{coefficient}e{exponent}"))
     }
 
+    /// Parses a decimal string into a `Float`.
+    ///
+    /// # Arguments
+    ///
+    /// * `str` - The string to parse.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The parsed float.
+    /// * `Err(FloatError)` - If parsing fails.
     pub fn parse(str: String) -> Result<Self, FloatError> {
         let calldata = DecimalFloat::parseCall { str }.abi_encode();
 
@@ -199,7 +243,14 @@ impl Float {
         })
     }
 
-    // NOTE: LibFormatDecimalFloat.toDecimalString currently uses 18 decimal places
+    /// Formats the float as a decimal string.
+    ///
+    /// NOTE: Uses 18 decimal places.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The formatted string.
+    /// * `Err(FloatError)` - If formatting fails.
     pub fn format(self) -> Result<String, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::formatCall { a }.abi_encode();
@@ -210,6 +261,7 @@ impl Float {
         })
     }
 
+    /// Returns `true` if `self` is less than `b`.
     pub fn lt(self, b: Self) -> Result<bool, FloatError> {
         let Float(a) = self;
         let Float(b) = b;
@@ -221,6 +273,7 @@ impl Float {
         })
     }
 
+    /// Returns `true` if `self` is equal to `b`.
     pub fn eq(self, b: Self) -> Result<bool, FloatError> {
         let Float(a) = self;
         let Float(b) = b;
@@ -232,6 +285,7 @@ impl Float {
         })
     }
 
+    /// Returns `true` if `self` is greater than `b`.
     pub fn gt(self, b: Self) -> Result<bool, FloatError> {
         let Float(a) = self;
         let Float(b) = b;
@@ -243,6 +297,12 @@ impl Float {
         })
     }
 
+    /// Returns the multiplicative inverse of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The inverse.
+    /// * `Err(FloatError)` - If inversion fails.
     pub fn inv(self) -> Result<Self, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::invCall { a }.abi_encode();
@@ -253,6 +313,12 @@ impl Float {
         })
     }
 
+    /// Returns the absolute value of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The absolute value.
+    /// * `Err(FloatError)` - If the operation fails.
     pub fn abs(self) -> Result<Float, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::absCall { a }.abi_encode();
@@ -267,6 +333,12 @@ impl Float {
 impl Add for Float {
     type Output = Result<Self, FloatError>;
 
+    /// Adds two floats.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The sum.
+    /// * `Err(FloatError)` - If addition fails.
     fn add(self, b: Self) -> Self::Output {
         let Float(a) = self;
         let Float(b) = b;
@@ -282,6 +354,12 @@ impl Add for Float {
 impl Sub for Float {
     type Output = Result<Self, FloatError>;
 
+    /// Subtracts `b` from `self`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The difference.
+    /// * `Err(FloatError)` - If subtraction fails.
     fn sub(self, b: Self) -> Self::Output {
         let Float(a) = self;
         let Float(b) = b;
@@ -297,6 +375,12 @@ impl Sub for Float {
 impl Mul for Float {
     type Output = Result<Self, FloatError>;
 
+    /// Multiplies two floats.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The product.
+    /// * `Err(FloatError)` - If multiplication fails.
     fn mul(self, b: Self) -> Self::Output {
         let Float(a) = self;
         let Float(b) = b;
@@ -312,6 +396,12 @@ impl Mul for Float {
 impl Div for Float {
     type Output = Result<Self, FloatError>;
 
+    /// Divides `self` by `b`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The quotient.
+    /// * `Err(FloatError)` - If division fails.
     fn div(self, b: Self) -> Self::Output {
         let Float(a) = self;
         let Float(b) = b;
@@ -325,6 +415,12 @@ impl Div for Float {
 }
 
 impl Float {
+    /// Returns the fractional part of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The fractional part.
+    /// * `Err(FloatError)` - If the operation fails.
     pub fn frac(self) -> Result<Float, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::fracCall { a }.abi_encode();
@@ -335,6 +431,12 @@ impl Float {
         })
     }
 
+    /// Returns the floor of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The floored value.
+    /// * `Err(FloatError)` - If the operation fails.
     pub fn floor(self) -> Result<Float, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::floorCall { a }.abi_encode();
@@ -381,6 +483,12 @@ impl Float {
 impl Neg for Float {
     type Output = Result<Self, FloatError>;
 
+    /// Returns the negation of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The negated value.
+    /// * `Err(FloatError)` - If the operation fails.
     fn neg(self) -> Self::Output {
         let Float(a) = self;
         let calldata = DecimalFloat::minusCall { a }.abi_encode();
@@ -403,6 +511,9 @@ mod tests {
     fn test_default() {
         let zero = Float::parse("0".to_string()).unwrap();
         assert!(zero.eq(Float::default()).unwrap());
+
+        let val = Float::parse("500".to_string()).unwrap();
+        panic!("{val:?}");
     }
 
     prop_compose! {
