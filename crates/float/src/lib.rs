@@ -1,20 +1,16 @@
 use alloy::primitives::aliases::I224;
-use alloy::primitives::{Address, B256, Bytes, FixedBytes};
-use alloy::sol_types::{SolError, SolInterface};
+use alloy::primitives::{B256, Bytes};
 use alloy::{sol, sol_types::SolCall};
-use revm::context::result::{EVMError, ExecutionResult, HaltReason, Output, SuccessReason};
-use revm::context::{BlockEnv, CfgEnv, Evm, TxEnv};
-use revm::database::InMemoryDB;
-use revm::handler::EthPrecompiles;
-use revm::handler::instructions::EthInstructions;
-use revm::interpreter::interpreter::EthInterpreter;
-use revm::primitives::{U256, address, fixed_bytes};
-use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
+use revm::primitives::{U256, fixed_bytes};
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use std::thread::AccessError;
-use thiserror::Error;
+
+pub mod error;
+mod evm;
+
+use error::DecimalFloatErrorSelector;
+pub use error::FloatError;
+use evm::execute_call;
 
 sol!(
     #![sol(all_derives)]
@@ -22,119 +18,36 @@ sol!(
     "../../out/DecimalFloat.sol/DecimalFloat.json"
 );
 
-type EvmContext = Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>;
-type LocalEvm = Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>;
-
-thread_local! {
-    static LOCAL_EVM: RefCell<LocalEvm> = {
-        let mut db = InMemoryDB::default();
-        let bytecode = revm::state::Bytecode::new_legacy(DecimalFloat::DEPLOYED_BYTECODE.clone());
-        let account_info = revm::state::AccountInfo::default().with_code(bytecode);
-        db.insert_account_info(FLOAT_ADDRESS, account_info);
-
-        let evm = Context::mainnet().with_db(db).build_mainnet();
-        RefCell::new(evm)
-    };
-}
-
-use DecimalFloat::DecimalFloatErrors;
-
-/// Fixed address where the DecimalFloat contract is deployed in the in-memory EVM.
-/// This arbitrary address is used consistently across all Calculator instances.
-const FLOAT_ADDRESS: Address = address!("00000000000000000000000000000000000f10a2");
-
-#[derive(Debug, Error)]
-pub enum FloatError {
-    #[error("EVM error: {0}")]
-    Evm(#[from] EVMError<std::convert::Infallible>),
-    #[error("Float execution reverted with output: {0}")]
-    Revert(Bytes),
-    #[error("Float execution halted with reason: {0:?}")]
-    Halt(HaltReason),
-    #[error("Execution ended for non-return reason. Reason: {0:?}. Output: {1:?}")]
-    UnexpectedSuccess(SuccessReason, Output),
-    #[error(transparent)]
-    AlloySolTypes(#[from] alloy::sol_types::Error),
-    #[error("Decimal Float error: {0:?}")]
-    DecimalFloat(DecimalFloatErrors),
-    #[error("Decimal Float error selector: {0:?}")]
-    DecimalFloatSelector(Result<DecimalFloatErrorSelector, FixedBytes<4>>),
-    #[error(transparent)]
-    Access(#[from] AccessError),
-}
-
-#[derive(Debug)]
-pub enum DecimalFloatErrorSelector {
-    CoefficientOverflow,
-    ExponentOverflow,
-    Log10Negative,
-    Log10Zero,
-    LossyConversionFromFloat,
-    NegativeFixedDecimalConversion,
-    WithTargetExponentOverflow,
-}
-
-impl TryFrom<FixedBytes<4>> for DecimalFloatErrorSelector {
-    type Error = FixedBytes<4>;
-
-    fn try_from(error_selector: FixedBytes<4>) -> Result<Self, Self::Error> {
-        let FixedBytes(bytes) = error_selector;
-        match bytes {
-            <DecimalFloat::CoefficientOverflow as SolError>::SELECTOR => {
-                Ok(Self::CoefficientOverflow)
-            }
-            <DecimalFloat::ExponentOverflow as SolError>::SELECTOR => Ok(Self::ExponentOverflow),
-            <DecimalFloat::Log10Negative as SolError>::SELECTOR => Ok(Self::Log10Negative),
-            <DecimalFloat::Log10Zero as SolError>::SELECTOR => Ok(Self::Log10Zero),
-            <DecimalFloat::LossyConversionFromFloat as SolError>::SELECTOR => {
-                Ok(Self::LossyConversionFromFloat)
-            }
-            <DecimalFloat::NegativeFixedDecimalConversion as SolError>::SELECTOR => {
-                Ok(Self::NegativeFixedDecimalConversion)
-            }
-            <DecimalFloat::WithTargetExponentOverflow as SolError>::SELECTOR => {
-                Ok(Self::WithTargetExponentOverflow)
-            }
-            _ => Err(error_selector),
-        }
-    }
-}
-
-fn execute_call<F, T>(calldata: Bytes, process_output: F) -> Result<T, FloatError>
-where
-    F: FnOnce(Bytes) -> Result<T, FloatError>,
-{
-    let result = LOCAL_EVM.try_with(|evm| {
-        let evm = &mut *evm.borrow_mut();
-        let result_and_state = evm.transact_system_call_finalize(FLOAT_ADDRESS, calldata)?;
-
-        Ok::<_, FloatError>(result_and_state.result)
-    })??;
-
-    match result {
-        ExecutionResult::Success {
-            reason: SuccessReason::Return,
-            output: Output::Call(output),
-            ..
-        } => process_output(output),
-        ExecutionResult::Success { reason, output, .. } => {
-            Err(FloatError::UnexpectedSuccess(reason, output))
-        }
-        ExecutionResult::Revert { output, .. } => {
-            if let Ok(error) = DecimalFloat::DecimalFloatErrors::abi_decode(output.as_ref()) {
-                return Err(FloatError::DecimalFloat(error));
-            }
-
-            Err(FloatError::Revert(output))
-        }
-        ExecutionResult::Halt { reason, .. } => Err(FloatError::Halt(reason)),
-    }
-}
-
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
 pub struct Float(pub B256);
 
 impl Float {
+    /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The fixed-point decimal value as a `U256`.
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The resulting `Float` value.
+    /// * `Err(FloatError)` - If the conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    /// use alloy::primitives::U256;
+    ///
+    /// // 123.45 with 2 decimals is represented as 12345
+    /// let value = U256::from(12345u64);
+    /// let decimals = 2u8;
+    /// let float = Float::from_fixed_decimal(value, decimals)?;
+    /// assert_eq!(float.format()?, "123.45");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn from_fixed_decimal(value: U256, decimals: u8) -> Result<Self, FloatError> {
         let calldata =
             DecimalFloat::fromFixedDecimalLosslessPackedCall { value, decimals }.abi_encode();
@@ -147,6 +60,32 @@ impl Float {
         })
     }
 
+    /// Packs a coefficient and exponent into a `Float` in a lossless manner.
+    ///
+    /// # Arguments
+    ///
+    /// * `coefficient` - The coefficient as an `I224`.
+    /// * `exponent` - The exponent as an `i32`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The packed float.
+    /// * `Err(FloatError)` - If the packing fails (e.g., overflow).
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use std::str::FromStr;
+    /// use alloy::primitives::aliases::I224;
+    /// use rain_math_float::{Float, FloatError};
+    ///
+    /// let coefficient = I224::from_str("314")?;
+    /// let exponent = -2;
+    /// let float = Float::pack_lossless(coefficient, exponent)?;
+    /// assert_eq!(float.format()?, "3.14");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn pack_lossless(coefficient: I224, exponent: i32) -> Result<Self, FloatError> {
         let calldata = DecimalFloat::packLosslessCall {
             coefficient,
@@ -181,6 +120,27 @@ impl Float {
         Ok(format!("{coefficient}e{exponent}"))
     }
 
+    /// Parses a decimal string into a `Float`.
+    ///
+    /// # Arguments
+    ///
+    /// * `str` - The string to parse.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The parsed float.
+    /// * `Err(FloatError)` - If parsing fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let float = Float::parse("3.1415".to_string())?;
+    /// assert_eq!(float.format()?, "3.1415");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn parse(str: String) -> Result<Self, FloatError> {
         let calldata = DecimalFloat::parseCall { str }.abi_encode();
 
@@ -199,7 +159,25 @@ impl Float {
         })
     }
 
-    // NOTE: LibFormatDecimalFloat.toDecimalString currently uses 18 decimal places
+    /// Formats the float as a decimal string.
+    ///
+    /// NOTE: Uses 18 decimal places.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The formatted string.
+    /// * `Err(FloatError)` - If formatting fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let float = Float::parse("2.5".to_string())?;
+    /// assert_eq!(float.format()?, "2.5");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn format(self) -> Result<String, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::formatCall { a }.abi_encode();
@@ -210,6 +188,29 @@ impl Float {
         })
     }
 
+    /// Returns `true` if `self` is less than `b`.
+    ///
+    /// # Arguments
+    ///
+    /// * `b` - The `Float` value to compare with `self`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` if `self` is less than `b`.
+    /// * `Ok(false)` if `self` is not less than `b`.
+    /// * `Err(FloatError)` if the comparison fails due to an error in the underlying EVM call or decoding.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("1.0".to_string())?;
+    /// let b = Float::parse("2.0".to_string())?;
+    /// assert!(a.lt(b)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn lt(self, b: Self) -> Result<bool, FloatError> {
         let Float(a) = self;
         let Float(b) = b;
@@ -221,6 +222,29 @@ impl Float {
         })
     }
 
+    /// Returns `true` if `self` is equal to `b`.
+    ///
+    /// # Arguments
+    ///
+    /// * `b` - The `Float` value to compare with `self`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` if `self` is equal to `b`.
+    /// * `Ok(false)` if `self` is not equal to `b`.
+    /// * `Err(FloatError)` if the comparison fails due to an error in the underlying EVM call or decoding.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("3.14".to_string())?;
+    /// let b = Float::parse("3.14".to_string())?;
+    /// assert!(a.eq(b)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn eq(self, b: Self) -> Result<bool, FloatError> {
         let Float(a) = self;
         let Float(b) = b;
@@ -232,6 +256,29 @@ impl Float {
         })
     }
 
+    /// Returns `true` if `self` is greater than `b`.
+    ///
+    /// # Arguments
+    ///
+    /// * `b` - The `Float` value to compare with `self`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` if `self` is greater than `b`.
+    /// * `Ok(false)` if `self` is not greater than `b`.
+    /// * `Err(FloatError)` if the comparison fails due to an error in the underlying EVM call or decoding.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("5.0".to_string())?;
+    /// let b = Float::parse("2.0".to_string())?;
+    /// assert!(a.gt(b)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn gt(self, b: Self) -> Result<bool, FloatError> {
         let Float(a) = self;
         let Float(b) = b;
@@ -243,6 +290,24 @@ impl Float {
         })
     }
 
+    /// Returns the multiplicative inverse of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The inverse.
+    /// * `Err(FloatError)` - If inversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let x = Float::parse("2.0".to_string())?;
+    /// let inv = x.inv()?;
+    /// assert!(inv.format()?.starts_with("0.5"));
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn inv(self) -> Result<Self, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::invCall { a }.abi_encode();
@@ -253,6 +318,24 @@ impl Float {
         })
     }
 
+    /// Returns the absolute value of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The absolute value.
+    /// * `Err(FloatError)` - If the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let x = Float::parse("-3.14".to_string())?;
+    /// let abs = x.abs()?;
+    /// assert_eq!(abs.format()?, "3.14");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn abs(self) -> Result<Float, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::absCall { a }.abi_encode();
@@ -267,6 +350,25 @@ impl Float {
 impl Add for Float {
     type Output = Result<Self, FloatError>;
 
+    /// Adds two floats.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The sum.
+    /// * `Err(FloatError)` - If addition fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("1.5".to_string())?;
+    /// let b = Float::parse("2.5".to_string())?;
+    /// let sum = (a + b)?;
+    /// assert_eq!(sum.format()?, "4");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     fn add(self, b: Self) -> Self::Output {
         let Float(a) = self;
         let Float(b) = b;
@@ -282,6 +384,25 @@ impl Add for Float {
 impl Sub for Float {
     type Output = Result<Self, FloatError>;
 
+    /// Subtracts `b` from `self`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The difference.
+    /// * `Err(FloatError)` - If subtraction fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("5.0".to_string())?;
+    /// let b = Float::parse("2.0".to_string())?;
+    /// let diff = (a - b)?;
+    /// assert_eq!(diff.format()?, "3");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     fn sub(self, b: Self) -> Self::Output {
         let Float(a) = self;
         let Float(b) = b;
@@ -297,6 +418,25 @@ impl Sub for Float {
 impl Mul for Float {
     type Output = Result<Self, FloatError>;
 
+    /// Multiplies two floats.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The product.
+    /// * `Err(FloatError)` - If multiplication fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("2.0".to_string())?;
+    /// let b = Float::parse("3.0".to_string())?;
+    /// let product = (a * b)?;
+    /// assert_eq!(product.format()?, "6");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     fn mul(self, b: Self) -> Self::Output {
         let Float(a) = self;
         let Float(b) = b;
@@ -312,6 +452,25 @@ impl Mul for Float {
 impl Div for Float {
     type Output = Result<Self, FloatError>;
 
+    /// Divides `self` by `b`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The quotient.
+    /// * `Err(FloatError)` - If division fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("6.0".to_string())?;
+    /// let b = Float::parse("2.0".to_string())?;
+    /// let quotient = (a / b)?;
+    /// assert_eq!(quotient.format()?, "3");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     fn div(self, b: Self) -> Self::Output {
         let Float(a) = self;
         let Float(b) = b;
@@ -325,6 +484,24 @@ impl Div for Float {
 }
 
 impl Float {
+    /// Returns the fractional part of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The fractional part.
+    /// * `Err(FloatError)` - If the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let x = Float::parse("3.75".to_string())?;
+    /// let frac = x.frac()?;
+    /// assert_eq!(frac.format()?, "0.75");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn frac(self) -> Result<Float, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::fracCall { a }.abi_encode();
@@ -335,6 +512,24 @@ impl Float {
         })
     }
 
+    /// Returns the floor of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The floored value.
+    /// * `Err(FloatError)` - If the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let x = Float::parse("3.75".to_string())?;
+    /// let floor = x.floor()?;
+    /// assert_eq!(floor.format()?, "3");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn floor(self) -> Result<Float, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::floorCall { a }.abi_encode();
@@ -345,6 +540,29 @@ impl Float {
         })
     }
 
+    /// Returns the minimum of `self` and `b`.
+    ///
+    /// # Arguments
+    ///
+    /// * `b` - The other `Float` to compare with.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The minimum value.
+    /// * `Err(FloatError)` - If the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("1.0".to_string())?;
+    /// let b = Float::parse("2.0".to_string())?;
+    /// let min = a.min(b)?;
+    /// assert_eq!(min.format()?, "1");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn min(self, b: Self) -> Result<Self, FloatError> {
         let Float(a) = self;
         let Float(b) = b;
@@ -356,6 +574,29 @@ impl Float {
         })
     }
 
+    /// Returns the maximum of `self` and `b`.
+    ///
+    /// # Arguments
+    ///
+    /// * `b` - The other `Float` to compare with.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The maximum value.
+    /// * `Err(FloatError)` - If the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("1.0".to_string())?;
+    /// let b = Float::parse("2.0".to_string())?;
+    /// let max = a.max(b)?;
+    /// assert_eq!(max.format()?, "2");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn max(self, b: Self) -> Result<Self, FloatError> {
         let Float(a) = self;
         let Float(b) = b;
@@ -367,6 +608,26 @@ impl Float {
         })
     }
 
+    /// Checks if the float is zero.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` if the float is zero.
+    /// * `Ok(false)` if the float is not zero.
+    /// * `Err(FloatError)` if the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let zero = Float::parse("0".to_string())?;
+    /// assert!(zero.is_zero()?);
+    /// let nonzero = Float::parse("1.23".to_string())?;
+    /// assert!(!nonzero.is_zero()?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
     pub fn is_zero(self) -> Result<bool, FloatError> {
         let Float(a) = self;
         let calldata = DecimalFloat::isZeroCall { a }.abi_encode();
@@ -381,6 +642,24 @@ impl Float {
 impl Neg for Float {
     type Output = Result<Self, FloatError>;
 
+    /// Returns the negation of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The negated value.
+    /// * `Err(FloatError)` - If the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let x = Float::parse("3.14".to_string())?;
+    /// let neg = (-x)?;
+    /// assert_eq!(neg.format()?, "-3.14");
+    ///
+    /// anyhow::Ok(())
+    /// ```
     fn neg(self) -> Self::Output {
         let Float(a) = self;
         let calldata = DecimalFloat::minusCall { a }.abi_encode();
@@ -394,6 +673,8 @@ impl Neg for Float {
 
 #[cfg(test)]
 mod tests {
+    use crate::DecimalFloat::DecimalFloatErrors;
+
     use super::*;
     use core::str::FromStr;
     use proptest::prelude::*;
