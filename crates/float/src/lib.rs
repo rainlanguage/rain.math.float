@@ -18,7 +18,7 @@ sol!(
     "../../out/DecimalFloat.sol/DecimalFloat.json"
 );
 
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Hash)]
 pub struct Float(pub B256);
 
 impl Float {
@@ -161,7 +161,8 @@ impl Float {
 
     /// Formats the float as a decimal string.
     ///
-    /// NOTE: Uses 18 decimal places.
+    /// NOTE: Uses 18 decimal places and fails if the float has more than
+    /// that number of decimals.
     ///
     /// # Returns
     ///
@@ -186,6 +187,32 @@ impl Float {
             let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
             Ok(decoded)
         })
+    }
+
+    /// Formats the float as a decimal string. Gets truncated to 18 decimal
+    /// places if it has more than that.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The formatted string.
+    /// * `Err(FloatError)` - If formatting fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let float = Float::parse("2.5".to_string())?;
+    /// assert_eq!(float.format18()?, "2.5");
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn format18(self) -> Result<String, FloatError> {
+        let ten_to_18 = Self::from_fixed_decimal(U256::from(10u64).pow(U256::from(18)), 0)?;
+        let multiplied = (self * ten_to_18)?;
+        let floored = multiplied.floor()?;
+        let divided = (floored / ten_to_18)?;
+        divided.format()
     }
 
     /// Returns `true` if `self` is less than `b`.
@@ -780,10 +807,30 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_parse_format(float in reasonable_float()) {
+        fn test_format_parse(float in reasonable_float()) {
             let formatted = float.format().unwrap();
             let parsed = Float::parse(formatted.clone()).unwrap();
-            prop_assert_eq!(float.0, parsed.0);
+            prop_assert!(float.eq(parsed).unwrap());
+        }
+    }
+
+    #[test]
+    fn test_format18() {
+        let float = Float::parse("1.234567890123456789".to_string()).unwrap();
+        let formatted = float.format18().unwrap();
+        assert_eq!(formatted, "1.234567890123456789");
+
+        let float = Float::parse("1.2345678901234567891".to_string()).unwrap();
+        let formatted = float.format18().unwrap();
+        assert_eq!(formatted, "1.234567890123456789");
+    }
+
+    proptest! {
+        #[test]
+        fn test_format18_parse(float in reasonable_float()) {
+            let formatted = float.format18().unwrap();
+            let parsed = Float::parse(formatted.clone()).unwrap();
+            prop_assert!(float.eq(parsed).unwrap());
         }
     }
 
