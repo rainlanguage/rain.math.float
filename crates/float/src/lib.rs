@@ -22,7 +22,7 @@ sol!(
 );
 
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Hash, Tsify)]
-pub struct Float(#[tsify(type = "string")] pub B256);
+pub struct Float(#[tsify(type = "`0x${string}`")] pub B256);
 impl_wasm_traits!(Float);
 
 impl Float {
