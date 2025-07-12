@@ -9,6 +9,7 @@ homepage.workspace = true
 alloy.workspace = true
 thiserror.workspace = true
 serde.workspace = true
+wasm-bindgen-utils = "0.0.10"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 revm = { workspace = true, default-features = false, features = [

@@ -1,9 +1,12 @@
+use alloy::hex::FromHex;
 use alloy::primitives::aliases::I224;
 use alloy::primitives::{B256, Bytes};
 use alloy::{sol, sol_types::SolCall};
 use revm::primitives::{U256, fixed_bytes};
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, Neg, Sub};
+use wasm_bindgen_utils::impl_wasm_traits;
+use wasm_bindgen_utils::prelude::*;
 
 pub mod error;
 mod evm;
@@ -18,8 +21,9 @@ sol!(
     "../../out/DecimalFloat.sol/DecimalFloat.json"
 );
 
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize)]
-pub struct Float(pub B256);
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Hash, Tsify)]
+pub struct Float(#[tsify(type = "`0x${string}`")] pub B256);
+impl_wasm_traits!(Float);
 
 impl Float {
     /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals.
@@ -159,9 +163,51 @@ impl Float {
         })
     }
 
+    /// Returns the 32-byte hexadecimal string representation of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `String` - The 32-byte hex string.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    /// let float = Float::from_hex("0x0000000000000000000000000000000000000000000000000000000000000005").unwrap();
+    /// assert_eq!(float.as_hex(), "0x0000000000000000000000000000000000000000000000000000000000000005");
+    /// ```
+    pub fn as_hex(self) -> String {
+        alloy::hex::encode_prefixed(self.0)
+    }
+
+    /// Constructs a `Float` from a 32-byte hexadecimal string.
+    ///
+    /// # Arguments
+    ///
+    /// * `hex` - The 32-byte hex string to parse.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The float parsed from the hex string.
+    /// * `Err(FloatError)` - If the hex string is not valid or not 32 bytes.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    /// let float = Float::from_hex("0x0000000000000000000000000000000000000000000000000000000000000005")?;
+    /// assert_eq!(float.as_hex(), "0x0000000000000000000000000000000000000000000000000000000000000005");
+    /// anyhow::Ok(())
+    /// ```
+    pub fn from_hex(hex: &str) -> Result<Self, FloatError> {
+        let bytes = B256::from_hex(hex).map_err(|_| FloatError::InvalidHex(hex.to_string()))?;
+        Ok(Float(bytes))
+    }
+
     /// Formats the float as a decimal string.
     ///
-    /// NOTE: Uses 18 decimal places.
+    /// NOTE: Uses 18 decimal places and fails if the float has more than
+    /// that number of decimals.
     ///
     /// # Returns
     ///
@@ -186,6 +232,32 @@ impl Float {
             let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
             Ok(decoded)
         })
+    }
+
+    /// Formats the float as a decimal string. Gets truncated to 18 decimal
+    /// places if it has more than that.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The formatted string.
+    /// * `Err(FloatError)` - If formatting fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let float = Float::parse("2.5".to_string())?;
+    /// assert_eq!(float.format18()?, "2.5");
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn format18(self) -> Result<String, FloatError> {
+        let ten_to_18 = Self::from_fixed_decimal(U256::from(10u64).pow(U256::from(18)), 0)?;
+        let multiplied = (self * ten_to_18)?;
+        let floored = multiplied.floor()?;
+        let divided = (floored / ten_to_18)?;
+        divided.format()
     }
 
     /// Returns `true` if `self` is less than `b`.
@@ -780,10 +852,39 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_parse_format(float in reasonable_float()) {
+        fn test_format_parse(float in reasonable_float()) {
             let formatted = float.format().unwrap();
             let parsed = Float::parse(formatted.clone()).unwrap();
-            prop_assert_eq!(float.0, parsed.0);
+            prop_assert!(float.eq(parsed).unwrap());
+        }
+    }
+
+    #[test]
+    fn test_format18() {
+        let float = Float::parse("1.234567890123456789".to_string()).unwrap();
+        let formatted = float.format18().unwrap();
+        assert_eq!(formatted, "1.234567890123456789");
+
+        let float = Float::parse("1.2345678901234567891".to_string()).unwrap();
+        let formatted = float.format18().unwrap();
+        assert_eq!(formatted, "1.234567890123456789");
+    }
+
+    proptest! {
+        #[test]
+        fn test_format18_parse(float in reasonable_float()) {
+            let formatted = float.format18().unwrap();
+            let parsed = Float::parse(formatted.clone()).unwrap();
+            prop_assert!(float.eq(parsed).unwrap());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_as_from_hex(float in arb_float()) {
+            let hex = float.as_hex();
+            let parsed = Float::from_hex(&hex).unwrap();
+            prop_assert_eq!(parsed.as_hex(), hex);
         }
     }
 
