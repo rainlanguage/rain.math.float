@@ -1,3 +1,4 @@
+use alloy::hex::FromHex;
 use alloy::primitives::aliases::I224;
 use alloy::primitives::{B256, Bytes};
 use alloy::{sol, sol_types::SolCall};
@@ -157,6 +158,47 @@ impl Float {
 
             Ok(Float(parsed_float))
         })
+    }
+
+    /// Returns the 32-byte hexadecimal string representation of the float.
+    ///
+    /// # Returns
+    ///
+    /// * `String` - The 32-byte hex string.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    /// let float = Float::from_hex("0x0000000000000000000000000000000000000000000000000000000000000005").unwrap();
+    /// assert_eq!(float.as_hex(), "0x0000000000000000000000000000000000000000000000000000000000000005");
+    /// ```
+    pub fn as_hex(self) -> String {
+        alloy::hex::encode_prefixed(self.0)
+    }
+
+    /// Constructs a `Float` from a 32-byte hexadecimal string.
+    ///
+    /// # Arguments
+    ///
+    /// * `hex` - The 32-byte hex string to parse.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The float parsed from the hex string.
+    /// * `Err(FloatError)` - If the hex string is not valid or not 32 bytes.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    /// let float = Float::from_hex("0x0000000000000000000000000000000000000000000000000000000000000005")?;
+    /// assert_eq!(float.as_hex(), "0x0000000000000000000000000000000000000000000000000000000000000005");
+    /// anyhow::Ok(())
+    /// ```
+    pub fn from_hex(hex: &str) -> Result<Self, FloatError> {
+        let bytes = B256::from_hex(hex).map_err(|_| FloatError::InvalidHex(hex.to_string()))?;
+        Ok(Float(bytes))
     }
 
     /// Formats the float as a decimal string.
@@ -831,6 +873,15 @@ mod tests {
             let formatted = float.format18().unwrap();
             let parsed = Float::parse(formatted.clone()).unwrap();
             prop_assert!(float.eq(parsed).unwrap());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_as_from_hex(float in arb_float()) {
+            let hex = float.as_hex();
+            let parsed = Float::from_hex(&hex).unwrap();
+            prop_assert_eq!(parsed.as_hex(), hex);
         }
     }
 
