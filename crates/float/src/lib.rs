@@ -5,6 +5,8 @@ use alloy::{sol, sol_types::SolCall};
 use revm::primitives::{U256, fixed_bytes};
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, Neg, Sub};
+use wasm_bindgen_utils::prelude::*;
+use wasm_bindgen_utils::{impl_custom_tsify, impl_wasm_traits};
 
 pub mod error;
 mod evm;
@@ -21,6 +23,8 @@ sol!(
 
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Hash)]
 pub struct Float(pub B256);
+impl_custom_tsify!(Float, "`0x${string}`");
+impl_wasm_traits!(Float);
 
 impl Float {
     /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals.
