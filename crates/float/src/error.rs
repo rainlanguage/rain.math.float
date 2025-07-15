@@ -24,6 +24,8 @@ pub enum FloatError {
     DecimalFloatSelector(Result<DecimalFloatErrorSelector, FixedBytes<4>>),
     #[error(transparent)]
     Access(#[from] AccessError),
+    #[error("Invalid hex string: {0}")]
+    InvalidHex(String),
 }
 
 #[derive(Debug)]
