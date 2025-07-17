@@ -11,7 +11,7 @@ describe('Test Float Bindings', () => {
 
 	async function runTests(mod: 'cjs' | 'esm') {
 		// load the Float class from the appropriate module
-		const { Float } = await (() => mod === 'cjs' ? import('../dist/cjs') : import('../dist/esm'))();
+		const { Float } = await (mod === 'cjs' ? import('../dist/cjs') : import('../dist/esm'));
 
 		it('should test parse', () => {
 			const float = Float.parse("3.14")?.value!;
