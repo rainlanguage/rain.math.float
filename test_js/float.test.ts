@@ -11,7 +11,7 @@ describe('Test Float Bindings', () => {
 
 	async function runTests(mod: 'cjs' | 'esm') {
 		// load the Float class from the appropriate module
-		const { Float } = await (async () => {
+		const { Float } = await (() => {
 			return mod === 'cjs' ? import('../dist/cjs') : import('../dist/esm');
 		})();
 
