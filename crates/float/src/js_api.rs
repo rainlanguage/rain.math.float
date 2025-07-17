@@ -26,7 +26,7 @@ impl Float {
         self.as_hex()
     }
 
-    /// Convert the float to a JS/TS bigint.
+    /// Convert the float to a JS/TS bigint equivalent of `asHex()` returned hex string.
     ///
     /// # Throws
     /// if conversion fails.
@@ -34,16 +34,16 @@ impl Float {
     /// # Example
     ///
     /// ```typescript
-    /// const float = Float.fromHex("0x0000000000000000000000000000000000000000000000000000000000000005");
+    /// const float = Float.fromHex("0xfffffffe0000000000000000000000000000000000000000000000000000013a");
     /// const value = float.toBigInt();
-    /// assert(value === 5n);
+    /// assert(value === 115792089183396302089269705419353877679230723318366275194376439045705909141818n);
     /// ```
     #[wasm_bindgen(js_name = "toBigint", unchecked_return_type = "bigint")]
     pub fn to_bigint(&self) -> BigInt {
         self.try_to_bigint().unwrap_throw()
     }
 
-    /// Constructs a `Float` from a bigint.
+    /// Constructs a `Float` from a bigint equivalent of the `fromHex()` returned Float.
     ///
     /// # Throws
     /// if conversion fails.
@@ -51,8 +51,8 @@ impl Float {
     /// # Example
     ///
     /// ```typescript
-    /// const float = Float.fromBigint(5n);
-    /// assert(float.asHex() === "0x0000000000000000000000000000000000000000000000000000000000000005");
+    /// const float = Float.fromBigint(115792089183396302089269705419353877679230723318366275194376439045705909141818n);
+    /// assert(float.asHex() === "0xfffffffe0000000000000000000000000000000000000000000000000000013a");
     /// ```
     #[wasm_bindgen(js_name = "fromBigint")]
     pub fn from_bigint(value: BigInt) -> Float {
@@ -62,7 +62,7 @@ impl Float {
 
 #[wasm_export]
 impl Float {
-    /// Tries to convert the float to a JS/TS bigint.
+    /// Tries to convert the float to a JS/TS bigint equivalent of `asHex()` returned hex string.
     ///
     /// # Returns
     ///
@@ -72,12 +72,12 @@ impl Float {
     /// # Example
     ///
     /// ```typescript
-    /// const float = Float.fromHex("0x0000000000000000000000000000000000000000000000000000000000000005");
+    /// const float = Float.fromHex("0xfffffffe0000000000000000000000000000000000000000000000000000013a");
     /// const bigintResult = float.tryToBigInt();
     /// if (bigintResult.error) {
     ///     console.error(bigintResult.error);
     /// }
-    /// assert(bigintResult.value === 5n);
+    /// assert(bigintResult.value === 115792089183396302089269705419353877679230723318366275194376439045705909141818n);
     /// ```
     #[wasm_export(
         js_name = "tryToBigint",
@@ -88,7 +88,7 @@ impl Float {
         Ok(BigInt::from_str(&self.as_hex())?)
     }
 
-    /// Constructs a `Float` from a bigint.
+    /// Constructs a `Float` from a bigint equivalent of the `fromHex()` returned Float.
     ///
     /// # Returns
     ///
@@ -98,12 +98,12 @@ impl Float {
     /// # Example
     ///
     /// ```typescript
-    /// const floatResult = Float.tryFromBigint(5n);
+    /// const floatResult = Float.tryFromBigint(115792089183396302089269705419353877679230723318366275194376439045705909141818n);
     /// if (floatResult.error) {
     ///   console.error(floatResult.error);
     /// }
     /// const value = float.value;
-    /// assert(value.asHex() === "0x0000000000000000000000000000000000000000000000000000000000000005");
+    /// assert(value.asHex() === "0xfffffffe0000000000000000000000000000000000000000000000000000013a");
     /// ```
     #[wasm_export(js_name = "tryFromBigint", preserve_js_class)]
     pub fn try_from_bigint(value: BigInt) -> Result<Float, FloatError> {

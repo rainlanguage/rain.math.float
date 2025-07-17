@@ -1,28 +1,28 @@
 import { Float } from '../dist/cjs';
 import { describe, it, expect, assert } from 'vitest';
 
-describe('Test Float Bindings', async function () {
-	it('should test parse', async function () {
+describe('Test Float Bindings', () => {
+	it('should test parse', () => {
 		const float = Float.parse("3.14")?.value!;
 		expect(float.asHex()).toBe("0xfffffffe0000000000000000000000000000000000000000000000000000013a");
 	});
 
-	it('should test format', async function () {
+	it('should test format', () => {
 		const float = Float.fromHex("0xfffffffe0000000000000000000000000000000000000000000000000000013a")?.value!;
 		expect(float.format()?.value!).toBe("3.14");
 	});
 
-	it('should test format18 and fromFixedDecimal', async function () {
+	it('should test format18 and fromFixedDecimal', () => {
 		const float = Float.fromFixedDecimal("12345", 2)?.value!;
 		expect(float.format18()?.value!).toBe("123.45");
 	});
 
-	it('should test packLossless', async function () {
+	it('should test packLossless', () => {
 		const float = Float.packLossless("314", -2)?.value!;
 		expect(float.format()?.value!).toBe("3.14");
 	});
 
-	it('should try from bigint', async function () {
+	it('should try from bigint', () => {
 		const result = Float.tryFromBigint(5n);
 		assert.ok(result.error === undefined, `Expected no error, but got: ${result.error?.readableMsg}`);
 
@@ -30,13 +30,13 @@ describe('Test Float Bindings', async function () {
 		expect(result.value.eq(expected)).toBeTruthy();
 	});
 
-	it('should convert from bigint', async function () {
+	it('should convert from bigint', () => {
 		const result = Float.fromBigint(18n);
 		const expected = Float.fromHex('0x0000000000000000000000000000000000000000000000000000000000000012')?.value!;
 		expect(result.eq(expected)).toBeTruthy();
 	});
 
-	it('should try to bigint', async function () {
+	it('should try to bigint', () => {
 		const float = Float.fromHex('0x0000000000000000000000000000000000000000000000000000000000000008')?.value!;
 		const result = float.tryToBigint();
 		assert.ok(result.error === undefined, `Expected no error, but got: ${result.error?.readableMsg}`);
@@ -44,14 +44,14 @@ describe('Test Float Bindings', async function () {
 		expect(result.value).toBe(8n);
 	});
 
-	it('should convert to bigint', async function () {
+	it('should convert to bigint', () => {
 		const float = Float.fromHex('0x0000000000000000000000000000000000000000000000000000000000001234')?.value!;
 		const result = float.toBigint();
 
 		expect(result).toBe(BigInt('0x1234'));
 	});
 
-	it('should test logic ops', async function () {
+	it('should test logic ops', () => {
 		const a = Float.fromBigint(1n);
 		const b = Float.fromBigint(2n);
 		const c = Float.fromBigint(1n);
@@ -74,7 +74,7 @@ describe('Test Float Bindings', async function () {
 		expect(a.min(b)?.value!.eq(a)?.value!).toBe(true);
 	});
 
-	it('should test math ops', async function () {
+	it('should test math ops', () => {
 		const a = Float.parse("3.14")?.value!;
 		const b = Float.parse("-3.14")?.value!;
 		const c = Float.parse("2.0")?.value!;

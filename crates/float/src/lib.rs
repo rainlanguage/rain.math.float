@@ -1510,4 +1510,29 @@ mod tests {
         assert!(three.gte(zero).unwrap());
         assert!(three.gte(negone).unwrap());
     }
+
+    proptest! {
+        #[test]
+        fn test_lte_gte_fuzz(a in reasonable_float()) {
+            let b = a;
+            let eq = a.eq(b).unwrap();
+            prop_assert!(eq);
+
+            let one = Float::parse("1".to_string()).unwrap();
+
+            let a = (a - one).unwrap();
+            let lte = a.lte(b).unwrap();
+            prop_assert!(lte); // lt
+
+            let a = (a + one).unwrap();
+            let gte = a.gte(b).unwrap();
+            let lte = a.lte(b).unwrap();
+            prop_assert!(gte); // eq
+            prop_assert!(lte); // eq
+
+            let a = (a + one).unwrap();
+            let gte = a.gte(b).unwrap();
+            prop_assert!(gte); // gt
+        }
+    }
 }
