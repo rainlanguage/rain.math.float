@@ -12,9 +12,7 @@ describe('Test Float Bindings', () => {
 	async function runTests(path: 'cjs' | 'esm') {
 		// load the Float class from the appropriate module
 		const { Float } = await (async () => {
-			return path === 'cjs'
-				? import('../dist/cjs')
-				: import('../dist/esm');
+			return path === 'cjs' ? import('../dist/cjs') : import('../dist/esm');
 		})();
 
 		it('should test parse', () => {
