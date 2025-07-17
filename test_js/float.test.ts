@@ -14,23 +14,23 @@ describe('Test Float Bindings', () => {
 		const { Float } = await (mod === 'cjs' ? import('../dist/cjs') : import('../dist/esm'));
 
 		it('should test parse', () => {
-			const float = Float.parse("3.14")?.value!;
-			expect(float.asHex()).toBe("0xfffffffe0000000000000000000000000000000000000000000000000000013a");
+			const float = Float.parse('3.14')?.value!;
+			expect(float.asHex()).toBe('0xfffffffe0000000000000000000000000000000000000000000000000000013a');
 		});
 
 		it('should test format', () => {
-			const float = Float.fromHex("0xfffffffe0000000000000000000000000000000000000000000000000000013a")?.value!;
-			expect(float.format()?.value!).toBe("3.14");
+			const float = Float.fromHex('0xfffffffe0000000000000000000000000000000000000000000000000000013a')?.value!;
+			expect(float.format()?.value!).toBe('3.14');
 		});
 
 		it('should test format18 and fromFixedDecimal', () => {
-			const float = Float.fromFixedDecimal("12345", 2)?.value!;
-			expect(float.format18()?.value!).toBe("123.45");
+			const float = Float.fromFixedDecimal('12345', 2)?.value!;
+			expect(float.format18()?.value!).toBe('123.45');
 		});
 
 		it('should test packLossless', () => {
-			const float = Float.packLossless("314", -2)?.value!;
-			expect(float.format()?.value!).toBe("3.14");
+			const float = Float.packLossless('314', -2)?.value!;
+			expect(float.format()?.value!).toBe('3.14');
 		});
 
 		it('should try from bigint', () => {
@@ -67,7 +67,7 @@ describe('Test Float Bindings', () => {
 			const b = Float.fromBigint(2n);
 			const c = Float.fromBigint(1n);
 			const zero = Float.fromBigint(0n);
-			const neg = Float.parse("-1")?.value!;
+			const neg = Float.parse('-1')?.value!;
 
 			expect(a.lt(b)?.value!).toBe(true);
 			expect(a.lte(b)?.value!).toBe(true);
@@ -86,19 +86,19 @@ describe('Test Float Bindings', () => {
 		});
 
 		it('should test math ops', () => {
-			const a = Float.parse("3.14")?.value!;
-			const b = Float.parse("-3.14")?.value!;
-			const c = Float.parse("2.0")?.value!;
+			const a = Float.parse('3.14')?.value!;
+			const b = Float.parse('-3.14')?.value!;
+			const c = Float.parse('2.0')?.value!;
 
-			expect(a.floor()?.value!.format()?.value!).toBe("3");
-			expect(a.frac()?.value!.format()?.value!).toBe("0.14");
-			expect(c.inv()?.value!.format()?.value!).toBe("0.5");
-			expect(b.abs()?.value!.format()?.value!).toBe("3.14");
-			expect(a.sub(b)?.value!.format()?.value!).toBe("6.28");
-			expect(a.mul(c)?.value!.format()?.value!).toBe("6.28");
-			expect(a.div(c)?.value!.format()?.value!).toBe("1.57");
-			expect(a.div(b)?.value!.format()?.value!).toBe("-1");
-			expect(a.add(b)?.value!.format()?.value!).toBe("0");
+			expect(a.floor()?.value!.format()?.value!).toBe('3');
+			expect(a.frac()?.value!.format()?.value!).toBe('0.14');
+			expect(c.inv()?.value!.format()?.value!).toBe('0.5');
+			expect(b.abs()?.value!.format()?.value!).toBe('3.14');
+			expect(a.sub(b)?.value!.format()?.value!).toBe('6.28');
+			expect(a.mul(c)?.value!.format()?.value!).toBe('6.28');
+			expect(a.div(c)?.value!.format()?.value!).toBe('1.57');
+			expect(a.div(b)?.value!.format()?.value!).toBe('-1');
+			expect(a.add(b)?.value!.format()?.value!).toBe('0');
 		});
 	}
 });
