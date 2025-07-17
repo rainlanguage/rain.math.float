@@ -2,6 +2,26 @@ import { Float } from '../dist/cjs';
 import { describe, it, expect, assert } from 'vitest';
 
 describe('Test Float Bindings', async function () {
+	it('should test parse', async function () {
+		const float = Float.parse("3.14")?.value!;
+		expect(float.asHex()).toBe("0xfffffffe0000000000000000000000000000000000000000000000000000013a");
+	});
+
+	it('should test format', async function () {
+		const float = Float.fromHex("0xfffffffe0000000000000000000000000000000000000000000000000000013a")?.value!;
+		expect(float.format()?.value!).toBe("3.14");
+	});
+
+	it('should test format18 and fromFixedDecimal', async function () {
+		const float = Float.fromFixedDecimal("12345", 2)?.value!;
+		expect(float.format18()?.value!).toBe("123.45");
+	});
+
+	it('should test packLossless', async function () {
+		const float = Float.packLossless("314", -2)?.value!;
+		expect(float.format()?.value!).toBe("3.14");
+	});
+
 	it('should try from bigint', async function () {
 		const result = Float.tryFromBigint(5n);
 		assert.ok(result.error === undefined, `Expected no error, but got: ${result.error?.readableMsg}`);
@@ -36,20 +56,22 @@ describe('Test Float Bindings', async function () {
 		const b = Float.fromBigint(2n);
 		const c = Float.fromBigint(1n);
 		const zero = Float.fromBigint(0n);
+		const neg = Float.parse("-1")?.value!;
 
-		expect(a.lt(b)).toBeTruthy();
-		expect(a.lte(b)).toBeTruthy();
-		expect(a.lte(c)).toBeTruthy();
+		expect(a.lt(b)?.value!).toBe(true);
+		expect(a.lte(b)?.value!).toBe(true);
+		expect(a.lte(c)?.value!).toBe(true);
 
-		expect(b.gt(a)).toBeTruthy();
-		expect(b.gte(a)).toBeTruthy();
-		expect(c.gte(a)).toBeTruthy();
+		expect(b.gt(a)?.value!).toBe(true);
+		expect(b.gte(a)?.value!).toBe(true);
+		expect(c.gte(a)?.value!).toBe(true);
 
-		expect(a.eq(c)).toBeTruthy();
-		expect(zero.isZero()).toBeTruthy();
+		expect(a.eq(c)?.value!).toBe(true);
+		expect(zero.isZero()?.value!).toBe(true);
+		expect(neg.neg()?.value!.eq(a)?.value!).toBe(true);
 
-		expect(a.max(b)?.value!.eq(b)).toBeTruthy();
-		expect(a.min(b)?.value!.eq(a)).toBeTruthy();
+		expect(a.max(b)?.value!.eq(b)?.value!).toBe(true);
+		expect(a.min(b)?.value!.eq(a)?.value!).toBe(true);
 	});
 
 	it('should test math ops', async function () {
