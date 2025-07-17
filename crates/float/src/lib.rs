@@ -452,7 +452,7 @@ impl Float {
     ///
     /// let a = Float::parse("1.0".to_string())?;
     /// let b = Float::parse("2.0".to_string())?;
-    /// assert!(a.lt(b)?);
+    /// assert!(a.lte(b)?);
     ///
     /// anyhow::Ok(())
     /// ```

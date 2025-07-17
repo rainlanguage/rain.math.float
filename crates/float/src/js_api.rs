@@ -216,7 +216,7 @@ impl Float {
     ///    console.error(floatResult.error);
     /// }
     /// const float = floatResult.value;
-    /// assert(float.asHex() === "0.0000000000000000000000000000000000000000000000000000000000000005");
+    /// assert(float.asHex() === "0x0000000000000000000000000000000000000000000000000000000000000005");
     /// ```
     #[wasm_export(js_name = "fromHex", preserve_js_class)]
     pub fn from_hex_js(
