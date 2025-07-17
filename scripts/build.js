@@ -55,7 +55,7 @@ cjs = cjs.replace(
 const bytes = require('fs').readFileSync(path);`,
   `
 const { Buffer } = require('buffer');
-const wasmB64 = require('../cjs/float_wbg.json');
+const wasmB64 = require('./float_wbg.json');
 const bytes = Buffer.from(wasmB64.wasm, 'base64');`
 );
 cjs = cjs.replace("const { TextEncoder, TextDecoder } = require(`util`);", "");
@@ -70,7 +70,7 @@ esm = esm.replace(
   `export { initSync };
 export default __wbg_init;`,
 `import { Buffer } from 'buffer';
-import wasmB64 from '../esm/float_wbg.json';
+import wasmB64 from './float_wbg.json';
 const bytes = Buffer.from(wasmB64.wasm, 'base64');
 initSync(bytes);`
 )
