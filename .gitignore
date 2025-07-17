@@ -2,3 +2,6 @@ out
 cache
 .direnv
 target
+temp
+dist
+node_modules

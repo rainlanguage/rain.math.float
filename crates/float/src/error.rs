@@ -1,10 +1,12 @@
+use crate::DecimalFloat;
+use alloy::hex::FromHexError;
 use alloy::primitives::{Bytes, FixedBytes};
 use alloy::sol_types::SolError;
 use revm::context::result::{EVMError, HaltReason, Output, SuccessReason};
 use std::thread::AccessError;
 use thiserror::Error;
-
-use crate::DecimalFloat;
+use wasm_bindgen_utils::prelude::js_sys::{Error as JsError, RangeError};
+use wasm_bindgen_utils::result::WasmEncodedError;
 
 #[derive(Debug, Error)]
 pub enum FloatError {
@@ -26,6 +28,14 @@ pub enum FloatError {
     Access(#[from] AccessError),
     #[error("Invalid hex string: {0}")]
     InvalidHex(String),
+    #[error(transparent)]
+    AlloyFromHexError(#[from] FromHexError),
+    #[error(transparent)]
+    AlloyParseError(#[from] alloy::primitives::ruint::ParseError),
+    #[error(transparent)]
+    AlloyParseSignedError(#[from] alloy::primitives::ParseSignedError),
+    #[error("Wasm bindgen js_sys threw error: {0}")]
+    JsSysError(String),
 }
 
 #[derive(Debug)]
@@ -62,5 +72,26 @@ impl TryFrom<FixedBytes<4>> for DecimalFloatErrorSelector {
             }
             _ => Err(error_selector),
         }
+    }
+}
+
+impl From<FloatError> for WasmEncodedError {
+    fn from(value: FloatError) -> Self {
+        WasmEncodedError {
+            msg: value.to_string(),
+            readable_msg: value.to_string(), // todo: add detailed readable msg for errors
+        }
+    }
+}
+
+impl From<JsError> for FloatError {
+    fn from(value: JsError) -> Self {
+        FloatError::JsSysError(value.to_string().into())
+    }
+}
+
+impl From<RangeError> for FloatError {
+    fn from(value: RangeError) -> Self {
+        FloatError::JsSysError(value.to_string().into())
     }
 }
