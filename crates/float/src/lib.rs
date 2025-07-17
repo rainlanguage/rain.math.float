@@ -812,6 +812,18 @@ impl Neg for Float {
     }
 }
 
+impl From<B256> for Float {
+    fn from(value: B256) -> Self {
+        Float(value)
+    }
+}
+
+impl From<Float> for B256 {
+    fn from(value: Float) -> Self {
+        value.0
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::DecimalFloat::DecimalFloatErrors;
