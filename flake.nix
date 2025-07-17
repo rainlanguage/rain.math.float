@@ -23,7 +23,7 @@
             name = "test-js-bindings";
             body = ''
               set -euxo pipefail
-              npm install
+              npm install --no-check
               npm run build
               npm test
             '';
