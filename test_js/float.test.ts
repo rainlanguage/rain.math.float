@@ -2,16 +2,21 @@ import { describe, it, expect, assert } from 'vitest';
 
 describe('Test Float Bindings', () => {
 	describe('CJS', async () => {
-		const { Float } = await import('../dist/cjs');
-		runTests(Float);
+		await runTests('cjs');
 	});
 
 	describe('ESM', async () => {
-		const { Float } = await import('../dist/esm');
-		runTests(Float);
+		await runTests('esm');
 	});
 
-	function runTests(Float: any) {
+	async function runTests(path: 'cjs' | 'esm') {
+		// load the Float class from the appropriate module
+		const Float = await (async () => {
+			return path === 'cjs'
+				? (await import('../dist/cjs')).Float
+				: (await import('../dist/esm')).Float;
+		})();
+
 		it('should test parse', () => {
 			const float = Float.parse("3.14")?.value!;
 			expect(float.asHex()).toBe("0xfffffffe0000000000000000000000000000000000000000000000000000013a");
