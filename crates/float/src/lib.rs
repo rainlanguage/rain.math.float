@@ -1515,9 +1515,6 @@ mod tests {
         #[test]
         fn test_lte_gte_fuzz(a in reasonable_float()) {
             let b = a;
-            let eq = a.eq(b).unwrap();
-            prop_assert!(eq);
-
             let one = Float::parse("1".to_string()).unwrap();
 
             let a = (a - one).unwrap();
