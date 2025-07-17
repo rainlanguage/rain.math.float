@@ -26,7 +26,7 @@
         "./dist"
     ],
     "scripts": {
-        "prepublish": "node ./scripts/prepare",
+        "prepublish": "node ./scripts/prepublish",
         "build": "npm run rm-dist && npm run rm-temp && node ./scripts/build",
         "build-wasm": "cargo build --target wasm32-unknown-unknown --lib -r --workspace",
         "rm-dist": "rimraf ./dist",
