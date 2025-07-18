@@ -1,8 +1,8 @@
 use alloy::hex::FromHex;
 use alloy::primitives::aliases::I224;
-use alloy::primitives::{B256, Bytes};
+use alloy::primitives::{Bytes, B256};
 use alloy::{sol, sol_types::SolCall};
-use revm::primitives::{U256, fixed_bytes};
+use revm::primitives::{fixed_bytes, U256};
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use wasm_bindgen_utils::prelude::*;
@@ -76,6 +76,41 @@ impl Float {
                 output.as_ref(),
             )?;
             Ok(Float(decoded))
+        })
+    }
+
+    /// Converts a `Float` to a fixed-point decimal value using the specified number of decimals.
+    ///
+    /// # Arguments
+    ///
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(U256)` - The resulting fixed-point decimal value.
+    /// * `Err(FloatError)` - If the conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    /// use alloy::primitives::U256;
+    ///
+    /// // 123.45 with 2 decimals becomes 12345
+    /// let float = Float::parse("123.45".to_string())?;
+    /// let fixed = float.to_fixed_decimal(2)?;
+    /// assert_eq!(fixed, U256::from(12345u64));
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn to_fixed_decimal(self, decimals: u8) -> Result<U256, FloatError> {
+        let Float(float) = self;
+        let calldata = DecimalFloat::toFixedDecimalLosslessCall { float, decimals }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded =
+                DecimalFloat::toFixedDecimalLosslessCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
         })
     }
 
@@ -1305,6 +1340,24 @@ mod tests {
     }
 
     #[test]
+    fn test_to_fixed_decimal() {
+        let cases = vec![
+            ("0", 0u8, 0u128),
+            ("0", 18u8, 0u128),
+            ("1e-18", 18u8, 1u128),
+            ("123456789", 0u8, 123456789u128),
+            ("123456789e-2", 2u8, 123456789u128),
+            ("1", 18u8, 1000000000000000000u128),
+        ];
+
+        for (input, decimals, expected) in cases {
+            let float = Float::parse(input.to_string()).unwrap();
+            let fixed = float.to_fixed_decimal(decimals).unwrap();
+            assert_eq!(fixed, U256::from(expected));
+        }
+    }
+
+    #[test]
     fn test_frac_and_floor_integers() {
         let int_float = Float::parse("12345".to_string()).unwrap();
         let floor = int_float.floor().unwrap();
@@ -1341,7 +1394,7 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_from_fixed_decimal_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
+        fn test_from_to_fixed_decimal_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
             prop_assume!(coeff >= I224::ZERO);
 
             let exponent = -(decimals as i32);
@@ -1350,6 +1403,9 @@ mod tests {
             let float = Float::from_fixed_decimal(value, decimals).unwrap();
             let expected = Float::pack_lossless(coeff, exponent).unwrap();
             prop_assert!(float.eq(expected).unwrap());
+
+            let fixed = float.to_fixed_decimal(decimals).unwrap();
+            assert_eq!(fixed, value);
         }
     }
 

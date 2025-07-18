@@ -28,6 +28,19 @@ describe('Test Float Bindings', () => {
 			expect(float.format18()?.value!).toBe('123.45');
 		});
 
+		it('should test toFixedDecimal', () => {
+			const float = Float.parse('123.45')?.value!;
+			expect(float.toFixedDecimal(2)?.value!).toBe('12345');
+		});
+
+		it('should test toFixedDecimal roundtrip', () => {
+			const originalValue = '9876543210';
+			const decimals = 8;
+			const float = Float.fromFixedDecimal(originalValue, decimals)?.value!;
+			const result = float.toFixedDecimal(decimals)?.value!;
+			expect(result).toBe(originalValue);
+		});
+
 		it('should test packLossless', () => {
 			const float = Float.packLossless('314', -2)?.value!;
 			expect(float.format()?.value!).toBe('3.14');
