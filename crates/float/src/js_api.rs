@@ -143,6 +143,33 @@ impl Float {
         Self::from_fixed_decimal(val, decimals)
     }
 
+    /// Converts a `Float` to a fixed-point decimal value using the specified number of decimals.
+    ///
+    /// # Arguments
+    ///
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The resulting fixed-point decimal value as a string.
+    /// * `Err(FloatError)` - If the conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const float = Float.parse("123.45").value!;
+    /// const result = float.toFixedDecimal(2);
+    /// if (result.error) {
+    ///    console.error(result.error);
+    /// }
+    /// assert(result.value === "12345");
+    /// ```
+    #[wasm_export(js_name = "toFixedDecimal")]
+    pub fn to_fixed_decimal_js(&self, decimals: u8) -> Result<String, FloatError> {
+        let fixed = self.to_fixed_decimal(decimals)?;
+        Ok(fixed.to_string())
+    }
+
     /// Packs a coefficient and exponent into a `Float` in a lossless manner.
     ///
     /// # Arguments
