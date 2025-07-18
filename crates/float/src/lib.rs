@@ -5,11 +5,11 @@ use alloy::{sol, sol_types::SolCall};
 use revm::primitives::{U256, fixed_bytes};
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, Neg, Sub};
-use wasm_bindgen_utils::impl_wasm_traits;
 use wasm_bindgen_utils::prelude::*;
 
 pub mod error;
 mod evm;
+pub mod js_api;
 
 use error::DecimalFloatErrorSelector;
 pub use error::FloatError;
@@ -21,11 +21,26 @@ sol!(
     "../../out/DecimalFloat.sol/DecimalFloat.json"
 );
 
-#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Hash, Tsify)]
-pub struct Float(#[tsify(type = "`0x${string}`")] pub B256);
-impl_wasm_traits!(Float);
+#[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Hash)]
+#[wasm_bindgen]
+pub struct Float(B256);
 
 impl Float {
+    /// Creates a new `Float` from the given 32-byte value `B256`.
+    pub fn from_raw(value: B256) -> Self {
+        Float(value)
+    }
+
+    /// Getter for inner 32-bytes value of this Float instance as `B256`.
+    pub fn get_inner(&self) -> B256 {
+        self.0
+    }
+
+    /// Sets the inner 32-byte value of this float from the given `B256`.
+    pub fn set_inner(&mut self, value: B256) {
+        self.0 = value;
+    }
+
     /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals.
     ///
     /// # Arguments
@@ -417,6 +432,60 @@ impl Float {
             Ok(Float(decoded))
         })
     }
+
+    /// Returns `true` if `self` is less than or equal to `b`.
+    ///
+    /// # Arguments
+    ///
+    /// * `b` - The `Float` value to compare with `self`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` if `self` is less than or equal to `b`.
+    /// * `Ok(false)` if `self` is not less than or equal to `b`.
+    /// * `Err(FloatError)` if the comparison fails due to an error in the underlying EVM call or decoding.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("1.0".to_string())?;
+    /// let b = Float::parse("2.0".to_string())?;
+    /// assert!(a.lte(b)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn lte(self, b: Self) -> Result<bool, FloatError> {
+        Ok(self.lt(b)? || self.eq(b)?)
+    }
+
+    /// Returns `true` if `self` is greater than or equal to `b`.
+    ///
+    /// # Arguments
+    ///
+    /// * `b` - The `Float` value to compare with `self`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(true)` if `self` is greater than or equal to `b`.
+    /// * `Ok(false)` if `self` is not greater than or equal to `b`.
+    /// * `Err(FloatError)` if the comparison fails due to an error in the underlying EVM call or decoding.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("2.0".to_string())?;
+    /// let b = Float::parse("1.0".to_string())?;
+    /// assert!(a.gte(b)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn gte(self, b: Self) -> Result<bool, FloatError> {
+        Ok(self.gt(b)? || self.eq(b)?)
+    }
 }
 
 impl Add for Float {
@@ -740,6 +809,18 @@ impl Neg for Float {
             let decoded = DecimalFloat::minusCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
+    }
+}
+
+impl From<B256> for Float {
+    fn from(value: B256) -> Self {
+        Float(value)
+    }
+}
+
+impl From<Float> for B256 {
+    fn from(value: Float) -> Self {
+        value.0
     }
 }
 
@@ -1412,6 +1493,43 @@ mod tests {
                 min.show_unpacked().unwrap(),
                 max.show_unpacked().unwrap()
             );
+        }
+    }
+
+    #[test]
+    fn test_lte_gte() {
+        let negone = Float::parse("-1".to_string()).unwrap();
+        let zero = Float::parse("0".to_string()).unwrap();
+        let three = Float::parse("3".to_string()).unwrap();
+
+        assert!(negone.lte(zero).unwrap());
+        assert!(zero.lte(three).unwrap());
+        assert!(negone.lte(three).unwrap());
+
+        assert!(zero.gte(negone).unwrap());
+        assert!(three.gte(zero).unwrap());
+        assert!(three.gte(negone).unwrap());
+    }
+
+    proptest! {
+        #[test]
+        fn test_lte_gte_fuzz(a in reasonable_float()) {
+            let b = a;
+            let one = Float::parse("1".to_string()).unwrap();
+
+            let a = (a - one).unwrap();
+            let lte = a.lte(b).unwrap();
+            prop_assert!(lte); // lt
+
+            let a = (a + one).unwrap();
+            let gte = a.gte(b).unwrap();
+            let lte = a.lte(b).unwrap();
+            prop_assert!(gte); // eq
+            prop_assert!(lte); // eq
+
+            let a = (a + one).unwrap();
+            let gte = a.gte(b).unwrap();
+            prop_assert!(gte); // gt
         }
     }
 }

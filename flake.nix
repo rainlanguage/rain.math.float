@@ -15,14 +15,24 @@
             name = "test-wasm-build";
             body = ''
               set -euxo pipefail
-              cargo build --target wasm32-unknown-unknown --workspace
+              cargo build -r --target wasm32-unknown-unknown --lib --workspace
+            '';
+          };
+
+          test-js-bindings = rainix.mkTask.${system} {
+            name = "test-js-bindings";
+            body = ''
+              set -euxo pipefail
+              npm install --no-check
+              npm run build
+              npm test
             '';
           };
         };
 
         devShells.default = pkgs.mkShell {
           shellHook = rainix.devShells.${system}.default.shellHook;
-          packages = [ packages.test-wasm-build ];
+          packages = [ packages.test-wasm-build packages.test-js-bindings ];
           inputsFrom = [ rainix.devShells.${system}.default ];
         };
       });

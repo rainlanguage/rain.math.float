@@ -5,11 +5,14 @@ edition.workspace = true
 license.workspace = true
 homepage.workspace = true
 
+[lib]
+crate-type = ["rlib", "cdylib"]
+
 [dependencies]
 alloy.workspace = true
 thiserror.workspace = true
 serde.workspace = true
-wasm-bindgen-utils = "0.0.10"
+wasm-bindgen-utils = { git = "https://github.com/rainlanguage/rain.wasm", rev = "06990d85a0b7c55378a1c8cca4dd9e2bc34a596a" }
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 revm = { workspace = true, default-features = false, features = [

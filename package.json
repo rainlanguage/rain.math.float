@@ -1,0 +1,45 @@
+{
+    "name": "@rainlanguage/float",
+    "description": "Rainlanguage rust Float library in JS/TS through wasm bindgen",
+    "version": "0.0.0-alpha.0",
+    "license": "LicenseRef-DCL-1.0",
+    "author": "Rain Open Source Software Ltd",
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/rainlanguage/rain.math.float.git"
+    },
+    "keywords": [],
+    "bugs": {
+        "url": "https://github.com/rainlanguage/rain.math.float/issues"
+    },
+    "homepage": "https://github.com/rainlanguage/rain.math.float#readme",
+    "main": "./dist/cjs/index.js",
+    "module": "./dist/esm/index.js",
+    "browser": {
+        "./dist/cjs/index.js": "./dist/cjs/index.js",
+        "./dist/esm/index.js": "./dist/esm/index.js"
+    },
+    "engines": {
+        "node": ">=22"
+    },
+    "files": [
+        "./dist"
+    ],
+    "scripts": {
+        "prepublish": "node ./scripts/prepublish",
+        "build": "npm run rm-dist && npm run rm-temp && node ./scripts/build",
+        "build-wasm": "cargo build --target wasm32-unknown-unknown --lib -r --workspace",
+        "rm-dist": "rimraf ./dist",
+        "rm-temp": "rimraf ./temp",
+        "test": "npm run check && vitest run --dir test_js",
+        "check": "tsc ./dist/**/*.{ts,js} --noEmit --allowJs --lib ES2022"
+    },
+    "devDependencies": {
+        "rimraf": "6.0.1",
+        "typedoc": "^0.28.7",
+        "vitest": "^3.1.4"
+    },
+    "dependencies": {
+        "buffer": "6.0.3"
+    }
+}
