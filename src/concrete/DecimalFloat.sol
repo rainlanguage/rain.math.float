@@ -191,4 +191,13 @@ contract DecimalFloat {
     function fromFixedDecimalLosslessPacked(uint256 value, uint8 decimals) external pure returns (Float) {
         return LibDecimalFloat.fromFixedDecimalLosslessPacked(value, decimals);
     }
+
+    /// Exposes `LibDecimalFloat.toFixedDecimalLossless` for offchain use.
+    /// @param float The Float struct to convert.
+    /// @param decimals The number of decimals in the fixed point
+    /// representation. e.g. If 1e18 represents 1 this would be 18 decimals.
+    /// @return The fixed point decimal value as a uint256.
+    function toFixedDecimalLossless(Float float, uint8 decimals) external pure returns (uint256) {
+        return LibDecimalFloat.toFixedDecimalLossless(float, decimals);
+    }
 }
