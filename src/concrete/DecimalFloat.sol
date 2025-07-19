@@ -105,6 +105,24 @@ contract DecimalFloat {
         return a.gt(b);
     }
 
+    /// Exposes `LibDecimalFloat.lte` for offchain use.
+    /// @param a The first float to compare.
+    /// @param b The second float to compare.
+    /// @return True if the first float is less than or equal to the second,
+    /// false otherwise.
+    function lte(Float a, Float b) external pure returns (bool) {
+        return a.lte(b);
+    }
+
+    /// Exposes `LibDecimalFloat.gte` for offchain use.
+    /// @param a The first float to compare.
+    /// @param b The second float to compare.
+    /// @return True if the first float is greater than or equal to the second,
+    /// false otherwise.
+    function gte(Float a, Float b) external pure returns (bool) {
+        return a.gte(b);
+    }
+
     /// Exposes `LibDecimalFloat.frac` for offchain use.
     /// @param a The float to get the fractional part of.
     /// @return The fractional part of the float.

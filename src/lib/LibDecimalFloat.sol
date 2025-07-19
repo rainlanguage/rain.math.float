@@ -525,6 +525,30 @@ library LibDecimalFloat {
         return signedCoefficientA > signedCoefficientB;
     }
 
+    /// Numeric less than or equal to for floats.
+    /// A float is less than or equal to another if its numeric value is less
+    /// than or equal to the other. For example, 1e2 is less than or equal to 1e3
+    /// and 1e2 is less than or equal to 1e2.
+    function lte(Float a, Float b) internal pure returns (bool) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return signedCoefficientA <= signedCoefficientB;
+    }
+
+    /// Numeric greater than or equal to for floats.
+    /// A float is greater than or equal to another if its numeric value is
+    /// greater than or equal to the other. For example, 1e3 is greater than or
+    /// equal to 1e2 and 1e2 is greater than or equal to 1e2.
+    function gte(Float a, Float b) internal pure returns (bool) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return signedCoefficientA >= signedCoefficientB;
+    }
+
     /// Fractional component of a float.
     /// @param float The float to frac.
     function frac(Float float) internal pure returns (Float) {

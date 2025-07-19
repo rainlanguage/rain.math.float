@@ -23,8 +23,8 @@ contract LibDecimalFloatGtTest is Test {
     }
 
     /// x !> x
-    function testGtX(int224 x) external pure {
-        Float a = LibDecimalFloat.packLossless(x, 0);
+    function testGtX(int224 x, int32 exponent) external pure {
+        Float a = LibDecimalFloat.packLossless(x, exponent);
         bool gt = a.gt(a);
         assertTrue(!gt);
     }
