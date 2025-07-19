@@ -82,6 +82,22 @@ library LibDecimalFloatSlow {
         return eqSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
+    function gteSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        return !ltSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function lteSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        return !gtSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
     function gtSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
