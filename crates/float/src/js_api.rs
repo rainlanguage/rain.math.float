@@ -138,8 +138,9 @@ impl Float {
     /// assert(float.format() === "123.45");
     /// ```
     #[wasm_export(js_name = "fromFixedDecimal", preserve_js_class)]
-    pub fn from_fixed_decimal_js(value: String, decimals: u8) -> Result<Float, FloatError> {
-        let val = U256::from_str(&value)?;
+    pub fn from_fixed_decimal_js(value: BigInt, decimals: u8) -> Result<Float, FloatError> {
+        let value_str: String = value.to_string(10)?.into();
+        let val = U256::from_str(&value_str)?;
         Self::from_fixed_decimal(val, decimals)
     }
 
@@ -164,10 +165,15 @@ impl Float {
     /// }
     /// assert(result.value === "12345");
     /// ```
-    #[wasm_export(js_name = "toFixedDecimal")]
-    pub fn to_fixed_decimal_js(&self, decimals: u8) -> Result<String, FloatError> {
+    #[wasm_export(
+        js_name = "toFixedDecimal",
+        preserve_js_class,
+        unchecked_return_type = "bigint"
+    )]
+    pub fn to_fixed_decimal_js(&self, decimals: u8) -> Result<BigInt, FloatError> {
         let fixed = self.to_fixed_decimal(decimals)?;
-        Ok(fixed.to_string())
+        BigInt::from_str(&fixed.to_string())
+            .map_err(|e| FloatError::JsSysError(e.to_string().into()))
     }
 
     /// Packs a coefficient and exponent into a `Float` in a lossless manner.

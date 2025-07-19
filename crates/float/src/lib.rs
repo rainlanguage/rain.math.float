@@ -492,7 +492,14 @@ impl Float {
     /// anyhow::Ok(())
     /// ```
     pub fn lte(self, b: Self) -> Result<bool, FloatError> {
-        Ok(self.lt(b)? || self.eq(b)?)
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::lteCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::lteCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
     }
 
     /// Returns `true` if `self` is greater than or equal to `b`.
@@ -519,7 +526,14 @@ impl Float {
     /// anyhow::Ok(())
     /// ```
     pub fn gte(self, b: Self) -> Result<bool, FloatError> {
-        Ok(self.gt(b)? || self.eq(b)?)
+        let Float(a) = self;
+        let Float(b) = b;
+        let calldata = DecimalFloat::gteCall { a, b }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::gteCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
     }
 }
 
