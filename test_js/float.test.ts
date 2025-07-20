@@ -24,17 +24,17 @@ describe('Test Float Bindings', () => {
 		});
 
 		it('should test format18 and fromFixedDecimal', () => {
-			const float = Float.fromFixedDecimal('12345', 2)?.value!;
+			const float = Float.fromFixedDecimal(12345n, 2)?.value!;
 			expect(float.format18()?.value!).toBe('123.45');
 		});
 
 		it('should test toFixedDecimal', () => {
 			const float = Float.parse('123.45')?.value!;
-			expect(float.toFixedDecimal(2)?.value!).toBe('12345');
+			expect(float.toFixedDecimal(2)?.value!).toBe(12345n);
 		});
 
 		it('should test toFixedDecimal roundtrip', () => {
-			const originalValue = '9876543210';
+			const originalValue = 9876543210n;
 			const decimals = 8;
 			const float = Float.fromFixedDecimal(originalValue, decimals)?.value!;
 			const result = float.toFixedDecimal(decimals)?.value!;
