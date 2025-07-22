@@ -17,8 +17,8 @@ contract DecimalFloat {
 
     /// Exposes `LibDecimalFloat.FLOAT_MIN_VALUE` for offchain use.
     /// @return The minimum value of a Float.
-    function minValue() external pure returns (Float) {
-        return LibDecimalFloat.FLOAT_MIN_VALUE;
+    function minNegativeValue() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
     }
 
     /// Exposes `LibDecimalFloat.FLOAT_E` for offchain use.

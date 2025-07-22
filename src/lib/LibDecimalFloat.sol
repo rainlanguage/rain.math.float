@@ -93,7 +93,7 @@ library LibDecimalFloat {
 
     /// type (int224).min, type(int32).max
     // slither-disable-next-line too-many-digits
-    Float constant FLOAT_MIN_VALUE =
+    Float constant FLOAT_MIN_NEGATIVE_VALUE =
         Float.wrap(bytes32(uint256(0x7fffffff80000000000000000000000000000000000000000000000000000000)));
 
     /// Euler's number

@@ -14,7 +14,7 @@ contract LibDecimalFloatConstantsTest is Test {
     }
 
     function testFloatMinValue() external pure {
-        Float minValue = LibDecimalFloat.FLOAT_MIN_VALUE;
+        Float minValue = LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
         Float expected = LibDecimalFloat.packLossless(type(int224).min, type(int32).max);
         assertEq(Float.unwrap(minValue), Float.unwrap(expected));
     }
