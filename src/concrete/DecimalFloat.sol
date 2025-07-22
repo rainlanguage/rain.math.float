@@ -9,6 +9,18 @@ import {LibParseDecimalFloat} from "../lib/parse/LibParseDecimalFloat.sol";
 contract DecimalFloat {
     using LibDecimalFloat for Float;
 
+    /// Exposes `LibDecimalFloat.FLOAT_MAX_VALUE` for offchain use.
+    /// @return The maximum value of a Float.
+    function maxValue() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MAX_VALUE;
+    }
+
+    /// Exposes `LibDecimalFloat.FLOAT_E` for offchain use.
+    /// @return The constant value of Euler's number as a Float.
+    function e() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_E;
+    }
+
     /// Exposes `LibParseDecimalFloat.parseDecimalFloat` for offchain use.
     /// @param str The string to parse.
     /// @return errorSelector The selector of the error if parsing failed. `0`

@@ -87,6 +87,15 @@ int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT
 library LibDecimalFloat {
     using LibDecimalFloat for Float;
 
+    /// type(int224).max, type(int32).max
+    Float constant FLOAT_MAX_VALUE =
+        Float.wrap(bytes32(uint256(0x7fffffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffff)));
+
+    /// Euler's number
+    /// 2.718281828459045235360287471352662497757247093699959574966967627724e66, -66
+    Float constant FLOAT_E =
+        Float.wrap(bytes32(uint256(0xffffffbe19cfc6ef4f44cf88f14500d013df534fcaad48fca1d5ca47bea26fcc)));
+
     /// Convert a fixed point decimal value to a signed coefficient and exponent.
     /// The conversion can be lossy if the unsigned value is too large to fit in
     /// the signed coefficient.
