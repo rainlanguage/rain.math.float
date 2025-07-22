@@ -15,6 +15,12 @@ contract DecimalFloat {
         return LibDecimalFloat.FLOAT_MAX_VALUE;
     }
 
+    /// Exposes `LibDecimalFloat.FLOAT_MIN_VALUE` for offchain use.
+    /// @return The minimum value of a Float.
+    function minValue() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MIN_VALUE;
+    }
+
     /// Exposes `LibDecimalFloat.FLOAT_E` for offchain use.
     /// @return The constant value of Euler's number as a Float.
     function e() external pure returns (Float) {

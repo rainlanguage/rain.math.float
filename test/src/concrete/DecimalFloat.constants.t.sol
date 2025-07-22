@@ -25,6 +25,23 @@ contract DecimalFloatConstantsTest is Test {
         }
     }
 
+    function minValueExternal() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MIN_VALUE;
+    }
+
+    function testMinValueDeployed() external {
+        DecimalFloat deployed = new DecimalFloat();
+
+        try this.minValueExternal() returns (Float minValue) {
+            Float deployedMinValue = deployed.minValue();
+
+            assertEq(Float.unwrap(minValue), Float.unwrap(deployedMinValue));
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            deployed.minValue();
+        }
+    }
+
     function eExternal() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_E;
     }

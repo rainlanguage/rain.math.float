@@ -91,6 +91,10 @@ library LibDecimalFloat {
     Float constant FLOAT_MAX_VALUE =
         Float.wrap(bytes32(uint256(0x7fffffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffff)));
 
+    /// type (int224).min, type(int32).max
+    Float constant FLOAT_MIN_VALUE =
+        Float.wrap(bytes32(uint256(0x7fffffff80000000000000000000000000000000000000000000000000000000)));
+
     /// Euler's number
     /// 2.718281828459045235360287471352662497757247093699959574966967627724e66, -66
     Float constant FLOAT_E =
