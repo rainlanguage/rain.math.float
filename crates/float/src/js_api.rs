@@ -176,6 +176,67 @@ impl Float {
             .map_err(|e| FloatError::JsSysError(e.to_string().into()))
     }
 
+    /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals lossy.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The fixed-point decimal value as a `string`.
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The resulting `Float` value.
+    /// * `Err(FloatError)` - If the conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const floatResult = Float.fromFixedDecimalLossy("12345", 2);
+    /// if (floatResult.error) {
+    ///    console.error(floatResult.error);
+    /// }
+    /// const float = floatResult.value;
+    /// assert(float.format() === "123.45");
+    /// ```
+    #[wasm_export(js_name = "fromFixedDecimalLossy", preserve_js_class)]
+    pub fn from_fixed_decimal_lossy_js(value: BigInt, decimals: u8) -> Result<Float, FloatError> {
+        let value_str: String = value.to_string(10)?.into();
+        let val = U256::from_str(&value_str)?;
+        Self::from_fixed_decimal_lossy(val, decimals)
+    }
+
+    /// Converts a `Float` to a fixed-point decimal value using the specified number of decimals lossy.
+    ///
+    /// # Arguments
+    ///
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The resulting fixed-point decimal value as a string.
+    /// * `Err(FloatError)` - If the conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const float = Float.parse("123.45").value!;
+    /// const result = float.toFixedDecimalLossy(2);
+    /// if (result.error) {
+    ///    console.error(result.error);
+    /// }
+    /// assert(result.value === "12345");
+    /// ```
+    #[wasm_export(
+        js_name = "toFixedDecimalLossy",
+        preserve_js_class,
+        unchecked_return_type = "bigint"
+    )]
+    pub fn to_fixed_decimal_lossy_js(&self, decimals: u8) -> Result<BigInt, FloatError> {
+        let fixed = self.to_fixed_decimal_lossy(decimals)?;
+        BigInt::from_str(&fixed.to_string())
+            .map_err(|e| FloatError::JsSysError(e.to_string().into()))
+    }
+
     /// Packs a coefficient and exponent into a `Float` in a lossless manner.
     ///
     /// # Arguments

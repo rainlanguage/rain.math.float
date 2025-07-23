@@ -114,6 +114,79 @@ impl Float {
         })
     }
 
+    /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals lossy.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The fixed-point decimal value as a `U256`.
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The resulting `Float` value.
+    /// * `Err(FloatError)` - If the conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    /// use alloy::primitives::U256;
+    ///
+    /// // 123.45 with 2 decimals is represented as 12345
+    /// let value = U256::from(12345u64);
+    /// let decimals = 2u8;
+    /// let float = Float::from_fixed_decimal_lossy(value, decimals)?;
+    /// assert_eq!(float.format()?, "123.45");
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn from_fixed_decimal_lossy(value: U256, decimals: u8) -> Result<Self, FloatError> {
+        let calldata =
+            DecimalFloat::fromFixedDecimalLossyPackedCall { value, decimals }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::fromFixedDecimalLossyPackedCall::abi_decode_returns(
+                output.as_ref(),
+            )?;
+            Ok(Float(decoded._0))
+        })
+    }
+
+    /// Converts a `Float` to a fixed-point decimal value using the specified number of decimals lossy.
+    ///
+    /// # Arguments
+    ///
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(U256)` - The resulting fixed-point decimal value.
+    /// * `Err(FloatError)` - If the conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    /// use alloy::primitives::U256;
+    ///
+    /// // 123.45 with 2 decimals becomes 12345
+    /// let float = Float::parse("123.45".to_string())?;
+    /// let fixed = float.to_fixed_decimal_lossy(2)?;
+    /// assert_eq!(fixed, U256::from(12345u64));
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn to_fixed_decimal_lossy(self, decimals: u8) -> Result<U256, FloatError> {
+        let Float(float) = self;
+        let calldata = DecimalFloat::toFixedDecimalLossyCall { float, decimals }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded =
+                DecimalFloat::toFixedDecimalLossyCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded._0)
+        })
+    }
+
     /// Packs a coefficient and exponent into a `Float` in a lossless manner.
     ///
     /// # Arguments
