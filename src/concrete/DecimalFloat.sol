@@ -246,7 +246,8 @@ contract DecimalFloat {
     /// exponent.
     /// @return lossless True if the conversion was lossless, false otherwise.
     function fromFixedDecimalLossyPacked(uint256 value, uint8 decimals) external pure returns (Float, bool) {
-        return LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
+        (Float float, bool lossless) = LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
+        return (float, lossless);
     }
 
     /// Exposes `LibDecimalFloat.toFixedDecimalLossy` for offchain use.
@@ -256,6 +257,7 @@ contract DecimalFloat {
     /// @return value The fixed point decimal value as a uint256.
     /// @return lossless True if the conversion was lossless, false otherwise.
     function toFixedDecimalLossy(Float float, uint8 decimals) external pure returns (uint256, bool) {
-        return LibDecimalFloat.toFixedDecimalLossy(float, decimals);
+        (uint256 value, bool lossless) = LibDecimalFloat.toFixedDecimalLossy(float, decimals);
+        return (value, lossless);
     }
 }
