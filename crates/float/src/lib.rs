@@ -1,11 +1,13 @@
 use alloy::hex::FromHex;
-use alloy::primitives::aliases::I224;
 use alloy::primitives::{B256, Bytes};
 use alloy::{sol, sol_types::SolCall};
 use revm::primitives::{U256, fixed_bytes};
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use wasm_bindgen_utils::prelude::*;
+
+#[cfg(test)]
+use alloy::primitives::aliases::I224;
 
 pub mod error;
 mod evm;
@@ -14,11 +16,20 @@ pub mod js_api;
 use error::DecimalFloatErrorSelector;
 pub use error::FloatError;
 use evm::execute_call;
+#[cfg(test)]
+use evm::execute_test_call;
 
 sol!(
     #![sol(all_derives)]
     DecimalFloat,
     "../../out/DecimalFloat.sol/DecimalFloat.json"
+);
+
+#[cfg(test)]
+sol!(
+    #![sol(all_derives)]
+    TestDecimalFloat,
+    "../../out/TestDecimalFloat.sol/TestDecimalFloat.json"
 );
 
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Hash)]
@@ -68,13 +79,11 @@ impl Float {
     /// anyhow::Ok(())
     /// ```
     pub fn from_fixed_decimal(value: U256, decimals: u8) -> Result<Self, FloatError> {
-        let calldata =
-            DecimalFloat::fromFixedDecimalLosslessPackedCall { value, decimals }.abi_encode();
+        let calldata = DecimalFloat::fromFixedDecimalLosslessCall { value, decimals }.abi_encode();
 
         execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::fromFixedDecimalLosslessPackedCall::abi_decode_returns(
-                output.as_ref(),
-            )?;
+            let decoded =
+                DecimalFloat::fromFixedDecimalLosslessCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
     }
@@ -141,12 +150,11 @@ impl Float {
     /// anyhow::Ok(())
     /// ```
     pub fn from_fixed_decimal_lossy(value: U256, decimals: u8) -> Result<Self, FloatError> {
-        let calldata =
-            DecimalFloat::fromFixedDecimalLossyPackedCall { value, decimals }.abi_encode();
+        let calldata = DecimalFloat::fromFixedDecimalLossyCall { value, decimals }.abi_encode();
 
         execute_call(Bytes::from(calldata), |output| {
             let decoded =
-                DecimalFloat::fromFixedDecimalLossyPackedCall::abi_decode_returns(output.as_ref())?;
+                DecimalFloat::fromFixedDecimalLossyCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded._0))
         })
     }
@@ -212,29 +220,30 @@ impl Float {
     ///
     /// anyhow::Ok(())
     /// ```
+    #[cfg(test)]
     pub fn pack_lossless(coefficient: I224, exponent: i32) -> Result<Self, FloatError> {
-        let calldata = DecimalFloat::packLosslessCall {
+        let calldata = TestDecimalFloat::packLosslessCall {
             coefficient,
             exponent,
         }
         .abi_encode();
 
-        execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::packLosslessCall::abi_decode_returns(output.as_ref())?;
+        execute_test_call(Bytes::from(calldata), |output| {
+            let decoded = TestDecimalFloat::packLosslessCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
     }
 
     #[cfg(test)]
-    fn unpack(self) -> Result<(I224, i32), FloatError> {
+    fn unpack(self) -> Result<(alloy::primitives::I256, alloy::primitives::I256), FloatError> {
         let Float(float) = self;
-        let calldata = DecimalFloat::unpackCall { float }.abi_encode();
+        let calldata = TestDecimalFloat::unpackCall { float }.abi_encode();
 
-        execute_call(Bytes::from(calldata), |output| {
-            let DecimalFloat::unpackReturn {
+        execute_test_call(Bytes::from(calldata), |output| {
+            let TestDecimalFloat::unpackReturn {
                 _0: coefficient,
                 _1: exponent,
-            } = DecimalFloat::unpackCall::abi_decode_returns(output.as_ref())?;
+            } = TestDecimalFloat::unpackCall::abi_decode_returns(output.as_ref())?;
 
             Ok((coefficient, exponent))
         })

@@ -41,10 +41,6 @@ describe('Test Float Bindings', () => {
 			expect(result).toBe(originalValue);
 		});
 
-		it('should test packLossless', () => {
-			const float = Float.packLossless('314', -2)?.value!;
-			expect(float.format()?.value!).toBe('3.14');
-		});
 
 		it('should try from bigint', () => {
 			const result = Float.tryFromBigint(5n);

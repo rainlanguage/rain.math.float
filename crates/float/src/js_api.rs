@@ -1,5 +1,4 @@
 use crate::{Float, FloatError};
-use alloy::primitives::aliases::I224;
 use revm::primitives::{B256, U256};
 use std::{
     ops::{Add, Div, Mul, Neg, Sub},
@@ -235,34 +234,6 @@ impl Float {
         let fixed = self.to_fixed_decimal_lossy(decimals)?;
         BigInt::from_str(&fixed.to_string())
             .map_err(|e| FloatError::JsSysError(e.to_string().into()))
-    }
-
-    /// Packs a coefficient and exponent into a `Float` in a lossless manner.
-    ///
-    /// # Arguments
-    ///
-    /// * `coefficient` - The coefficient as an `string`.
-    /// * `exponent` - The exponent as an `number`.
-    ///
-    /// # Returns
-    ///
-    /// * `Ok(Float)` - The packed float.
-    /// * `Err(FloatError)` - If the packing fails (e.g., overflow).
-    ///
-    /// # Example
-    ///
-    /// ```typescript
-    /// const floatResult = Float.packLossless("314", -2);
-    /// if (floatResult.error) {
-    ///    console.error(floatResult.error);
-    /// }
-    /// const float = floatResult.value;
-    /// assert(float.format() === "3.14");
-    /// ```
-    #[wasm_export(js_name = "packLossless", preserve_js_class)]
-    pub fn pack_lossless_js(coefficient: String, exponent: i32) -> Result<Float, FloatError> {
-        let val = I224::from_str(&coefficient)?;
-        Self::pack_lossless(val, exponent)
     }
 
     /// Parses a decimal string into a `Float`.
