@@ -219,12 +219,12 @@ impl Float {
     /// # Example
     ///
     /// ```typescript
-    /// const float = Float.parse("123.45").value!;
+    /// const float = Float.fromFixedDecimal(12345n, 3).value!;
     /// const result = float.toFixedDecimalLossy(2);
     /// if (result.error) {
     ///    console.error(result.error);
     /// }
-    /// assert(result.value === "12345");
+    /// assert(result.value === "1234");
     /// ```
     #[wasm_export(
         js_name = "toFixedDecimalLossy",

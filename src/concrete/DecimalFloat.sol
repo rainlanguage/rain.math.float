@@ -244,6 +244,7 @@ contract DecimalFloat {
     /// representation. e.g. If 1e18 represents 1 this would be 18 decimals.
     /// @return float The Float struct containing the signed coefficient and
     /// exponent.
+    /// @return lossless True if the conversion was lossless, false otherwise.
     function fromFixedDecimalLossyPacked(uint256 value, uint8 decimals) external pure returns (Float, bool) {
         return LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
     }
@@ -252,7 +253,8 @@ contract DecimalFloat {
     /// @param float The Float struct to convert.
     /// @param decimals The number of decimals in the fixed point
     /// representation. e.g. If 1e18 represents 1 this would be 18 decimals.
-    /// @return The fixed point decimal value as a uint256.
+    /// @return value The fixed point decimal value as a uint256.
+    /// @return lossless True if the conversion was lossless, false otherwise.
     function toFixedDecimalLossy(Float float, uint8 decimals) external pure returns (uint256, bool) {
         return LibDecimalFloat.toFixedDecimalLossy(float, decimals);
     }

@@ -145,9 +145,8 @@ impl Float {
             DecimalFloat::fromFixedDecimalLossyPackedCall { value, decimals }.abi_encode();
 
         execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::fromFixedDecimalLossyPackedCall::abi_decode_returns(
-                output.as_ref(),
-            )?;
+            let decoded =
+                DecimalFloat::fromFixedDecimalLossyPackedCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded._0))
         })
     }
@@ -170,9 +169,9 @@ impl Float {
     /// use alloy::primitives::U256;
     ///
     /// // 123.45 with 2 decimals becomes 12345
-    /// let float = Float::parse("123.45".to_string())?;
+    /// let float = Float::from_fixed_decimal(U256::from(12345), 3)?;
     /// let fixed = float.to_fixed_decimal_lossy(2)?;
-    /// assert_eq!(fixed, U256::from(12345u64));
+    /// assert_eq!(fixed, U256::from(1234u64));
     ///
     /// anyhow::Ok(())
     /// ```
@@ -1673,6 +1672,58 @@ mod tests {
             let a = (a + one).unwrap();
             let gte = a.gte(b).unwrap();
             prop_assert!(gte); // gt
+        }
+    }
+
+    #[test]
+    fn test_from_fixed_decimal_lossy() {
+        let cases = vec![
+            (U256::from(0u128), 0u8, "0"),
+            (U256::from(0u128), 18u8, "0"),
+            (U256::from(1u128), 18u8, "1e-18"),
+            (U256::from(123456789u128), 0u8, "123456789"),
+            (U256::from(123456789u128), 2u8, "123456789e-2"),
+            (U256::from(1000000000000000000u128), 18u8, "1"),
+        ];
+
+        for (amount, decimals, expected) in cases {
+            let float = Float::from_fixed_decimal_lossy(amount, decimals).expect("should convert");
+            let expected = Float::parse(expected.to_string()).unwrap();
+            assert!(float.eq(expected).unwrap());
+        }
+    }
+
+    #[test]
+    fn test_to_fixed_decimal_lossy() {
+        let cases = vec![
+            (U256::from(0), 0u8, 0u128),
+            (U256::from(0), 18u8, 0u128),
+            (U256::from(1), 18u8, 0u128),
+            (U256::from(123456789), 0u8, 12345678u128),
+            (U256::from(123456789), 2u8, 12345678u128),
+        ];
+
+        for (input, decimals, expected) in cases {
+            let float = Float::from_fixed_decimal(input, decimals + 1).unwrap();
+            let fixed = float.to_fixed_decimal_lossy(decimals).unwrap();
+            assert_eq!(fixed, U256::from(expected));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_from_to_fixed_decimal_lossy_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
+            prop_assume!(coeff >= I224::ZERO);
+
+            let exponent = -(decimals as i32 + 1);
+            let value = U256::from(coeff);
+
+            let float = Float::from_fixed_decimal_lossy(value, decimals + 1).unwrap();
+            let expected = Float::pack_lossless(coeff, exponent).unwrap();
+            prop_assert!(float.eq(expected).unwrap());
+
+            let fixed = float.to_fixed_decimal_lossy(decimals).unwrap();
+            assert_eq!(fixed, value / U256::from(10));
         }
     }
 }
