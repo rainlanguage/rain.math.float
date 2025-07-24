@@ -200,22 +200,6 @@ contract DecimalFloat {
         return a.isZero();
     }
 
-    /// Exposes `LibDecimalFloat.packLossless` for offchain use.
-    /// @param coefficient The coefficient to pack.
-    /// @param exponent The exponent to pack.
-    /// @return The packed float.
-    function packLossless(int224 coefficient, int32 exponent) external pure returns (Float) {
-        return LibDecimalFloat.packLossless(coefficient, exponent);
-    }
-
-    /// Exposes `LibDecimalFloat.unpack` for offchain use.
-    /// @param float The float to unpack.
-    /// @return coefficient The coefficient of the float.
-    /// @return exponent The exponent of the float.
-    function unpack(Float float) external pure returns (int256, int256) {
-        return LibDecimalFloat.unpack(float);
-    }
-
     /// Exposes `LibDecimalFloat.fromFixedDecimalLosslessPacked` for offchain
     /// use.
     /// @param value The fixed point decimal value to convert.

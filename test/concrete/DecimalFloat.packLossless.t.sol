@@ -2,7 +2,7 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std/Test.sol";
-import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
+import {TestDecimalFloat} from "./TestDecimalFloat.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 contract DecimalFloatPackLosslessTest is Test {
@@ -11,7 +11,7 @@ contract DecimalFloatPackLosslessTest is Test {
     }
 
     function testPackDeployed(int224 signedCoefficient, int32 exponent) external {
-        DecimalFloat deployed = new DecimalFloat();
+        TestDecimalFloat deployed = new TestDecimalFloat();
 
         try this.packLosslessExternal(signedCoefficient, exponent) returns (Float packed) {
             Float deployedPacked = deployed.packLossless(signedCoefficient, exponent);
