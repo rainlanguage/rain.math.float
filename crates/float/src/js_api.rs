@@ -1,5 +1,4 @@
 use crate::{Float, FloatError};
-use alloy::primitives::aliases::I224;
 use revm::primitives::{B256, U256};
 use std::{
     ops::{Add, Div, Mul, Neg, Sub},
@@ -176,32 +175,65 @@ impl Float {
             .map_err(|e| FloatError::JsSysError(e.to_string().into()))
     }
 
-    /// Packs a coefficient and exponent into a `Float` in a lossless manner.
+    /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals lossy.
     ///
     /// # Arguments
     ///
-    /// * `coefficient` - The coefficient as an `string`.
-    /// * `exponent` - The exponent as an `number`.
+    /// * `value` - The fixed-point decimal value as a `string`.
+    /// * `decimals` - The number of decimals in the fixed-point representation.
     ///
     /// # Returns
     ///
-    /// * `Ok(Float)` - The packed float.
-    /// * `Err(FloatError)` - If the packing fails (e.g., overflow).
+    /// * `Ok(Float)` - The resulting `Float` value.
+    /// * `Err(FloatError)` - If the conversion fails.
     ///
     /// # Example
     ///
     /// ```typescript
-    /// const floatResult = Float.packLossless("314", -2);
+    /// const floatResult = Float.fromFixedDecimalLossy("12345", 2);
     /// if (floatResult.error) {
     ///    console.error(floatResult.error);
     /// }
     /// const float = floatResult.value;
-    /// assert(float.format() === "3.14");
+    /// assert(float.format() === "123.45");
     /// ```
-    #[wasm_export(js_name = "packLossless", preserve_js_class)]
-    pub fn pack_lossless_js(coefficient: String, exponent: i32) -> Result<Float, FloatError> {
-        let val = I224::from_str(&coefficient)?;
-        Self::pack_lossless(val, exponent)
+    #[wasm_export(js_name = "fromFixedDecimalLossy", preserve_js_class)]
+    pub fn from_fixed_decimal_lossy_js(value: BigInt, decimals: u8) -> Result<Float, FloatError> {
+        let value_str: String = value.to_string(10)?.into();
+        let val = U256::from_str(&value_str)?;
+        Self::from_fixed_decimal_lossy(val, decimals)
+    }
+
+    /// Converts a `Float` to a fixed-point decimal value using the specified number of decimals lossy.
+    ///
+    /// # Arguments
+    ///
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The resulting fixed-point decimal value as a string.
+    /// * `Err(FloatError)` - If the conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const float = Float.fromFixedDecimal(12345n, 3).value!;
+    /// const result = float.toFixedDecimalLossy(2);
+    /// if (result.error) {
+    ///    console.error(result.error);
+    /// }
+    /// assert(result.value === "1234");
+    /// ```
+    #[wasm_export(
+        js_name = "toFixedDecimalLossy",
+        preserve_js_class,
+        unchecked_return_type = "bigint"
+    )]
+    pub fn to_fixed_decimal_lossy_js(&self, decimals: u8) -> Result<BigInt, FloatError> {
+        let fixed = self.to_fixed_decimal_lossy(decimals)?;
+        BigInt::from_str(&fixed.to_string())
+            .map_err(|e| FloatError::JsSysError(e.to_string().into()))
     }
 
     /// Parses a decimal string into a `Float`.

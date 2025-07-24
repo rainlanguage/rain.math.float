@@ -134,6 +134,7 @@ library LibDecimalFloat {
     /// e.g. If 1e18 represents 1 this would be 18 decimals.
     /// @return float The Float struct containing the signed coefficient and
     /// exponent.
+    /// @return lossless `true` if the conversion is lossless.
     function fromFixedDecimalLossyPacked(uint256 value, uint8 decimals) internal pure returns (Float, bool) {
         (int256 signedCoefficient, int256 exponent, bool lossless) = fromFixedDecimalLossy(value, decimals);
         (Float float, bool losslessPack) = packLossy(signedCoefficient, exponent);

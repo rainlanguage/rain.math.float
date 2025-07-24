@@ -1,11 +1,13 @@
 use alloy::hex::FromHex;
-use alloy::primitives::aliases::I224;
 use alloy::primitives::{B256, Bytes};
 use alloy::{sol, sol_types::SolCall};
 use revm::primitives::{U256, fixed_bytes};
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use wasm_bindgen_utils::prelude::*;
+
+#[cfg(test)]
+use alloy::primitives::aliases::I224;
 
 pub mod error;
 mod evm;
@@ -14,11 +16,20 @@ pub mod js_api;
 use error::DecimalFloatErrorSelector;
 pub use error::FloatError;
 use evm::execute_call;
+#[cfg(test)]
+use evm::execute_test_call;
 
 sol!(
     #![sol(all_derives)]
     DecimalFloat,
     "../../out/DecimalFloat.sol/DecimalFloat.json"
+);
+
+#[cfg(test)]
+sol!(
+    #![sol(all_derives)]
+    TestDecimalFloat,
+    "../../out/TestDecimalFloat.sol/TestDecimalFloat.json"
 );
 
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Hash)]
@@ -68,13 +79,11 @@ impl Float {
     /// anyhow::Ok(())
     /// ```
     pub fn from_fixed_decimal(value: U256, decimals: u8) -> Result<Self, FloatError> {
-        let calldata =
-            DecimalFloat::fromFixedDecimalLosslessPackedCall { value, decimals }.abi_encode();
+        let calldata = DecimalFloat::fromFixedDecimalLosslessCall { value, decimals }.abi_encode();
 
         execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::fromFixedDecimalLosslessPackedCall::abi_decode_returns(
-                output.as_ref(),
-            )?;
+            let decoded =
+                DecimalFloat::fromFixedDecimalLosslessCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
     }
@@ -114,6 +123,77 @@ impl Float {
         })
     }
 
+    /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals lossy.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The fixed-point decimal value as a `U256`.
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The resulting `Float` value.
+    /// * `Err(FloatError)` - If the conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    /// use alloy::primitives::U256;
+    ///
+    /// // 123.45 with 2 decimals is represented as 12345
+    /// let value = U256::from(12345u64);
+    /// let decimals = 2u8;
+    /// let float = Float::from_fixed_decimal_lossy(value, decimals)?;
+    /// assert_eq!(float.format()?, "123.45");
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn from_fixed_decimal_lossy(value: U256, decimals: u8) -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::fromFixedDecimalLossyCall { value, decimals }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded =
+                DecimalFloat::fromFixedDecimalLossyCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded._0))
+        })
+    }
+
+    /// Converts a `Float` to a fixed-point decimal value using the specified number of decimals lossy.
+    ///
+    /// # Arguments
+    ///
+    /// * `decimals` - The number of decimals in the fixed-point representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(U256)` - The resulting fixed-point decimal value.
+    /// * `Err(FloatError)` - If the conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    /// use alloy::primitives::U256;
+    ///
+    /// // 123.45 with 2 decimals becomes 12345
+    /// let float = Float::from_fixed_decimal(U256::from(12345), 3)?;
+    /// let fixed = float.to_fixed_decimal_lossy(2)?;
+    /// assert_eq!(fixed, U256::from(1234u64));
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn to_fixed_decimal_lossy(self, decimals: u8) -> Result<U256, FloatError> {
+        let Float(float) = self;
+        let calldata = DecimalFloat::toFixedDecimalLossyCall { float, decimals }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded =
+                DecimalFloat::toFixedDecimalLossyCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded._0)
+        })
+    }
+
     /// Packs a coefficient and exponent into a `Float` in a lossless manner.
     ///
     /// # Arguments
@@ -140,29 +220,30 @@ impl Float {
     ///
     /// anyhow::Ok(())
     /// ```
+    #[cfg(test)]
     pub fn pack_lossless(coefficient: I224, exponent: i32) -> Result<Self, FloatError> {
-        let calldata = DecimalFloat::packLosslessCall {
+        let calldata = TestDecimalFloat::packLosslessCall {
             coefficient,
             exponent,
         }
         .abi_encode();
 
-        execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::packLosslessCall::abi_decode_returns(output.as_ref())?;
+        execute_test_call(Bytes::from(calldata), |output| {
+            let decoded = TestDecimalFloat::packLosslessCall::abi_decode_returns(output.as_ref())?;
             Ok(Float(decoded))
         })
     }
 
     #[cfg(test)]
-    fn unpack(self) -> Result<(I224, i32), FloatError> {
+    fn unpack(self) -> Result<(alloy::primitives::I256, alloy::primitives::I256), FloatError> {
         let Float(float) = self;
-        let calldata = DecimalFloat::unpackCall { float }.abi_encode();
+        let calldata = TestDecimalFloat::unpackCall { float }.abi_encode();
 
-        execute_call(Bytes::from(calldata), |output| {
-            let DecimalFloat::unpackReturn {
+        execute_test_call(Bytes::from(calldata), |output| {
+            let TestDecimalFloat::unpackReturn {
                 _0: coefficient,
                 _1: exponent,
-            } = DecimalFloat::unpackCall::abi_decode_returns(output.as_ref())?;
+            } = TestDecimalFloat::unpackCall::abi_decode_returns(output.as_ref())?;
 
             Ok((coefficient, exponent))
         })
@@ -1600,6 +1681,58 @@ mod tests {
             let a = (a + one).unwrap();
             let gte = a.gte(b).unwrap();
             prop_assert!(gte); // gt
+        }
+    }
+
+    #[test]
+    fn test_from_fixed_decimal_lossy() {
+        let cases = vec![
+            (U256::from(0u128), 0u8, "0"),
+            (U256::from(0u128), 18u8, "0"),
+            (U256::from(1u128), 18u8, "1e-18"),
+            (U256::from(123456789u128), 0u8, "123456789"),
+            (U256::from(123456789u128), 2u8, "123456789e-2"),
+            (U256::from(1000000000000000000u128), 18u8, "1"),
+        ];
+
+        for (amount, decimals, expected) in cases {
+            let float = Float::from_fixed_decimal_lossy(amount, decimals).expect("should convert");
+            let expected = Float::parse(expected.to_string()).unwrap();
+            assert!(float.eq(expected).unwrap());
+        }
+    }
+
+    #[test]
+    fn test_to_fixed_decimal_lossy() {
+        let cases = vec![
+            (U256::from(0), 0u8, 0u128),
+            (U256::from(0), 18u8, 0u128),
+            (U256::from(1), 18u8, 0u128),
+            (U256::from(123456789), 0u8, 12345678u128),
+            (U256::from(123456789), 2u8, 12345678u128),
+        ];
+
+        for (input, decimals, expected) in cases {
+            let float = Float::from_fixed_decimal(input, decimals + 1).unwrap();
+            let fixed = float.to_fixed_decimal_lossy(decimals).unwrap();
+            assert_eq!(fixed, U256::from(expected));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_from_to_fixed_decimal_lossy_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
+            prop_assume!(coeff >= I224::ZERO);
+
+            let exponent = -(decimals as i32 + 1);
+            let value = U256::from(coeff);
+
+            let float = Float::from_fixed_decimal_lossy(value, decimals + 1).unwrap();
+            let expected = Float::pack_lossless(coeff, exponent).unwrap();
+            prop_assert!(float.eq(expected).unwrap());
+
+            let fixed = float.to_fixed_decimal_lossy(decimals).unwrap();
+            assert_eq!(fixed, value / U256::from(10));
         }
     }
 }
