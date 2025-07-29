@@ -25,3 +25,6 @@ error LossyConversionToFloat(int256 signedCoefficient, int256 exponent);
 /// @dev Thrown when converting a float to some value when the conversion
 /// is lossy.
 error LossyConversionFromFloat(int256 signedCoefficient, int256 exponent);
+
+/// @dev Thrown when attempting to exponentiate a negative float.
+error NegativeFloatExponentiation(int256 signedCoefficient, int256 exponent);

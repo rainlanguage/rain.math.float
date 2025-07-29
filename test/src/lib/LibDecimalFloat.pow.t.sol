@@ -44,7 +44,19 @@ contract LibDecimalFloatPowTest is LogTest {
         checkPow(1785215562, 0, 18, 0, 3388, 163);
     }
 
-    function testPowZero(int32 exponentA, Float b) external {
+    /// a^0 = 1 for all a including 0^0.
+    function testPowBZero(Float a, int32 exponentB) external {
+        Float b = LibDecimalFloat.packLossless(0, exponentB);
+        // If b is zero then the result is always 1.
+        address tables = logTables();
+        Float c = a.pow(b, tables);
+        assertTrue(c.eq(LibDecimalFloat.packLossless(1, 0)), "c is not 1");
+    }
+
+    /// 0^b is defined as 0 for all b != 0.
+    function testPowAZero(int32 exponentA, Float b) external {
+        // 0^0 is defined as 1.
+        vm.assume(!b.isZero());
         // If a is zero then the result is always zero.
         Float a = LibDecimalFloat.packLossless(0, exponentA);
         address tables = logTables();
