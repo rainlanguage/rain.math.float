@@ -2,7 +2,6 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "../lib/LibDecimalFloat.sol";
-import {LOG_TABLES_ADDRESS} from "../lib/deploy/LibDecimalFloatDeploy.sol";
 import {LibFormatDecimalFloat} from "../lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "../lib/parse/LibParseDecimalFloat.sol";
 
@@ -159,14 +158,14 @@ contract DecimalFloat {
     /// @param a The float to raise to the power of 10.
     /// @return The result of raising the float to the power of 10.
     function pow10(Float a) external view returns (Float) {
-        return a.pow10(LOG_TABLES_ADDRESS);
+        return a.pow10(LibDecimalFloat.LOG_TABLES_ADDRESS);
     }
 
     /// Exposes `LibDecimalFloat.log10` for offchain use.
     /// @param a The float to take the logarithm of.
     /// @return The logarithm of the float.
     function log10(Float a) external view returns (Float) {
-        return a.log10(LOG_TABLES_ADDRESS);
+        return a.log10(LibDecimalFloat.LOG_TABLES_ADDRESS);
     }
 
     /// Exposes `LibDecimalFloat.pow` for offchain use.
@@ -174,7 +173,7 @@ contract DecimalFloat {
     /// @param b The exponent float.
     /// @return The result of raising the base float to the power of the exponent
     function pow(Float a, Float b) external view returns (Float) {
-        return a.pow(b, LOG_TABLES_ADDRESS);
+        return a.pow(b, LibDecimalFloat.LOG_TABLES_ADDRESS);
     }
 
     /// Exposes `LibDecimalFloat.min` for offchain use.

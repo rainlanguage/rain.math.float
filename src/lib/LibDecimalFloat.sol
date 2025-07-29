@@ -87,6 +87,8 @@ int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT
 library LibDecimalFloat {
     using LibDecimalFloat for Float;
 
+    address constant LOG_TABLES_ADDRESS = 0x295180b25A5059a2e7eC64272ba4F85047B4146A;
+
     /// type(int224).max, type(int32).max
     Float constant FLOAT_MAX_VALUE =
         Float.wrap(bytes32(uint256(0x7fffffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffff)));
