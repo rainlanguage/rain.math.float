@@ -2,6 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 thedavidmeister
 pragma solidity ^0.8.25;
 
+import {Float} from "../lib/LibDecimalFloat.sol";
+
 /// @dev Thrown when a coefficient overflows.
 error CoefficientOverflow(int256 signedCoefficient, int256 exponent);
 
@@ -25,3 +27,6 @@ error LossyConversionToFloat(int256 signedCoefficient, int256 exponent);
 /// @dev Thrown when converting a float to some value when the conversion
 /// is lossy.
 error LossyConversionFromFloat(int256 signedCoefficient, int256 exponent);
+
+/// @dev Thrown when attempting to exponentiate 0^b where b is negative.
+error ZeroNegativePower(Float b);

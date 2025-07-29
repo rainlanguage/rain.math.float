@@ -14,7 +14,8 @@ import {
     Log10Zero,
     NegativeFixedDecimalConversion,
     LossyConversionFromFloat,
-    LossyConversionToFloat
+    LossyConversionToFloat,
+    ZeroNegativePower
 } from "../error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
@@ -88,6 +89,10 @@ library LibDecimalFloat {
     using LibDecimalFloat for Float;
 
     address constant LOG_TABLES_ADDRESS = 0x295180b25A5059a2e7eC64272ba4F85047B4146A;
+
+    Float constant FLOAT_ZERO = Float.wrap(0);
+
+    Float constant FLOAT_ONE = Float.wrap(bytes32(uint256(1)));
 
     /// type(int224).max, type(int32).max
     Float constant FLOAT_MAX_VALUE =
@@ -640,6 +645,18 @@ library LibDecimalFloat {
     /// logarithm tables.
     function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        if (b.isZero()) {
+            return FLOAT_ONE;
+        } else if (signedCoefficientA == 0) {
+            if (b.lt(FLOAT_ZERO)) {
+                // If b is negative, and a is 0, so we revert.
+                revert ZeroNegativePower(b);
+            }
+
+            // If a is zero, then a^b is always zero, regardless of b.
+            // This is a special case because log10(0) is undefined.
+            return FLOAT_ZERO;
+        }
 
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);

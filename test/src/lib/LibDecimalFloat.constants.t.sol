@@ -26,4 +26,16 @@ contract LibDecimalFloatConstantsTest is Test {
         );
         assertEq(Float.unwrap(e), Float.unwrap(expected));
     }
+
+    function testFloatZero() external pure {
+        Float zero = LibDecimalFloat.FLOAT_ZERO;
+        Float expected = LibDecimalFloat.packLossless(0, 0);
+        assertEq(Float.unwrap(zero), Float.unwrap(expected));
+    }
+
+    function testFloatOne() external pure {
+        Float one = LibDecimalFloat.FLOAT_ONE;
+        Float expected = LibDecimalFloat.packLossless(1, 0);
+        assertEq(Float.unwrap(one), Float.unwrap(expected));
+    }
 }
