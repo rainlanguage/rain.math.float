@@ -640,6 +640,11 @@ library LibDecimalFloat {
     /// logarithm tables.
     function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        if (signedCoefficientA == 0) {
+            // If a is zero, then a^b is always zero, regardless of b.
+            // This is a special case because log10(0) is undefined.
+            return Float.wrap(0);
+        }
 
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);

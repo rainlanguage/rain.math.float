@@ -44,6 +44,14 @@ contract LibDecimalFloatPowTest is LogTest {
         checkPow(1785215562, 0, 18, 0, 3388, 163);
     }
 
+    function testPowZero(int32 exponentA, Float b) external {
+        // If a is zero then the result is always zero.
+        Float a = LibDecimalFloat.packLossless(0, exponentA);
+        address tables = logTables();
+        Float c = a.pow(b, tables);
+        assertTrue(c.isZero(), "c is not zero");
+    }
+
     function checkRoundTrip(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
     {
