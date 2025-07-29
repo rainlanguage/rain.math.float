@@ -13,7 +13,7 @@ import {LibBytes} from "rain.solmem/lib/LibBytes.sol";
 import {LibMemCpy, Pointer} from "rain.solmem/lib/LibMemCpy.sol";
 import {DecimalFloat} from "../../concrete/DecimalFloat.sol";
 
-address constant LOG_TABLES_ADDRESS = 0x7A0D94F55792C434d74a40883C6ed8545E406D12;
+address constant LOG_TABLES_ADDRESS = 0x295180b25A5059a2e7eC64272ba4F85047B4146A;
 
 library LibDecimalFloatDeploy {
     function combinedTables() internal pure returns (bytes memory) {
