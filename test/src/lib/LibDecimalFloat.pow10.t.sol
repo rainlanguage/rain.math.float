@@ -23,7 +23,7 @@ contract LibDecimalFloatPow10Test is LogTest {
         ) {
             if (exponent > type(int32).max) {
                 vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
-                Float floatPower10 = this.pow10External(float);
+                this.pow10External(float);
             } else {
                 Float floatPower10 = this.pow10External(float);
                 (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = floatPower10.unpack();
