@@ -15,7 +15,7 @@ import {
     NegativeFixedDecimalConversion,
     LossyConversionFromFloat,
     LossyConversionToFloat,
-    NegativeFloatExponentiation
+    ZeroNegativePower
 } from "../error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
@@ -648,12 +648,14 @@ library LibDecimalFloat {
         if (b.isZero()) {
             return FLOAT_ONE;
         } else if (signedCoefficientA == 0) {
+            if (b.lt(FLOAT_ZERO)) {
+                // If b is negative, and a is 0, so we revert.
+                revert ZeroNegativePower(b);
+            }
+
             // If a is zero, then a^b is always zero, regardless of b.
             // This is a special case because log10(0) is undefined.
             return FLOAT_ZERO;
-        } else if (signedCoefficientA < 0) {
-            // If a is negative, then we can't take the logarithm, so we revert.
-            revert NegativeFloatExponentiation(signedCoefficientA, exponentA);
         }
 
         (int256 signedCoefficientC, int256 exponentC) =

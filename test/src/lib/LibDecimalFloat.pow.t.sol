@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-
+import {ZeroNegativePower} from "src/error/ErrDecimalFloat.sol";
 import {console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
@@ -53,15 +53,22 @@ contract LibDecimalFloatPowTest is LogTest {
         assertTrue(c.eq(LibDecimalFloat.packLossless(1, 0)), "c is not 1");
     }
 
-    /// 0^b is defined as 0 for all b != 0.
+    /// 0^b is defined as 0 for all b > 0.
     function testPowAZero(int32 exponentA, Float b) external {
         // 0^0 is defined as 1.
-        vm.assume(!b.isZero());
+        vm.assume(b.gt(LibDecimalFloat.FLOAT_ZERO));
         // If a is zero then the result is always zero.
         Float a = LibDecimalFloat.packLossless(0, exponentA);
         address tables = logTables();
         Float c = a.pow(b, tables);
         assertTrue(c.isZero(), "c is not zero");
+    }
+
+    /// 0^a is error for all a < 0.
+    function testPowAZeroNegative(Float b) external {
+        vm.assume(b.lt(LibDecimalFloat.FLOAT_ZERO));
+        vm.expectRevert(abi.encodeWithSelector(ZeroNegativePower.selector, b));
+        this.powExternal(LibDecimalFloat.FLOAT_ZERO, b);
     }
 
     function checkRoundTrip(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
