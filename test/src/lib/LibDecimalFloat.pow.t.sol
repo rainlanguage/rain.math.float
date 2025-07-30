@@ -4,7 +4,8 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ZeroNegativePower} from "src/error/ErrDecimalFloat.sol";
+import {ZeroNegativePower, Log10Negative} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
@@ -42,6 +43,26 @@ contract LibDecimalFloatPowTest is LogTest {
         // // Issues found in fuzzing from here.
         checkPow(99999, 0, 12182, 0, 1000, 60907);
         checkPow(1785215562, 0, 18, 0, 3388, 163);
+    }
+
+    /// a^b is error for negative a and all b.
+    /// In the future we may support negative bases with integer exponents.
+    /// https://github.com/rainlanguage/rain.math.float/issues/88
+    function testNegativePowError(Float a, Float b) external {
+        // We can't simply minus 0 to get a negative base.
+        vm.assume(!a.isZero());
+        // Anything to 0 power is 1, including negative base.
+        vm.assume(!b.isZero());
+        if (a.gt(LibDecimalFloat.FLOAT_ZERO)) {
+            a = a.minus();
+        }
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientANormalized, int256 exponentANormalized) =
+            LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
+        vm.expectRevert(
+            abi.encodeWithSelector(Log10Negative.selector, signedCoefficientANormalized, exponentANormalized)
+        );
+        this.powExternal(a, b);
     }
 
     /// a^0 = 1 for all a including 0^0.
