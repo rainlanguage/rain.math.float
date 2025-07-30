@@ -12,7 +12,7 @@ contract DecimalFloatConstantsTest is Test {
         return LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE;
     }
 
-    function testMaxValueDeployed() external {
+    function testMaxPositiveValueDeployed() external {
         DecimalFloat deployed = new DecimalFloat();
 
         try this.maxPositiveValueExternal() returns (Float maxValue) {
@@ -22,6 +22,40 @@ contract DecimalFloatConstantsTest is Test {
         } catch (bytes memory err) {
             vm.expectRevert(err);
             deployed.maxPositiveValue();
+        }
+    }
+
+    function minPositiveValueExternal() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE;
+    }
+
+    function testMinPositiveValueDeployed() external {
+        DecimalFloat deployed = new DecimalFloat();
+
+        try this.minPositiveValueExternal() returns (Float minValue) {
+            Float deployedMinPositiveValue = deployed.minPositiveValue();
+
+            assertEq(Float.unwrap(minValue), Float.unwrap(deployedMinPositiveValue));
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            deployed.minPositiveValue();
+        }
+    }
+
+    function maxNegativeValueExternal() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MAX_NEGATIVE_VALUE;
+    }
+
+    function testMaxNegativeValueDeployed() external {
+        DecimalFloat deployed = new DecimalFloat();
+
+        try this.maxNegativeValueExternal() returns (Float maxNegativeValue) {
+            Float deployedMaxNegativeValue = deployed.maxNegativeValue();
+
+            assertEq(Float.unwrap(maxNegativeValue), Float.unwrap(deployedMaxNegativeValue));
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            deployed.maxNegativeValue();
         }
     }
 

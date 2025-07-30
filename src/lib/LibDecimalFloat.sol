@@ -90,8 +90,10 @@ library LibDecimalFloat {
 
     address constant LOG_TABLES_ADDRESS = 0x295180b25A5059a2e7eC64272ba4F85047B4146A;
 
+    /// A zero valued float.
     Float constant FLOAT_ZERO = Float.wrap(0);
 
+    /// A one valued float.
     Float constant FLOAT_ONE = Float.wrap(bytes32(uint256(1)));
 
     /// Largest possible positive value.
@@ -99,6 +101,18 @@ library LibDecimalFloat {
     Float constant FLOAT_MAX_POSITIVE_VALUE =
         Float.wrap(bytes32(uint256(0x7fffffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffff)));
 
+    /// Smallest possible positive value.
+    /// 1, type(int32).min
+    Float constant FLOAT_MIN_POSITIVE_VALUE =
+        Float.wrap(bytes32(uint256(0x8000000000000000000000000000000000000000000000000000000000000001)));
+
+    /// Largest possible (closest to zero) negative value.
+    /// -1, type(int32).min
+    // slither-disable-next-line too-many-digits
+    Float constant FLOAT_MAX_NEGATIVE_VALUE =
+        Float.wrap(bytes32(uint256(0x80000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff)));
+
+    /// Smallest possible (most negative) negative value.
     /// type (int224).min, type(int32).max
     // slither-disable-next-line too-many-digits
     Float constant FLOAT_MIN_NEGATIVE_VALUE =

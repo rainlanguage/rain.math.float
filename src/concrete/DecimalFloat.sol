@@ -9,13 +9,25 @@ contract DecimalFloat {
     using LibDecimalFloat for Float;
 
     /// Exposes `LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE` for offchain use.
-    /// @return The maximum value of a Float.
+    /// @return The maximum positive value of a Float.
     function maxPositiveValue() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE;
     }
 
+    /// Exposes `LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE` for offchain use.
+    /// @return The minimum positive value of a Float.
+    function minPositiveValue() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE;
+    }
+
+    /// Exposes `LibDecimalFloat.FLOAT_MAX_NEGATIVE_VALUE` for offchain use.
+    /// @return The maximum negative value of a Float.
+    function maxNegativeValue() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MAX_NEGATIVE_VALUE;
+    }
+
     /// Exposes `LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE` for offchain use.
-    /// @return The minimum value of a Float.
+    /// @return The minimum negative value of a Float.
     function minNegativeValue() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
     }
