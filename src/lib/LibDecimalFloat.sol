@@ -103,6 +103,7 @@ library LibDecimalFloat {
 
     /// Smallest possible positive value.
     /// 1, type(int32).min
+    // slither-disable-next-line too-many-digits
     Float constant FLOAT_MIN_POSITIVE_VALUE =
         Float.wrap(bytes32(uint256(0x8000000000000000000000000000000000000000000000000000000000000001)));
 
