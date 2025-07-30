@@ -43,9 +43,11 @@ contract LibDecimalFloatPowTest is LogTest {
         // // Issues found in fuzzing from here.
         checkPow(99999, 0, 12182, 0, 1000, 60907);
         checkPow(1785215562, 0, 18, 0, 3388, 163);
-        // checkPow(-13479973333575319897333507543169532969897633747806911633120036913154, 539, -13479973333575319897333507543509815336818572211270286240551805119725, -846, 1, 1);
     }
 
+    /// a^b is error for negative a and all b.
+    /// In the future we may support negative bases with integer exponents.
+    /// https://github.com/rainlanguage/rain.math.float/issues/88
     function testNegativePowError(Float a, Float b) external {
         // We can't simply minus 0 to get a negative base.
         vm.assume(!a.isZero());
