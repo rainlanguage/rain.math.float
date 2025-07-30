@@ -94,8 +94,9 @@ library LibDecimalFloat {
 
     Float constant FLOAT_ONE = Float.wrap(bytes32(uint256(1)));
 
+    /// Largest possible positive value.
     /// type(int224).max, type(int32).max
-    Float constant FLOAT_MAX_VALUE =
+    Float constant FLOAT_MAX_POSITIVE_VALUE =
         Float.wrap(bytes32(uint256(0x7fffffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffff)));
 
     /// type (int224).min, type(int32).max

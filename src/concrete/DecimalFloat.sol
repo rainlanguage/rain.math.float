@@ -8,13 +8,13 @@ import {LibParseDecimalFloat} from "../lib/parse/LibParseDecimalFloat.sol";
 contract DecimalFloat {
     using LibDecimalFloat for Float;
 
-    /// Exposes `LibDecimalFloat.FLOAT_MAX_VALUE` for offchain use.
+    /// Exposes `LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE` for offchain use.
     /// @return The maximum value of a Float.
-    function maxValue() external pure returns (Float) {
-        return LibDecimalFloat.FLOAT_MAX_VALUE;
+    function maxPositiveValue() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE;
     }
 
-    /// Exposes `LibDecimalFloat.FLOAT_MIN_VALUE` for offchain use.
+    /// Exposes `LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE` for offchain use.
     /// @return The minimum value of a Float.
     function minNegativeValue() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;

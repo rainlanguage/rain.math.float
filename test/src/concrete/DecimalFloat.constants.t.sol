@@ -8,20 +8,20 @@ import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 contract DecimalFloatConstantsTest is Test {
     using LibDecimalFloat for Float;
 
-    function maxValueExternal() external pure returns (Float) {
-        return LibDecimalFloat.FLOAT_MAX_VALUE;
+    function maxPositiveValueExternal() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE;
     }
 
     function testMaxValueDeployed() external {
         DecimalFloat deployed = new DecimalFloat();
 
-        try this.maxValueExternal() returns (Float maxValue) {
-            Float deployedMaxValue = deployed.maxValue();
+        try this.maxPositiveValueExternal() returns (Float maxValue) {
+            Float deployedMaxPositiveValue = deployed.maxPositiveValue();
 
-            assertEq(Float.unwrap(maxValue), Float.unwrap(deployedMaxValue));
+            assertEq(Float.unwrap(maxValue), Float.unwrap(deployedMaxPositiveValue));
         } catch (bytes memory err) {
             vm.expectRevert(err);
-            deployed.maxValue();
+            deployed.maxPositiveValue();
         }
     }
 

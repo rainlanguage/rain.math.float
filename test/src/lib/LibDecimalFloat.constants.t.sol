@@ -8,7 +8,7 @@ contract LibDecimalFloatConstantsTest is Test {
     using LibDecimalFloat for Float;
 
     function testFloatMaxValue() external pure {
-        Float maxValue = LibDecimalFloat.FLOAT_MAX_VALUE;
+        Float maxValue = LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE;
         Float expected = LibDecimalFloat.packLossless(type(int224).max, type(int32).max);
         assertEq(Float.unwrap(maxValue), Float.unwrap(expected));
     }
