@@ -3,7 +3,6 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std/Test.sol";
-import {console2} from "forge-std/console2.sol";
 
 contract LibDecimalFloatConstantsTest is Test {
     using LibDecimalFloat for Float;
@@ -26,6 +25,7 @@ contract LibDecimalFloatConstantsTest is Test {
 
     function testFloatMinPositiveValueIsMin(Float a) external pure {
         vm.assume(!a.isZero());
+        // cant abs smallest negative value because of overflow.
         vm.assume(a.gt(LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE));
         a = a.abs();
 
