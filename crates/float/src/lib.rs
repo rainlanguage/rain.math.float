@@ -38,7 +38,7 @@ pub struct Float(B256);
 
 impl Float {
     /// Creates a new `Float` from the given 32-byte value `B256`.
-    pub fn from_raw(value: B256) -> Self {
+    pub const fn from_raw(value: B256) -> Self {
         Float(value)
     }
 
