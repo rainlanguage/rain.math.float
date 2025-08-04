@@ -96,6 +96,13 @@ library LibDecimalFloat {
     /// A one valued float.
     Float constant FLOAT_ONE = Float.wrap(bytes32(uint256(1)));
 
+    /// A half valued float.
+    Float constant FLOAT_HALF =
+        Float.wrap(bytes32(uint256(0xffffffff00000000000000000000000000000000000000000000000000000005)));
+
+    /// A two valued float.
+    Float constant FLOAT_TWO = Float.wrap(bytes32(uint256(0x02)));
+
     /// Largest possible positive value.
     /// type(int224).max, type(int32).max
     Float constant FLOAT_MAX_POSITIVE_VALUE =
@@ -689,6 +696,22 @@ library LibDecimalFloat {
         // We don't care if power is lossy because it's an approximation anyway.
         (lossless);
         return c;
+    }
+
+    /// sqrt a = a ^ 0.5
+    ///
+    /// Due to the inaccuracies of log10 and power10, this is not perfectly
+    /// accurate, a round trip like sqrt(x)^2 will typically be within half a
+    /// percent or less of the original value, but this can vary depending on
+    /// the input values.
+    ///
+    /// Doesn't lose precision due to the exponent, for a wide range of
+    /// exponents.
+    /// @param a The float to take the square root of.
+    /// @param tablesDataContract The address of the contract containing the
+    /// logarithm tables.
+    function sqrt(Float a, address tablesDataContract) internal view returns (Float) {
+        return pow(a, FLOAT_HALF, tablesDataContract);
     }
 
     /// Returns the minimum of two values.

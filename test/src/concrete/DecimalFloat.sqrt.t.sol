@@ -8,20 +8,20 @@ import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 contract DecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
 
-    function powExternal(Float a, Float b) external view returns (Float) {
-        return a.pow(b, LibDecimalFloat.LOG_TABLES_ADDRESS);
+    function sqrtExternal(Float a) external view returns (Float) {
+        return a.sqrt(LibDecimalFloat.LOG_TABLES_ADDRESS);
     }
 
-    function testPowDeployed(Float a, Float b) external {
+    function testSqrtDeployed(Float a) external {
         DecimalFloat deployed = new DecimalFloat();
 
-        try this.powExternal(a, b) returns (Float c) {
-            Float deployedC = deployed.pow(a, b);
+        try this.sqrtExternal(a) returns (Float c) {
+            Float deployedC = deployed.sqrt(a);
 
             assertEq(Float.unwrap(c), Float.unwrap(deployedC));
         } catch (bytes memory err) {
             vm.expectRevert(err);
-            deployed.pow(a, b);
+            deployed.sqrt(a);
         }
     }
 }
