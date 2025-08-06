@@ -5,7 +5,7 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LogTest} from "test/abstract/LogTest.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 
-contract DecimalFloatPowTest is LogTest {
+contract DecimalFloatSqrtTest is LogTest {
     using LibDecimalFloat for Float;
 
     function sqrtExternal(Float a) external view returns (Float) {
