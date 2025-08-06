@@ -188,6 +188,13 @@ contract DecimalFloat {
         return a.pow(b, LibDecimalFloat.LOG_TABLES_ADDRESS);
     }
 
+    /// Exposes `LibDecimalFloat.sqrt` for offchain use.
+    /// @param a The float to take the square root of.
+    /// @return The square root of the float.
+    function sqrt(Float a) external view returns (Float) {
+        return a.sqrt(LibDecimalFloat.LOG_TABLES_ADDRESS);
+    }
+
     /// Exposes `LibDecimalFloat.min` for offchain use.
     /// @param a The first float to compare.
     /// @param b The second float to compare.

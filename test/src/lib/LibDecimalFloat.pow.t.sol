@@ -102,7 +102,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
         Float roundTrip = c.pow(b.inv(), tables);
 
-        Float diff = a.div(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
+        Float diff = a.div(roundTrip).sub(LibDecimalFloat.FLOAT_ONE).abs();
 
         assertTrue(!diff.gt(diffLimit()), "diff");
     }
