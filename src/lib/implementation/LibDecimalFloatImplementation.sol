@@ -13,7 +13,7 @@ import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
-uint256 constant ADD_MAX_EXPONENT_DIFF = 37;
+uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
 
 /// @dev The maximum exponent that can be normalized.
 /// This is crazy large, so should never be a problem for any real use case.
@@ -55,6 +55,11 @@ int256 constant SIGNED_NORMALIZED_MAX_PLUS_ONE = 1e38;
 int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
 /// @dev The exponent of zero when normalized.
 int256 constant NORMALIZED_ZERO_EXPONENT = 0;
+
+/// @dev The signed coefficient of maximized zero.
+int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = NORMALIZED_ZERO_SIGNED_COEFFICIENT;
+/// @dev The exponent of maximized zero.
+int256 constant MAXIMIZED_ZERO_EXPONENT = NORMALIZED_ZERO_EXPONENT;
 
 library LibDecimalFloatImplementation {
     /// Negates and normalizes a float.
@@ -270,11 +275,11 @@ library LibDecimalFloatImplementation {
             }
         }
 
-        // Normalizing A and B gives us similar coefficients, which simplifies
+        // Maximizing A and B gives us similar coefficients, which simplifies
         // detecting when their exponents are too far apart to add without
         // simply ignoring one of them.
-        (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
-        (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
+        (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
+        (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
 
         // We want A to represent the larger exponent. If this is not the case
         // then swap them.
@@ -288,30 +293,27 @@ library LibDecimalFloatImplementation {
             exponentB = tmp;
         }
 
-        // After normalization the signed coefficients are the same OOM in
+        // After maximization the signed coefficients are the same OOM in
         // magnitude. However, what we need is for the exponents to be the same.
-        // If the exponents are close enough we can multiply coefficient A by
+        // If the exponents are close enough we can divide coefficient B by
         // some power of 10 to align their exponents without precision loss.
         // If the exponents are too far apart, then all the information in B
-        // would be lost by the final normalization step, so we can just ignore
-        // B and return A.
-        uint256 multiplier;
+        // would be lost, so we can just ignore B and return A.
         unchecked {
             uint256 alignmentExponentDiff = uint256(exponentA - exponentB);
             // The early return here allows us to do unchecked pow on the
-            // multiplier and means we never revert due to overflow here.
+            // scaler and means we never revert due to overflow here.
             if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
                 return (signedCoefficientA, exponentA);
             }
-            multiplier = 10 ** alignmentExponentDiff;
+            signedCoefficientB /= int256(10 ** alignmentExponentDiff);
         }
-        signedCoefficientA *= int256(multiplier);
 
         // The actual addition step.
         unchecked {
             signedCoefficientA += signedCoefficientB;
         }
-        return (signedCoefficientA, exponentB);
+        return (signedCoefficientA, exponentA);
     }
 
     /// @param signedCoefficientA The signed coefficient of the first floating
@@ -520,6 +522,37 @@ library LibDecimalFloatImplementation {
                 signedCoefficient,
                 1 + exponent + withTargetExponent(characteristicCoefficient, characteristicExponent, 0)
             );
+        }
+    }
+
+    function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        unchecked {
+            if (signedCoefficient == 0) {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+            }
+            int256 initialExponent = exponent;
+
+            if (signedCoefficient / 1e76 != 0) {
+                signedCoefficient /= 10;
+                exponent += 1;
+
+                if (exponent < initialExponent) {
+                    revert ExponentOverflow(signedCoefficient, exponent);
+                }
+            } else {
+                while (signedCoefficient / 1e75 == 0) {
+                    // This is a "jump down" in the exponent, so we can multiply
+                    // the coefficient by 10 and decrease the exponent by 1.
+                    signedCoefficient *= 10;
+                    exponent -= 1;
+                }
+
+                if (initialExponent < exponent) {
+                    revert ExponentOverflow(signedCoefficient, exponent);
+                }
+            }
+
+            return (signedCoefficient, exponent);
         }
     }
 

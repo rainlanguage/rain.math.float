@@ -612,10 +612,33 @@ library LibDecimalFloat {
     /// @param float The float to floor.
     function floor(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
+        // If the exponent is 0 or greater then the float is already an integer.
+        if (exponent >= 0) {
+            return float;
+        }
         (int256 characteristic, int256 mantissa) =
             LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
         (Float result, bool lossless) = packLossy(characteristic, exponent);
         // Flooring is lossy by definition.
+        (lossless, mantissa);
+        return result;
+    }
+
+    /// Smallest integer value greater than or equal to the float.
+    /// @param float The float to ceil.
+    function ceil(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        // If the exponent is 0 or greater then the float is already an integer.
+        if (exponent >= 0) {
+            return float;
+        }
+        (int256 characteristic, int256 mantissa) =
+            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
+        (Float result, bool lossless) = packLossy(characteristic, exponent);
+        if (mantissa > 0) {
+            result = add(result, FLOAT_ONE);
+        }
+        // Ceiling is lossy by definition.
         (lossless, mantissa);
         return result;
     }
