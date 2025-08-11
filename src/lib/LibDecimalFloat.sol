@@ -644,12 +644,10 @@ library LibDecimalFloat {
         (Float result, bool lossless) = packLossy(characteristic, exponent);
         (lossless);
 
-        // If the mantissa is less then zero then the ceil is the characteristic.
-        // This is because the mantissa is making the original value smaller, so
-        // dropping it makes the value larger.
-        // We only add one if the mantissa is greater than zero. In this case,
-        // when we drop the mantissa the value becomes smaller so we have to add
-        // one to the characteristic to get the ceil.
+        // Truncate the fractional part when exponent < 0:
+        //   mantissa < 0 (input < 0) → truncation towards zero increases the value (correct ceil).
+        //   mantissa == 0 → value is already an integer.
+        //   mantissa > 0 (input > 0) → truncation decreases the value, so add 1 to round up.
         if (mantissa > 0) {
             result = add(result, FLOAT_ONE);
         }
