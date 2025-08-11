@@ -125,7 +125,7 @@ contract LibDecimalFloatPowTest is LogTest {
         return a.pow(b, logTables());
     }
 
-    function testRoundTripFuzz(Float a, Float b) external {
+    function testRoundTripFuzzPow(Float a, Float b) external {
         try this.powExternal(a, b) returns (Float c) {
             // If b is zero we'll divide by zero on the inv.
             // If c is 1 then it's not round trippable because 1^x = 1 for all x.

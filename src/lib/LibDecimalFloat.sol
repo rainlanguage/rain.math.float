@@ -612,11 +612,43 @@ library LibDecimalFloat {
     /// @param float The float to floor.
     function floor(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
+        // If the exponent is 0 or greater then the float is already an integer.
+        if (exponent >= 0) {
+            return float;
+        }
         (int256 characteristic, int256 mantissa) =
             LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
         (Float result, bool lossless) = packLossy(characteristic, exponent);
         // Flooring is lossy by definition.
         (lossless, mantissa);
+        return result;
+    }
+
+    /// Smallest integer value greater than or equal to the float.
+    /// @param float The float to ceil.
+    function ceil(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        // If the exponent is 0 or greater then the float is already an integer.
+        if (exponent >= 0) {
+            return float;
+        }
+        (int256 characteristic, int256 mantissa) =
+            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
+
+        // If the mantissa is 0, then the float is already an integer.
+        if (mantissa == 0) {
+            return float;
+        }
+        // Truncate the fractional part when exponent < 0:
+        //   mantissa < 0 (input < 0) → truncation towards zero increases the value (correct ceil).
+        //   mantissa == 0 → value is already an integer.
+        //   mantissa > 0 (input > 0) → truncation decreases the value, so add 1 to round up.
+        else if (mantissa > 0) {
+            (characteristic, exponent) = LibDecimalFloatImplementation.add(characteristic, exponent, 1e75, -75);
+        }
+
+        (Float result, bool lossless) = packLossy(characteristic, exponent);
+        (lossless);
         return result;
     }
 

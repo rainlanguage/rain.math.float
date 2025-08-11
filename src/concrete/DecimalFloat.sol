@@ -166,6 +166,13 @@ contract DecimalFloat {
         return a.floor();
     }
 
+    /// Exposes `LibDecimalFloat.ceil` for offchain use.
+    /// @param a The float to get the ceiling of.
+    /// @return The ceiled float.
+    function ceil(Float a) external pure returns (Float) {
+        return a.ceil();
+    }
+
     /// Exposes `LibDecimalFloat.pow10` for offchain use.
     /// @param a The float to raise to the power of 10.
     /// @return The result of raising the float to the power of 10.

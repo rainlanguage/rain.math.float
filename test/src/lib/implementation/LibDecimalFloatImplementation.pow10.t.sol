@@ -61,11 +61,16 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
 
     function testInterpolatedLookupsPower() external {
         // 10^1.55555 = 35.9376769153
-        checkPow10(1.55555e37, -37, 35935e37, -40);
+        checkPow10(1.55555e37, -37, 35935e71, -74);
         // 10^1234.56789
-        checkPow10(123456789, -5, 36979e37, 1193);
+        checkPow10(123456789, -5, 36979e71, 1159);
         // ~= 10 (fuzzing found this edge case).
-        checkPow10(99999999999999999999999999999999999997448, -41, 99999999999999999999999999999999999991000, -40);
+        checkPow10(
+            99999999999999999999999999999999999997448,
+            -41,
+            9999999999999999999999999999999999999234400000000000000000000000000000000000,
+            -75
+        );
     }
 
     function boundFloat(int224 x, int32 exponent) internal pure returns (int224, int32) {

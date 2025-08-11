@@ -53,7 +53,7 @@ contract LibDecimalFloatSqrtTest is LogTest {
         checkSqrt(0, 0, 0, 0);
         checkSqrt(2, 0, 1415, -3);
         checkSqrt(4, 0, 2e3, -3);
-        checkSqrt(16, 0, 399950000000000000000000000000000000000000, -41);
+        checkSqrt(16, 0, 3999500000000000000000000000000000000000000000000000000000000000000, -66);
     }
 
     function testSqrtNegative(Float a) external {
@@ -84,7 +84,7 @@ contract LibDecimalFloatSqrtTest is LogTest {
         checkRoundTrip(100000000, 0);
     }
 
-    function testRoundTripFuzz(int224 signedCoefficient, int32 exponent) external {
+    function testRoundTripFuzzSqrt(int224 signedCoefficient, int32 exponent) external {
         signedCoefficient = int224(bound(signedCoefficient, 1, type(int224).max));
         exponent = int32(bound(exponent, type(int16).min, type(int16).max));
         checkRoundTrip(signedCoefficient, exponent);
