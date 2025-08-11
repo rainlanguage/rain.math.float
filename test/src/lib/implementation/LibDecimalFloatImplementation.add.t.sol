@@ -138,7 +138,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
     }
 
     function testAddingSmallToLargeReturnsLargeExamples() external pure {
-        // // Establish a baseline.
+        // Establish a baseline.
         checkAdd(1e37, 0, 1e37, -37, 10000000000000000000000000000000000001e38, -38);
         // Show baseline with reversed order.
         checkAdd(1e37, -37, 1e37, 0, 10000000000000000000000000000000000001e38, -38);
