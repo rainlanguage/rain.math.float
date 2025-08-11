@@ -539,10 +539,11 @@ library LibDecimalFloatImplementation {
                 if (exponent < initialExponent) {
                     revert ExponentOverflow(signedCoefficient, exponent);
                 }
-            } else {
+            }
+            // Check if already maximized before dropping into a block full of
+            // jumps.
+            else if (signedCoefficient / 1e75 == 0) {
                 while (signedCoefficient / 1e75 == 0) {
-                    // This is a "jump down" in the exponent, so we can multiply
-                    // the coefficient by 10 and decrease the exponent by 1.
                     signedCoefficient *= 10;
                     exponent -= 1;
                 }
