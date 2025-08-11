@@ -46,4 +46,22 @@ contract LibDecimalFloatImplementationSubTest is Test {
         assertEq(signedCoefficient, expectedSignedCoefficient);
         assertEq(exponent, expectedExponent);
     }
+
+    function checkSub(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        int256 expectedSignedCoefficient,
+        int256 expectedExponent
+    ) internal pure {
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(signedCoefficient, expectedSignedCoefficient);
+        assertEq(exponent, expectedExponent);
+    }
+
+    function testSubOneFromMax() external pure {
+        checkSub(type(int224).max, type(int32).max, 1, 0, int256(type(int224).max) * 1e8, type(int32).max - 8);
+    }
 }
