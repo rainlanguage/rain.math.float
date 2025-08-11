@@ -64,4 +64,11 @@ contract LibDecimalFloatImplementationSubTest is Test {
     function testSubOneFromMax() external pure {
         checkSub(type(int224).max, type(int32).max, 1, 0, int256(type(int224).max) * 1e8, type(int32).max - 8);
     }
+
+    function testSubSelf(int224 signedCoefficientA, int32 exponentA) external pure {
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientA, exponentA);
+        (exponent);
+        assertEq(signedCoefficient, 0, "LibDecimalFloatImplementation.sub self coefficient");
+    }
 }
