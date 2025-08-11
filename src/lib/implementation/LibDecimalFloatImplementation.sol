@@ -198,23 +198,18 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// Add two floats together as a normalized result.
+    /// Add two floats together.
     ///
     /// Note that because the input values can have arbitrary exponents that may
-    /// be very far apart, the normalization process is necessarily lossy.
-    /// For example, normalized 1 is 1e37 coefficient and -37 exponent.
-    /// Consider adding 1e37 coefficient with exponent 1.
-    /// These two numbers are identical in coefficient but their exponents are
-    /// 38 OOMs apart. While we can perform the addition and get the correct
-    /// result internally, as soon as we normalize the result, we will lose
-    /// precision and the result will be 1e37 coefficient with -37 exponent.
-    /// The precision of addition is therefore best case the full 37 decimals
-    /// representable in normalized form, if the two numbers share the same
-    /// exponent, but each step of exponent difference will lose a decimal of
-    /// precision in the output. In practise, this rarely matters as the onchain
-    /// conventions for amounts are typically 18 decimals or less, and so entire
-    /// token supplies are typically representable within ~26-33 decimals of
-    /// precision, making addition lossless for all actual possible values.
+    /// be very far apart, the addition process is necessarily lossy.
+    /// Consider adding 1e100 to 1e-100, for example. The result is 1e100.
+    /// This is because we can't fit 200 OOMs of precision into the result.
+    /// However, we can easily fit ~26-33 decimals of precision into values,
+    /// which covers most or all token supplies and amounts we care about in
+    /// practice. This means that addition is typically lossless for all values
+    /// we will receive onchain. However, precision loss is still to be expected
+    /// when combined with other operations such as division that can result in
+    /// infinite recursion such a 1/3.
     ///
     /// https://speleotrove.com/decimal/daops.html#refaddsub
     /// > add and subtract both take two operands. If either operand is a special
