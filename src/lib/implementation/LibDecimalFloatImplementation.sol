@@ -543,7 +543,27 @@ library LibDecimalFloatImplementation {
             // Check if already maximized before dropping into a block full of
             // jumps.
             else if (signedCoefficient / 1e75 == 0) {
-                while (signedCoefficient / 1e75 == 0) {
+                if (signedCoefficient / 1e38 == 0) {
+                    signedCoefficient *= 1e38;
+                    exponent -= 38;
+                }
+
+                if (signedCoefficient / 1e57 == 0) {
+                    signedCoefficient *= 1e19;
+                    exponent -= 19;
+                }
+
+                if (signedCoefficient / 1e66 == 0) {
+                    signedCoefficient *= 1e10;
+                    exponent -= 10;
+                }
+
+                while (signedCoefficient / 1e74 == 0) {
+                    signedCoefficient *= 1e2;
+                    exponent -= 2;
+                }
+
+                if (signedCoefficient / 1e75 == 0) {
                     signedCoefficient *= 10;
                     exponent -= 1;
                 }
