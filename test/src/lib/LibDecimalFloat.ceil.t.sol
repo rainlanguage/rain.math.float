@@ -94,7 +94,6 @@ contract LibDecimalFloatCeilTest is Test {
         checkCeil(type(int224).max, 0, type(int224).max, 0);
         checkCeil(type(int224).min, 0, type(int224).min, 0);
         checkCeil(2.5e37, -37, 3e66, -66);
-        checkCeil(type(int224).max, 0, type(int224).max, 0);
     }
 
     /// Test some zeros.
