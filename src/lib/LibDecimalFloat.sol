@@ -634,12 +634,25 @@ library LibDecimalFloat {
         }
         (int256 characteristic, int256 mantissa) =
             LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
+
+        // If the mantissa is 0, then the float is already an integer.
+        // No need to repack or other checks.
+        if (mantissa == 0) {
+            return float;
+        }
+
         (Float result, bool lossless) = packLossy(characteristic, exponent);
+        (lossless);
+
+        // If the mantissa is less then zero then the ceil is the characteristic.
+        // This is because the mantissa is making the original value smaller, so
+        // dropping it makes the value larger.
+        // We only add one if the mantissa is greater than zero. In this case,
+        // when we drop the mantissa the value becomes smaller so we have to add
+        // one to the characteristic to get the ceil.
         if (mantissa > 0) {
             result = add(result, FLOAT_ONE);
         }
-        // Ceiling is lossy by definition.
-        (lossless, mantissa);
         return result;
     }
 
