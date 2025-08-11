@@ -636,21 +636,19 @@ library LibDecimalFloat {
             LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
 
         // If the mantissa is 0, then the float is already an integer.
-        // No need to repack or other checks.
         if (mantissa == 0) {
             return float;
         }
-
-        (Float result, bool lossless) = packLossy(characteristic, exponent);
-        (lossless);
-
         // Truncate the fractional part when exponent < 0:
         //   mantissa < 0 (input < 0) → truncation towards zero increases the value (correct ceil).
         //   mantissa == 0 → value is already an integer.
         //   mantissa > 0 (input > 0) → truncation decreases the value, so add 1 to round up.
-        if (mantissa > 0) {
-            result = add(result, FLOAT_ONE);
+        else if (mantissa > 0) {
+            (characteristic, exponent) = LibDecimalFloatImplementation.add(characteristic, exponent, 1e75, -75);
         }
+
+        (Float result, bool lossless) = packLossy(characteristic, exponent);
+        (lossless);
         return result;
     }
 
