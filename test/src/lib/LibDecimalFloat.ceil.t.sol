@@ -55,7 +55,6 @@ contract LibDecimalFloatCeilTest is Test {
         int256 scale = int256(10 ** uint256(-exponent));
 
         int256 characteristic = x / scale;
-        console2.logInt(characteristic);
         if (characteristic == 0) {
             if (x > 0) {
                 // If the characteristic is 0 and x is positive then the ceil is 1.
