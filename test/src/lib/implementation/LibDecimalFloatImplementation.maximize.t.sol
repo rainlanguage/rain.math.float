@@ -62,4 +62,15 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
             checkMaximized(int256(10 ** uint256(i)), 0, 1e75, i - 75);
         }
     }
+
+    /// Maximization should be idempotent.
+    function testMaximizedIdempotent(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
+        (int256 maximizedSignedCoefficient, int256 maximizedExponent) =
+            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+        (int256 actualSignedCoefficient, int256 actualExponent) =
+            LibDecimalFloatImplementation.maximize(maximizedSignedCoefficient, maximizedExponent);
+        assertEq(actualSignedCoefficient, maximizedSignedCoefficient);
+        assertEq(actualExponent, maximizedExponent);
+    }
 }
