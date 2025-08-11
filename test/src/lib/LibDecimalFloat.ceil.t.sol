@@ -9,8 +9,8 @@ import {Test, console2} from "forge-std/Test.sol";
 contract LibDecimalFloatCeilTest is Test {
     using LibDecimalFloat for Float;
 
-    function testCeilNotReverts(Float x) external pure {
-        x.ceil();
+    function testCeilNotReverts(Float float) external pure {
+        float.ceil();
     }
 
     function checkCeil(
