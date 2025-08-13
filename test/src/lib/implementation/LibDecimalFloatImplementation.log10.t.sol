@@ -31,19 +31,19 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
     }
 
     function testExactLookupsLog10() external {
-        checkLog10(1001, 0, 3.0004e75, -75);
-        checkLog10(100.1e1, -1, 2.0004e75, -75);
-        checkLog10(10.01e2, -2, 1.0004e75, -75);
+        checkLog10(1001, 0, 3.0004e76, -76);
+        checkLog10(100.1e1, -1, 2.0004e76, -76);
+        checkLog10(10.01e2, -2, 1.0004e76, -76);
         checkLog10(1.001e3, -3, 0.0004e38, -38);
 
-        checkLog10(10.02e2, -2, 1.0009e75, -75);
-        checkLog10(10.99e2, -2, 1.0411e75, -75);
+        checkLog10(10.02e2, -2, 1.0009e76, -76);
+        checkLog10(10.99e2, -2, 1.0411e76, -76);
 
-        checkLog10(6566, 0, 3.8173e75, -75);
+        checkLog10(6566, 0, 3.8173e76, -76);
     }
 
     function testInterpolatedLookups() external {
-        checkLog10(10.015e3, -3, 1.00065e75, -75);
+        checkLog10(10.015e3, -3, 1.00065e76, -76);
     }
 
     function testSub1() external {

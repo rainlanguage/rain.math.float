@@ -11,6 +11,8 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
+import {console2} from "forge-std/console2.sol";
+
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -560,21 +562,7 @@ library LibDecimalFloatImplementation {
             // know until we try. This pushes us into [1e76,type(int256).max] and
             // [-type(int256).max,-1e76] ranges, if that's possible.
             int256 trySignedCoefficient = signedCoefficient * 10;
-
-            // Checking for overflow without branching logic.
-            bool notOverflow;
-            assembly ("memory-safe") {
-                // Sign is same if the high bits are both 0 or both 1.
-                let signSame := iszero(shr(0xff, xor(trySignedCoefficient, signedCoefficient)))
-                // If the sign is the same, then the new value is larger if
-                // dividing it by the old value is non-zero.
-                let bigger := iszero(iszero(sdiv(trySignedCoefficient, signedCoefficient)))
-
-                // We didn't overflow if the sign is the same and the new value
-                // is larger than the old value.
-                notOverflow := and(signSame, bigger)
-            }
-            if (notOverflow) {
+            if (signedCoefficient == trySignedCoefficient / 10) {
                 signedCoefficient = trySignedCoefficient;
                 exponent -= 1;
             }
