@@ -527,17 +527,9 @@ library LibDecimalFloatImplementation {
             }
             int256 initialExponent = exponent;
 
-            if (signedCoefficient / 1e76 != 0) {
-                signedCoefficient /= 10;
-                exponent += 1;
-
-                if (exponent < initialExponent) {
-                    revert ExponentOverflow(signedCoefficient, exponent);
-                }
-            }
             // Check if already maximized before dropping into a block full of
             // jumps.
-            else if (signedCoefficient / 1e75 == 0) {
+            if (signedCoefficient / 1e75 == 0) {
                 if (signedCoefficient / 1e38 == 0) {
                     signedCoefficient *= 1e38;
                     exponent -= 38;
@@ -562,10 +554,33 @@ library LibDecimalFloatImplementation {
                     signedCoefficient *= 10;
                     exponent -= 1;
                 }
+            }
 
-                if (initialExponent < exponent) {
-                    revert ExponentOverflow(signedCoefficient, exponent);
-                }
+            // Maybe we can fit in one more OOM without overflow, but we won't
+            // know until we try. This pushes us into [1e76,type(int256).max] and
+            // [-type(int256).max,-1e76] ranges, if that's possible.
+            int256 trySignedCoefficient = signedCoefficient * 10;
+
+            // Checking for overflow without branching logic.
+            bool notOverflow;
+            assembly ("memory-safe") {
+                // Sign is same if the high bits are both 0 or both 1.
+                let signSame := iszero(shr(0xff, xor(trySignedCoefficient, signedCoefficient)))
+                // If the sign is the same, then the new value is larger if
+                // dividing it by the old value is non-zero.
+                let bigger := iszero(iszero(sdiv(trySignedCoefficient, signedCoefficient)))
+
+                // We didn't overflow if the sign is the same and the new value
+                // is larger than the old value.
+                notOverflow := and(signSame, bigger)
+            }
+            if (notOverflow) {
+                signedCoefficient = trySignedCoefficient;
+                exponent -= 1;
+            }
+
+            if (initialExponent < exponent) {
+                revert ExponentOverflow(signedCoefficient, exponent);
             }
 
             return (signedCoefficient, exponent);

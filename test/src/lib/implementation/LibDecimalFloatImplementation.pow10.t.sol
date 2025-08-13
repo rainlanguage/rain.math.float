@@ -61,9 +61,9 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
 
     function testInterpolatedLookupsPower() external {
         // 10^1.55555 = 35.9376769153
-        checkPow10(1.55555e37, -37, 35935e71, -74);
+        checkPow10(1.55555e37, -37, 35.935e75, -75);
         // 10^1234.56789
-        checkPow10(123456789, -5, 36979e71, 1159);
+        checkPow10(123456789, -5, 3.6979e76, 1158);
         // ~= 10 (fuzzing found this edge case).
         checkPow10(
             99999999999999999999999999999999999997448,
