@@ -11,8 +11,6 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
-import {console2} from "forge-std/console2.sol";
-
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -308,7 +306,22 @@ library LibDecimalFloatImplementation {
 
         // The actual addition step.
         unchecked {
-            signedCoefficientA += signedCoefficientB;
+            int256 c = signedCoefficientA + signedCoefficientB;
+            bool didOverflow;
+            assembly ("memory-safe") {
+                let sameSignAB := iszero(shr(0xff, xor(signedCoefficientA, signedCoefficientB)))
+                let sameSignAC := iszero(shr(0xff, xor(signedCoefficientA, c)))
+                didOverflow := and(sameSignAB, iszero(sameSignAC))
+            }
+            // Be careful to handle overflow.
+            if (didOverflow) {
+                signedCoefficientA /= 10;
+                signedCoefficientB /= 10;
+                exponentA += 1;
+                signedCoefficientA += signedCoefficientB;
+            } else {
+                signedCoefficientA = c;
+            }
         }
         return (signedCoefficientA, exponentA);
     }
@@ -802,7 +815,7 @@ library LibDecimalFloatImplementation {
             }
 
             // If the exponent is less than -76, the characteristic is 0.
-            // and the mantissa is the number itself.
+            // and the mantissa is the whole coefficient.
             if (exponent < -76) {
                 return (0, signedCoefficient);
             }

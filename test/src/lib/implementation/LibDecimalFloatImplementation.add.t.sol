@@ -10,6 +10,36 @@ import {
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatImplementationAddTest is Test {
+    function willOverflow(int256 a, int256 b) internal pure returns (bool) {
+        unchecked {
+            if (a > 0 && b > 0) {
+                return a > type(int256).max - b;
+            } else if (a < 0 && b < 0) {
+                return a < type(int256).min - b;
+            } else {
+                return false; // No overflow if signs are different.
+            }
+        }
+    }
+
+    /// This is copypasta from the internals of add.
+    function willOverflow2(int256 a, int256 b) internal pure returns (bool didOverflow) {
+        unchecked {
+            int256 c = a + b;
+            assembly ("memory-safe") {
+                let sameSignAB := iszero(shr(0xff, xor(a, b)))
+                let sameSignAC := iszero(shr(0xff, xor(a, c)))
+                didOverflow := and(sameSignAB, iszero(sameSignAC))
+            }
+        }
+    }
+
+    function testOverflowCheks(int256 a, int256 b) external pure {
+        bool expected = willOverflow(a, b);
+        bool actual = willOverflow2(a, b);
+        assertEq(actual, expected, "Overflow check mismatch");
+    }
+
     function checkAdd(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -208,6 +238,9 @@ contract LibDecimalFloatImplementationAddTest is Test {
             -1e37, -96, -1e37, -20, -10000000000000000000000000000000000000000000000000000000000000000000000000001, -59
         );
         checkAdd(-1e37, -97, -1e37, -20, -1e76, -59);
+
+        // Suspicious values flagged in fuzzing elsewhere.
+        checkAdd(54304950862250382, -16, 1e76, -76, 6.4304950862250382e75, -75);
     }
 
     /// If the exponents are the same then addition is simply adding the
@@ -229,7 +262,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
         unchecked {
             expectedSignedCoefficient = signedCoefficientAMaximized + signedCoefficientBMaximized;
             // We aren't testing the overflow case in this test.
-            vm.assume(expectedSignedCoefficient - signedCoefficientBMaximized == signedCoefficientAMaximized);
+            vm.assume(!willOverflow(signedCoefficientAMaximized, signedCoefficientBMaximized));
         }
         int256 expectedExponent = exponentA;
 

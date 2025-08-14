@@ -64,6 +64,9 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         for (int256 i = 76; i >= 0; i--) {
             checkMaximized(int256(10 ** uint256(i)), 0, 1e76, i - 76);
         }
+
+        // Suspicious values flagged in fuzzing elsewhere.
+        checkMaximized(54304950862250382, -16, 5.4304950862250382e76, -76);
     }
 
     /// Maximization should be idempotent.
