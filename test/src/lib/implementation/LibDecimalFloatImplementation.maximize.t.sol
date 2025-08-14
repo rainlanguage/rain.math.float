@@ -18,7 +18,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         }
 
         if (signedCoefficient / 1e76 != 0) {
-            return false;
+            return true;
         }
 
         if (signedCoefficient / 1e75 == 0) {
@@ -29,7 +29,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     }
 
     /// Every normalized number is maximized.
-    function testMaximized(int256 signedCoefficient, int256 exponent) external pure {
+    function testMaximizedEverything(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
@@ -51,16 +51,22 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     function testMaximizedExamples() external pure {
         checkMaximized(0, 0, 0, 0);
         checkMaximized(0, 1, 0, 0);
-        checkMaximized(1e37, 0, 1e75, -38);
-        checkMaximized(1e75, 0, 1e75, 0);
-        checkMaximized(type(int256).max, 0, type(int256).max / 10, 1);
-        checkMaximized(type(int256).min, 0, type(int256).min / 10, 1);
-        checkMaximized(42, 0, 42e74, -74);
-        checkMaximized(42e74, -74, 42e74, -74);
+        checkMaximized(1e37, 0, 1e76, -39);
+        checkMaximized(1e76, 0, 1e76, 0);
+        checkMaximized(type(int256).max, 0, type(int256).max, 0);
+        checkMaximized(type(int256).min, 0, type(int256).min, 0);
+        checkMaximized(42, 0, 4.2e76, -75);
+        checkMaximized(42e74, -74, 4.2e76, -75);
+        checkMaximized(4.2e76, -75, 4.2e76, -75);
+        checkMaximized(88, 0, 8.8e75, -74);
+        checkMaximized(88e74, -74, 8.8e75, -74);
 
         for (int256 i = 76; i >= 0; i--) {
-            checkMaximized(int256(10 ** uint256(i)), 0, 1e75, i - 75);
+            checkMaximized(int256(10 ** uint256(i)), 0, 1e76, i - 76);
         }
+
+        // Suspicious values flagged in fuzzing elsewhere.
+        checkMaximized(54304950862250382, -16, 5.4304950862250382e76, -76);
     }
 
     /// Maximization should be idempotent.

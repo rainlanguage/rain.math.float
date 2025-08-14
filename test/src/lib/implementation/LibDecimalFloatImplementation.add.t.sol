@@ -10,6 +10,36 @@ import {
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatImplementationAddTest is Test {
+    function willOverflow(int256 a, int256 b) internal pure returns (bool) {
+        unchecked {
+            if (a > 0 && b > 0) {
+                return a > type(int256).max - b;
+            } else if (a < 0 && b < 0) {
+                return a < type(int256).min - b;
+            } else {
+                return false; // No overflow if signs are different.
+            }
+        }
+    }
+
+    /// This is copypasta from the internals of add.
+    function willOverflow2(int256 a, int256 b) internal pure returns (bool didOverflow) {
+        unchecked {
+            int256 c = a + b;
+            assembly ("memory-safe") {
+                let sameSignAB := iszero(shr(0xff, xor(a, b)))
+                let sameSignAC := iszero(shr(0xff, xor(a, c)))
+                didOverflow := and(sameSignAB, iszero(sameSignAC))
+            }
+        }
+    }
+
+    function testOverflowChecks(int256 a, int256 b) external pure {
+        bool expected = willOverflow(a, b);
+        bool actual = willOverflow2(a, b);
+        assertEq(actual, expected, "Overflow check mismatch");
+    }
+
     function checkAdd(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -61,14 +91,14 @@ contract LibDecimalFloatImplementationAddTest is Test {
     /// 1 + 1 = 2
     function testAddOneOneNotMaximized() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.add(1, 0, 1, 0);
-        assertEq(signedCoefficient, 2e75, "Signed coefficient mismatch");
-        assertEq(exponent, -75, "Exponent mismatch");
+        assertEq(signedCoefficient, 2e76, "Signed coefficient mismatch");
+        assertEq(exponent, -76, "Exponent mismatch");
     }
 
     function testAddOneOnePreMaximized() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.add(1e75, -75, 1e75, -75);
-        assertEq(signedCoefficient, 2e75);
-        assertEq(exponent, -75);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.add(1e76, -76, 1e76, -76);
+        assertEq(signedCoefficient, 2e76);
+        assertEq(exponent, -76);
     }
 
     /// 123456789 add 987654321
@@ -83,8 +113,8 @@ contract LibDecimalFloatImplementationAddTest is Test {
     /// 123456789e9 + 987654321 = 123456789987654321
     function testAdd123456789e9987654321() external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.add(123456789, 9, 987654321, 0);
-        assertEq(signedCoefficient, 1.23456789987654321e75);
-        assertEq(exponent, -75 + 17);
+        assertEq(signedCoefficient, 1.23456789987654321e76);
+        assertEq(exponent, -76 + 17);
     }
 
     function testGasAddZero() external pure {
@@ -139,63 +169,83 @@ contract LibDecimalFloatImplementationAddTest is Test {
 
     function testAddingSmallToLargeReturnsLargeExamples() external pure {
         // Establish a baseline.
-        checkAdd(1e37, 0, 1e37, -37, 10000000000000000000000000000000000001e38, -38);
+        checkAdd(1e37, 0, 1e37, -37, 10000000000000000000000000000000000001e39, -39);
         // Show baseline with reversed order.
-        checkAdd(1e37, -37, 1e37, 0, 10000000000000000000000000000000000001e38, -38);
+        checkAdd(1e37, -37, 1e37, 0, 10000000000000000000000000000000000001e39, -39);
 
         // Show full precision loss.
-        checkAdd(1e37, 0, 1e37, -38, 100000000000000000000000000000000000001e37, -38);
-        checkAdd(1e37, 0, 1e37, -75, 1000000000000000000000000000000000000000000000000000000000000000000000000001, -38);
-        checkAdd(1e37, 0, 1e37, -76, 1e75, -38);
+        checkAdd(1e37, 0, 1e37, -38, 100000000000000000000000000000000000001e38, -39);
+        checkAdd(1e37, 0, 1e37, -75, 10000000000000000000000000000000000000000000000000000000000000000000000000010, -39);
+        checkAdd(1e38, 0, 1e37, -76, 1e76, -38);
+        checkAdd(1e37, 0, 1e37, -76, 10000000000000000000000000000000000000000000000000000000000000000000000000001, -39);
         // Show same thing again with reversed order.
-        checkAdd(1e37, -38, 1e37, 0, 100000000000000000000000000000000000001e37, -38);
-        checkAdd(1e37, -75, 1e37, 0, 1000000000000000000000000000000000000000000000000000000000000000000000000001, -38);
-        checkAdd(1e37, -76, 1e37, 0, 1e75, -38);
+        checkAdd(1e37, -38, 1e37, 0, 100000000000000000000000000000000000001e38, -39);
+        checkAdd(1e37, -75, 1e37, 0, 10000000000000000000000000000000000000000000000000000000000000000000000000010, -39);
+        checkAdd(1e37, -76, 1e37, 0, 10000000000000000000000000000000000000000000000000000000000000000000000000001, -39);
 
         // Same precision loss happens for negative numbers.
-        checkAdd(-1e37, 0, -1e37, -38, -100000000000000000000000000000000000001e37, -38);
+        checkAdd(-1e37, 0, -1e37, -38, -100000000000000000000000000000000000001e38, -39);
         checkAdd(
-            -1e37, 0, -1e37, -75, -1000000000000000000000000000000000000000000000000000000000000000000000000001, -38
+            -1e37, 0, -1e37, -75, -10000000000000000000000000000000000000000000000000000000000000000000000000010, -39
         );
-        checkAdd(-1e37, 0, -1e37, -76, -1e75, -38);
+        checkAdd(
+            -1e37, 0, -1e37, -76, -10000000000000000000000000000000000000000000000000000000000000000000000000001, -39
+        );
         // Reverse order.
-        checkAdd(-1e37, -38, -1e37, 0, -100000000000000000000000000000000000001e37, -38);
+        checkAdd(-1e37, -38, -1e37, 0, -100000000000000000000000000000000000001e38, -39);
         checkAdd(
-            -1e37, -75, -1e37, 0, -1000000000000000000000000000000000000000000000000000000000000000000000000001, -38
+            -1e37, -75, -1e37, 0, -10000000000000000000000000000000000000000000000000000000000000000000000000010, -39
         );
-        checkAdd(-1e37, -76, -1e37, 0, -1e75, -38);
+        checkAdd(
+            -1e37, -76, -1e37, 0, -10000000000000000000000000000000000000000000000000000000000000000000000000001, -39
+        );
 
         // Only the difference in exponents matters. Show the baseline.
-        checkAdd(1e37, -20, 1e37, -57, 10000000000000000000000000000000000001e38, -58);
+        checkAdd(1e37, -20, 1e37, -57, 10000000000000000000000000000000000001e39, -59);
         checkAdd(
-            1e37, -20, 1e37, -95, 1000000000000000000000000000000000000000000000000000000000000000000000000001, -58
+            1e37, -20, 1e37, -95, 10000000000000000000000000000000000000000000000000000000000000000000000000010, -59
         );
-        checkAdd(1e37, -20, 1e37, -96, 1e75, -58);
+        checkAdd(
+            1e37, -20, 1e37, -96, 10000000000000000000000000000000000000000000000000000000000000000000000000001, -59
+        );
+        checkAdd(1e37, -20, 1e37, -97, 1e76, -59);
         // Reverse order.
-        checkAdd(1e37, -57, 1e37, -20, 10000000000000000000000000000000000001e38, -58);
+        checkAdd(1e37, -57, 1e37, -20, 10000000000000000000000000000000000001e39, -59);
         checkAdd(
-            1e37, -95, 1e37, -20, 1000000000000000000000000000000000000000000000000000000000000000000000000001, -58
+            1e37, -95, 1e37, -20, 10000000000000000000000000000000000000000000000000000000000000000000000000010, -59
         );
-        checkAdd(1e37, -96, 1e37, -20, 1e75, -58);
+        checkAdd(
+            1e37, -96, 1e37, -20, 10000000000000000000000000000000000000000000000000000000000000000000000000001, -59
+        );
+        checkAdd(1e37, -97, 1e37, -20, 1e76, -59);
 
         // Show the same thing with negative numbers.
-        checkAdd(-1e37, -20, -1e37, -57, -10000000000000000000000000000000000001e38, -58);
+        checkAdd(-1e37, -20, -1e37, -57, -10000000000000000000000000000000000001e39, -59);
         checkAdd(
-            -1e37, -20, -1e37, -95, -1000000000000000000000000000000000000000000000000000000000000000000000000001, -58
+            -1e37, -20, -1e37, -95, -10000000000000000000000000000000000000000000000000000000000000000000000000010, -59
         );
-        checkAdd(-1e37, -20, -1e37, -96, -1e75, -58);
+        checkAdd(
+            -1e37, -20, -1e37, -96, -10000000000000000000000000000000000000000000000000000000000000000000000000001, -59
+        );
+        checkAdd(-1e37, -20, -1e37, -97, -1e76, -59);
 
         // Reverse order.
-        checkAdd(-1e37, -57, -1e37, -20, -10000000000000000000000000000000000001e38, -58);
+        checkAdd(-1e37, -57, -1e37, -20, -10000000000000000000000000000000000001e39, -59);
         checkAdd(
-            -1e37, -95, -1e37, -20, -1000000000000000000000000000000000000000000000000000000000000000000000000001, -58
+            -1e37, -95, -1e37, -20, -10000000000000000000000000000000000000000000000000000000000000000000000000010, -59
         );
-        checkAdd(-1e37, -96, -1e37, -20, -1e75, -58);
+        checkAdd(
+            -1e37, -96, -1e37, -20, -10000000000000000000000000000000000000000000000000000000000000000000000000001, -59
+        );
+        checkAdd(-1e37, -97, -1e37, -20, -1e76, -59);
+
+        // Suspicious values flagged in fuzzing elsewhere.
+        checkAdd(54304950862250382, -16, 1e76, -76, 6.4304950862250382e75, -75);
     }
 
-    /// If the exponents are the same and the coefficients are the same, then
-    /// addition is simply adding the coefficients.
-    function testAddSameExponentSameCoefficient(int256 signedCoefficientA, int256 signedCoefficientB) external pure {
+    /// If the exponents are the same then addition is simply adding the
+    /// coefficients.
+    function testAddSameExponent(int256 signedCoefficientA, int256 signedCoefficientB) external pure {
         int256 exponentA;
         int256 exponentB;
         int256 signedCoefficientAMaximized;
@@ -208,7 +258,12 @@ contract LibDecimalFloatImplementationAddTest is Test {
         }
         exponentB = exponentA;
 
-        int256 expectedSignedCoefficient = signedCoefficientAMaximized + signedCoefficientBMaximized;
+        int256 expectedSignedCoefficient;
+        unchecked {
+            expectedSignedCoefficient = signedCoefficientAMaximized + signedCoefficientBMaximized;
+            // We aren't testing the overflow case in this test.
+            vm.assume(!willOverflow(signedCoefficientAMaximized, signedCoefficientBMaximized));
+        }
         int256 expectedExponent = exponentA;
 
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.add(

@@ -644,7 +644,7 @@ library LibDecimalFloat {
         //   mantissa == 0 → value is already an integer.
         //   mantissa > 0 (input > 0) → truncation decreases the value, so add 1 to round up.
         else if (mantissa > 0) {
-            (characteristic, exponent) = LibDecimalFloatImplementation.add(characteristic, exponent, 1e75, -75);
+            (characteristic, exponent) = LibDecimalFloatImplementation.add(characteristic, exponent, 1e76, -76);
         }
 
         (Float result, bool lossless) = packLossy(characteristic, exponent);
