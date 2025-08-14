@@ -34,7 +34,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
         }
     }
 
-    function testOverflowCheks(int256 a, int256 b) external pure {
+    function testOverflowChecks(int256 a, int256 b) external pure {
         bool expected = willOverflow(a, b);
         bool actual = willOverflow2(a, b);
         assertEq(actual, expected, "Overflow check mismatch");
