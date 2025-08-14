@@ -28,5 +28,22 @@ contract LibDecimalFloatImplementationCharacteristicMantissaTest is Test {
 
         checkCharacteristicMantissa(5.4304950862250382e16, -76, 0, 5.4304950862250382e16);
         checkCharacteristicMantissa(-5.4304950862250382e16, -76, 0, -5.4304950862250382e16);
+
+        // Exact multiple => zero mantissa
+        checkCharacteristicMantissa(5e16, -16, 5e16, 0);
+        checkCharacteristicMantissa(-5e16, -16, -5e16, 0);
+        // Off-by-one around the multiple
+        checkCharacteristicMantissa(5e16 + 1, -16, 5e16, 1);
+        checkCharacteristicMantissa(-5e16 - 1, -16, -5e16, -1);
+
+        // Boundary at exponent -76 (scale = 1e76)
+        checkCharacteristicMantissa(1e76, -76, 1e76, 0);
+        checkCharacteristicMantissa(1e76 + 1, -76, 1e76, 1);
+        checkCharacteristicMantissa(-1e76, -76, -1e76, 0);
+        checkCharacteristicMantissa(-1e76 - 1, -76, -1e76, -1);
+
+        // Beyond boundary at exponent -77 (scale > int256.max): characteristic must be 0
+        checkCharacteristicMantissa(1, -77, 0, 1);
+        checkCharacteristicMantissa(-1, -77, 0, -1);
     }
 }
