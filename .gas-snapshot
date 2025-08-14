@@ -142,7 +142,16 @@ LibDecimalFloatImplementationAddTest:testAddingSmallToLargeReturnsLargeExamples(
 LibDecimalFloatImplementationAddTest:testAddingSmallToLargeReturnsLargeFuzz(int256,int256,int256,int256) (runs: 5101, μ: 17007, ~: 16985)
 LibDecimalFloatImplementationAddTest:testGasAddOne() (gas: 1364)
 LibDecimalFloatImplementationAddTest:testGasAddZero() (gas: 382)
-LibDecimalFloatImplementationAddTest:testOverflowCheks(int256,int256) (runs: 5118, μ: 3837, ~: 3823)
+--- a/test/src/lib/implementation/LibDecimalFloatImplementation.add.t.sol
+@@ -31,10 +31,10 @@
+     }
+
+-    function testOverflowCheks(int256 a, int256 b) external pure {
++    function testOverflowChecks(int256 a, int256 b) external pure {
+         bool expected = willOverflow(a, b);
+         bool actual = willOverflow2(a, b);
+         assertEq(expected, actual);
+     }
 LibDecimalFloatImplementationCharacteristicMantissaTest:testCharacteristicMantissaExamples() (gas: 7754)
 LibDecimalFloatImplementationDivTest:testDiv1Over3() (gas: 6014)
 LibDecimalFloatImplementationDivTest:testDiv1Over3Gas0() (gas: 716)
