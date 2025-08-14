@@ -23,6 +23,7 @@ contract LibDecimalFloatImplementationCharacteristicMantissaTest is Test {
         checkCharacteristicMantissa(0, 0, 0, 0);
         checkCharacteristicMantissa(0, 1, 0, 0);
 
-        checkCharacteristicMantissa(54304950862250382, -16, 5e16, 4304950862250382);
+        checkCharacteristicMantissa(5.4304950862250382e16, -16, 5e16, 4304950862250382);
+        checkCharacteristicMantissa(-5.4304950862250382e16, -16, -5e16, -0.4304950862250382e16);
     }
 }
