@@ -56,7 +56,7 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
         checkPow10(0.5e37, -37, 3162, -3);
 
         checkPow10(0.3e37, -37, 1995, -3);
-        checkPow10(-0.3e37, -37, 5.012531328320802005012531328320802005e37, -38);
+        checkPow10(-0.3e37, -37, 0.501253132832080200501253132832080200501e39, -39);
     }
 
     function testInterpolatedLookupsPower() external {

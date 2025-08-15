@@ -40,12 +40,12 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     /// 1 / 3
     function testDiv1Over3() external pure {
-        checkDiv(1, 0, 3, 0, THREES, -38);
+        checkDiv(1, 0, 3, 0, THREES, -39);
     }
 
     /// - 1 / 3
     function testDivNegative1Over3() external pure {
-        checkDiv(-1, 0, 3, 0, -THREES, -38);
+        checkDiv(-1, 0, 3, 0, -THREES, -39);
     }
 
     /// 1 / 3 gas
@@ -56,22 +56,22 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     /// 1e18 / 3
     function testDiv1e18Over3() external pure {
-        checkDiv(1e18, 0, 3, 0, THREES, -20);
+        checkDiv(1e18, 0, 3, 0, THREES, -21);
     }
 
     /// 10,0 / 1e38,-37 == 1
     function testDivTenOverOOMs() external pure {
-        checkDiv(10, 0, 1e38, -37, 1e38, -38);
+        checkDiv(10, 0, 1e38, -37, 1e39, -39);
     }
 
     /// 1e38,-37 / 2,0 == 5
     function testDivOOMsOverTen() external pure {
-        checkDiv(1e38, -37, 2, 0, 5e37, -37);
+        checkDiv(1e38, -37, 2, 0, 5e38, -38);
     }
 
     /// 5e37,-37 / 2e37,-37 == 2.5
     function testDivOOMs5and2() external pure {
-        checkDiv(5e37, -37, 2e37, -37, 25e37, -38);
+        checkDiv(5e37, -37, 2e37, -37, 25e38, -39);
     }
 
     /// (1 / 9) / (1 / 3) == 0.333..
@@ -79,18 +79,18 @@ contract LibDecimalFloatImplementationDivTest is Test {
         // 1 / 9
         (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloatImplementation.div(1, 0, 9, 0);
         assertEq(signedCoefficientA, ONES);
-        assertEq(exponentA, -38);
+        assertEq(exponentA, -39);
 
         // 1 / 3
         (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloatImplementation.div(1, 0, 3, 0);
         assertEq(signedCoefficientB, THREES);
-        assertEq(exponentB, -38);
+        assertEq(exponentB, -39);
 
         // (1 / 9) / (1 / 3)
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        assertEq(signedCoefficient, THREES);
-        assertEq(exponent, -38);
+        assertEq(signedCoefficient, 333333333333333333333333333333333333336);
+        assertEq(exponent, -39);
     }
 
     /// forge-config: default.fuzz.runs = 100
@@ -102,7 +102,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         int256 di = 0;
         while (true) {
             int256 i = 1;
-            int256 j = -38 - di;
+            int256 j = -39 - di;
             while (true) {
                 // want to see full precision on the THREES regardless of the
                 // scale of the numerator and denominator.

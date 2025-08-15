@@ -189,11 +189,11 @@ library LibDecimalFloatImplementation {
         returns (int256, int256)
     {
         unchecked {
-            (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
+            (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
             (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
 
-            int256 signedCoefficient = (signedCoefficientA * 1e38) / signedCoefficientB;
-            int256 exponent = exponentA - exponentB - 38;
+            int256 signedCoefficient = signedCoefficientA / signedCoefficientB;
+            int256 exponent = exponentA - exponentB;
             return (signedCoefficient, exponent);
         }
     }
@@ -371,8 +371,8 @@ library LibDecimalFloatImplementation {
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
 
-        signedCoefficient = 1e75 / signedCoefficient;
-        exponent = -exponent - 75;
+        signedCoefficient = 1e76 / signedCoefficient;
+        exponent = -exponent - 76;
 
         return (signedCoefficient, exponent);
     }
