@@ -38,8 +38,8 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     function testPows() external {
-        checkPow(5e37, -38, 3e37, -36, 9.3283582089552238805970149253731343283e37, -47);
-        checkPow(5e37, -38, 6e37, -36, 8.7108013937282229965156794425087108013e37, -56);
+        checkPow(5e37, -38, 3e37, -36, 9.32835820895522388059701492537313432835e38, -48);
+        checkPow(5e37, -38, 6e37, -36, 8.71080139372822299651567944250871080139e38, -57);
         // // Issues found in fuzzing from here.
         checkPow(99999, 0, 12182, 0, 1000, 60907);
         checkPow(1785215562, 0, 18, 0, 3388, 163);

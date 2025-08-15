@@ -16,12 +16,12 @@ contract LibDecimalFloatMixedTest is Test {
         Float c = a.div(b);
         (int256 signedCoefficientDiv, int256 exponentDiv) = LibDecimalFloat.unpack(c);
         assertEq(signedCoefficientDiv, THREES, "coefficient");
-        assertEq(exponentDiv, -38, "exponent");
+        assertEq(exponentDiv, -39, "exponent");
 
         Float d = c.mul(LibDecimalFloat.packLossless(555, 18));
         (int256 signedCoefficientMul, int256 exponentMul) = LibDecimalFloat.unpack(d);
 
-        assertEq(signedCoefficientMul, 18499999999999999999999999999999999999815);
-        assertEq(exponentMul, -20);
+        assertEq(signedCoefficientMul, 184999999999999999999999999999999999999815);
+        assertEq(exponentMul, -21);
     }
 }
