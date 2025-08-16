@@ -10,7 +10,6 @@ import {
     ANTI_LOG_TABLES_SMALL
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
-import {console2} from "forge-std/console2.sol";
 
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
@@ -650,27 +649,6 @@ library LibDecimalFloatImplementation {
             );
         }
     }
-
-    // function minimize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-    //     unchecked {
-    //         if (signedCoefficient == 0) {
-    //             return (MINIMIZED_ZERO_SIGNED_COEFFICIENT, MINIMIZED_ZERO_EXPONENT);
-    //         }
-
-    //         int256 initialExponent = exponent;
-
-    //         while (signedCoefficient % 10 == 0) {
-    //             signedCoefficient /= 10;
-    //             exponent += 1;
-    //         }
-
-    //         if (initialExponent > exponent) {
-    //             revert ExponentOverflow(signedCoefficient, exponent);
-    //         }
-
-    //         return (signedCoefficient, exponent);
-    //     }
-    // }
 
     function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
