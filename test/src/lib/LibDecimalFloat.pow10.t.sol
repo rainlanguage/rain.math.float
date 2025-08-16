@@ -27,6 +27,12 @@ contract LibDecimalFloatPow10Test is LogTest {
             } else {
                 Float floatPower10 = this.pow10External(float);
                 (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = floatPower10.unpack();
+
+                // Compensate for the implied pack and unpack.
+                (Float resultPacked, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+                (lossless);
+                (signedCoefficient, exponent) = resultPacked.unpack();
+
                 assertEq(signedCoefficient, signedCoefficientUnpacked);
                 assertEq(exponent, exponentUnpacked);
             }
