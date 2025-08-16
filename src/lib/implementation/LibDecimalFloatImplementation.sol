@@ -194,9 +194,14 @@ library LibDecimalFloatImplementation {
         returns (int256, int256)
     {
         unchecked {
+            // Move both coefficients into the e75/e76 range, so that the result
+            // of division will also be roughly maximized, and we can easily
+            // optimise precision.
             (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
             (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
 
+            // mulDiv only works with unsigned integers, so get the aboslute
+            // values of the coefficients.
             uint256 signedCoefficientAAbs;
             if (signedCoefficientA < 0) {
                 if (signedCoefficientA == type(int256).min) {
@@ -217,6 +222,13 @@ library LibDecimalFloatImplementation {
             } else {
                 signedCoefficientBAbs = uint256(signedCoefficientB);
             }
+
+            // We are going to scale the numerator up by the largest power of ten
+            // that is smaller than the denominator. This will always overflow
+            // internally to the mulDiv during the initial multiplication, in
+            // 512 bits, but will subsequently always be reduced back down to
+            // fit in 256 bits by the division of a denominator that is larger
+            // than the scale up.
             int256 scale = 1e76;
             int256 adjustExponent = 76;
             if (signedCoefficientB / scale == 0) {
