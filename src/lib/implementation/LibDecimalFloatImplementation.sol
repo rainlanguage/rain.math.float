@@ -195,8 +195,7 @@ library LibDecimalFloatImplementation {
     {
         unchecked {
             // Move both coefficients into the e75/e76 range, so that the result
-            // of division will also be roughly maximized, and we can easily
-            // optimise precision.
+            // of division will not cause a mulDiv overflow.
             (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
             (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
 
