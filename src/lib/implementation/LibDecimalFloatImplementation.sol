@@ -199,7 +199,7 @@ library LibDecimalFloatImplementation {
             (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
             (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
 
-            // mulDiv only works with unsigned integers, so get the aboslute
+            // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
             uint256 signedCoefficientAAbs;
             if (signedCoefficientA < 0) {
