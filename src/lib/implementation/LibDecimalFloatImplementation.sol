@@ -188,6 +188,10 @@ library LibDecimalFloatImplementation {
         pure
         returns (int256, int256)
     {
+        uint256 scale = 1e76;
+        int256 adjustExponent = 76;
+        int256 signedCoefficient;
+
         unchecked {
             // Move both coefficients into the e75/e76 range, so that the result
             // of division will not cause a mulDiv overflow.
@@ -225,19 +229,20 @@ library LibDecimalFloatImplementation {
             // 512 bits, but will subsequently always be reduced back down to
             // fit in 256 bits by the division of a denominator that is larger
             // than the scale up.
-            uint256 scale = 1e76;
-            int256 adjustExponent = 76;
             if (signedCoefficientBAbs < scale) {
                 scale = 1e75;
                 adjustExponent = 75;
             }
             uint256 signedCoefficientAbs = mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs);
-            int256 signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0
+            signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0
                 ? -int256(signedCoefficientAbs)
                 : int256(signedCoefficientAbs);
-            int256 exponent = exponentA - exponentB - adjustExponent;
-            return (signedCoefficient, exponent);
         }
+
+        // Keep the exponent calculation outside the unchecked block so that we
+        // don't silently under/overflow.
+        int256 exponent = exponentA - exponentB - adjustExponent;
+        return (signedCoefficient, exponent);
     }
 
     /// mulDiv as seen in Open Zeppelin, PRB Math, Solady, and other libraries.
