@@ -223,13 +223,13 @@ library LibDecimalFloatImplementation {
             // 512 bits, but will subsequently always be reduced back down to
             // fit in 256 bits by the division of a denominator that is larger
             // than the scale up.
-            int256 scale = 1e76;
+            uint256 scale = 1e76;
             int256 adjustExponent = 76;
-            if (signedCoefficientB / scale == 0) {
+            if (signedCoefficientBAbs < scale) {
                 scale = 1e75;
                 adjustExponent = 75;
             }
-            uint256 signedCoefficientAbs = mulDiv(signedCoefficientAAbs, uint256(scale), signedCoefficientBAbs);
+            uint256 signedCoefficientAbs = mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs);
             int256 signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0
                 ? -int256(signedCoefficientAbs)
                 : int256(signedCoefficientAbs);
