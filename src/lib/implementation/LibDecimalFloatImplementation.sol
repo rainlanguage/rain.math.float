@@ -197,14 +197,16 @@ library LibDecimalFloatImplementation {
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
             uint256 signedCoefficientAAbs;
-            if (signedCoefficientA < 0) {
+            if (signedCoefficientA > 0) {
+                signedCoefficientAAbs = uint256(signedCoefficientA);
+            } else if (signedCoefficientA < 0) {
                 if (signedCoefficientA == type(int256).min) {
                     signedCoefficientAAbs = uint256(type(int256).max) + 1;
                 } else {
                     signedCoefficientAAbs = uint256(-signedCoefficientA);
                 }
             } else {
-                signedCoefficientAAbs = uint256(signedCoefficientA);
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
             }
             uint256 signedCoefficientBAbs;
             if (signedCoefficientB < 0) {
