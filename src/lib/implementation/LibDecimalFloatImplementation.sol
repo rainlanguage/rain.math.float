@@ -61,11 +61,6 @@ int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = NORMALIZED_ZERO_SIGNED_COEFF
 /// @dev The exponent of maximized zero.
 int256 constant MAXIMIZED_ZERO_EXPONENT = NORMALIZED_ZERO_EXPONENT;
 
-/// @dev The signed coefficient of minimized zero.
-int256 constant MINIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
-/// @dev The exponent of minimized zero.
-int256 constant MINIMIZED_ZERO_EXPONENT = 0;
-
 library LibDecimalFloatImplementation {
     /// Negates and normalizes a float.
     /// Equivalent to `0 - x`.
