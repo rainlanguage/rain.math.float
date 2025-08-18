@@ -1370,7 +1370,10 @@ mod tests {
 
         dbg!(&err);
 
-        assert!(matches!(err, FloatError::DecimalFloat(DecimalFloatErrors::MulDivOverflow(_))));
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloat(DecimalFloatErrors::MulDivOverflow(_))
+        ));
     }
 
     #[test]
