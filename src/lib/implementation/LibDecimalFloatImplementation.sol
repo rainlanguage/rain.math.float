@@ -288,9 +288,11 @@ library LibDecimalFloatImplementation {
 
             assembly ("memory-safe") {
                 // Factor powers of two out of denominator.
+                // slither-disable-next-line divide-before-multiply
                 denominator := div(denominator, lpotdod)
 
                 // Divide [prod1 prod0] by lpotdod.
+                // slither-disable-next-line divide-before-multiply
                 prod0 := div(prod0, lpotdod)
 
                 // Get the flipped value `2^256 / lpotdod`. If the `lpotdod` is zero, the flipped value is one.
@@ -305,6 +307,7 @@ library LibDecimalFloatImplementation {
             // Invert denominator mod 2^256. Now that denominator is an odd number, it has an inverse modulo 2^256 such
             // that denominator * inv = 1 mod 2^256. Compute the inverse by starting with a seed that is correct for
             // four bits. That is, denominator * inv = 1 mod 2^4.
+            // slither-disable-next-line incorrect-exp
             uint256 inverse = (3 * denominator) ^ 2;
 
             // Use the Newton-Raphson iteration to improve the precision. Thanks to Hensel's lifting lemma, this also works
