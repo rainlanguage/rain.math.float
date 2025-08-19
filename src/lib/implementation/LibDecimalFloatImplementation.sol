@@ -11,6 +11,8 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
+import {console2} from "forge-std/console2.sol";
+
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -100,78 +102,106 @@ library LibDecimalFloatImplementation {
         pure
         returns (int256, int256)
     {
+        // mulDiv only works with unsigned integers, so get the aboslute
+        // values of the coefficients.
+        uint256 signedCoefficientAAbs;
+        uint256 signedCoefficientBAbs;
+
         unchecked {
-            // mulDiv only works with unsigned integers, so get the aboslute
-            // values of the coefficients.
-            uint256 signedCoefficientAAbs;
             if (signedCoefficientA < 0) {
                 if (signedCoefficientA == type(int256).min) {
                     signedCoefficientAAbs = uint256(type(int256).max) + 1;
                 } else {
                     signedCoefficientAAbs = uint256(-signedCoefficientA);
                 }
-            } else {
+            } else if (signedCoefficientA > 0) {
                 signedCoefficientAAbs = uint256(signedCoefficientA);
+            } else {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
             }
-            uint256 signedCoefficientBAbs;
+
             if (signedCoefficientB < 0) {
                 if (signedCoefficientB == type(int256).min) {
                     signedCoefficientBAbs = uint256(type(int256).max) + 1;
                 } else {
                     signedCoefficientBAbs = uint256(-signedCoefficientB);
                 }
-            } else {
+            } else if (signedCoefficientB > 0) {
                 signedCoefficientBAbs = uint256(signedCoefficientB);
+            } else {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
             }
-
-            // 512-bit multiply [prod1 prod0] = x * y. Compute the product mod 2^256 and mod 2^256 - 1, then use
-            // use the Chinese Remainder Theorem to reconstruct the 512-bit result. The result is stored in two 256
-            // variables such that product = prod1 * 2^256 + prod0.
-            uint256 prod0; // Least significant 256 bits of the product
-            uint256 prod1; // Most significant 256 bits of the product
-            assembly ("memory-safe") {
-                let mm := mulmod(signedCoefficientA, signedCoefficientB, not(0))
-                prod0 := mul(signedCoefficientA, signedCoefficientB)
-                prod1 := sub(sub(mm, prod0), lt(mm, prod0))
-            }
-
-            // Handle non-overflow cases, 256 by 256 division.
-            if (prod1 == 0) {
-                unchecked {
-                    return (prod0 * denominator, 0);
-                }
-            }
-
-            // // Unchecked mul the coefficients and add the exponents.
-            // int256 signedCoefficient = signedCoefficientA * signedCoefficientB;
-
-            // // Need to return early if the result is zero to avoid divide by
-            // // zero in the overflow check.
-            // if (signedCoefficient == 0) {
-            //     return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
-            // }
-
-            // int256 exponent = exponentA + exponentB;
-
-            // // No jumps to see if we overflowed.
-            // bool didOverflow;
-            // assembly ("memory-safe") {
-            //     didOverflow :=
-            //         or(
-            //             iszero(eq(sdiv(signedCoefficient, signedCoefficientA), signedCoefficientB)),
-            //             iszero(eq(sub(exponent, exponentA), exponentB))
-            //         )
-            // }
-            // // If we did overflow, normalize and try again. Normalized values
-            // // cannot overflow, so this will always succeed, provided the
-            // // exponents are not out of bounds.
-            // if (didOverflow) {
-            //     (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
-            //     (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
-            //     return mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-            // }
-            // return (signedCoefficient, exponent);
         }
+
+        // 512-bit multiply [prod1 prod0] = x * y. Compute the product mod 2^256 and mod 2^256 - 1, then use
+        // use the Chinese Remainder Theorem to reconstruct the 512-bit result. The result is stored in two 256
+        // variables such that product = prod1 * 2^256 + prod0.
+        uint256 prod0; // Least significant 256 bits of the product
+        uint256 prod1; // Most significant 256 bits of the product
+        assembly ("memory-safe") {
+            let mm := mulmod(signedCoefficientAAbs, signedCoefficientBAbs, not(0))
+            prod0 := mul(signedCoefficientAAbs, signedCoefficientBAbs)
+            prod1 := sub(sub(mm, prod0), lt(mm, prod0))
+        }
+
+        int256 exponent = exponentA + exponentB;
+
+        // // Handle non-overflow cases, 256 by 256 division.
+        // if (prod1 == 0) {
+        //     int256 signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0 ? -int256(prod0) : int256(prod0);
+        //     unchecked {
+        //         return (signedCoefficient, exponent);
+        //     }
+        // }
+        console2.logInt(type(int256).max);
+        console2.logUint(prod0);
+        console2.logUint(prod1);
+        unchecked {
+            uint256 adjustExponent = 0;
+            while (prod1 != 0) {
+                prod1 /= 10;
+                adjustExponent++;
+            }
+            console2.logUint(adjustExponent);
+            uint256 signedCoefficientAbs = mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, 10 ** adjustExponent);
+            console2.logUint(signedCoefficientAbs);
+            int256 signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0
+                ? -int256(signedCoefficientAbs)
+                : int256(signedCoefficientAbs);
+            exponent += int256(adjustExponent);
+            return (signedCoefficient, exponent);
+        }
+
+        // // Unchecked mul the coefficients and add the exponents.
+        // int256 signedCoefficient = signedCoefficientA * signedCoefficientB;
+
+        // // Need to return early if the result is zero to avoid divide by
+        // // zero in the overflow check.
+        // if (signedCoefficient == 0) {
+        //     return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+        // }
+
+        // int256 exponent = exponentA + exponentB;
+
+        // // No jumps to see if we overflowed.
+        // bool didOverflow;
+        // assembly ("memory-safe") {
+        //     didOverflow :=
+        //         or(
+        //             iszero(eq(sdiv(signedCoefficient, signedCoefficientA), signedCoefficientB)),
+        //             iszero(eq(sub(exponent, exponentA), exponentB))
+        //         )
+        // }
+        // // If we did overflow, normalize and try again. Normalized values
+        // // cannot overflow, so this will always succeed, provided the
+        // // exponents are not out of bounds.
+        // if (didOverflow) {
+        //     (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
+        //     (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
+        //     return mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        // }
+        // return (signedCoefficient, exponent);
+        // }
     }
 
     /// https://speleotrove.com/decimal/daops.html#refdivide
