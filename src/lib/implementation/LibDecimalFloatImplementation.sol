@@ -11,8 +11,6 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
-import {console2} from "forge-std/console2.sol";
-
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -146,62 +144,19 @@ library LibDecimalFloatImplementation {
 
         int256 exponent = exponentA + exponentB;
 
-        // // Handle non-overflow cases, 256 by 256 division.
-        // if (prod1 == 0) {
-        //     int256 signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0 ? -int256(prod0) : int256(prod0);
-        //     unchecked {
-        //         return (signedCoefficient, exponent);
-        //     }
-        // }
-        console2.logInt(type(int256).max);
-        console2.logUint(prod0);
-        console2.logUint(prod1);
         unchecked {
             uint256 adjustExponent = 0;
             while (prod1 != 0) {
                 prod1 /= 10;
                 adjustExponent++;
             }
-            console2.logUint(adjustExponent);
             uint256 signedCoefficientAbs = mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, 10 ** adjustExponent);
-            console2.logUint(signedCoefficientAbs);
             int256 signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0
                 ? -int256(signedCoefficientAbs)
                 : int256(signedCoefficientAbs);
             exponent += int256(adjustExponent);
             return (signedCoefficient, exponent);
         }
-
-        // // Unchecked mul the coefficients and add the exponents.
-        // int256 signedCoefficient = signedCoefficientA * signedCoefficientB;
-
-        // // Need to return early if the result is zero to avoid divide by
-        // // zero in the overflow check.
-        // if (signedCoefficient == 0) {
-        //     return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
-        // }
-
-        // int256 exponent = exponentA + exponentB;
-
-        // // No jumps to see if we overflowed.
-        // bool didOverflow;
-        // assembly ("memory-safe") {
-        //     didOverflow :=
-        //         or(
-        //             iszero(eq(sdiv(signedCoefficient, signedCoefficientA), signedCoefficientB)),
-        //             iszero(eq(sub(exponent, exponentA), exponentB))
-        //         )
-        // }
-        // // If we did overflow, normalize and try again. Normalized values
-        // // cannot overflow, so this will always succeed, provided the
-        // // exponents are not out of bounds.
-        // if (didOverflow) {
-        //     (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
-        //     (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
-        //     return mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        // }
-        // return (signedCoefficient, exponent);
-        // }
     }
 
     /// https://speleotrove.com/decimal/daops.html#refdivide
