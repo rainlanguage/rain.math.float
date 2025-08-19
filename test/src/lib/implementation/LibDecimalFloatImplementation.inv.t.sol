@@ -6,10 +6,16 @@ import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 import {
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
-    EXPONENT_MAX
+    EXPONENT_MAX,
+    MulDivOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationInvTest is Test {
+    function invExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
+        return (signedCoefficient, exponent);
+    }
+
     /// Compare reference.
     function testInvReference(int256 signedCoefficient, int256 exponent) external pure {
         vm.assume(signedCoefficient != 0);
@@ -32,5 +38,10 @@ contract LibDecimalFloatImplementationInvTest is Test {
     function testInvSlowGas0() external pure {
         (int256 outputSignedCoefficient, int256 outputExponent) = LibDecimalFloatSlow.invSlow(3e37, -37);
         (outputSignedCoefficient, outputExponent);
+    }
+
+    function testInv0() external {
+        vm.expectRevert(abi.encodeWithSelector(MulDivOverflow.selector, 1e76, 1e75, 0));
+        this.invExternal(0, 0);
     }
 }

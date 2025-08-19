@@ -61,11 +61,6 @@ int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = NORMALIZED_ZERO_SIGNED_COEFF
 /// @dev The exponent of maximized zero.
 int256 constant MAXIMIZED_ZERO_EXPONENT = NORMALIZED_ZERO_EXPONENT;
 
-/// @dev The signed coefficient of minimized zero.
-int256 constant MINIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
-/// @dev The exponent of minimized zero.
-int256 constant MINIMIZED_ZERO_EXPONENT = 0;
-
 library LibDecimalFloatImplementation {
     /// Negates and normalizes a float.
     /// Equivalent to `0 - x`.
@@ -234,24 +229,29 @@ library LibDecimalFloatImplementation {
         pure
         returns (int256, int256)
     {
+        uint256 scale = 1e76;
+        int256 adjustExponent = 76;
+        int256 signedCoefficient;
+
         unchecked {
             // Move both coefficients into the e75/e76 range, so that the result
-            // of division will also be roughly maximized, and we can easily
-            // optimise precision.
+            // of division will not cause a mulDiv overflow.
             (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
             (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
 
-            // mulDiv only works with unsigned integers, so get the aboslute
+            // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
             uint256 signedCoefficientAAbs;
-            if (signedCoefficientA < 0) {
+            if (signedCoefficientA > 0) {
+                signedCoefficientAAbs = uint256(signedCoefficientA);
+            } else if (signedCoefficientA < 0) {
                 if (signedCoefficientA == type(int256).min) {
                     signedCoefficientAAbs = uint256(type(int256).max) + 1;
                 } else {
                     signedCoefficientAAbs = uint256(-signedCoefficientA);
                 }
             } else {
-                signedCoefficientAAbs = uint256(signedCoefficientA);
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
             }
             uint256 signedCoefficientBAbs;
             if (signedCoefficientB < 0) {
@@ -270,19 +270,20 @@ library LibDecimalFloatImplementation {
             // 512 bits, but will subsequently always be reduced back down to
             // fit in 256 bits by the division of a denominator that is larger
             // than the scale up.
-            int256 scale = 1e76;
-            int256 adjustExponent = 76;
-            if (signedCoefficientB / scale == 0) {
+            if (signedCoefficientBAbs < scale) {
                 scale = 1e75;
                 adjustExponent = 75;
             }
-            uint256 signedCoefficientAbs = mulDiv(signedCoefficientAAbs, uint256(scale), signedCoefficientBAbs);
-            int256 signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0
+            uint256 signedCoefficientAbs = mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs);
+            signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0
                 ? -int256(signedCoefficientAbs)
                 : int256(signedCoefficientAbs);
-            int256 exponent = exponentA - exponentB - adjustExponent;
-            return (signedCoefficient, exponent);
         }
+
+        // Keep the exponent calculation outside the unchecked block so that we
+        // don't silently under/overflow.
+        int256 exponent = exponentA - exponentB - adjustExponent;
+        return (signedCoefficient, exponent);
     }
 
     /// mulDiv as seen in Open Zeppelin, PRB Math, Solady, and other libraries.
@@ -335,9 +336,11 @@ library LibDecimalFloatImplementation {
 
             assembly ("memory-safe") {
                 // Factor powers of two out of denominator.
+                // slither-disable-next-line divide-before-multiply
                 denominator := div(denominator, lpotdod)
 
                 // Divide [prod1 prod0] by lpotdod.
+                // slither-disable-next-line divide-before-multiply
                 prod0 := div(prod0, lpotdod)
 
                 // Get the flipped value `2^256 / lpotdod`. If the `lpotdod` is zero, the flipped value is one.
@@ -352,6 +355,7 @@ library LibDecimalFloatImplementation {
             // Invert denominator mod 2^256. Now that denominator is an odd number, it has an inverse modulo 2^256 such
             // that denominator * inv = 1 mod 2^256. Compute the inverse by starting with a seed that is correct for
             // four bits. That is, denominator * inv = 1 mod 2^4.
+            // slither-disable-next-line incorrect-exp
             uint256 inverse = (3 * denominator) ^ 2;
 
             // Use the Newton-Raphson iteration to improve the precision. Thanks to Hensel's lifting lemma, this also works
