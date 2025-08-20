@@ -32,7 +32,7 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
         checkPow10(1, 4, 1000, 9997);
     }
 
-    function testExactLookups() external {
+    function testExactLookupsPow10() external {
         // 10^2 = 100
         checkPow10(2, 0, 1000, -1);
         // 10^3 = 1000
@@ -56,7 +56,8 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
         checkPow10(0.5e37, -37, 3162, -3);
 
         checkPow10(0.3e37, -37, 1995, -3);
-        checkPow10(-0.3e37, -37, 0.501253132832080200501253132832080200501e39, -39);
+        // 10^-0.3 = 0.50118723362
+        checkPow10(-0.3e37, -37, 0.5012531328320802005012531328320802005012531328320802005012531328320802005012e76, -76);
     }
 
     function testInterpolatedLookupsPower() external {

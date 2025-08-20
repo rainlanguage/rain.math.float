@@ -1368,7 +1368,10 @@ mod tests {
         let zero = Float::parse("0".to_string()).unwrap();
         let err = (one / zero).unwrap_err();
 
-        assert!(matches!(err, FloatError::Revert(_)));
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloat(DecimalFloatErrors::MulDivOverflow(_))
+        ));
     }
 
     #[test]

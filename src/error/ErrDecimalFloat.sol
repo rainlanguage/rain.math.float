@@ -30,3 +30,6 @@ error LossyConversionFromFloat(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when attempting to exponentiate 0^b where b is negative.
 error ZeroNegativePower(Float b);
+
+/// @dev Thrown when mulDiv internal to division overflows.
+error MulDivOverflow(uint256 x, uint256 y, uint256 denominator);
