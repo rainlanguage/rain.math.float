@@ -119,14 +119,14 @@ contract LibDecimalFloatPowTest is LogTest {
     /// Can generally round trip whatever within 0.25% of the original value.
     function testRoundTripSimple() external {
         checkRoundTrip(5, 0, 2, 0);
-        // checkRoundTrip(5, 0, 3, 0);
-        // checkRoundTrip(50, 0, 40, 0);
-        // checkRoundTrip(5, -1, 3, -1);
-        // checkRoundTrip(5, -1, 2, -1);
-        // checkRoundTrip(5, 10, 3, 5);
-        // checkRoundTrip(5, -1, 100, 0);
-        // checkRoundTrip(7721, 0, -1, -2);
-        // checkRoundTrip(4157, 0, -1, -2);
+        checkRoundTrip(5, 0, 3, 0);
+        checkRoundTrip(50, 0, 40, 0);
+        checkRoundTrip(5, -1, 3, -1);
+        checkRoundTrip(5, -1, 2, -1);
+        checkRoundTrip(5, 10, 3, 5);
+        checkRoundTrip(5, -1, 100, 0);
+        checkRoundTrip(7721, 0, -1, -2);
+        checkRoundTrip(4157, 0, -1, -2);
     }
 
     function powExternal(Float a, Float b) external returns (Float) {
