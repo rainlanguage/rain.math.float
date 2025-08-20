@@ -94,68 +94,85 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    function absUnsignedSignedCoefficient(int256 signedCoefficient) internal pure returns (uint256) {
+        unchecked {
+            if (signedCoefficient < 0) {
+                if (signedCoefficient == type(int256).min) {
+                    return uint256(type(int256).max) + 1;
+                } else {
+                    return uint256(-signedCoefficient);
+                }
+            } else {
+                return uint256(signedCoefficient);
+            }
+        }
+    }
+
+    function unabsUnsignedSignedCoefficientMulOrDiv(int256 a, int256 b, uint256 signedCoefficientAbs)
+        internal
+        pure
+        returns (int256)
+    {
+        unchecked {
+            return (a ^ b) < 0 ? -int256(signedCoefficientAbs) : int256(signedCoefficientAbs);
+        }
+    }
+
     /// Stack only implementation of `mul`.
     function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
-        returns (int256, int256)
+        returns (int256 signedCoefficient, int256 exponent)
     {
-        // mulDiv only works with unsigned integers, so get the aboslute
-        // values of the coefficients.
-        uint256 signedCoefficientAAbs;
-        uint256 signedCoefficientBAbs;
-
-        unchecked {
-            if (signedCoefficientA < 0) {
-                if (signedCoefficientA == type(int256).min) {
-                    signedCoefficientAAbs = uint256(type(int256).max) + 1;
-                } else {
-                    signedCoefficientAAbs = uint256(-signedCoefficientA);
-                }
-            } else if (signedCoefficientA > 0) {
-                signedCoefficientAAbs = uint256(signedCoefficientA);
-            } else {
-                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
-            }
-
-            if (signedCoefficientB < 0) {
-                if (signedCoefficientB == type(int256).min) {
-                    signedCoefficientBAbs = uint256(type(int256).max) + 1;
-                } else {
-                    signedCoefficientBAbs = uint256(-signedCoefficientB);
-                }
-            } else if (signedCoefficientB > 0) {
-                signedCoefficientBAbs = uint256(signedCoefficientB);
-            } else {
-                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
-            }
-        }
-
-        // 512-bit multiply [prod1 prod0] = x * y. Compute the product mod 2^256 and mod 2^256 - 1, then use
-        // use the Chinese Remainder Theorem to reconstruct the 512-bit result. The result is stored in two 256
-        // variables such that product = prod1 * 2^256 + prod0.
-        uint256 prod0; // Least significant 256 bits of the product
-        uint256 prod1; // Most significant 256 bits of the product
+        bool isZero;
         assembly ("memory-safe") {
-            let mm := mulmod(signedCoefficientAAbs, signedCoefficientBAbs, not(0))
-            prod0 := mul(signedCoefficientAAbs, signedCoefficientBAbs)
-            prod1 := sub(sub(mm, prod0), lt(mm, prod0))
+            isZero := or(iszero(signedCoefficientA), iszero(signedCoefficientB))
         }
+        if (isZero) {
+            // These sets are redundant as both are zero but this makes it
+            // clearer and more explicit.
+            signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
+            exponent = MAXIMIZED_ZERO_EXPONENT;
+        } else {
+            // mulDiv only works with unsigned integers, so get the aboslute
+            // values of the coefficients.
+            uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
+            uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
 
-        int256 exponent = exponentA + exponentB;
+            (uint256 prod1, uint256 prod0) = mul512(signedCoefficientAAbs, signedCoefficientBAbs);
 
-        unchecked {
+            exponent = exponentA + exponentB;
+
             uint256 adjustExponent = 0;
-            while (prod1 != 0) {
-                prod1 /= 10;
-                adjustExponent++;
+            unchecked {
+                if (prod1 > 1e37) {
+                    prod1 /= 1e37;
+                    adjustExponent += 37;
+                }
+                if (prod1 > 1e18) {
+                    prod1 /= 1e18;
+                    adjustExponent += 18;
+                }
+                if (prod1 > 1e9) {
+                    prod1 /= 1e9;
+                    adjustExponent += 9;
+                }
+                if (prod1 > 1e4) {
+                    prod1 /= 1e4;
+                    adjustExponent += 4;
+                }
+                while (prod1 > 0) {
+                    prod1 /= 10;
+                    adjustExponent++;
+                }
             }
-            uint256 signedCoefficientAbs = mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, 10 ** adjustExponent);
-            int256 signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0
-                ? -int256(signedCoefficientAbs)
-                : int256(signedCoefficientAbs);
+
+            signedCoefficient = unabsUnsignedSignedCoefficientMulOrDiv(
+                signedCoefficientA,
+                signedCoefficientB,
+                mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent)
+            );
             exponent += int256(adjustExponent);
-            return (signedCoefficient, exponent);
         }
     }
 
@@ -212,13 +229,12 @@ library LibDecimalFloatImplementation {
     function div(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
-        returns (int256, int256)
+        returns (int256 signedCoefficient, int256 exponent)
     {
-        uint256 scale = 1e76;
-        int256 adjustExponent = 76;
-        int256 signedCoefficient;
-
-        unchecked {
+        if (signedCoefficientA == 0) {
+            signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
+            exponent = MAXIMIZED_ZERO_EXPONENT;
+        } else {
             // Move both coefficients into the e75/e76 range, so that the result
             // of division will not cause a mulDiv overflow.
             (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
@@ -226,28 +242,11 @@ library LibDecimalFloatImplementation {
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
-            uint256 signedCoefficientAAbs;
-            if (signedCoefficientA > 0) {
-                signedCoefficientAAbs = uint256(signedCoefficientA);
-            } else if (signedCoefficientA < 0) {
-                if (signedCoefficientA == type(int256).min) {
-                    signedCoefficientAAbs = uint256(type(int256).max) + 1;
-                } else {
-                    signedCoefficientAAbs = uint256(-signedCoefficientA);
-                }
-            } else {
-                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
-            }
-            uint256 signedCoefficientBAbs;
-            if (signedCoefficientB < 0) {
-                if (signedCoefficientB == type(int256).min) {
-                    signedCoefficientBAbs = uint256(type(int256).max) + 1;
-                } else {
-                    signedCoefficientBAbs = uint256(-signedCoefficientB);
-                }
-            } else {
-                signedCoefficientBAbs = uint256(signedCoefficientB);
-            }
+            uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
+            uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
+
+            uint256 scale = 1e76;
+            int256 adjustExponent = 76;
 
             // We are going to scale the numerator up by the largest power of ten
             // that is smaller than the denominator. This will always overflow
@@ -259,31 +258,32 @@ library LibDecimalFloatImplementation {
                 scale = 1e75;
                 adjustExponent = 75;
             }
-            uint256 signedCoefficientAbs = mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs);
-            signedCoefficient = (signedCoefficientA ^ signedCoefficientB) < 0
-                ? -int256(signedCoefficientAbs)
-                : int256(signedCoefficientAbs);
-        }
 
-        // Keep the exponent calculation outside the unchecked block so that we
-        // don't silently under/overflow.
-        int256 exponent = exponentA - exponentB - adjustExponent;
-        return (signedCoefficient, exponent);
+            signedCoefficient = unabsUnsignedSignedCoefficientMulOrDiv(
+                signedCoefficientA, signedCoefficientB, mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs)
+            );
+            exponent = exponentA - exponentB - adjustExponent;
+        }
+    }
+
+    /// mul512 from Open Zeppelin.
+    /// Simply part of the original mulDiv function abstracted out for reuse
+    /// elsewhere.
+    function mul512(uint256 a, uint256 b) internal pure returns (uint256 high, uint256 low) {
+        // 512-bit multiply [high low] = x * y. Compute the product mod 2²⁵⁶ and mod 2²⁵⁶ - 1, then use
+        // the Chinese Remainder Theorem to reconstruct the 512 bit result. The result is stored in two 256
+        // variables such that product = high * 2²⁵⁶ + low.
+        assembly ("memory-safe") {
+            let mm := mulmod(a, b, not(0))
+            low := mul(a, b)
+            high := sub(sub(mm, low), lt(mm, low))
+        }
     }
 
     /// mulDiv as seen in Open Zeppelin, PRB Math, Solady, and other libraries.
     /// Credit to Remco Bloemen under MIT license: https://2π.com/21/muldiv
     function mulDiv(uint256 x, uint256 y, uint256 denominator) internal pure returns (uint256 result) {
-        // 512-bit multiply [prod1 prod0] = x * y. Compute the product mod 2^256 and mod 2^256 - 1, then use
-        // use the Chinese Remainder Theorem to reconstruct the 512-bit result. The result is stored in two 256
-        // variables such that product = prod1 * 2^256 + prod0.
-        uint256 prod0; // Least significant 256 bits of the product
-        uint256 prod1; // Most significant 256 bits of the product
-        assembly ("memory-safe") {
-            let mm := mulmod(x, y, not(0))
-            prod0 := mul(x, y)
-            prod1 := sub(sub(mm, prod0), lt(mm, prod0))
-        }
+        (uint256 prod1, uint256 prod0) = mul512(x, y);
 
         // Handle non-overflow cases, 256 by 256 division.
         if (prod1 == 0) {

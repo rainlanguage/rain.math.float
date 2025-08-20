@@ -109,10 +109,10 @@ contract LibDecimalFloatImplementationMulTest is Test {
         exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        // (int256 expectedSignedCoefficient, int256 expectedExponent) =
-        //     LibDecimalFloatSlow.mulSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatSlow.mulSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-        // assertEq(signedCoefficient, expectedSignedCoefficient);
-        // assertEq(exponent, expectedExponent);
+        assertEq(signedCoefficient, expectedSignedCoefficient);
+        assertEq(exponent, expectedExponent);
     }
 }

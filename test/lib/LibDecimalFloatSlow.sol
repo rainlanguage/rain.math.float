@@ -13,29 +13,31 @@ library LibDecimalFloatSlow {
         returns (int256, int256)
     {
         unchecked {
-            int256 signedCoefficient = signedCoefficientA * signedCoefficientB;
-            int256 exponent = exponentA + exponentB;
-
             // If the expected signed coefficient is 0 then everything is just
             // normalized 0.
-            if (signedCoefficient == 0) {
+            if (signedCoefficientA == 0 || signedCoefficientB == 0) {
                 return (0, 0);
             }
-            // If nothing overflowed then our expected outcome is correct.
-            else if (signedCoefficient / signedCoefficientA == signedCoefficientB && exponent - exponentA == exponentB)
-            {
-                return (signedCoefficient, exponent);
-            }
-            // If something overflowed then we have to normalize and try again.
-            else {
-                (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
-                (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
 
-                signedCoefficient = signedCoefficientA * signedCoefficientB;
-                exponent = exponentA + exponentB;
+            uint256 signedCoefficientAAbs =
+                LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientA);
+            uint256 signedCoefficientBAbs =
+                LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientB);
 
-                return (signedCoefficient, exponent);
+            (uint256 prod1, uint256 prod0) =
+                LibDecimalFloatImplementation.mul512(signedCoefficientAAbs, signedCoefficientBAbs);
+
+            int256 exponent = exponentA + exponentB;
+
+            uint256 adjustExponent = 0;
+            while (prod1 > 0) {
+                prod1 /= 10;
+                adjustExponent++;
             }
+
+            uint256 signedCoefficientAbs = LibDecimalFloatImplementation.mulDiv(
+                signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent
+            );
         }
     }
 
