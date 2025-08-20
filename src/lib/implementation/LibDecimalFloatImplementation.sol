@@ -108,13 +108,26 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    function unabsUnsignedSignedCoefficientMulOrDiv(int256 a, int256 b, uint256 signedCoefficientAbs)
+    function unabsUnsignedMulOrDivLossy(int256 a, int256 b, uint256 signedCoefficientAbs, int256 exponent)
         internal
         pure
-        returns (int256)
+        returns (int256, int256)
     {
         unchecked {
-            return (a ^ b) < 0 ? -int256(signedCoefficientAbs) : int256(signedCoefficientAbs);
+            // Need to minus the coefficient because a and b had different signs.
+            if (a ^ b < 0) {
+                if (signedCoefficientAbs > uint256(type(int256).max) + 1) {
+                    return (-int256(signedCoefficientAbs / 10), exponent + 1);
+                } else {
+                    return (-int256(signedCoefficientAbs), exponent);
+                }
+            } else {
+                if (signedCoefficientAbs > uint256(type(int256).max)) {
+                    return (int256(signedCoefficientAbs / 10), exponent + 1);
+                } else {
+                    return (int256(signedCoefficientAbs), exponent);
+                }
+            }
         }
     }
 
@@ -134,14 +147,14 @@ library LibDecimalFloatImplementation {
             signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
             exponent = MAXIMIZED_ZERO_EXPONENT;
         } else {
+            exponent = exponentA + exponentB;
+
             // mulDiv only works with unsigned integers, so get the aboslute
             // values of the coefficients.
             uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
             uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
 
-            (uint256 prod1, uint256 prod0) = mul512(signedCoefficientAAbs, signedCoefficientBAbs);
-
-            exponent = exponentA + exponentB;
+            (uint256 prod1,) = mul512(signedCoefficientAAbs, signedCoefficientBAbs);
 
             uint256 adjustExponent = 0;
             unchecked {
@@ -167,12 +180,14 @@ library LibDecimalFloatImplementation {
                 }
             }
 
-            signedCoefficient = unabsUnsignedSignedCoefficientMulOrDiv(
+            exponent += int256(adjustExponent);
+
+            (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
                 signedCoefficientB,
-                mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent)
+                mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
+                exponent
             );
-            exponent += int256(adjustExponent);
         }
     }
 
@@ -258,11 +273,14 @@ library LibDecimalFloatImplementation {
                 scale = 1e75;
                 adjustExponent = 75;
             }
-
-            signedCoefficient = unabsUnsignedSignedCoefficientMulOrDiv(
-                signedCoefficientA, signedCoefficientB, mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs)
-            );
             exponent = exponentA - exponentB - adjustExponent;
+
+            (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
+                signedCoefficientA,
+                signedCoefficientB,
+                mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs),
+                exponent
+            );
         }
     }
 

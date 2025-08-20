@@ -19,15 +19,14 @@ library LibDecimalFloatSlow {
                 return (0, 0);
             }
 
+            int256 exponent = exponentA + exponentB;
+
             uint256 signedCoefficientAAbs =
                 LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientA);
             uint256 signedCoefficientBAbs =
                 LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientB);
 
-            (uint256 prod1, uint256 prod0) =
-                LibDecimalFloatImplementation.mul512(signedCoefficientAAbs, signedCoefficientBAbs);
-
-            int256 exponent = exponentA + exponentB;
+            (uint256 prod1,) = LibDecimalFloatImplementation.mul512(signedCoefficientAAbs, signedCoefficientBAbs);
 
             uint256 adjustExponent = 0;
             while (prod1 > 0) {
@@ -38,6 +37,13 @@ library LibDecimalFloatSlow {
             uint256 signedCoefficientAbs = LibDecimalFloatImplementation.mulDiv(
                 signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent
             );
+
+            exponent += int256(adjustExponent);
+            int256 signedCoefficient;
+            (signedCoefficient, exponent) = LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(
+                signedCoefficientA, signedCoefficientB, signedCoefficientAbs, exponent
+            );
+            return (signedCoefficient, exponent);
         }
     }
 

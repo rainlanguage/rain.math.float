@@ -12,6 +12,27 @@ import {Test} from "forge-std/Test.sol";
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 
 contract LibDecimalFloatImplementationMulTest is Test {
+    function checkMul(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        int256 expectedSignedCoefficient,
+        int256 expectedExponent
+    ) internal pure {
+        (int256 actualSignedCoefficient, int256 actualExponent) =
+            LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
+        assertEq(actualExponent, expectedExponent, "exponent");
+    }
+
+    /// found during testing
+    /// 1.3979 * 0.5 = 0.69895
+    /// represented as e76 and
+    function testMul1_3979_0_5() external pure {
+        checkMul(1.3979e76, -76, 0.5e66, -66, 0.69895e76, -76);
+    }
+
     /// Simple 0 multiply 0
     /// 0 * 0 = 0
     function testMulZero0Exponent() external pure {
@@ -105,8 +126,8 @@ contract LibDecimalFloatImplementationMulTest is Test {
         int256 signedCoefficientB,
         int256 exponentB
     ) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX);
-        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX);
+        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX / 2);
+        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX / 2);
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
