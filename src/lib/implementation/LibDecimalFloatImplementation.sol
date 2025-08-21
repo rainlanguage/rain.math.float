@@ -149,7 +149,7 @@ library LibDecimalFloatImplementation {
         } else {
             exponent = exponentA + exponentB;
 
-            // mulDiv only works with unsigned integers, so get the aboslute
+            // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
             uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
             uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
