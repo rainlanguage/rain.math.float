@@ -191,4 +191,19 @@ library LibDecimalFloatSlow {
 
         return ltSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
+
+    function maximizeSlow(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        unchecked {
+            if (signedCoefficient == 0) {
+                return (0, 0);
+            }
+            int256 trySignedCoefficient = signedCoefficient * 10;
+            while (trySignedCoefficient / 10 == signedCoefficient) {
+                signedCoefficient = trySignedCoefficient;
+                exponent--;
+                trySignedCoefficient *= 10;
+            }
+            return (signedCoefficient, exponent);
+        }
+    }
 }

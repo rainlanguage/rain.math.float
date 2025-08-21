@@ -10,6 +10,7 @@ import {
     MAXIMIZED_ZERO_EXPONENT,
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 
 contract LibDecimalFloatImplementationMaximizeTest is Test {
     function isMaximized(int256 signedCoefficient, int256 exponent) internal pure returns (bool) {
@@ -78,5 +79,16 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
             LibDecimalFloatImplementation.maximize(maximizedSignedCoefficient, maximizedExponent);
         assertEq(actualSignedCoefficient, maximizedSignedCoefficient);
         assertEq(actualExponent, maximizedExponent);
+    }
+
+    /// Maximization against reference.
+    function testMaximizedReference(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
+        (int256 actualSignedCoefficient, int256 actualExponent) =
+            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatSlow.maximizeSlow(signedCoefficient, exponent);
+        assertEq(actualSignedCoefficient, expectedSignedCoefficient);
+        assertEq(actualExponent, expectedExponent);
     }
 }
