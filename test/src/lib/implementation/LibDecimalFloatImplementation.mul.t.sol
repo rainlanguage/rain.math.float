@@ -26,6 +26,21 @@ contract LibDecimalFloatImplementationMulTest is Test {
         assertEq(actualExponent, expectedExponent, "exponent");
     }
 
+    /// -1 * -1 = 1
+    function testMulNegativeOne() external pure {
+        checkMul(-1, 0, -1, 0, 1, 0);
+    }
+
+    /// -1 * 1 = -1
+    function testMulNegativeOneOne() external pure {
+        checkMul(-1, 0, 1, 0, -1, 0);
+    }
+
+    /// 1 * -1 = -1
+    function testMulOneNegativeOne() external pure {
+        checkMul(1, 0, -1, 0, -1, 0);
+    }
+
     /// found during testing
     /// 1.3979 * 0.5 = 0.69895
     /// represented as e76 and
@@ -36,59 +51,48 @@ contract LibDecimalFloatImplementationMulTest is Test {
     /// Simple 0 multiply 0
     /// 0 * 0 = 0
     function testMulZero0Exponent() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(0, 0, 0, 0);
-        assertEq(signedCoefficient, NORMALIZED_ZERO_SIGNED_COEFFICIENT);
-        assertEq(exponent, NORMALIZED_ZERO_EXPONENT);
+        checkMul(0, 0, 0, 0, 0, 0);
     }
 
     /// 0 multiply 0 any exponent
     /// 0 * 0 = 0
     function testMulZeroAnyExponent(int64 exponentA, int64 exponentB) external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(0, exponentA, 0, exponentB);
-        assertEq(signedCoefficient, NORMALIZED_ZERO_SIGNED_COEFFICIENT);
-        assertEq(exponent, NORMALIZED_ZERO_EXPONENT);
+        checkMul(0, exponentA, 0, exponentB, 0, 0);
     }
 
     /// 0 multiply 1
     /// 0 * 1 = 0
     function testMulZeroOne() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(0, 0, 1, 0);
-        assertEq(signedCoefficient, NORMALIZED_ZERO_SIGNED_COEFFICIENT);
-        assertEq(exponent, NORMALIZED_ZERO_EXPONENT);
+        checkMul(0, 0, 1, 0, 0, 0);
     }
 
     /// 1 multiply 0
     /// 1 * 0 = 0
     function testMulOneZero() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(1, 0, 0, 0);
-        assertEq(signedCoefficient, NORMALIZED_ZERO_SIGNED_COEFFICIENT);
-        assertEq(exponent, NORMALIZED_ZERO_EXPONENT);
+        checkMul(1, 0, 0, 0, 0, 0);
     }
 
     /// 1 multiply 1
     /// 1 * 1 = 1
     function testMulOneOne() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(1, 0, 1, 0);
-        assertEq(signedCoefficient, 1);
-        assertEq(exponent, 0);
+        checkMul(1, 0, 1, 0, 1, 0);
     }
 
     /// 123456789 multiply 987654321
     /// 123456789 * 987654321 = 121932631112635269
     function testMul123456789987654321() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(123456789, 0, 987654321, 0);
-        assertEq(signedCoefficient, 121932631112635269);
-        assertEq(exponent, 0);
+        checkMul(123456789, 0, 987654321, 0, 121932631112635269, 0);
     }
 
     function testMulMaxSignedCoefficient() external pure {
-        (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.mul(type(int256).max, 0, type(int256).max, 0);
-        // Numbers checked on desmos.
-        assertEq(
-            signedCoefficient, int256(3.3519519824856492748935062495514615318698414551480983444308903609304410075182e76)
+        checkMul(
+            type(int256).max,
+            0,
+            type(int256).max,
+            0,
+            int256(3.3519519824856492748935062495514615318698414551480983444308903609304410075182e76),
+            77
         );
-        assertEq(exponent, 77);
     }
 
     /// 123456789 multiply 987654321 with exponents
@@ -97,17 +101,12 @@ contract LibDecimalFloatImplementationMulTest is Test {
         exponentA = int128(bound(exponentA, -127, 127));
         exponentB = int128(bound(exponentB, -127, 127));
 
-        (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.mul(123456789, exponentA, 987654321, exponentB);
-        assertEq(signedCoefficient, 121932631112635269);
-        assertEq(exponent, exponentA + exponentB);
+        checkMul(123456789, exponentA, 987654321, exponentB, 121932631112635269, exponentA + exponentB);
     }
 
     /// 1e18 * 1e-19 = 1e-1
     function testMul1e181e19() external pure {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(1, 18, 1, -19);
-        assertEq(signedCoefficient, 1);
-        assertEq(exponent, -1);
+        checkMul(1, 18, 1, -19, 1, -1);
     }
 
     function testMulGasZero() external pure {
