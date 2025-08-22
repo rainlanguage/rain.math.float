@@ -70,7 +70,7 @@ contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(-int256(a), -int256(b), c, exponent);
 
-        // Expect the result to be negative.
+        // Expect the result to be positive.
         int256 expectedSignedCoefficient = int256(c / 10);
         int256 expectedExponent = exponent + 1;
 
