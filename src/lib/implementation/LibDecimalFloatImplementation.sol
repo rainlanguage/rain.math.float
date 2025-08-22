@@ -115,7 +115,7 @@ library LibDecimalFloatImplementation {
     {
         unchecked {
             // Need to minus the coefficient because a and b had different signs.
-            if (a ^ b < 0) {
+            if ((a ^ b) < 0) {
                 if (signedCoefficientAbs > uint256(type(int256).max)) {
                     if (signedCoefficientAbs == uint256(type(int256).max) + 1) {
                         // Edge case where the absolute value is exactly
