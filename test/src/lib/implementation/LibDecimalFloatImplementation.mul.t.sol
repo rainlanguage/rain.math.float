@@ -43,7 +43,6 @@ contract LibDecimalFloatImplementationMulTest is Test {
 
     /// found during testing
     /// 1.3979 * 0.5 = 0.69895
-    /// represented as e76 and
     function testMul1_3979_0_5() external pure {
         checkMul(1.3979e76, -76, 0.5e66, -66, 0.69895e76, -76);
     }
