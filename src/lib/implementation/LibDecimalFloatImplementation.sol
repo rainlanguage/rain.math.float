@@ -948,8 +948,8 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// Sets the coefficient so that exponent is -37. Truncates the coefficient
-    /// if shrinking, will error on overflow when growing.
+    /// Sets the coefficient so that exponent is the target exponent. Truncates
+    /// the coefficient if shrinking, will error on overflow when growing.
     /// @param signedCoefficient The signed coefficient.
     /// @param exponent The exponent.
     /// @param targetExponent The target exponent.
@@ -1008,6 +1008,7 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    /// First 4 digits of the mantissa and whether we need to interpolate.
     function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256, bool, int256) {
         unchecked {
             if (exponent == -4) {

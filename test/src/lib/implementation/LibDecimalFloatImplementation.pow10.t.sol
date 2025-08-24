@@ -80,8 +80,8 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
     function boundFloat(int224 x, int32 exponent) internal pure returns (int224, int32) {
         exponent = int32(bound(exponent, -76, 76));
         Float a = LibDecimalFloat.packLossless(x, exponent);
-        vm.assume(a.gt(LibDecimalFloat.packLossless(-1e38, 0)));
-        vm.assume(a.lt(LibDecimalFloat.packLossless(type(int224).max, 0)));
+        vm.assume(a.gt(LibDecimalFloat.packLossless(type(int224).min, 9)));
+        vm.assume(a.lt(LibDecimalFloat.packLossless(type(int224).max, 9)));
         return (x, exponent);
     }
 
