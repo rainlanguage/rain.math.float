@@ -280,7 +280,15 @@ library LibDecimalFloatImplementation {
                 scale = 1e75;
                 adjustExponent = 75;
             }
-            exponent = exponentA - exponentB - adjustExponent;
+
+            // The order of subtraction matters in edge cases. The adjust
+            // exponent should move the calculation towards 0 before exponentB
+            // is applied.
+            if (exponentA > 0) {
+                exponent = exponentA - adjustExponent - exponentB;
+            } else {
+                exponent = exponentA - exponentB - adjustExponent;
+            }
 
             (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
@@ -763,7 +771,7 @@ library LibDecimalFloatImplementation {
             }
 
             if (initialExponent < exponent) {
-                revert ExponentOverflow(signedCoefficient, exponent);
+                revert ExponentOverflow(signedCoefficient, initialExponent);
             }
 
             return (signedCoefficient, exponent);

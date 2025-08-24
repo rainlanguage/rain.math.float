@@ -10,6 +10,8 @@ import {
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
 
+import {console2} from "forge-std/console2.sol";
+
 contract LibDecimalFloatImplementationDivTest is Test {
     function checkDiv(
         int256 signedCoefficientA,
@@ -19,6 +21,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         int256 signedCoefficientC,
         int256 exponentC
     ) internal pure {
+        console2.log("checkDiv");
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertEq(signedCoefficient, signedCoefficientC, "coefficient");
@@ -98,6 +101,22 @@ contract LibDecimalFloatImplementationDivTest is Test {
             LibDecimalFloatImplementation.div(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
         assertEq(signedCoefficient, 3e76);
         assertEq(exponent, -76);
+    }
+
+    /// Should be possible to divide every number by 1.
+    function testDivBy1(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, type(int256).min + 76, type(int256).max);
+        (int256 expectedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+
+        int256 one = 1;
+        for (int256 oneExponent = 0; oneExponent >= -76; --oneExponent) {
+            checkDiv(signedCoefficient, exponent, one, oneExponent, expectedCoefficient, expectedExponent);
+            if (oneExponent == -76) {
+                break;
+            }
+            one *= 10;
+        }
     }
 
     /// forge-config: default.fuzz.runs = 100
