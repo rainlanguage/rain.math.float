@@ -40,4 +40,15 @@ contract LibDecimalFloatDivTest is Test {
             this.divExternal(a, b);
         }
     }
+
+    function testDivByOneFloat(Float float) external pure {
+        int256 one = 1;
+        for (int256 oneExponent = 0; oneExponent >= -65; --oneExponent) {
+            LibDecimalFloat.div(float, LibDecimalFloat.packLossless(one, oneExponent));
+            if (oneExponent == -65) {
+                break;
+            }
+            one *= 10;
+        }
+    }
 }
