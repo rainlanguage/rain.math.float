@@ -10,8 +10,6 @@ import {
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
 
-import {console2} from "forge-std/console2.sol";
-
 contract LibDecimalFloatImplementationDivTest is Test {
     function checkDiv(
         int256 signedCoefficientA,
@@ -21,7 +19,6 @@ contract LibDecimalFloatImplementationDivTest is Test {
         int256 signedCoefficientC,
         int256 exponentC
     ) internal pure {
-        console2.log("checkDiv");
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertEq(signedCoefficient, signedCoefficientC, "coefficient");

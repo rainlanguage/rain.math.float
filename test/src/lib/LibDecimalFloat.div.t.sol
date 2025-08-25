@@ -7,6 +7,8 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 
 import {Test} from "forge-std/Test.sol";
 
+import {console2} from "forge-std/console2.sol";
+
 contract LibDecimalFloatDivTest is Test {
     using LibDecimalFloat for Float;
 
@@ -38,6 +40,19 @@ contract LibDecimalFloatDivTest is Test {
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.divExternal(a, b);
+        }
+    }
+
+    function testDivByOneFloat(Float float) external pure {
+        int256 one = 1;
+        for (int256 oneExponent = 0; oneExponent >= -65; --oneExponent) {
+            console2.logInt(one);
+            console2.logInt(oneExponent);
+            LibDecimalFloat.div(float, LibDecimalFloat.packLossless(one, oneExponent));
+            if (oneExponent == -65) {
+                break;
+            }
+            one *= 10;
         }
     }
 }
