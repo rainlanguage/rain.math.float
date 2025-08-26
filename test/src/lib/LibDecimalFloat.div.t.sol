@@ -41,7 +41,9 @@ contract LibDecimalFloatDivTest is Test {
         }
     }
 
-    function testDivByOneFloat(Float float) external pure {
+    function testDivByOneFloat(int224 signedCoefficient, int32 exponent) external pure {
+        exponent = int32(bound(exponent, int256(type(int32).min) + 65, int256(type(int32).max)));
+        Float float = LibDecimalFloat.packLossless(signedCoefficient, exponent);
         int256 one = 1;
         for (int256 oneExponent = 0; oneExponent >= -65; --oneExponent) {
             LibDecimalFloat.div(float, LibDecimalFloat.packLossless(one, oneExponent));
