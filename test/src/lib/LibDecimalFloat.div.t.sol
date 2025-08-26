@@ -46,11 +46,26 @@ contract LibDecimalFloatDivTest is Test {
         Float float = LibDecimalFloat.packLossless(signedCoefficient, exponent);
         int256 one = 1;
         for (int256 oneExponent = 0; oneExponent >= -65; --oneExponent) {
-            LibDecimalFloat.div(float, LibDecimalFloat.packLossless(one, oneExponent));
+            Float result = LibDecimalFloat.div(float, LibDecimalFloat.packLossless(one, oneExponent));
+            assertTrue(result.eq(float));
             if (oneExponent == -65) {
                 break;
             }
             one *= 10;
+        }
+    }
+
+    function testDivByNegativeOneFloat(int224 signedCoefficient, int32 exponent) external pure {
+        exponent = int32(bound(exponent, int256(type(int32).min) + 65, int256(type(int32).max - 1)));
+        Float float = LibDecimalFloat.packLossless(signedCoefficient, exponent);
+        int256 negativeOne = -1;
+        for (int256 oneExponent = 0; oneExponent >= -65; --oneExponent) {
+            Float result = LibDecimalFloat.div(float, LibDecimalFloat.packLossless(negativeOne, oneExponent));
+            assertTrue(result.eq(float.minus()));
+            if (oneExponent == -65) {
+                break;
+            }
+            negativeOne *= 10;
         }
     }
 }
