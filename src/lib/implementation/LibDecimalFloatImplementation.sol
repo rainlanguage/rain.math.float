@@ -280,11 +280,11 @@ library LibDecimalFloatImplementation {
                 scale = 1e75;
                 adjustExponent = 75;
             }
-
-            // The order of subtraction matters in edge cases. The adjust
-            // exponent should move the calculation towards 0 before exponentB
-            // is applied.
-            if (exponentA > 0) {
+            // The order of subtraction matters in edge cases. For non-negative
+            // exponentA, apply the adjust exponent first to move the value
+            // towards 0 before exponentB is applied. This reduces the chance of
+            // a transient overflow in the intermediate subtraction.
+            if (exponentA >= 0) {
                 exponent = exponentA - adjustExponent - exponentB;
             } else {
                 exponent = exponentA - exponentB - adjustExponent;
