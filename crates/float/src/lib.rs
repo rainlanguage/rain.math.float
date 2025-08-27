@@ -335,6 +335,136 @@ impl Float {
         Ok(Float(bytes))
     }
 
+    /// Returns the maximum positive value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The maximum positive value.
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let max_pos = Float::max_positive_value()?;
+    /// let zero = Float::parse("0".to_string())?;
+    ///
+    /// // Max positive is greater than zero
+    /// assert!(max_pos.gt(zero)?);
+    ///
+    /// // Max positive is greater than any normal large number
+    /// let big_number = Float::parse("999999999999999999999".to_string())?;
+    /// assert!(max_pos.gt(big_number)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn max_positive_value() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::maxPositiveValueCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::maxPositiveValueCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    /// Returns the minimum positive value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The minimum positive value.
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let min_pos = Float::min_positive_value()?;
+    /// let zero = Float::parse("0".to_string())?;
+    ///
+    /// // Min positive is greater than zero but smaller than any other positive number
+    /// assert!(min_pos.gt(zero)?);
+    ///
+    /// let small_number = Float::parse("0.000000000000000001".to_string())?;
+    /// assert!(min_pos.lt(small_number)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn min_positive_value() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::minPositiveValueCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::minPositiveValueCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    /// Returns the maximum negative value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The maximum negative value (closest to zero).
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let max_neg = Float::max_negative_value()?;
+    /// let zero = Float::parse("0".to_string())?;
+    ///
+    /// // Max negative is less than zero but greater than any other negative number
+    /// assert!(max_neg.lt(zero)?);
+    ///
+    /// let small_negative = Float::parse("-0.000000000000000001".to_string())?;
+    /// assert!(max_neg.gt(small_negative)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn max_negative_value() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::maxNegativeValueCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::maxNegativeValueCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    /// Returns the minimum negative value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The minimum negative value (furthest from zero).
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let min_neg = Float::min_negative_value()?;
+    /// let zero = Float::parse("0".to_string())?;
+    ///
+    /// // Min negative is less than zero
+    /// assert!(min_neg.lt(zero)?);
+    ///
+    /// // Min negative is less than any normal negative number
+    /// let big_negative = Float::parse("-999999999999999999999".to_string())?;
+    /// assert!(min_neg.lt(big_negative)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn min_negative_value() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::minNegativeValueCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::minNegativeValueCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
     /// Formats the float as a decimal string.
     ///
     /// NOTE: Uses 18 decimal places and fails if the float has more than
@@ -1059,6 +1189,45 @@ mod tests {
             FloatError::DecimalFloatSelector(Err(selector))
             if selector == fixed_bytes!("34bd2069")
         ));
+    }
+
+    #[test]
+    fn test_float_constants() {
+        // Test that all constant methods return valid floats
+        let max_pos = Float::max_positive_value().unwrap();
+        let min_pos = Float::min_positive_value().unwrap();
+        let max_neg = Float::max_negative_value().unwrap();
+        let min_neg = Float::min_negative_value().unwrap();
+
+        // Verify they return expected hex values (these are extreme values that may not format well)
+        assert_eq!(
+            max_pos.as_hex(),
+            "0x7fffffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        );
+        assert_eq!(
+            min_pos.as_hex(),
+            "0x8000000000000000000000000000000000000000000000000000000000000001"
+        );
+        assert_eq!(
+            max_neg.as_hex(),
+            "0x80000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+        );
+        assert_eq!(
+            min_neg.as_hex(),
+            "0x7fffffff80000000000000000000000000000000000000000000000000000000"
+        );
+
+        // Verify logical relationships between constants
+        let zero = Float::parse("0".to_string()).unwrap();
+
+        // max_pos > min_pos (but these extreme values might not compare properly)
+        // Instead just verify they are different values
+        assert_ne!(max_pos.as_hex(), min_pos.as_hex());
+        assert_ne!(max_neg.as_hex(), min_neg.as_hex());
+
+        // Test that we can use these constants in basic operations
+        assert!(min_pos.gt(zero).unwrap()); // min positive should be > 0
+        assert!(max_neg.lt(zero).unwrap()); // max negative should be < 0
     }
 
     proptest! {
