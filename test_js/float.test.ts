@@ -109,5 +109,43 @@ describe('Test Float Bindings', () => {
 			expect(a.div(b)?.value!.format()?.value!).toBe('-1');
 			expect(a.add(b)?.value!.format()?.value!).toBe('0');
 		});
+
+		it('should test float constants', () => {
+			// Test that all constant methods return valid floats
+			const maxPosResult = Float.maxPositiveValue();
+			const minPosResult = Float.minPositiveValue();
+			const maxNegResult = Float.maxNegativeValue();
+			const minNegResult = Float.minNegativeValue();
+
+			// Verify no errors occurred
+			expect(maxPosResult.error).toBeUndefined();
+			expect(minPosResult.error).toBeUndefined();
+			expect(maxNegResult.error).toBeUndefined();
+			expect(minNegResult.error).toBeUndefined();
+
+			const maxPos = maxPosResult.value!;
+			const minPos = minPosResult.value!;
+			const maxNeg = maxNegResult.value!;
+			const minNeg = minNegResult.value!;
+
+			// Verify they return expected hex values (these are extreme values)
+			expect(maxPos.asHex()).toBe('0x7fffffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+			expect(minPos.asHex()).toBe('0x8000000000000000000000000000000000000000000000000000000000000001');
+			expect(maxNeg.asHex()).toBe('0x80000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff');
+			expect(minNeg.asHex()).toBe('0x7fffffff80000000000000000000000000000000000000000000000000000000');
+
+			// Verify they are different values
+			expect(maxPos.asHex()).not.toBe(minPos.asHex());
+			expect(maxNeg.asHex()).not.toBe(minNeg.asHex());
+
+			// Test basic relationships with zero
+			const zero = Float.fromBigint(0n);
+
+			// min_pos > 0
+			expect(minPos.gt(zero)?.value!).toBe(true);
+
+			// max_neg < 0 (max negative is closest to zero)
+			expect(maxNeg.lt(zero)?.value!).toBe(true);
+		});
 	}
 });
