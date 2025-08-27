@@ -100,6 +100,39 @@ contract LibDecimalFloatImplementationDivTest is Test {
         assertEq(exponent, -76);
     }
 
+    /// Should be possible to divide every number by 1.
+    function testDivBy1(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, type(int256).min + 76, type(int256).max);
+        (int256 expectedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+
+        int256 one = 1;
+        for (int256 oneExponent = 0; oneExponent >= -76; --oneExponent) {
+            checkDiv(signedCoefficient, exponent, one, oneExponent, expectedCoefficient, expectedExponent);
+            if (oneExponent == -76) {
+                break;
+            }
+            one *= 10;
+        }
+    }
+
+    function testDivByNegativeOneFloat(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, type(int256).min + 76, type(int256).max);
+        (int256 expectedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+        (expectedCoefficient, expectedExponent) =
+            LibDecimalFloatImplementation.minus(expectedCoefficient, expectedExponent);
+
+        int256 negativeOne = -1;
+        for (int256 oneExponent = 0; oneExponent >= -76; --oneExponent) {
+            checkDiv(signedCoefficient, exponent, negativeOne, oneExponent, expectedCoefficient, expectedExponent);
+            if (oneExponent == -76) {
+                break;
+            }
+            negativeOne *= 10;
+        }
+    }
+
     /// forge-config: default.fuzz.runs = 100
     function testUnnormalizedThreesDiv0(int256 exponentA, int256 exponentB) external pure {
         exponentA = bound(exponentA, EXPONENT_MIN / 2, EXPONENT_MAX / 2);
