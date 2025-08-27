@@ -12,6 +12,8 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
+import {console2} from "forge-std/console2.sol";
+
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -585,7 +587,7 @@ library LibDecimalFloatImplementation {
     {
         unchecked {
             {
-                (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
+                (signedCoefficient, exponent) = maximize(signedCoefficient, exponent);
 
                 if (signedCoefficient <= 0) {
                     if (signedCoefficient == 0) {
@@ -596,11 +598,19 @@ library LibDecimalFloatImplementation {
                 }
             }
 
+            if (exponent == -76 && signedCoefficient == 1e76) {
+                return (0, 0);
+            }
+
+            bool isAtLeastTen = exponent >= -74;
+            if (signedCoefficient >= 1e76) {
+                isAtLeastTen = exponent >= -75;
+            }
+
             // This is a positive log. i.e. log(x) where x >= 1.
-            if (exponent > -38) {
-                // This is an exact power of 10.
-                if (signedCoefficient == 1e37) {
-                    return (exponent + 37, 0);
+            if (isAtLeastTen) {
+                if (signedCoefficient == 1e76) {
+                    return (exponent + 76, 0);
                 }
 
                 int256 y1Coefficient;

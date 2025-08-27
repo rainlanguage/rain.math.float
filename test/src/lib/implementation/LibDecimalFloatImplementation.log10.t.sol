@@ -29,6 +29,7 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         checkLog10(1000, 0, 3, 0);
         checkLog10(10000, 0, 4, 0);
         checkLog10(1e37, -37, 0, 0);
+        checkLog10(1e76, -76, 0, 0);
     }
 
     function testExactLookupsLog10() external {
