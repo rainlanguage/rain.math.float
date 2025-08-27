@@ -1199,35 +1199,37 @@ mod tests {
         let max_neg = Float::max_negative_value().unwrap();
         let min_neg = Float::min_negative_value().unwrap();
 
-        // Verify they return expected hex values (these are extreme values that may not format well)
-        assert_eq!(
-            max_pos.as_hex(),
-            "0x7fffffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-        );
-        assert_eq!(
-            min_pos.as_hex(),
-            "0x8000000000000000000000000000000000000000000000000000000000000001"
-        );
-        assert_eq!(
-            max_neg.as_hex(),
-            "0x80000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
-        );
-        assert_eq!(
-            min_neg.as_hex(),
-            "0x7fffffff80000000000000000000000000000000000000000000000000000000"
-        );
-
-        // Verify logical relationships between constants
         let zero = Float::parse("0".to_string()).unwrap();
 
-        // max_pos > min_pos (but these extreme values might not compare properly)
-        // Instead just verify they are different values
-        assert_ne!(max_pos.as_hex(), min_pos.as_hex());
-        assert_ne!(max_neg.as_hex(), min_neg.as_hex());
+        // Test mathematical properties without exposing binary representation
 
-        // Test that we can use these constants in basic operations
+        // All constants should be distinct
+        assert!(!max_pos.eq(min_pos).unwrap());
+        assert!(!max_neg.eq(min_neg).unwrap());
+        assert!(!max_pos.eq(max_neg).unwrap());
+        assert!(!min_pos.eq(min_neg).unwrap());
+
+        // Test sign properties
         assert!(min_pos.gt(zero).unwrap()); // min positive should be > 0
+        assert!(max_pos.gt(zero).unwrap()); // max positive should be > 0
         assert!(max_neg.lt(zero).unwrap()); // max negative should be < 0
+        assert!(min_neg.lt(zero).unwrap()); // min negative should be < 0
+
+        // Test ordering relationships
+        assert!(min_pos.lt(max_pos).unwrap()); // min positive < max positive
+        assert!(min_neg.lt(max_neg).unwrap()); // min negative < max negative
+
+        // Test boundary properties
+        let one = Float::parse("1".to_string()).unwrap();
+        let neg_one = Float::parse("-1".to_string()).unwrap();
+
+        // Positive constants should be greater than normal values
+        assert!(max_pos.gt(one).unwrap());
+        assert!(min_pos.lt(one).unwrap());
+
+        // Negative constants should be more extreme than normal negative values
+        assert!(max_neg.gt(neg_one).unwrap());
+        assert!(min_neg.lt(neg_one).unwrap());
     }
 
     proptest! {
