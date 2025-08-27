@@ -95,7 +95,7 @@ library LibDecimalFloat {
     Float constant FLOAT_ZERO = Float.wrap(0);
 
     /// A one valued float.
-    Float constant FLOAT_ONE = Float.wrap(bytes32(uint256(1)));
+    Float constant FLOAT_ONE = Float.wrap(bytes32(uint256(0xffffffbd5ef4a74721e864761ea977768e5f518bb6891be80000000000000000)));
 
     /// A half valued float.
     // slither-disable-next-line too-many-digits

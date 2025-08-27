@@ -74,7 +74,7 @@ contract LibDecimalFloatConstantsTest is Test {
 
     function testFloatOne() external pure {
         Float one = LibDecimalFloat.FLOAT_ONE;
-        Float expected = LibDecimalFloat.packLossless(1, 0);
+        Float expected = LibDecimalFloat.packLossless(1e67, -67);
         assertEq(Float.unwrap(one), Float.unwrap(expected));
     }
 
