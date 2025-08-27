@@ -68,9 +68,7 @@ contract LibDecimalFloatSqrtTest is LogTest {
         address tables = logTables();
 
         (int256 signedCoefficient, int256 exponent) = a.unpack();
-        (int256 signedCoefficientNormalized, int256 exponentNormalized) =
-            LibDecimalFloatImplementation.normalize(signedCoefficient, exponent);
-        vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficientNormalized, exponentNormalized));
+        vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficient, exponent));
         this.sqrtExternal(a, tables);
     }
 

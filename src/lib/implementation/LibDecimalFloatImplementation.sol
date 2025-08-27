@@ -12,8 +12,6 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
-import {console2} from "forge-std/console2.sol";
-
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -587,9 +585,6 @@ library LibDecimalFloatImplementation {
     {
         unchecked {
             {
-                console2.log("log10");
-                (signedCoefficient, exponent) = maximize(signedCoefficient, exponent);
-
                 if (signedCoefficient <= 0) {
                     if (signedCoefficient == 0) {
                         revert Log10Zero();
@@ -597,6 +592,7 @@ library LibDecimalFloatImplementation {
                         revert Log10Negative(signedCoefficient, exponent);
                     }
                 }
+                (signedCoefficient, exponent) = maximize(signedCoefficient, exponent);
             }
 
             // all multiples of 10 look like 1 with a different exponent
@@ -607,8 +603,7 @@ library LibDecimalFloatImplementation {
             bool isAtLeastE76 = signedCoefficient >= 1e76;
 
             // This is a positive log. i.e. log(x) where x >= 1.
-            if (exponent >= (isAtLeastE76 ? -75 : -74)) {
-                console2.log("is at least 10");
+            if (exponent >= (isAtLeastE76 ? -77 : -76)) {
                 int256 y1Coefficient;
                 int256 y2Coefficient;
                 int256 x1Coefficient;
@@ -619,8 +614,6 @@ library LibDecimalFloatImplementation {
                 // Table lookup.
                 {
                     uint256 scale = isAtLeastE76 ? 1e73 : 1e72;
-                    console2.logInt(signedCoefficient);
-                    console2.log(uint256(signedCoefficient) / scale);
                     assembly ("memory-safe") {
                         //slither-disable-next-line divide-before-multiply
                         function lookupTableVal(tables, index) -> result {
@@ -664,33 +657,20 @@ library LibDecimalFloatImplementation {
                     }
                 }
 
-                console2.log(interpolate, "interpolate");
-
                 if (interpolate) {
                     (signedCoefficient, exponent) = unitLinearInterpolation(
-                        x1Coefficient, signedCoefficient, x2Coefficient, exponent, y1Coefficient, y2Coefficient, -75
+                        x1Coefficient, signedCoefficient, x2Coefficient, exponent, y1Coefficient, y2Coefficient, -77
                     );
                 } else {
-                    console2.log("signedCoefficient");
-                    console2.logInt(signedCoefficient);
-                    console2.logInt(y1Coefficient);
                     signedCoefficient = y1Coefficient;
-                    exponent = -77;
+                    exponent = isAtLeastE76 ? -77 : -76;
                 }
-
-                console2.log("exponent");
-                console2.logInt(exponent);
-                console2.logInt(x1Exponent);
-                console2.logInt(x1Exponent + 74);
-                return add(signedCoefficient, exponent, x1Exponent + 76, 0);
+                return add(signedCoefficient, exponent, x1Exponent + (isAtLeastE76 ? int256(76) : int256(75)), 0);
             }
             // This is a negative log. i.e. log(x) where 0 < x < 1.
             // log(x) = -log(1/x)
             else {
-                console2.log("is not at least 10");
                 (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
-                console2.logInt(signedCoefficient);
-                console2.logInt(exponent);
                 (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
                 return minus(signedCoefficient, exponent);
             }
