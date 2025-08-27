@@ -1,7 +1,7 @@
 use alloy::hex::FromHex;
-use alloy::primitives::{Bytes, B256};
+use alloy::primitives::{B256, Bytes};
 use alloy::{sol, sol_types::SolCall};
-use revm::primitives::{fixed_bytes, U256};
+use revm::primitives::{U256, fixed_bytes};
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use wasm_bindgen_utils::prelude::*;
