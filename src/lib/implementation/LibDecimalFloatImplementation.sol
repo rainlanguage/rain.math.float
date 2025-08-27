@@ -670,7 +670,7 @@ library LibDecimalFloatImplementation {
             // This is a negative log. i.e. log(x) where 0 < x < 1.
             // log(x) = -log(1/x)
             else {
-                (signedCoefficient, exponent) = div(1e37, -37, signedCoefficient, exponent);
+                (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
                 (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
                 return minus(signedCoefficient, exponent);
             }
