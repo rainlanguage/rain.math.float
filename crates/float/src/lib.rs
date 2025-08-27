@@ -1,7 +1,7 @@
 use alloy::hex::FromHex;
-use alloy::primitives::{B256, Bytes};
+use alloy::primitives::{Bytes, B256};
 use alloy::{sol, sol_types::SolCall};
-use revm::primitives::{U256, fixed_bytes};
+use revm::primitives::{fixed_bytes, U256};
 use serde::{Deserialize, Serialize};
 use std::ops::{Add, Div, Mul, Neg, Sub};
 use wasm_bindgen_utils::prelude::*;
@@ -1905,6 +1905,71 @@ mod tests {
 
             let fixed = float.to_fixed_decimal_lossy(decimals).unwrap();
             assert_eq!(fixed, value / U256::from(10));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_constants_relationships(float in reasonable_float()) {
+            let max_pos = Float::max_positive_value().unwrap();
+            let min_pos = Float::min_positive_value().unwrap();
+            let max_neg = Float::max_negative_value().unwrap();
+            let min_neg = Float::min_negative_value().unwrap();
+            let zero = Float::parse("0".to_string()).unwrap();
+
+            // Test that constants are the extremes
+            // Any reasonable positive float should be <= max_positive and >= min_positive
+            if float.gt(zero).unwrap() {
+                prop_assert!(float.lte(max_pos).unwrap());
+                prop_assert!(float.gte(min_pos).unwrap());
+            }
+
+            // Any reasonable negative float should be <= max_negative and >= min_negative
+            // (max_negative is closest to zero, min_negative is furthest from zero)
+            if float.lt(zero).unwrap() {
+                prop_assert!(float.lte(max_neg).unwrap());
+                prop_assert!(float.gte(min_neg).unwrap());
+            }
+
+            // Constants should be consistent regardless of arbitrary float
+            prop_assert!(max_pos.gt(zero).unwrap());
+            prop_assert!(min_pos.gt(zero).unwrap());
+            prop_assert!(max_neg.lt(zero).unwrap());
+            prop_assert!(min_neg.lt(zero).unwrap());
+
+            // Verify constants maintain their ordering
+            prop_assert!(min_pos.lt(max_pos).unwrap());
+            prop_assert!(min_neg.lt(max_neg).unwrap());
+            prop_assert!(max_neg.lt(zero).unwrap());
+            prop_assert!(min_pos.gt(zero).unwrap());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_constants_edge_cases(float in arb_float()) {
+            let max_pos = Float::max_positive_value().unwrap();
+            let min_pos = Float::min_positive_value().unwrap();
+            let max_neg = Float::max_negative_value().unwrap();
+            let min_neg = Float::min_negative_value().unwrap();
+
+            // Constants should always be distinct
+            prop_assert!(!max_pos.eq(min_pos).unwrap());
+            prop_assert!(!max_neg.eq(min_neg).unwrap());
+            prop_assert!(!max_pos.eq(max_neg).unwrap());
+            prop_assert!(!min_pos.eq(min_neg).unwrap());
+
+            // Test that constants are at the boundaries
+            // (Note: We can't test arithmetic operations that would overflow/underflow
+            // since those would fail, but we can test comparisons)
+
+            // No arbitrary float should be greater than max_pos or less than min_neg
+            if !float.eq(max_pos).unwrap() {
+                prop_assert!(!float.gt(max_pos).unwrap());
+            }
+            if !float.eq(min_neg).unwrap() {
+                prop_assert!(!float.lt(min_neg).unwrap());
+            }
         }
     }
 }
