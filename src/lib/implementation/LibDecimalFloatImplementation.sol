@@ -595,11 +595,10 @@ library LibDecimalFloatImplementation {
                 (signedCoefficient, exponent) = maximize(signedCoefficient, exponent);
             }
 
-            // all multiples of 10 look like 1 with a different exponent
+            // all powers of 10 look like 1 with a different exponent
             if (signedCoefficient == 1e76) {
                 return (exponent + 76, 0);
             }
-
             bool isAtLeastE76 = signedCoefficient >= 1e76;
 
             // This is a positive log. i.e. log(x) where x >= 1.
