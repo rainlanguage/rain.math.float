@@ -36,7 +36,7 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         checkLog10(1001, 0, 3.0004e76, -76);
         checkLog10(100.1e1, -1, 2.0004e76, -76);
         checkLog10(10.01e2, -2, 1.0004e76, -76);
-        checkLog10(1.001e3, -3, 0.0004e77, -77);
+        checkLog10(1.001e3, -3, 0.0004e76, -76);
 
         checkLog10(10.02e2, -2, 1.0009e76, -76);
         checkLog10(10.99e2, -2, 1.0411e76, -76);
@@ -51,6 +51,6 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
     function testSub1() external {
         checkLog10(0.1001e4, -4, -0.9996e76, -76);
 
-        checkLog10(0.5e1, -1, -0.301e77, -77);
+        checkLog10(0.5e1, -1, -0.301e76, -76);
     }
 }

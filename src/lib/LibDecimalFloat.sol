@@ -28,8 +28,6 @@ import {
     EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
-import {console2} from "forge-std/Test.sol";
-
 type Float is bytes32;
 
 /// @dev When normalizing a number, how far we "leap" when very far from
@@ -715,16 +713,8 @@ library LibDecimalFloat {
             return FLOAT_ZERO;
         }
 
-        console2.log("a");
-        console2.logInt(signedCoefficientA);
-        console2.logInt(exponentA);
-
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
-
-        console2.log("c");
-        console2.logInt(signedCoefficientC);
-        console2.logInt(exponentC);
 
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
 

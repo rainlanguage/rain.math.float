@@ -12,8 +12,6 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
-import {console2} from "forge-std/Test.sol";
-
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -581,7 +579,6 @@ library LibDecimalFloatImplementation {
         returns (int256, int256)
     {
         unchecked {
-            console2.log("log10");
             {
                 if (signedCoefficient <= 0) {
                     if (signedCoefficient == 0) {
@@ -598,13 +595,9 @@ library LibDecimalFloatImplementation {
                 return (exponent + 76, 0);
             }
             bool isAtLeastE76 = signedCoefficient >= 1e76;
-            console2.log(isAtLeastE76);
-            console2.logInt(signedCoefficient);
-            console2.logInt(exponent);
 
             // This is a positive log. i.e. log(x) where x >= 1.
             if (exponent > (isAtLeastE76 ? -77 : -76)) {
-                console2.log("positive log");
                 int256 y1Coefficient;
                 int256 y2Coefficient;
                 int256 x1Coefficient;
@@ -614,7 +607,6 @@ library LibDecimalFloatImplementation {
 
                 // Table lookup.
                 {
-                    uint256 scale = isAtLeastE76 ? 1e73 : 1e72;
                     assembly ("memory-safe") {
                         //slither-disable-next-line divide-before-multiply
                         function lookupTableVal(tables, index) -> result {
@@ -641,6 +633,10 @@ library LibDecimalFloatImplementation {
                             result := add(result, mload(0))
                         }
 
+                        // let scale := 1e72;
+                        let scale := 1000000000000000000000000000000000000000000000000000000000000000000000000
+                        if isAtLeastE76 { scale := mul(scale, 10) }
+
                         // Truncate the signed coefficient to what we can look
                         // up in the table.
                         // Slither false positive because the truncation is
@@ -650,48 +646,32 @@ library LibDecimalFloatImplementation {
                         let idx := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
                         x2Coefficient := add(x1Coefficient, scale)
-                        interpolate := iszero(eq(x1Coefficient, signedCoefficient))
+
+                        if isAtLeastE76 { scale := div(scale, 10) }
 
                         y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
+
+                        interpolate := iszero(eq(x1Coefficient, signedCoefficient))
 
                         if interpolate { y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1))) }
                     }
                 }
 
                 if (interpolate) {
-                    console2.log("interpolate");
-                    console2.logInt(x1Coefficient);
-                    console2.logInt(signedCoefficient);
-                    console2.logInt(x2Coefficient);
-                    console2.logInt(exponent);
-                    console2.logInt(y1Coefficient);
-                    console2.logInt(y2Coefficient);
-                    console2.log("--");
                     (signedCoefficient, exponent) = unitLinearInterpolation(
-                        x1Coefficient,
-                        signedCoefficient,
-                        x2Coefficient,
-                        exponent,
-                        y1Coefficient,
-                        y2Coefficient,
-                        (isAtLeastE76 ? -77 : -76)
+                        x1Coefficient, signedCoefficient, x2Coefficient, exponent, y1Coefficient, y2Coefficient, -76
                     );
                 } else {
-                    console2.log("not interpolate");
                     signedCoefficient = y1Coefficient;
-                    exponent = isAtLeastE76 ? -77 : -76;
+                    exponent = -76;
                 }
                 return add(signedCoefficient, exponent, x1Exponent + (isAtLeastE76 ? int256(76) : int256(75)), 0);
             }
             // This is a negative log. i.e. log(x) where 0 < x < 1.
             // log(x) = -log(1/x)
             else {
-                console2.log("negative log");
                 (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
                 (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
-                console2.log("minus");
-                console2.logInt(signedCoefficient);
-                console2.logInt(exponent);
                 return minus(signedCoefficient, exponent);
             }
         }
