@@ -12,6 +12,8 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
+import {console2} from "forge-std/Test.sol";
+
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -52,15 +54,10 @@ int256 constant SIGNED_NORMALIZED_MAX = 1e38 - 1;
 uint256 constant NORMALIZED_MAX_PLUS_ONE = 1e38;
 int256 constant SIGNED_NORMALIZED_MAX_PLUS_ONE = 1e38;
 
-/// @dev The signed coefficient of zero when normalized.
-int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
-/// @dev The exponent of zero when normalized.
-int256 constant NORMALIZED_ZERO_EXPONENT = 0;
-
 /// @dev The signed coefficient of maximized zero.
-int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = NORMALIZED_ZERO_SIGNED_COEFFICIENT;
+int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
 /// @dev The exponent of maximized zero.
-int256 constant MAXIMIZED_ZERO_EXPONENT = NORMALIZED_ZERO_EXPONENT;
+int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
 
 library LibDecimalFloatImplementation {
     /// Negates and normalizes a float.
@@ -584,6 +581,7 @@ library LibDecimalFloatImplementation {
         returns (int256, int256)
     {
         unchecked {
+            console2.log("log10");
             {
                 if (signedCoefficient <= 0) {
                     if (signedCoefficient == 0) {
@@ -601,9 +599,13 @@ library LibDecimalFloatImplementation {
             }
 
             bool isAtLeastE76 = signedCoefficient >= 1e76;
+            console2.log(isAtLeastE76);
+            console2.logInt(signedCoefficient);
+            console2.logInt(exponent);
 
             // This is a positive log. i.e. log(x) where x >= 1.
-            if (exponent >= (isAtLeastE76 ? -77 : -76)) {
+            if (exponent > (isAtLeastE76 ? -77 : -76)) {
+                console2.log("positive log");
                 int256 y1Coefficient;
                 int256 y2Coefficient;
                 int256 x1Coefficient;
@@ -658,10 +660,25 @@ library LibDecimalFloatImplementation {
                 }
 
                 if (interpolate) {
+                    console2.log("interpolate");
+                    console2.logInt(x1Coefficient);
+                    console2.logInt(signedCoefficient);
+                    console2.logInt(x2Coefficient);
+                    console2.logInt(exponent);
+                    console2.logInt(y1Coefficient);
+                    console2.logInt(y2Coefficient);
+                    console2.log("--");
                     (signedCoefficient, exponent) = unitLinearInterpolation(
-                        x1Coefficient, signedCoefficient, x2Coefficient, exponent, y1Coefficient, y2Coefficient, -77
+                        x1Coefficient,
+                        signedCoefficient,
+                        x2Coefficient,
+                        exponent,
+                        y1Coefficient,
+                        y2Coefficient,
+                        (isAtLeastE76 ? -77 : -76)
                     );
                 } else {
+                    console2.log("not interpolate");
                     signedCoefficient = y1Coefficient;
                     exponent = isAtLeastE76 ? -77 : -76;
                 }
@@ -670,8 +687,12 @@ library LibDecimalFloatImplementation {
             // This is a negative log. i.e. log(x) where 0 < x < 1.
             // log(x) = -log(1/x)
             else {
+                console2.log("negative log");
                 (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
                 (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
+                console2.log("minus");
+                console2.logInt(signedCoefficient);
+                console2.logInt(exponent);
                 return minus(signedCoefficient, exponent);
             }
         }
@@ -795,66 +816,6 @@ library LibDecimalFloatImplementation {
         return result;
     }
 
-    function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        unchecked {
-            if (isNormalized(signedCoefficient, exponent)) {
-                return (signedCoefficient, exponent);
-            }
-
-            if (signedCoefficient == 0) {
-                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
-            }
-
-            if (exponent / EXPONENT_MAX_PLUS_ONE != 0) {
-                revert ExponentOverflow(signedCoefficient, exponent);
-            }
-
-            if (signedCoefficient / SIGNED_NORMALIZED_MAX_PLUS_ONE != 0) {
-                if (signedCoefficient / 1e56 != 0) {
-                    signedCoefficient /= 1e19;
-                    exponent += 19;
-                }
-
-                if (signedCoefficient / 1e46 != 0) {
-                    signedCoefficient /= 1e9;
-                    exponent += 9;
-                }
-
-                while (signedCoefficient / 1e39 != 0) {
-                    signedCoefficient /= 100;
-                    exponent += 2;
-                }
-
-                if (signedCoefficient / 1e38 != 0) {
-                    signedCoefficient /= 10;
-                    exponent += 1;
-                }
-            } else {
-                if (signedCoefficient / 1e18 == 0) {
-                    signedCoefficient *= 1e19;
-                    exponent -= 19;
-                }
-
-                if (signedCoefficient / 1e28 == 0) {
-                    signedCoefficient *= 1e9;
-                    exponent -= 9;
-                }
-
-                while (signedCoefficient / 1e36 == 0) {
-                    signedCoefficient *= 100;
-                    exponent -= 2;
-                }
-
-                if (signedCoefficient / 1e37 == 0) {
-                    signedCoefficient *= 10;
-                    exponent -= 1;
-                }
-            }
-
-            return (signedCoefficient, exponent);
-        }
-    }
-
     /// Rescale two floats so that they are possible to directly compare using
     /// standard operators on the signed coefficient.
     ///
@@ -973,7 +934,7 @@ library LibDecimalFloatImplementation {
             } else if (targetExponent > exponent) {
                 int256 exponentDiff = targetExponent - exponent;
                 if (exponentDiff > 76 || exponentDiff < 0) {
-                    return (NORMALIZED_ZERO_SIGNED_COEFFICIENT);
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT);
                 }
 
                 return signedCoefficient / int256(10 ** uint256(exponentDiff));

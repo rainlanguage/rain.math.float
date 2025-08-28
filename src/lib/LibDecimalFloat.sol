@@ -20,8 +20,6 @@ import {
 } from "../error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
-    NORMALIZED_ZERO_SIGNED_COEFFICIENT,
-    NORMALIZED_ZERO_EXPONENT,
     NORMALIZED_MIN,
     NORMALIZED_MAX,
     EXPONENT_STEP_SIZE,
@@ -29,6 +27,8 @@ import {
     EXPONENT_MAX,
     EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
+
+import {console2} from "forge-std/Test.sol";
 
 type Float is bytes32;
 
@@ -715,8 +715,16 @@ library LibDecimalFloat {
             return FLOAT_ZERO;
         }
 
+        console2.log("a");
+        console2.logInt(signedCoefficientA);
+        console2.logInt(exponentA);
+
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
+
+        console2.log("c");
+        console2.logInt(signedCoefficientC);
+        console2.logInt(exponentC);
 
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
 

@@ -5,9 +5,7 @@ pragma solidity =0.8.25;
 import {
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
-    EXPONENT_MAX,
-    NORMALIZED_ZERO_SIGNED_COEFFICIENT,
-    NORMALIZED_ZERO_EXPONENT
+    EXPONENT_MAX
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std/Test.sol";
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
