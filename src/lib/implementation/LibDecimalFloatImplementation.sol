@@ -607,6 +607,7 @@ library LibDecimalFloatImplementation {
 
                 // Table lookup.
                 {
+                    int256 scale = 1e72;
                     assembly ("memory-safe") {
                         //slither-disable-next-line divide-before-multiply
                         function lookupTableVal(tables, index) -> result {
@@ -633,8 +634,6 @@ library LibDecimalFloatImplementation {
                             result := add(result, mload(0))
                         }
 
-                        // let scale := 1e72;
-                        let scale := 1000000000000000000000000000000000000000000000000000000000000000000000000
                         if isAtLeastE76 { scale := mul(scale, 10) }
 
                         // Truncate the signed coefficient to what we can look
