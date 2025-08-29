@@ -119,7 +119,7 @@ contract LibDecimalFloatDecimalTest is Test {
         }
     }
 
-    /// The max int224 value will be lossless.
+    /// The max int256 value will be lossless because there is no packing.
     function testFromFixedDecimalLossyMax() external pure {
         for (uint8 i = 0; i < type(uint8).max; i++) {
             checkFromFixedDecimalLossless(uint256(type(int256).max), i, type(int256).max, -int256(uint256(i)));
