@@ -651,6 +651,8 @@ library LibDecimalFloatImplementation {
 
                         // If we don't bring the scale back down here we can get
                         // overflows when multiplying the output of the lookups.
+                        // We are reusing the same scale variable to avoid a
+                        // compiler stack overflow.
                         if isAtLeastE76 { scale := div(scale, 10) }
 
                         y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
