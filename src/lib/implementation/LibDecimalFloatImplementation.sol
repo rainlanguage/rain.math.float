@@ -579,7 +579,6 @@ library LibDecimalFloatImplementation {
                 int256 x1Coefficient;
                 int256 x2Coefficient;
                 int256 x1Exponent = exponent;
-                bool interpolate;
 
                 // Table lookup.
                 {
@@ -636,27 +635,23 @@ library LibDecimalFloatImplementation {
                         if isAtLeastE76 { scale := div(scale, 10) }
 
                         y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
-
-                        interpolate := iszero(eq(x1Coefficient, signedCoefficient))
-
-                        if interpolate { y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1))) }
+                        // Only do the second lookup if we expect interpolation
+                        // to need it.
+                        if iszero(eq(x1Coefficient, signedCoefficient)) {
+                            y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1)))
+                        }
                     }
                 }
 
-                if (interpolate) {
-                    (signedCoefficient, exponent) = unitLinearInterpolation(
-                        x1Coefficient,
-                        signedCoefficient,
-                        x2Coefficient,
-                        exponent,
-                        y1Coefficient,
-                        y2Coefficient,
-                        LOG10_Y_EXPONENT
-                    );
-                } else {
-                    signedCoefficient = y1Coefficient;
-                    exponent = LOG10_Y_EXPONENT;
-                }
+                (signedCoefficient, exponent) = unitLinearInterpolation(
+                    x1Coefficient,
+                    signedCoefficient,
+                    x2Coefficient,
+                    exponent,
+                    y1Coefficient,
+                    y2Coefficient,
+                    LOG10_Y_EXPONENT
+                );
                 return add(signedCoefficient, exponent, x1Exponent + (isAtLeastE76 ? int256(76) : int256(75)), 0);
             }
             // This is a negative log. i.e. log(x) where 0 < x < 1.
@@ -992,6 +987,10 @@ library LibDecimalFloatImplementation {
         int256 y2Coefficient,
         int256 yExponent
     ) internal pure returns (int256, int256) {
+        // Short circuit if the amount of interpolation is 0.
+        if (xCoefficient == x1Coefficient) {
+            return (y1Coefficient, yExponent);
+        }
         int256 numeratorSignedCoefficient;
         int256 numeratorExponent;
 
