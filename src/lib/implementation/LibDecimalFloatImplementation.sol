@@ -573,12 +573,21 @@ library LibDecimalFloatImplementation {
             bool isAtLeastE76 = signedCoefficient >= 1e76;
 
             // This is a positive log. i.e. log(x) where x >= 1.
-            if (exponent > (isAtLeastE76 ? -77 : -76)) {
+            if (exponent >= (isAtLeastE76 ? -76 : -75)) {
                 int256 y1Coefficient;
                 int256 y2Coefficient;
                 int256 x1Coefficient;
                 int256 x2Coefficient;
-                int256 x1Exponent = exponent;
+                // exact powers of 10 are already caught above.
+                // but e.g. 20 would be 2e76, -75 and true for isAtLeastE76
+                // => adding exp 76 yields 1, which is the correct result.
+                // 200 would be 2e76, -74 and true for isAtLeastE76
+                // => adding exp 76 yields 2, which is the correct result.
+                // however 90 would be 9e75, -74 and false for isAtLeastE76
+                // => adding exp 75 yields 1, which is the correct result.
+                // 900 would be 9e75, -73 and false for isAtLeastE76
+                // => adding exp 75 yields 2, which is the correct result.
+                int256 powerOfTen = exponent + int256(isAtLeastE76 ? int256(76) : int256(75));
 
                 // Table lookup.
                 {
@@ -652,7 +661,7 @@ library LibDecimalFloatImplementation {
                     y2Coefficient,
                     LOG10_Y_EXPONENT
                 );
-                return add(signedCoefficient, exponent, x1Exponent + (isAtLeastE76 ? int256(76) : int256(75)), 0);
+                return add(signedCoefficient, exponent, powerOfTen, 0);
             }
             // This is a negative log. i.e. log(x) where 0 < x < 1.
             // log(x) = -log(1/x)
