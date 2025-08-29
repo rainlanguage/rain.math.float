@@ -26,12 +26,6 @@ import {
 
 type Float is bytes32;
 
-/// @dev When normalizing a number, how far we "leap" when very far from
-/// normalized.
-int256 constant EXPONENT_LEAP_SIZE = 24;
-/// @dev The multiplier for the leap size, calculated at compile time.
-int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_LEAP_SIZE)));
-
 /// @title LibDecimalFloat
 /// Floating point math library for Rainlang.
 /// Broadly implements decimal floating point math with 224 signed bits for the
@@ -54,32 +48,10 @@ int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT
 /// fraction. This technically results in less precision than a binary floating
 /// point system, but is much more predictable and easier to reason about in the
 /// context of financial inputs and outputs, which are typically all decimal
-/// values as understood by humans. However, consider that we have 127 bits of
+/// values as understood by humans. However, consider that we have 224 bits of
 /// precision in the coefficient, which is far more than the 53 bits of a double
 /// precision floating point number regardless of binary/decimal considerations,
 /// and should be more than enough for most defi use cases.
-///
-/// A typical defi fixed point value has 18 decimals, while a normalized decimal
-/// float in this system has 37 decimals. This means, for example, that we can
-/// represent the entire supply of any 18 decimal fixed point token amount up to
-/// 10 quintillion tokens, without any loss of precision.
-///
-/// One use case for this number system is representing ratios of tokens that
-/// have both large differences in their decimals and unit value. For example,
-/// at the time of writing, 1 SHIB is worth about 2.7e-10 BTC while the
-/// WBTC contract only supports 8 decimals vs. SHIB's 18 decimals. It's literally
-/// not possible to represent a purchase of 1 SHIB (1e18) worth of WBTC, so it's
-/// easy to see how a fixed point decimal system could accidentally round
-/// something down to `0` or up to `1` or similarly bad precision loss, simply
-/// due to the large difference in OOMs in _representation_ of any two tokens
-/// being considered.
-///
-/// Of course there are workarounds, such as temporarily inflating values during
-/// calculations and rescaling them afterwards, but they are ad-hoc and error
-/// prone. Importantly, the workarounds are typically not obvious to the target
-/// demographic of Rainlang, and it is not obvious where/when they need to be
-/// applied without rigourous testing/mathematical models that are beyond the
-/// scope of the typical user of Rainlang.
 library LibDecimalFloat {
     using LibDecimalFloat for Float;
 
@@ -317,13 +289,6 @@ library LibDecimalFloat {
     /// Pack a signed coefficient and exponent into a single `PackedFloat`.
     /// Clearly this involves fitting 64 bytes into 32 bytes, so there will be
     /// data loss.
-    /// Normalized numbers are guaranteed to round trip through pack/unpack in
-    /// a lossless manner. The normalization process will _truncate_ on precision
-    /// loss if required, which is significantly better than potentially
-    /// _decapitating_ a non-normalized number during the pack operation. It is
-    /// highly recomended to normalize numbers before packing them.
-    /// Note that mathematical operations in this lib all output normalized
-    /// so typically this is implicit.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// representation.
     /// @param exponent The exponent of the floating point representation.
@@ -371,8 +336,7 @@ library LibDecimalFloat {
     }
 
     /// Unpack a packed bytes32 into a signed coefficient and exponent. This is
-    /// the inverse of `pack`. Note that the unpacked values are not necessarily
-    /// normalized, especially if their provenance is unknown or user input.
+    /// the inverse of `pack`.
     /// @param float The packed representation of the signed coefficient and
     /// exponent.
     /// @return signedCoefficient The signed coefficient of the floating point
@@ -404,7 +368,7 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Subtract two floats together as a normalized result.
+    /// Subtract float a from float b.
     ///
     /// This is effectively shorthand for adding the two floats with the second
     /// float negated. Therefore, the same caveats apply as for `add`.
@@ -519,7 +483,6 @@ library LibDecimalFloat {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
         (Float result, bool lossless) = packLossy(signedCoefficient, exponent);
-        // Inversion cannot be lossy as long as the denominator is normalized.
         (lossless);
         return result;
     }
@@ -538,8 +501,6 @@ library LibDecimalFloat {
     /// Numeric less than for floats.
     /// A float is less than another if its numeric value is less than the other.
     /// For example, 1e2 is less than 1e3, and 1e2 is less than 2e2.
-    /// Any representable value can be compared without precision loss, e.g. no
-    /// normalization is done internally.
     /// @param a The first float to compare.
     /// @param b The second float to compare.
     function lt(Float a, Float b) internal pure returns (bool) {
@@ -554,8 +515,6 @@ library LibDecimalFloat {
     /// Numeric greater than for floats.
     /// A float is greater than another if its numeric value is greater than the
     /// other. For example, 1e3 is greater than 1e2, and 2e2 is greater than 1e2.
-    /// Any representable value can be compared without precision loss, e.g. no
-    /// normalization is done internally.
     /// @param a The first float to compare.
     /// @param b The second float to compare.
     function gt(Float a, Float b) internal pure returns (bool) {

@@ -18,7 +18,7 @@ uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
 
 /// @dev The maximum exponent that can be maximized.
 /// This is crazy large, so should never be a problem for any real use case.
-/// We need it to guard against overflow when normalizing.
+/// We need it to guard against overflow when maximizing.
 int256 constant EXPONENT_MAX = type(int256).max / 2;
 int256 constant EXPONENT_MAX_PLUS_ONE = EXPONENT_MAX + 1;
 
@@ -32,8 +32,10 @@ int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
 /// @dev The exponent of maximized zero.
 int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
 
+int256 constant LOG10_Y_EXPONENT = -76;
+
 library LibDecimalFloatImplementation {
-    /// Negates and normalizes a float.
+    /// Negates a float.
     /// Equivalent to `0 - x`.
     ///
     /// https://speleotrove.com/decimal/daops.html#refplusmin
@@ -513,7 +515,6 @@ library LibDecimalFloatImplementation {
     /// For example, 1e2, 10e1, and 100e0 are all equal. Also implies that 0eX
     /// and 0eY are equal for all X and Y.
     /// Any representable value can be equality checked without precision loss,
-    /// e.g. no normalization is done internally.
     /// @param signedCoefficientA The signed coefficient of the first floating
     /// point number.
     /// @param exponentA The exponent of the first floating point number.
@@ -644,11 +645,17 @@ library LibDecimalFloatImplementation {
 
                 if (interpolate) {
                     (signedCoefficient, exponent) = unitLinearInterpolation(
-                        x1Coefficient, signedCoefficient, x2Coefficient, exponent, y1Coefficient, y2Coefficient, -76
+                        x1Coefficient,
+                        signedCoefficient,
+                        x2Coefficient,
+                        exponent,
+                        y1Coefficient,
+                        y2Coefficient,
+                        LOG10_Y_EXPONENT
                     );
                 } else {
                     signedCoefficient = y1Coefficient;
-                    exponent = -76;
+                    exponent = LOG10_Y_EXPONENT;
                 }
                 return add(signedCoefficient, exponent, x1Exponent + (isAtLeastE76 ? int256(76) : int256(75)), 0);
             }
