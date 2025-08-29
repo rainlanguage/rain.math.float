@@ -16,7 +16,7 @@ error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int2
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
 
-/// @dev The maximum exponent that can be normalized.
+/// @dev The maximum exponent that can be maximized.
 /// This is crazy large, so should never be a problem for any real use case.
 /// We need it to guard against overflow when normalizing.
 int256 constant EXPONENT_MAX = type(int256).max / 2;
@@ -26,31 +26,6 @@ int256 constant EXPONENT_MAX_PLUS_ONE = EXPONENT_MAX + 1;
 /// This is crazy small, so should never be a problem for any real use case.
 /// We need it to guard against overflow when normalizing.
 int256 constant EXPONENT_MIN = -EXPONENT_MAX;
-
-/// @dev When normalizing a number, how far we "step" when close to normalized.
-int256 constant EXPONENT_STEP_SIZE = 1;
-/// @dev The multiplier for the step size, calculated at compile time.
-int256 constant EXPONENT_STEP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_STEP_SIZE)));
-/// @dev When normalizing a number, how far we "jump" when somewhat far from
-/// normalized.
-int256 constant EXPONENT_JUMP_SIZE = 6;
-/// @dev The multiplier for the jump size, calculated at compile time.
-int256 constant PRECISION_JUMP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_JUMP_SIZE)));
-/// @dev Every value above or equal to this can jump down while normalizing
-/// without overshooting and causing unnecessary precision loss.
-int256 constant NORMALIZED_JUMP_DOWN_THRESHOLD = SIGNED_NORMALIZED_MAX * PRECISION_JUMP_MULTIPLIER;
-/// @dev Every value below this can jump up while normalizing without
-/// overshooting the normalized range.
-int256 constant NORMALIZED_JUMP_UP_THRESHOLD = SIGNED_NORMALIZED_MIN / PRECISION_JUMP_MULTIPLIER;
-
-/// @dev The minimum absolute value of a normalized signed coefficient.
-uint256 constant NORMALIZED_MIN = 1e37;
-int256 constant SIGNED_NORMALIZED_MIN = 1e37;
-/// @dev The maximum absolute value of a normalized signed coefficient.
-uint256 constant NORMALIZED_MAX = 1e38 - 1;
-int256 constant SIGNED_NORMALIZED_MAX = 1e38 - 1;
-uint256 constant NORMALIZED_MAX_PLUS_ONE = 1e38;
-int256 constant SIGNED_NORMALIZED_MAX_PLUS_ONE = 1e38;
 
 /// @dev The signed coefficient of maximized zero.
 int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
@@ -647,6 +622,10 @@ library LibDecimalFloatImplementation {
                         x1Coefficient := div(signedCoefficient, scale)
                         let idx := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
+                        // Technically we only need to do this if we need to
+                        // interpolate but it's cheaper to just do an `add`
+                        // unconditionally than pay for an `if` and often also
+                        // do the `add`.
                         x2Coefficient := add(x1Coefficient, scale)
 
                         // If we don't bring the scale back down here we can get
@@ -782,23 +761,6 @@ library LibDecimalFloatImplementation {
 
             return (signedCoefficient, exponent);
         }
-    }
-
-    function isNormalized(int256 signedCoefficient, int256 exponent) internal pure returns (bool) {
-        bool result;
-        uint256 normalizedMaxPlusOne = NORMALIZED_MAX_PLUS_ONE;
-        uint256 normalizedMin = NORMALIZED_MIN;
-        assembly {
-            result :=
-                or(
-                    and(
-                        iszero(sdiv(signedCoefficient, normalizedMaxPlusOne)),
-                        iszero(iszero(sdiv(signedCoefficient, normalizedMin)))
-                    ),
-                    and(iszero(signedCoefficient), iszero(exponent))
-                )
-        }
-        return result;
     }
 
     /// Rescale two floats so that they are possible to directly compare using

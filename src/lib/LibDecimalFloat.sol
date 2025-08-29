@@ -20,10 +20,6 @@ import {
 } from "../error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
-    NORMALIZED_MIN,
-    NORMALIZED_MAX,
-    EXPONENT_STEP_SIZE,
-    SIGNED_NORMALIZED_MAX,
     EXPONENT_MAX,
     EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
