@@ -641,6 +641,9 @@ library LibDecimalFloatImplementation {
                         // overflows when multiplying the output of the lookups.
                         // We are reusing the same scale variable to avoid a
                         // compiler stack overflow.
+                        // Slither false positive here, this division is simply
+                        // the inverse of the mul above.
+                        //slither-disable-next-line divide-before-multiply
                         if isAtLeastE76 { scale := div(scale, 10) }
 
                         y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
