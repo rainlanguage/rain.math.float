@@ -634,6 +634,9 @@ library LibDecimalFloatImplementation {
                             result := add(result, mload(0))
                         }
 
+                        // Need to increase the scale by one OOM here so that the
+                        // signed coefficient has 4 digits always, to make it
+                        // easy to calculate the idx.
                         if isAtLeastE76 { scale := mul(scale, 10) }
 
                         // Truncate the signed coefficient to what we can look
@@ -646,6 +649,8 @@ library LibDecimalFloatImplementation {
                         x1Coefficient := mul(x1Coefficient, scale)
                         x2Coefficient := add(x1Coefficient, scale)
 
+                        // If we don't bring the scale back down here we can get
+                        // overflows when multiplying the output of the lookups.
                         if isAtLeastE76 { scale := div(scale, 10) }
 
                         y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
