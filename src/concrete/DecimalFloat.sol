@@ -33,6 +33,12 @@ contract DecimalFloat {
         return LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
     }
 
+    /// Exposes maximized zero for offchain use.
+    /// @return The maximized zero value of a Float.
+    function zero() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_ZERO;
+    }
+
     /// Exposes `LibDecimalFloat.FLOAT_E` for offchain use.
     /// @return The constant value of Euler's number as a Float.
     function e() external pure returns (Float) {

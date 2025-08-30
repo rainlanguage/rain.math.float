@@ -3,6 +3,10 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {
+    MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
+    MAXIMIZED_ZERO_EXPONENT
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatConstantsTest is Test {
@@ -68,7 +72,7 @@ contract LibDecimalFloatConstantsTest is Test {
 
     function testFloatZero() external pure {
         Float zero = LibDecimalFloat.FLOAT_ZERO;
-        Float expected = LibDecimalFloat.packLossless(0, 0);
+        Float expected = LibDecimalFloat.packLossless(MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
         assertEq(Float.unwrap(zero), Float.unwrap(expected));
     }
 
