@@ -12,6 +12,8 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
+import {console2} from "forge-std/console2.sol";
+
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -931,6 +933,11 @@ library LibDecimalFloatImplementation {
             if (exponent < -76) {
                 return (0, signedCoefficient);
             }
+
+            console2.log("characteristic mantissa");
+            console2.logInt(signedCoefficient);
+            console2.logInt(exponent);
+            console2.log("--");
 
             int256 unit = int256(10 ** uint256(-exponent));
             mantissa = signedCoefficient % unit;
