@@ -21,7 +21,7 @@ library LibFormatDecimalFloat {
         uint256 sigFigs = 0;
 
         if (exponent < 0) {
-            while (absCoefficient / 10 * 10 == absCoefficient) {
+            while (absCoefficient % 10 == 0) {
                 absCoefficient /= 10;
                 exponent++;
             }
