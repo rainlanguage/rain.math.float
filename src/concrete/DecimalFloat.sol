@@ -40,6 +40,7 @@ contract DecimalFloat {
     }
     /// Exposes `LibDecimalFloat.FLOAT_E` for offchain use.
     /// @return The constant value of Euler's number as a Float.
+
     function e() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_E;
     }
