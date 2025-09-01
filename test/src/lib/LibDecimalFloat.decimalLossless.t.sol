@@ -4,8 +4,6 @@ pragma solidity =0.8.25;
 
 import {
     LibDecimalFloat,
-    SIGNED_NORMALIZED_MAX,
-    NORMALIZED_MAX,
     LossyConversionFromFloat,
     LossyConversionToFloat,
     Float

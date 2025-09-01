@@ -31,8 +31,6 @@ contract LibDecimalFloatPowTest is LogTest {
         Float c = a.pow(b, tables);
         uint256 afterGas = gasleft();
         console2.log("Gas used:", beforeGas - afterGas);
-        console2.logInt(signedCoefficientA);
-        console2.logInt(exponentA);
         (int256 actualSignedCoefficient, int256 actualExponent) = c.unpack();
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
         assertEq(actualExponent, expectedExponent, "exponent");
@@ -66,11 +64,7 @@ contract LibDecimalFloatPowTest is LogTest {
             a = a.minus();
         }
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (int256 signedCoefficientANormalized, int256 exponentANormalized) =
-            LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
-        vm.expectRevert(
-            abi.encodeWithSelector(Log10Negative.selector, signedCoefficientANormalized, exponentANormalized)
-        );
+        vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficientA, exponentA));
         this.powExternal(a, b);
     }
 

@@ -117,7 +117,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
     }
 
     function testDivByNegativeOneFloat(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, type(int256).min + 76, type(int256).max);
+        exponent = bound(exponent, type(int256).min + 76, type(int256).max - 1);
         (int256 expectedCoefficient, int256 expectedExponent) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
         (expectedCoefficient, expectedExponent) =

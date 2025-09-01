@@ -16,9 +16,9 @@ error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int2
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
 
-/// @dev The maximum exponent that can be normalized.
+/// @dev The maximum exponent that can be maximized.
 /// This is crazy large, so should never be a problem for any real use case.
-/// We need it to guard against overflow when normalizing.
+/// We need it to guard against overflow when maximizing.
 int256 constant EXPONENT_MAX = type(int256).max / 2;
 int256 constant EXPONENT_MAX_PLUS_ONE = EXPONENT_MAX + 1;
 
@@ -27,43 +27,15 @@ int256 constant EXPONENT_MAX_PLUS_ONE = EXPONENT_MAX + 1;
 /// We need it to guard against overflow when normalizing.
 int256 constant EXPONENT_MIN = -EXPONENT_MAX;
 
-/// @dev When normalizing a number, how far we "step" when close to normalized.
-int256 constant EXPONENT_STEP_SIZE = 1;
-/// @dev The multiplier for the step size, calculated at compile time.
-int256 constant EXPONENT_STEP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_STEP_SIZE)));
-/// @dev When normalizing a number, how far we "jump" when somewhat far from
-/// normalized.
-int256 constant EXPONENT_JUMP_SIZE = 6;
-/// @dev The multiplier for the jump size, calculated at compile time.
-int256 constant PRECISION_JUMP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_JUMP_SIZE)));
-/// @dev Every value above or equal to this can jump down while normalizing
-/// without overshooting and causing unnecessary precision loss.
-int256 constant NORMALIZED_JUMP_DOWN_THRESHOLD = SIGNED_NORMALIZED_MAX * PRECISION_JUMP_MULTIPLIER;
-/// @dev Every value below this can jump up while normalizing without
-/// overshooting the normalized range.
-int256 constant NORMALIZED_JUMP_UP_THRESHOLD = SIGNED_NORMALIZED_MIN / PRECISION_JUMP_MULTIPLIER;
-
-/// @dev The minimum absolute value of a normalized signed coefficient.
-uint256 constant NORMALIZED_MIN = 1e37;
-int256 constant SIGNED_NORMALIZED_MIN = 1e37;
-/// @dev The maximum absolute value of a normalized signed coefficient.
-uint256 constant NORMALIZED_MAX = 1e38 - 1;
-int256 constant SIGNED_NORMALIZED_MAX = 1e38 - 1;
-uint256 constant NORMALIZED_MAX_PLUS_ONE = 1e38;
-int256 constant SIGNED_NORMALIZED_MAX_PLUS_ONE = 1e38;
-
-/// @dev The signed coefficient of zero when normalized.
-int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
-/// @dev The exponent of zero when normalized.
-int256 constant NORMALIZED_ZERO_EXPONENT = 0;
-
 /// @dev The signed coefficient of maximized zero.
-int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = NORMALIZED_ZERO_SIGNED_COEFFICIENT;
+int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
 /// @dev The exponent of maximized zero.
-int256 constant MAXIMIZED_ZERO_EXPONENT = NORMALIZED_ZERO_EXPONENT;
+int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
+
+int256 constant LOG10_Y_EXPONENT = -76;
 
 library LibDecimalFloatImplementation {
-    /// Negates and normalizes a float.
+    /// Negates a float.
     /// Equivalent to `0 - x`.
     ///
     /// https://speleotrove.com/decimal/daops.html#refplusmin
@@ -543,7 +515,6 @@ library LibDecimalFloatImplementation {
     /// For example, 1e2, 10e1, and 100e0 are all equal. Also implies that 0eX
     /// and 0eY are equal for all X and Y.
     /// Any representable value can be equality checked without precision loss,
-    /// e.g. no normalization is done internally.
     /// @param signedCoefficientA The signed coefficient of the first floating
     /// point number.
     /// @param exponentA The exponent of the first floating point number.
@@ -585,8 +556,6 @@ library LibDecimalFloatImplementation {
     {
         unchecked {
             {
-                (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
-
                 if (signedCoefficient <= 0) {
                     if (signedCoefficient == 0) {
                         revert Log10Zero();
@@ -594,25 +563,35 @@ library LibDecimalFloatImplementation {
                         revert Log10Negative(signedCoefficient, exponent);
                     }
                 }
+                (signedCoefficient, exponent) = maximize(signedCoefficient, exponent);
             }
 
-            // This is a positive log. i.e. log(x) where x >= 1.
-            if (exponent > -38) {
-                // This is an exact power of 10.
-                if (signedCoefficient == 1e37) {
-                    return (exponent + 37, 0);
-                }
+            // all powers of 10 look like 1 with a different exponent
+            if (signedCoefficient == 1e76) {
+                return (exponent + 76, 0);
+            }
+            bool isAtLeastE76 = signedCoefficient >= 1e76;
 
+            // This is a positive log. i.e. log(x) where x >= 1.
+            if (exponent >= (isAtLeastE76 ? -76 : -75)) {
                 int256 y1Coefficient;
                 int256 y2Coefficient;
                 int256 x1Coefficient;
                 int256 x2Coefficient;
-                int256 x1Exponent = exponent;
-                bool interpolate;
+                // exact powers of 10 are already caught above.
+                // but e.g. 20 would be 2e76, -75 and true for isAtLeastE76
+                // => adding exp 76 yields 1, which is the correct result.
+                // 200 would be 2e76, -74 and true for isAtLeastE76
+                // => adding exp 76 yields 2, which is the correct result.
+                // however 90 would be 9e75, -74 and false for isAtLeastE76
+                // => adding exp 75 yields 1, which is the correct result.
+                // 900 would be 9e75, -73 and false for isAtLeastE76
+                // => adding exp 75 yields 2, which is the correct result.
+                int256 powerOfTen = exponent + int256(isAtLeastE76 ? int256(76) : int256(75));
 
                 // Table lookup.
                 {
-                    uint256 scale = 1e34;
+                    int256 scale = 1e72;
                     assembly ("memory-safe") {
                         //slither-disable-next-line divide-before-multiply
                         function lookupTableVal(tables, index) -> result {
@@ -639,6 +618,11 @@ library LibDecimalFloatImplementation {
                             result := add(result, mload(0))
                         }
 
+                        // Need to increase the scale by one OOM here so that the
+                        // signed coefficient has 4 digits always, to make it
+                        // easy to calculate the idx.
+                        if isAtLeastE76 { scale := mul(scale, 10) }
+
                         // Truncate the signed coefficient to what we can look
                         // up in the table.
                         // Slither false positive because the truncation is
@@ -647,30 +631,45 @@ library LibDecimalFloatImplementation {
                         x1Coefficient := div(signedCoefficient, scale)
                         let idx := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
+                        // Technically we only need to do this if we need to
+                        // interpolate but it's cheaper to just do an `add`
+                        // unconditionally than pay for an `if` and often also
+                        // do the `add`.
                         x2Coefficient := add(x1Coefficient, scale)
-                        interpolate := iszero(eq(x1Coefficient, signedCoefficient))
+
+                        // If we don't bring the scale back down here we can get
+                        // overflows when multiplying the output of the lookups.
+                        // We are reusing the same scale variable to avoid a
+                        // compiler stack overflow.
+                        // Slither false positive here, this division is simply
+                        // the inverse of the mul above.
+                        //slither-disable-next-line divide-before-multiply
+                        if isAtLeastE76 { scale := div(scale, 10) }
 
                         y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
-
-                        if interpolate { y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1))) }
+                        // Only do the second lookup if we expect interpolation
+                        // to need it.
+                        if iszero(eq(x1Coefficient, signedCoefficient)) {
+                            y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1)))
+                        }
                     }
                 }
 
-                if (interpolate) {
-                    (signedCoefficient, exponent) = unitLinearInterpolation(
-                        x1Coefficient, signedCoefficient, x2Coefficient, exponent, y1Coefficient, y2Coefficient, -38
-                    );
-                } else {
-                    signedCoefficient = y1Coefficient;
-                    exponent = -38;
-                }
-
-                return add(signedCoefficient, exponent, x1Exponent + 37, 0);
+                (signedCoefficient, exponent) = unitLinearInterpolation(
+                    x1Coefficient,
+                    signedCoefficient,
+                    x2Coefficient,
+                    exponent,
+                    y1Coefficient,
+                    y2Coefficient,
+                    LOG10_Y_EXPONENT
+                );
+                return add(signedCoefficient, exponent, powerOfTen, 0);
             }
             // This is a negative log. i.e. log(x) where 0 < x < 1.
             // log(x) = -log(1/x)
             else {
-                (signedCoefficient, exponent) = div(1e37, -37, signedCoefficient, exponent);
+                (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
                 (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
                 return minus(signedCoefficient, exponent);
             }
@@ -772,83 +771,6 @@ library LibDecimalFloatImplementation {
 
             if (initialExponent < exponent) {
                 revert ExponentOverflow(signedCoefficient, initialExponent);
-            }
-
-            return (signedCoefficient, exponent);
-        }
-    }
-
-    function isNormalized(int256 signedCoefficient, int256 exponent) internal pure returns (bool) {
-        bool result;
-        uint256 normalizedMaxPlusOne = NORMALIZED_MAX_PLUS_ONE;
-        uint256 normalizedMin = NORMALIZED_MIN;
-        assembly {
-            result :=
-                or(
-                    and(
-                        iszero(sdiv(signedCoefficient, normalizedMaxPlusOne)),
-                        iszero(iszero(sdiv(signedCoefficient, normalizedMin)))
-                    ),
-                    and(iszero(signedCoefficient), iszero(exponent))
-                )
-        }
-        return result;
-    }
-
-    function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        unchecked {
-            if (isNormalized(signedCoefficient, exponent)) {
-                return (signedCoefficient, exponent);
-            }
-
-            if (signedCoefficient == 0) {
-                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
-            }
-
-            if (exponent / EXPONENT_MAX_PLUS_ONE != 0) {
-                revert ExponentOverflow(signedCoefficient, exponent);
-            }
-
-            if (signedCoefficient / SIGNED_NORMALIZED_MAX_PLUS_ONE != 0) {
-                if (signedCoefficient / 1e56 != 0) {
-                    signedCoefficient /= 1e19;
-                    exponent += 19;
-                }
-
-                if (signedCoefficient / 1e46 != 0) {
-                    signedCoefficient /= 1e9;
-                    exponent += 9;
-                }
-
-                while (signedCoefficient / 1e39 != 0) {
-                    signedCoefficient /= 100;
-                    exponent += 2;
-                }
-
-                if (signedCoefficient / 1e38 != 0) {
-                    signedCoefficient /= 10;
-                    exponent += 1;
-                }
-            } else {
-                if (signedCoefficient / 1e18 == 0) {
-                    signedCoefficient *= 1e19;
-                    exponent -= 19;
-                }
-
-                if (signedCoefficient / 1e28 == 0) {
-                    signedCoefficient *= 1e9;
-                    exponent -= 9;
-                }
-
-                while (signedCoefficient / 1e36 == 0) {
-                    signedCoefficient *= 100;
-                    exponent -= 2;
-                }
-
-                if (signedCoefficient / 1e37 == 0) {
-                    signedCoefficient *= 10;
-                    exponent -= 1;
-                }
             }
 
             return (signedCoefficient, exponent);
@@ -973,7 +895,7 @@ library LibDecimalFloatImplementation {
             } else if (targetExponent > exponent) {
                 int256 exponentDiff = targetExponent - exponent;
                 if (exponentDiff > 76 || exponentDiff < 0) {
-                    return (NORMALIZED_ZERO_SIGNED_COEFFICIENT);
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT);
                 }
 
                 return signedCoefficient / int256(10 ** uint256(exponentDiff));
@@ -1077,6 +999,10 @@ library LibDecimalFloatImplementation {
         int256 y2Coefficient,
         int256 yExponent
     ) internal pure returns (int256, int256) {
+        // Short circuit if the amount of interpolation is 0.
+        if (xCoefficient == x1Coefficient) {
+            return (y1Coefficient, yExponent);
+        }
         int256 numeratorSignedCoefficient;
         int256 numeratorExponent;
 
