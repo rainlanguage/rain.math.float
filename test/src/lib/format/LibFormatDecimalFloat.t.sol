@@ -83,7 +83,65 @@ contract LibFormatDecimalFloatTest is Test {
         checkFormat(1, 2, "100");
         checkFormat(1000, -1, "100");
 
+        // -100
+        checkFormat(-100, 0, "-100");
+        checkFormat(-10, 1, "-100");
+        checkFormat(-1, 2, "-100");
+        checkFormat(-1000, -1, "-100");
+
+        // 0.1
+        checkFormat(1, -1, "0.1");
+        checkFormat(10, -2, "0.1");
+        checkFormat(100, -3, "0.1");
+        checkFormat(1000, -4, "0.1");
+
+        // -0.1
+        checkFormat(-1, -1, "-0.1");
+        checkFormat(-10, -2, "-0.1");
+        checkFormat(-100, -3, "-0.1");
+        checkFormat(-1000, -4, "-0.1");
+
+        // 0.101
+        checkFormat(101, -3, "0.101");
+        checkFormat(1010, -4, "0.101");
+        checkFormat(10100, -5, "0.101");
+        checkFormat(101000, -6, "0.101");
+
+        // -0.101
+        checkFormat(-101, -3, "-0.101");
+        checkFormat(-1010, -4, "-0.101");
+        checkFormat(-10100, -5, "-0.101");
+        checkFormat(-101000, -6, "-0.101");
+
+        // 1.1
+        checkFormat(11, -1, "1.1");
+        checkFormat(110, -2, "1.1");
+        checkFormat(1100, -3, "1.1");
+        checkFormat(11000, -4, "1.1");
+
+        // -1.1
+        checkFormat(-11, -1, "-1.1");
+        checkFormat(-110, -2, "-1.1");
+        checkFormat(-1100, -3, "-1.1");
+        checkFormat(-11000, -4, "-1.1");
+
+        // 9 sig figs
+        checkFormat(123456789, 0, "123456789");
+        checkFormat(-123456789, 0, "-123456789");
+        checkFormat(123456789, -1, "12345678.9");
+        checkFormat(-123456789, -1, "-12345678.9");
+        checkFormat(12345678, 1, "123456780");
+        checkFormat(-12345678, 1, "-123456780");
+
+        // 10 sig figs
+        checkFormat(1234567890, 0, "1.23456789e9");
+        checkFormat(-1234567890, 0, "-1.23456789e9");
+        checkFormat(123456789, 1, "1.23456789e9");
+        checkFormat(-123456789, 1, "-1.23456789e9");
+        checkFormat(1, -10, "1e-10");
+
         // examples from fuzz
         checkFormat(1019001501928, -18, "1.019001501928e-6");
+        checkFormat(-1019001501928, -18, "-1.019001501928e-6");
     }
 }

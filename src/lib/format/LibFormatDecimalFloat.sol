@@ -10,6 +10,8 @@ import {LibDecimalFloatImplementation} from "../../lib/implementation/LibDecimal
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 
 library LibFormatDecimalFloat {
+    uint256 constant DEFAULT_SIG_FIGS = 9;
+
     function countSigFigs(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
         if (signedCoefficient == 0) {
             return 1;
@@ -31,11 +33,19 @@ library LibFormatDecimalFloat {
         }
 
         // Adjust for exponent
-        if (exponent > 0) {
+        if (exponent < 0) {
+            exponent = -exponent;
+            sigFigs = sigFigs > uint256(exponent) ? sigFigs : uint256(exponent);
+        } else if (exponent > 0) {
             sigFigs += uint256(exponent);
         }
 
         return sigFigs;
+    }
+
+    /// Overloaded `toDecimalString` with default sig figs.
+    function toDecimalString(Float float) internal pure returns (string memory) {
+        return toDecimalString(float, DEFAULT_SIG_FIGS);
     }
 
     /// Format a decimal float as a string.
@@ -43,14 +53,14 @@ library LibFormatDecimalFloat {
     /// doesn't cost gas.
     /// @param float The decimal float to format.
     /// @return The string representation of the decimal float.
-    function toDecimalString(Float float) internal pure returns (string memory) {
+    function toDecimalString(Float float, uint256 sigFigsLimit) internal pure returns (string memory) {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
         if (signedCoefficient == 0) {
             return "0";
         }
 
         uint256 sigFigs = countSigFigs(signedCoefficient, exponent);
-        bool scientific = sigFigs > 9;
+        bool scientific = sigFigs > sigFigsLimit;
         uint256 scaleExponent;
         uint256 scale;
         if (scientific) {
@@ -64,7 +74,6 @@ library LibFormatDecimalFloat {
                 signedCoefficient *= int256(10) ** uint256(exponent);
                 exponent = 0;
             }
-            // scale = uint256(10) ** uint256(exponent);
             if (exponent < 0) {
                 scale = uint256(10) ** uint256(-exponent);
             }
@@ -73,14 +82,18 @@ library LibFormatDecimalFloat {
 
         int256 integral = scale != 0 ? signedCoefficient / int256(scale) : signedCoefficient;
         int256 fractional = scale != 0 ? signedCoefficient % int256(scale) : int256(0);
+        bool isNeg = false;
+        if (integral < 0) {
+            isNeg = true;
+            integral = -integral;
+        }
+        if (fractional < 0) {
+            isNeg = true;
+            fractional = -fractional;
+        }
 
         string memory fractionalString = "";
         {
-            // Integral encodes the negativity of the number so don't want to
-            // duplicate it here.
-            if (fractional < 0) {
-                fractional = -fractional;
-            }
             string memory fracLeadingZerosString = "";
 
             if (fractional != 0) {
@@ -110,7 +123,9 @@ library LibFormatDecimalFloat {
         string memory exponentString =
             (displayExponent == 0 || !scientific) ? "" : string.concat("e", Strings.toString(displayExponent));
 
-        string memory fullString = string.concat(integralString, fractionalString, exponentString);
+        string memory prefix = isNeg ? "-" : "";
+
+        string memory fullString = string.concat(prefix, integralString, fractionalString, exponentString);
 
         return fullString;
     }
