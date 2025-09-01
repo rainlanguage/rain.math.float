@@ -17,6 +17,8 @@ import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
 import {ParseDecimalFloatExcessCharacters} from "../../error/ErrParse.sol";
 
+import {console2} from "forge-std/console2.sol";
+
 library LibParseDecimalFloat {
     function parseDecimalFloatInline(uint256 start, uint256 end)
         internal
@@ -78,12 +80,19 @@ library LibParseDecimalFloat {
                 // fractional part.
                 exponent = int256(fracStart) - int256(nonZeroCursor);
                 uint256 scale = uint256(-exponent);
-                if (scale >= 67 && signedCoefficient != 0) {
+                if (scale > 67 && signedCoefficient != 0) {
                     return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
                 }
                 scale = 10 ** scale;
+                console2.logInt(signedCoefficient);
+                console2.log(scale);
                 int256 rescaledIntValue = signedCoefficient * int256(scale);
-                if (rescaledIntValue / int256(scale) != signedCoefficient) {
+                console2.logInt(rescaledIntValue);
+                if (
+                    rescaledIntValue / int256(scale) != signedCoefficient
+                        || int224(rescaledIntValue) != rescaledIntValue
+                ) {
+                    console2.log("ParseDecimalPrecisionLoss");
                     return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
                 }
                 signedCoefficient = rescaledIntValue + fracValue;

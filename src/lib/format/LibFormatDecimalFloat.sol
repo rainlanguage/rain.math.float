@@ -31,24 +31,45 @@ library LibFormatDecimalFloat {
         uint256 scale = uint256(10) ** scaleExponent;
 
         int256 integral = coefficientMaximized / int256(scale);
-        int256 fractional = coefficientMaximized % int256(scale);
-        // Integral encodes the negativity of the number so don't want to
-        // duplicate it here.
-        if (fractional < 0) {
-            fractional = -fractional;
-        }
 
-        while ((fractional / 10) * 10 == fractional) {
-            fractional /= 10;
+        int256 fractional = coefficientMaximized % int256(scale);
+        string memory fractionalString = "";
+        {
+            // Integral encodes the negativity of the number so don't want to
+            // duplicate it here.
+            if (fractional < 0) {
+                fractional = -fractional;
+            }
+            string memory fracLeadingZerosString = "";
+
+            if (fractional != 0) {
+                uint256 fracLeadingZeros = 0;
+                uint256 fracScale = scale / 10;
+                while (fractional / int256(fracScale) == 0) {
+                    fracScale /= 10;
+                    fracLeadingZeros++;
+                }
+
+                for (uint256 i = 0; i < fracLeadingZeros; i++) {
+                    fracLeadingZerosString = string.concat(fracLeadingZerosString, "0");
+                }
+
+                while ((fractional / 10) * 10 == fractional) {
+                    fractional /= 10;
+                }
+            }
+
+            fractionalString =
+                fractional == 0 ? "" : string.concat(".", fracLeadingZerosString, Strings.toString(fractional));
         }
 
         string memory integralString = Strings.toString(integral);
-        string memory fractionalString = Strings.toString(fractional);
-        string memory exponentString = (exponentMaximized == 0)
-            ? ""
-            : string.concat("e", Strings.toString(exponentMaximized + int256(scaleExponent)));
 
-        string memory fullString = string.concat(integralString, ".", fractionalString, exponentString);
+        int256 displayExponent = exponentMaximized + int256(scaleExponent);
+        string memory exponentString =
+            (displayExponent == 0) ? "" : string.concat("e", Strings.toString(displayExponent));
+
+        string memory fullString = string.concat(integralString, fractionalString, exponentString);
         console2.log(fullString, "full string");
 
         return fullString;

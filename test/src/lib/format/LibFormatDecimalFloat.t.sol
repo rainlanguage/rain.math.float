@@ -25,7 +25,7 @@ contract LibFormatDecimalFloatTest is Test {
     }
 
     /// Test round tripping a value through parse and format.
-    function testFormatDecimalRoundTrip(uint256 value) external pure {
+    function testFormatDecimalRoundTripNonNegative(uint256 value) external pure {
         value = bound(value, 0, uint256(int256(type(int224).max)));
         Float float = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, 18);
         string memory formatted = LibFormatDecimalFloat.toDecimalString(float);
@@ -73,5 +73,11 @@ contract LibFormatDecimalFloatTest is Test {
         checkFormat(-123456789012345678901234567890, -4, "-1.2345678901234567890123456789e25");
         checkFormat(-123456789012345678901234567890, -5, "-1.2345678901234567890123456789e24");
         checkFormat(-123456789012345678901234567890, -6, "-1.2345678901234567890123456789e23");
+
+        // one
+        checkFormat(1, 0, "1");
+
+        // examples from fuzz
+        checkFormat(1019001501928, -18, "1.019001501928e-6");
     }
 }
