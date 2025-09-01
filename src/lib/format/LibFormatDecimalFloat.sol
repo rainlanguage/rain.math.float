@@ -9,9 +9,35 @@ import {LibDecimalFloatImplementation} from "../../lib/implementation/LibDecimal
 
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 
-import {console2} from "forge-std/console2.sol";
-
 library LibFormatDecimalFloat {
+    function countSigFigs(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
+        if (signedCoefficient == 0) {
+            return 1;
+        }
+
+        uint256 absCoefficient = uint256(signedCoefficient < 0 ? -signedCoefficient : signedCoefficient);
+        uint256 sigFigs = 0;
+
+        if (exponent < 0) {
+            while (absCoefficient / 10 * 10 == absCoefficient) {
+                absCoefficient /= 10;
+                exponent++;
+            }
+        }
+
+        while (absCoefficient != 0) {
+            sigFigs++;
+            absCoefficient /= 10;
+        }
+
+        // Adjust for exponent
+        if (exponent > 0) {
+            sigFigs += uint256(exponent);
+        }
+
+        return sigFigs;
+    }
+
     /// Format a decimal float as a string.
     /// Not particularly efficient as it is intended for offchain use that
     /// doesn't cost gas.
@@ -23,16 +49,31 @@ library LibFormatDecimalFloat {
             return "0";
         }
 
-        (int256 coefficientMaximized, int256 exponentMaximized) =
-            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+        uint256 sigFigs = countSigFigs(signedCoefficient, exponent);
+        bool scientific = sigFigs > 9;
+        uint256 scaleExponent;
+        uint256 scale;
+        if (scientific) {
+            (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
 
-        bool isAtLeastE76 = coefficientMaximized / 1e76 != 0;
-        uint256 scaleExponent = isAtLeastE76 ? uint256(76) : uint256(75);
-        uint256 scale = uint256(10) ** scaleExponent;
+            bool isAtLeastE76 = signedCoefficient / 1e76 != 0;
+            scaleExponent = isAtLeastE76 ? uint256(76) : uint256(75);
+            scale = uint256(10) ** scaleExponent;
+        } else {
+            if (exponent > 0) {
+                signedCoefficient *= int256(10) ** uint256(exponent);
+                exponent = 0;
+            }
+            // scale = uint256(10) ** uint256(exponent);
+            if (exponent < 0) {
+                scale = uint256(10) ** uint256(-exponent);
+            }
+            scaleExponent = uint256(exponent);
+        }
 
-        int256 integral = coefficientMaximized / int256(scale);
+        int256 integral = scale != 0 ? signedCoefficient / int256(scale) : signedCoefficient;
+        int256 fractional = scale != 0 ? signedCoefficient % int256(scale) : int256(0);
 
-        int256 fractional = coefficientMaximized % int256(scale);
         string memory fractionalString = "";
         {
             // Integral encodes the negativity of the number so don't want to
@@ -65,12 +106,11 @@ library LibFormatDecimalFloat {
 
         string memory integralString = Strings.toString(integral);
 
-        int256 displayExponent = exponentMaximized + int256(scaleExponent);
+        int256 displayExponent = exponent + int256(scaleExponent);
         string memory exponentString =
-            (displayExponent == 0) ? "" : string.concat("e", Strings.toString(displayExponent));
+            (displayExponent == 0 || !scientific) ? "" : string.concat("e", Strings.toString(displayExponent));
 
         string memory fullString = string.concat(integralString, fractionalString, exponentString);
-        console2.log(fullString, "full string");
 
         return fullString;
     }

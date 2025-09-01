@@ -77,6 +77,12 @@ contract LibFormatDecimalFloatTest is Test {
         // one
         checkFormat(1, 0, "1");
 
+        // 100
+        checkFormat(100, 0, "100");
+        checkFormat(10, 1, "100");
+        checkFormat(1, 2, "100");
+        checkFormat(1000, -1, "100");
+
         // examples from fuzz
         checkFormat(1019001501928, -18, "1.019001501928e-6");
     }
