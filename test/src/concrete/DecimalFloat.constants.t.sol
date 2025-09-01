@@ -93,4 +93,21 @@ contract DecimalFloatConstantsTest is Test {
             deployed.e();
         }
     }
+
+    function zeroExternal() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_ZERO;
+    }
+
+    function testZeroDeployed() external {
+        DecimalFloat deployed = new DecimalFloat();
+
+        try this.zeroExternal() returns (Float zeroValue) {
+            Float deployedZeroValue = deployed.zero();
+
+            assertEq(Float.unwrap(zeroValue), Float.unwrap(deployedZeroValue));
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            deployed.zero();
+        }
+    }
 }
