@@ -53,6 +53,7 @@ library LibFormatDecimalFloat {
     /// doesn't cost gas.
     /// @param float The decimal float to format.
     /// @return The string representation of the decimal float.
+    //slither-disable-next-line cyclomatic-complexity
     function toDecimalString(Float float, uint256 sigFigsLimit) internal pure returns (string memory) {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
         if (signedCoefficient == 0) {
@@ -62,7 +63,7 @@ library LibFormatDecimalFloat {
         uint256 sigFigs = countSigFigs(signedCoefficient, exponent);
         bool scientific = sigFigs > sigFigsLimit;
         uint256 scaleExponent;
-        uint256 scale;
+        uint256 scale = 0;
         if (scientific) {
             (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
 
@@ -108,7 +109,7 @@ library LibFormatDecimalFloat {
                     fracLeadingZerosString = string.concat(fracLeadingZerosString, "0");
                 }
 
-                while ((fractional / 10) * 10 == fractional) {
+                while (fractional % 10 == 0) {
                     fractional /= 10;
                 }
             }
