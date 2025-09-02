@@ -10,8 +10,6 @@ import {LibDecimalFloatImplementation} from "../../lib/implementation/LibDecimal
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 
 library LibFormatDecimalFloat {
-    uint256 constant DEFAULT_SIG_FIGS = 9;
-
     function countSigFigs(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
         if (signedCoefficient == 0) {
             return 1;
@@ -40,11 +38,6 @@ library LibFormatDecimalFloat {
         }
 
         return sigFigs;
-    }
-
-    /// Overloaded `toDecimalString` with default sig figs.
-    function toDecimalString(Float float) internal pure returns (string memory) {
-        return toDecimalString(float, DEFAULT_SIG_FIGS);
     }
 
     /// Format a decimal float as a string.
