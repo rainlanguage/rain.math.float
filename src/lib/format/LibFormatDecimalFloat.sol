@@ -76,8 +76,10 @@ library LibFormatDecimalFloat {
             }
             if (exponent < 0) {
                 scale = uint256(10) ** uint256(-exponent);
+                scaleExponent = uint256(-exponent);
+            } else {
+                scaleExponent = uint256(exponent);
             }
-            scaleExponent = uint256(exponent);
         }
 
         int256 integral = scale != 0 ? signedCoefficient / int256(scale) : signedCoefficient;
