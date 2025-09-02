@@ -17,7 +17,6 @@ library LibFormatDecimalFloat {
             return 1;
         }
 
-        // uint256 absCoefficient = uint256(signedCoefficient < 0 ? -signedCoefficient : signedCoefficient);
         uint256 sigFigs = 0;
 
         if (exponent < 0) {
