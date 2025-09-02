@@ -40,12 +40,16 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     /// Negative matches positive.
     function testFormatDecimalRoundTripNegative(int256 value) external pure {
         value = bound(value, 1, int256(type(int128).max));
-        Float float = LibDecimalFloat.packLossless(value, 18);
+        Float float = LibDecimalFloat.fromFixedDecimalLosslessPacked(uint256(value), 18);
         string memory formatted = float.toDecimalString();
         float = float.minus();
         string memory formattedNeg = float.toDecimalString();
 
         assertEq(string.concat("-", formatted), formattedNeg, "Negative format mismatch");
+        // Parse/eq for negative path as well
+        (bytes4 err, Float parsedNeg) = LibParseDecimalFloat.parseDecimalFloat(formattedNeg);
+        assertEq(err, 0, "Parse error (neg)");
+        assertTrue(float.eq(parsedNeg), "Round trip failed (neg)");
     }
 
     /// Test some specific examples.
