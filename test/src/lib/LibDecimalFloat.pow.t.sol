@@ -13,7 +13,7 @@ contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
 
     function diffLimit() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(94, -3);
+        return LibDecimalFloat.packLossless(96, -3);
     }
 
     function checkPow(
@@ -50,6 +50,11 @@ contract LibDecimalFloatPowTest is LogTest {
         // 8.853071703048649170130397094169464632911643045383977634639832230468640539353e75 e60910
         checkPow(99999, 0, 12182, 0, 1000, 60907);
         checkPow(1785215562, 0, 18, 0, 3388, 163);
+
+        {
+            (int256 signedCoefficientE, int256 exponentE) = LibDecimalFloat.FLOAT_E.unpack();
+            checkPow(signedCoefficientE, exponentE, 1, 0, signedCoefficientE, exponentE);
+        }
     }
 
     /// a^b is error for negative a and all b.
@@ -95,6 +100,21 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(LibDecimalFloat.FLOAT_ZERO, b);
     }
 
+    /// a^1 = a for all a >= 0 (negative bases revert per current semantics).
+    function testPowBOne(Float a) external {
+        vm.assume(!a.isZero());
+        a = a.abs();
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        unchecked {
+            int256 exponent = 0;
+            for (int256 i = 1; exponent >= -67;) {
+                checkPow(signedCoefficientA, exponentA, i, exponent, signedCoefficientA, exponentA);
+                exponent--;
+                i *= 10;
+            }
+        }
+    }
+
     function checkRoundTrip(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
     {
@@ -133,7 +153,7 @@ contract LibDecimalFloatPowTest is LogTest {
             // If b is zero we'll divide by zero on the inv.
             // If c is 1 then it's not round trippable because 1^x = 1 for all x.
             // C will be 1 when a is 1 or b is 0 (or very close to either).
-            if (b.isZero() || c.eq(LibDecimalFloat.packLossless(1, 0))) {} else {
+            if (b.isZero() || c.eq(LibDecimalFloat.FLOAT_ONE)) {} else {
                 Float inv = b.inv();
                 try this.powExternal(c, inv) returns (Float roundTrip) {
                     if (roundTrip.isZero()) {} else {

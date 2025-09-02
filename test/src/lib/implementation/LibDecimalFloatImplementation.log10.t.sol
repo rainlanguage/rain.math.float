@@ -58,4 +58,15 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
 
         checkLog10(0.5e1, -1, -0.301e76, -76);
     }
+
+    function testLog10One() external {
+        unchecked {
+            int256 exponent = 0;
+            for (int256 i = 1; exponent >= -76;) {
+                checkLog10(i, exponent, 0, 0);
+                exponent--;
+                i *= 10;
+            }
+        }
+    }
 }
