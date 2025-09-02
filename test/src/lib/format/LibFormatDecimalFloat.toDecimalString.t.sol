@@ -146,5 +146,14 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         // examples from fuzz
         checkFormat(1019001501928, -18, "1.019001501928e-6");
         checkFormat(-1019001501928, -18, "-1.019001501928e-6");
+
+        // pure powers of 10 at the cutoff
+        checkFormat(1000000000, 0, "1e9");
+        checkFormat(-1000000000, 0, "-1e9");
+        // extreme small/large magnitudes still choose scientific
+        checkFormat(1, -76, "1e-76");
+        checkFormat(-1, -76, "-1e-76");
+        checkFormat(1, 76, "1e76");
+        checkFormat(-1, 76, "-1e76");
     }
 }
