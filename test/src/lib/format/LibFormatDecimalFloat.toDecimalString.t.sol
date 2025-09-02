@@ -159,6 +159,12 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         checkFormat(-1, -76, 9, "-1e-76");
         checkFormat(1, 76, 9, "1e76");
         checkFormat(-1, 76, 9, "-1e76");
+
+        // impossible sig figs.
+        checkFormat(1, 200, 1, "1e200");
+        // we can't actually fit 200 zeros into the binary representation so
+        // even though the threshold is 200 we still use scientific notation.
+        checkFormat(1, 200, 200, "1e200");
     }
 
     function testFormatDecimalCustomSigFigs() external pure {
