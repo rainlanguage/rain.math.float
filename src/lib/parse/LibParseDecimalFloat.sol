@@ -78,12 +78,15 @@ library LibParseDecimalFloat {
                 // fractional part.
                 exponent = int256(fracStart) - int256(nonZeroCursor);
                 uint256 scale = uint256(-exponent);
-                if (scale >= 67 && signedCoefficient != 0) {
+                if (scale > 67 && signedCoefficient != 0) {
                     return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
                 }
                 scale = 10 ** scale;
                 int256 rescaledIntValue = signedCoefficient * int256(scale);
-                if (rescaledIntValue / int256(scale) != signedCoefficient) {
+                if (
+                    rescaledIntValue / int256(scale) != signedCoefficient
+                        || int224(rescaledIntValue) != rescaledIntValue
+                ) {
                     return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
                 }
                 signedCoefficient = rescaledIntValue + fracValue;

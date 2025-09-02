@@ -357,7 +357,11 @@ impl Float {
     /// ```
     pub fn format(self) -> Result<String, FloatError> {
         let Float(a) = self;
-        let calldata = DecimalFloat::formatCall { a }.abi_encode();
+        let calldata = DecimalFloat::formatCall {
+            a,
+            sigFigsLimit: U256::from(9),
+        }
+        .abi_encode();
 
         execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
@@ -1017,17 +1021,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_and_format() {
-        let float = Float::parse("1.1341234234625468391".to_string()).unwrap();
-        let err = float.format().unwrap_err();
-
-        assert!(matches!(
-            err,
-            FloatError::DecimalFloat(DecimalFloatErrors::LossyConversionFromFloat(_))
-        ));
-    }
-
-    #[test]
     fn test_parse_empty_string_error() {
         let err = Float::parse("".to_string()).unwrap_err();
         // We don't know the exact selector here, just ensure the error path is hit.
@@ -1223,12 +1216,12 @@ mod tests {
         let float = Float::parse("-3613.1324123".to_string()).unwrap();
         let abs = float.abs().unwrap();
         let formatted = abs.format().unwrap();
-        assert_eq!(formatted, "3613.1324123");
+        assert_eq!(formatted, "3.6131324123e3");
 
         let float = Float::parse("3613.1324123".to_string()).unwrap();
         let abs = float.abs().unwrap();
         let formatted = abs.format().unwrap();
-        assert_eq!(formatted, "3613.1324123");
+        assert_eq!(formatted, "3.6131324123e3");
 
         let float = Float::parse("0".to_string()).unwrap();
         let abs = float.abs().unwrap();
@@ -1248,12 +1241,12 @@ mod tests {
         let float = Float::parse("-123.1234234625468391".to_string()).unwrap();
         let negated = float.neg().unwrap();
         let formatted = negated.format().unwrap();
-        assert_eq!(formatted, "123.1234234625468391");
+        assert_eq!(formatted, "1.231234234625468391e2");
 
         let float = Float::parse(formatted).unwrap();
         let negated = float.neg().unwrap();
         let formatted = negated.format().unwrap();
-        assert_eq!(formatted, "-123.1234234625468391");
+        assert_eq!(formatted, "-1.231234234625468391e2");
 
         let float = Float::parse("0".to_string()).unwrap();
         let negated = float.neg().unwrap();

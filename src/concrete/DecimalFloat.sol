@@ -58,9 +58,10 @@ contract DecimalFloat {
 
     /// Exposes `LibFormatDecimalFloat.toDecimalString` for offchain use.
     /// @param a The float to format.
+    /// @param sigFigsLimit The significant figures limit.
     /// @return The string representation of the float.
-    function format(Float a) external pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(a);
+    function format(Float a, uint256 sigFigsLimit) external pure returns (string memory) {
+        return LibFormatDecimalFloat.toDecimalString(a, sigFigsLimit);
     }
 
     /// Exposes `LibDecimalFloat.add` for offchain use.
