@@ -32,6 +32,9 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         (bytes4 errorCode, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(formatted);
         assertEq(errorCode, 0, "Parse error");
         assertTrue(float.eq(parsed), "Round trip failed");
+        // Canonicalization: format(parse(format(x))) == format(x)
+        string memory reFormatted = LibFormatDecimalFloat.toDecimalString(parsed);
+        assertEq(formatted, reFormatted, "Formatting not canonical");
     }
 
     /// Negative matches positive.
