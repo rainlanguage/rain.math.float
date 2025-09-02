@@ -13,7 +13,7 @@ contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
 
     function diffLimit() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(94, -3);
+        return LibDecimalFloat.packLossless(96, -3);
     }
 
     function checkPow(
@@ -153,7 +153,7 @@ contract LibDecimalFloatPowTest is LogTest {
             // If b is zero we'll divide by zero on the inv.
             // If c is 1 then it's not round trippable because 1^x = 1 for all x.
             // C will be 1 when a is 1 or b is 0 (or very close to either).
-            if (b.isZero() || c.eq(LibDecimalFloat.packLossless(1, 0))) {} else {
+            if (b.isZero() || c.eq(LibDecimalFloat.FLOAT_ONE)) {} else {
                 Float inv = b.inv();
                 try this.powExternal(c, inv) returns (Float roundTrip) {
                     if (roundTrip.isZero()) {} else {
