@@ -100,6 +100,21 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(LibDecimalFloat.FLOAT_ZERO, b);
     }
 
+    /// a^1 = a for all a >= 0 (negative bases revert per current semantics).
+    function testPowBOne(Float a) external {
+        vm.assume(!a.isZero());
+        a = a.abs();
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        unchecked {
+            int256 exponent = 0;
+            for (int256 i = 1; exponent >= -76;) {
+                checkPow(signedCoefficientA, exponentA, 1, 0, signedCoefficientA, exponentA);
+                exponent--;
+                i *= 10;
+            }
+        }
+    }
+
     function checkRoundTrip(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
     {

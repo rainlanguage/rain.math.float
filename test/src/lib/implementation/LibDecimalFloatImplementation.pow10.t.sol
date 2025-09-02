@@ -7,6 +7,8 @@ import {LogTest} from "../../../abstract/LogTest.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
+import {console2} from "forge-std/Test.sol";
+
 contract LibDecimalFloatImplementationPow10Test is LogTest {
     using LibDecimalFloat for Float;
 
@@ -89,5 +91,16 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
     function testNoRevert(int224 x, int32 exponent) external {
         (x, exponent) = boundFloat(x, exponent);
         LibDecimalFloatImplementation.pow10(logTables(), x, exponent);
+    }
+
+    function testPow10One() external {
+        unchecked {
+            int256 exponent = 0;
+            for (int256 i = 1; exponent >= -76;) {
+                checkPow10(i, exponent, 1000, -2);
+                exponent--;
+                i *= 10;
+            }
+        }
     }
 }

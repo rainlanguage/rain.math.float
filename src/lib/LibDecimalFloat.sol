@@ -24,6 +24,8 @@ import {
     EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
+import {console2} from "forge-std/console2.sol";
+
 type Float is bytes32;
 
 /// @title LibDecimalFloat
@@ -666,6 +668,8 @@ library LibDecimalFloat {
             // If a is zero, then a^b is always zero, regardless of b.
             // This is a special case because log10(0) is undefined.
             return FLOAT_ZERO;
+        } else if (b.eq(FLOAT_ONE)) {
+            return a;
         }
 
         (int256 signedCoefficientC, int256 exponentC) =
