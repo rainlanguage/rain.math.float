@@ -87,6 +87,19 @@ contract LibFormatDecimalFloatCountSigFigs is Test {
         // -10.01 = 4
         checkCountSigFigs(-1001, -2, 4);
         checkCountSigFigs(-10010, -3, 4);
+
+        // internal zeros are significant
+        checkCountSigFigs(100100, 0, 6);
+        checkCountSigFigs(-100100, 0, 6);
+
+        // trailing zeros without decimal are significant
+        checkCountSigFigs(100, 0, 3);
+        checkCountSigFigs(1000, 0, 4);
+
+        // trailing zeros after decimal are not significant
+        // 1.00 and 0.00100
+        checkCountSigFigs(100, -2, 1);
+        checkCountSigFigs(100, -5, 3);
     }
 
     function testCountSigFigsZero(int256 exponent) external pure {
