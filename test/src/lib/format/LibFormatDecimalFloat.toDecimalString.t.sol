@@ -50,6 +50,9 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         (bytes4 err, Float parsedNeg) = LibParseDecimalFloat.parseDecimalFloat(formattedNeg);
         assertEq(err, 0, "Parse error (neg)");
         assertTrue(float.eq(parsedNeg), "Round trip failed (neg)");
+        // Canonicalization for negative: format(parse(s)) == s
+        string memory reFormattedNeg = LibFormatDecimalFloat.toDecimalString(parsedNeg, sigFigsLimit);
+        assertEq(formattedNeg, reFormattedNeg, "Formatting not canonical (neg)");
     }
 
     /// Test some specific examples.
