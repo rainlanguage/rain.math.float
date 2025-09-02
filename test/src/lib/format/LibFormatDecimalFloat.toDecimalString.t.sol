@@ -24,10 +24,6 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         assertEq(actual, expected, "Formatted value mismatch");
     }
 
-    function toString(Float float, uint256 sigFigsLimit) external pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(float, sigFigsLimit);
-    }
-
     /// Test round tripping a value through parse and format.
     function testFormatDecimalRoundTripNonNegative(uint256 value, uint256 sigFigsLimit) external pure {
         value = bound(value, 0, uint256(int256(type(int224).max)));
