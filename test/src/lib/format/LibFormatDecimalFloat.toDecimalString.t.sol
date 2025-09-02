@@ -7,10 +7,10 @@ import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 
-/// @title LibFormatDecimalFloatTest
+/// @title LibFormatDecimalFloatToDecimalStringTest
 /// @notice Test contract for verifying the functionality of LibFormatDecimalFloat
 /// @dev Tests both the stack and memory versions of formatting functions and round-trip conversions
-contract LibFormatDecimalFloatTest is Test {
+contract LibFormatDecimalFloatToDecimalStringTest is Test {
     using LibDecimalFloat for Float;
     using LibFormatDecimalFloat for Float;
 
