@@ -24,8 +24,6 @@ import {
     EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
-import {console2} from "forge-std/console2.sol";
-
 type Float is bytes32;
 
 /// @title LibDecimalFloat
