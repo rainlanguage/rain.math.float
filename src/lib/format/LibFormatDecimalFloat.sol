@@ -17,19 +17,19 @@ library LibFormatDecimalFloat {
             return 1;
         }
 
-        uint256 absCoefficient = uint256(signedCoefficient < 0 ? -signedCoefficient : signedCoefficient);
+        // uint256 absCoefficient = uint256(signedCoefficient < 0 ? -signedCoefficient : signedCoefficient);
         uint256 sigFigs = 0;
 
         if (exponent < 0) {
-            while (absCoefficient % 10 == 0) {
-                absCoefficient /= 10;
+            while (signedCoefficient % 10 == 0) {
+                signedCoefficient /= 10;
                 exponent++;
             }
         }
 
-        while (absCoefficient != 0) {
+        while (signedCoefficient != 0) {
             sigFigs++;
-            absCoefficient /= 10;
+            signedCoefficient /= 10;
         }
 
         // Adjust for exponent
