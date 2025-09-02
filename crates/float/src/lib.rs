@@ -357,7 +357,11 @@ impl Float {
     /// ```
     pub fn format(self) -> Result<String, FloatError> {
         let Float(a) = self;
-        let calldata = DecimalFloat::formatCall { a }.abi_encode();
+        let calldata = DecimalFloat::formatCall {
+            a,
+            sigFigsLimit: U256::from(9),
+        }
+        .abi_encode();
 
         execute_call(Bytes::from(calldata), |output| {
             let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
