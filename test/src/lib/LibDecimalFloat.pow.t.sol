@@ -50,6 +50,11 @@ contract LibDecimalFloatPowTest is LogTest {
         // 8.853071703048649170130397094169464632911643045383977634639832230468640539353e75 e60910
         checkPow(99999, 0, 12182, 0, 1000, 60907);
         checkPow(1785215562, 0, 18, 0, 3388, 163);
+
+        {
+            (int256 signedCoefficientE, int256 exponentE) = LibDecimalFloat.FLOAT_E.unpack();
+            checkPow(signedCoefficientE, exponentE, 1, 0, signedCoefficientE, exponentE);
+        }
     }
 
     /// a^b is error for negative a and all b.
