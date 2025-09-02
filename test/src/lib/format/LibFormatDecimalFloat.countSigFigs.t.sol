@@ -100,6 +100,14 @@ contract LibFormatDecimalFloatCountSigFigs is Test {
         // 1.00 and 0.00100
         checkCountSigFigs(100, -2, 1);
         checkCountSigFigs(100, -5, 3);
+
+        // positive exponent growth
+        // 10
+        checkCountSigFigs(1, 1, 2);
+        // 100
+        checkCountSigFigs(1, 2, 3);
+        // -1000
+        checkCountSigFigs(-1, 3, 4);
     }
 
     function testCountSigFigsZero(int256 exponent) external pure {
