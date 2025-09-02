@@ -666,7 +666,9 @@ library LibDecimalFloat {
             // If a is zero, then a^b is always zero, regardless of b.
             // This is a special case because log10(0) is undefined.
             return FLOAT_ZERO;
-        } else if (b.eq(FLOAT_ONE)) {
+        }
+        // Handle identity case for positive values of a, i.e. a^1.
+        else if (b.eq(FLOAT_ONE) && a.gt(FLOAT_ZERO)) {
             return a;
         }
 

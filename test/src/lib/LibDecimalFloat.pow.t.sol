@@ -107,8 +107,8 @@ contract LibDecimalFloatPowTest is LogTest {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         unchecked {
             int256 exponent = 0;
-            for (int256 i = 1; exponent >= -76;) {
-                checkPow(signedCoefficientA, exponentA, 1, 0, signedCoefficientA, exponentA);
+            for (int256 i = 1; exponent >= -67;) {
+                checkPow(signedCoefficientA, exponentA, i, exponent, signedCoefficientA, exponentA);
                 exponent--;
                 i *= 10;
             }
