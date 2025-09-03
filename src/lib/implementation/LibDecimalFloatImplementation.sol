@@ -225,7 +225,7 @@ library LibDecimalFloatImplementation {
         pure
         returns (int256 signedCoefficient, int256 exponent)
     {
-        if (signedCoefficientA == 0) {
+        if (signedCoefficientA == 0 && signedCoefficientB != 0) {
             signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
             exponent = MAXIMIZED_ZERO_EXPONENT;
         } else {
