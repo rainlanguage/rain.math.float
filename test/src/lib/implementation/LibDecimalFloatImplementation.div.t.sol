@@ -2,15 +2,24 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, stdError} from "forge-std/Test.sol";
 import {
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
-    EXPONENT_MAX
+    EXPONENT_MAX,
+    MulDivOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
 
 contract LibDecimalFloatImplementationDivTest is Test {
+    function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (int256, int256)
+    {
+        return LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
     function checkDiv(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -23,6 +32,25 @@ contract LibDecimalFloatImplementationDivTest is Test {
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertEq(signedCoefficient, signedCoefficientC, "coefficient");
         assertEq(exponent, exponentC, "exponent");
+    }
+
+    function testDivZero(int256 signedCoefficient, int256 exponent) external {
+        exponent = bound(exponent, type(int256).min / 2, type(int256).max);
+        (int256 signedCoefficientMaximized, int256 exponentMaximized) =
+            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+        if (signedCoefficient == 0) {
+            vm.expectRevert(stdError.divisionError);
+        } else {
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    MulDivOverflow.selector,
+                    LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientMaximized),
+                    1e75,
+                    0
+                )
+            );
+        }
+        this.divExternal(signedCoefficient, exponent, 0, 0);
     }
 
     /// 1 / 3 gas by parts 10
