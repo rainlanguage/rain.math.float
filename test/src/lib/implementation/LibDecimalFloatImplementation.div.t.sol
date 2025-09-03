@@ -11,8 +11,6 @@ import {
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
 
-import {console2} from "forge-std/console2.sol";
-
 contract LibDecimalFloatImplementationDivTest is Test {
     function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         external
