@@ -338,7 +338,6 @@ impl Float {
         self.format_with_limit(sig_figs_limit)
     }
 
-
     /// Returns `true` if `self` is less than `b`.
     ///
     /// # Arguments

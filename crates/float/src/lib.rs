@@ -391,7 +391,6 @@ impl Float {
         })
     }
 
-
     /// Returns `true` if `self` is less than `b`.
     ///
     /// # Arguments
@@ -1059,8 +1058,6 @@ mod tests {
             prop_assert!(float.eq(parsed).unwrap());
         }
     }
-
-
 
     proptest! {
         #[test]
