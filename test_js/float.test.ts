@@ -23,9 +23,9 @@ describe('Test Float Bindings', () => {
 			expect(float.format()?.value!).toBe('3.14');
 		});
 
-		it('should test format18 and fromFixedDecimal', () => {
+		it('should test format and fromFixedDecimal', () => {
 			const float = Float.fromFixedDecimal(12345n, 2)?.value!;
-			expect(float.format18()?.value!).toBe('123.45');
+			expect(float.format()?.value!).toBe('123.45');
 		});
 
 		it('should test toFixedDecimal', () => {

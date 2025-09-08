@@ -297,6 +297,16 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloat("1.2e3.4", 12, 2, 5);
     }
 
+    /// issue found in fuzzing round trip with formatter 1.
+    function testParseFormatterRoundTripBug0() external pure {
+        checkParseDecimalFloat(
+            "1.3479973333575319897333507543509815336818572211270286240551805124605e49",
+            13479973333575319897333507543509815336818572211270286240551805124605,
+            -18,
+            72
+        );
+    }
+
     /// An empty string should fail.
     function testParseDecimalFloatEmpty() external pure {
         checkParseDecimalFloatFail("", ParseEmptyDecimalString.selector, 0);
@@ -392,7 +402,7 @@ contract LibParseDecimalFloatTest is Test {
     /// impossible to fit the max decimals.
     function testParseLiteralDecimalFloatPrecisionRevert1() external pure {
         checkParseDecimalFloatFail(
-            "1.5789604461865809771178549250434395392663499233282028201972879200395",
+            "2.5789604461865809771178549250434395392663499233282028201972879200395",
             ParseDecimalPrecisionLoss.selector,
             69
         );

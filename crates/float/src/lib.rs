@@ -465,10 +465,7 @@ impl Float {
         })
     }
 
-    /// Formats the float as a decimal string.
-    ///
-    /// NOTE: Uses 18 decimal places and fails if the float has more than
-    /// that number of decimals.
+    /// Formats the float as a decimal string with a default significant figures limit of 18.
     ///
     /// # Returns
     ///
@@ -486,17 +483,14 @@ impl Float {
     /// anyhow::Ok(())
     /// ```
     pub fn format(self) -> Result<String, FloatError> {
-        let Float(a) = self;
-        let calldata = DecimalFloat::formatCall { a }.abi_encode();
-
-        execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
-            Ok(decoded)
-        })
+        self.format_with_limit(18)
     }
 
-    /// Formats the float as a decimal string. Gets truncated to 18 decimal
-    /// places if it has more than that.
+    /// Formats the float as a decimal string with a specified significant figures limit.
+    ///
+    /// # Arguments
+    ///
+    /// * `sig_figs_limit` - The significant figures limit.
     ///
     /// # Returns
     ///
@@ -508,17 +502,23 @@ impl Float {
     /// ```
     /// use rain_math_float::Float;
     ///
-    /// let float = Float::parse("2.5".to_string())?;
-    /// assert_eq!(float.format18()?, "2.5");
+    /// let float = Float::parse("3.14".to_string())?;
+    /// assert_eq!(float.format_with_limit(5)?, "3.14");
     ///
     /// anyhow::Ok(())
     /// ```
-    pub fn format18(self) -> Result<String, FloatError> {
-        let ten_to_18 = Self::from_fixed_decimal(U256::from(10u64).pow(U256::from(18)), 0)?;
-        let multiplied = (self * ten_to_18)?;
-        let floored = multiplied.floor()?;
-        let divided = (floored / ten_to_18)?;
-        divided.format()
+    pub fn format_with_limit(self, sig_figs_limit: u32) -> Result<String, FloatError> {
+        let Float(a) = self;
+        let calldata = DecimalFloat::formatCall {
+            a,
+            sigFigsLimit: U256::from(sig_figs_limit),
+        }
+        .abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
     }
 
     /// Returns `true` if `self` is less than `b`.
@@ -1147,17 +1147,6 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_and_format() {
-        let float = Float::parse("1.1341234234625468391".to_string()).unwrap();
-        let err = float.format().unwrap_err();
-
-        assert!(matches!(
-            err,
-            FloatError::DecimalFloat(DecimalFloatErrors::LossyConversionFromFloat(_))
-        ));
-    }
-
-    #[test]
     fn test_parse_empty_string_error() {
         let err = Float::parse("".to_string()).unwrap_err();
         // We don't know the exact selector here, just ensure the error path is hit.
@@ -1236,26 +1225,6 @@ mod tests {
         #[test]
         fn test_format_parse(float in reasonable_float()) {
             let formatted = float.format().unwrap();
-            let parsed = Float::parse(formatted.clone()).unwrap();
-            prop_assert!(float.eq(parsed).unwrap());
-        }
-    }
-
-    #[test]
-    fn test_format18() {
-        let float = Float::parse("1.234567890123456789".to_string()).unwrap();
-        let formatted = float.format18().unwrap();
-        assert_eq!(formatted, "1.234567890123456789");
-
-        let float = Float::parse("1.2345678901234567891".to_string()).unwrap();
-        let formatted = float.format18().unwrap();
-        assert_eq!(formatted, "1.234567890123456789");
-    }
-
-    proptest! {
-        #[test]
-        fn test_format18_parse(float in reasonable_float()) {
-            let formatted = float.format18().unwrap();
             let parsed = Float::parse(formatted.clone()).unwrap();
             prop_assert!(float.eq(parsed).unwrap());
         }
@@ -1419,12 +1388,12 @@ mod tests {
         let float = Float::parse("-123.1234234625468391".to_string()).unwrap();
         let negated = float.neg().unwrap();
         let formatted = negated.format().unwrap();
-        assert_eq!(formatted, "123.1234234625468391");
+        assert_eq!(formatted, "1.231234234625468391e2");
 
         let float = Float::parse(formatted).unwrap();
         let negated = float.neg().unwrap();
         let formatted = negated.format().unwrap();
-        assert_eq!(formatted, "-123.1234234625468391");
+        assert_eq!(formatted, "-1.231234234625468391e2");
 
         let float = Float::parse("0".to_string()).unwrap();
         let negated = float.neg().unwrap();

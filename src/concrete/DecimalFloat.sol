@@ -33,8 +33,14 @@ contract DecimalFloat {
         return LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
     }
 
+    /// Exposes `LibDecimalFloat.FLOAT_ZERO` for offchain use.
+    /// @return The zero value of a Float in its maximized representation.
+    function zero() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_ZERO;
+    }
     /// Exposes `LibDecimalFloat.FLOAT_E` for offchain use.
     /// @return The constant value of Euler's number as a Float.
+
     function e() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_E;
     }
@@ -52,9 +58,10 @@ contract DecimalFloat {
 
     /// Exposes `LibFormatDecimalFloat.toDecimalString` for offchain use.
     /// @param a The float to format.
+    /// @param sigFigsLimit The significant figures limit.
     /// @return The string representation of the float.
-    function format(Float a) external pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(a);
+    function format(Float a, uint256 sigFigsLimit) external pure returns (string memory) {
+        return LibFormatDecimalFloat.toDecimalString(a, sigFigsLimit);
     }
 
     /// Exposes `LibDecimalFloat.add` for offchain use.

@@ -380,9 +380,6 @@ impl Float {
 
     /// Formats the float as a decimal string.
     ///
-    /// NOTE: Uses 18 decimal places and fails if the float has more than
-    /// that number of decimals.
-    ///
     /// # Returns
     ///
     /// * `Ok(String)` - The formatted string.
@@ -403,8 +400,11 @@ impl Float {
         self.format()
     }
 
-    /// Formats the float as a decimal string. Gets truncated to 18 decimal
-    /// places if it has more than that.
+    /// Formats the float as a decimal string with a specified significant figures limit.
+    ///
+    /// # Arguments
+    ///
+    /// * `sig_figs_limit` - The significant figures limit.
     ///
     /// # Returns
     ///
@@ -414,16 +414,16 @@ impl Float {
     /// # Example
     ///
     /// ```typescript
-    /// const floatResult = Float.parse("2.5");
+    /// const floatResult = Float.parse("3.14159265359");
     /// if (floatResult.error) {
     ///    console.error(floatResult.error);
     /// }
     /// const float = floatResult.value;
-    /// assert(float.format18() === "2.5");
+    /// assert(float.formatWithLimit(5) === "3.1416");
     /// ```
-    #[wasm_export(js_name = "format18")]
-    pub fn format18_js(&self) -> Result<String, FloatError> {
-        self.format18()
+    #[wasm_export(js_name = "formatWithLimit")]
+    pub fn format_with_limit_js(&self, sig_figs_limit: u32) -> Result<String, FloatError> {
+        self.format_with_limit(sig_figs_limit)
     }
 
     /// Returns `true` if `self` is less than `b`.
