@@ -24,6 +24,52 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         assertEq(actual, expected, "Formatted value mismatch");
     }
 
+    function checkRoundFromString(string memory s, Float expected) internal pure {
+        (bytes4 err, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(s);
+        assertEq(err, 0, "Parse error");
+        assertTrue(expected.eq(parsed), "Round trip failed");
+        // Canonicalization: format(parse(s)) == s
+        string memory reFormatted = LibFormatDecimalFloat.toDecimalString(parsed, 9);
+        assertEq(s, reFormatted, "Formatting not canonical");
+    }
+
+    /// Test round tripping examples.
+    function testFormatDecimalRoundTripExamples() external pure {
+        checkRoundFromString(
+            "1.2345678901234567890123456789e29", LibDecimalFloat.packLossless(123456789012345678901234567890, 0)
+        );
+        checkRoundFromString("0", LibDecimalFloat.packLossless(0, 0));
+        checkRoundFromString(
+            "-1.2345678901234567890123456789e29", LibDecimalFloat.packLossless(-123456789012345678901234567890, 0)
+        );
+        checkRoundFromString("1", LibDecimalFloat.packLossless(1, 0));
+        checkRoundFromString("-1", LibDecimalFloat.packLossless(-1, 0));
+        checkRoundFromString("100", LibDecimalFloat.packLossless(100, 0));
+        checkRoundFromString("-100", LibDecimalFloat.packLossless(-100, 0));
+        checkRoundFromString("0.01", LibDecimalFloat.packLossless(1, -2));
+        checkRoundFromString("-0.01", LibDecimalFloat.packLossless(-1, -2));
+        checkRoundFromString("0.1", LibDecimalFloat.packLossless(1, -1));
+        checkRoundFromString("-0.1", LibDecimalFloat.packLossless(-1, -1));
+        checkRoundFromString("0.101", LibDecimalFloat.packLossless(101, -3));
+        checkRoundFromString("-0.101", LibDecimalFloat.packLossless(-101, -3));
+        checkRoundFromString("1.1", LibDecimalFloat.packLossless(11, -1));
+        checkRoundFromString("-1.1", LibDecimalFloat.packLossless(-11, -1));
+        checkRoundFromString("123456789", LibDecimalFloat.packLossless(123456789, 0));
+        checkRoundFromString("-123456789", LibDecimalFloat.packLossless(-123456789, 0));
+        checkRoundFromString("1.23456789e9", LibDecimalFloat.packLossless(1234567890, 0));
+        checkRoundFromString("-1.23456789e9", LibDecimalFloat.packLossless(-1234567890, 0));
+        checkRoundFromString("1.019001501928e-6", LibDecimalFloat.packLossless(1019001501928, -18));
+        checkRoundFromString("-1.019001501928e-6", LibDecimalFloat.packLossless(-1019001501928, -18));
+        checkRoundFromString("1e9", LibDecimalFloat.packLossless(1000000000, 0));
+        checkRoundFromString("-1e9", LibDecimalFloat.packLossless(-1000000000, 0));
+        checkRoundFromString("1e-76", LibDecimalFloat.packLossless(1, -76));
+        checkRoundFromString("-1e-76", LibDecimalFloat.packLossless(-1, -76));
+        checkRoundFromString("1e76", LibDecimalFloat.packLossless(1, 76));
+        checkRoundFromString("-1e76", LibDecimalFloat.packLossless(-1, 76));
+        checkRoundFromString("1e200", LibDecimalFloat.packLossless(1, 200));
+        checkRoundFromString("-1e200", LibDecimalFloat.packLossless(-1, 200));
+    }
+
     /// Test round tripping a value through parse and format.
     function testFormatDecimalRoundTripNonNegative(uint256 value, uint256 sigFigsLimit) external pure {
         value = bound(value, 0, uint256(int256(type(int224).max)));
@@ -98,6 +144,18 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         checkFormat(-10, 1, 9, "-100");
         checkFormat(-1, 2, 9, "-100");
         checkFormat(-1000, -1, 9, "-100");
+
+        // 0.01
+        checkFormat(1, -2, 9, "0.01");
+        checkFormat(10, -3, 9, "0.01");
+        checkFormat(100, -4, 9, "0.01");
+        checkFormat(1000, -5, 9, "0.01");
+
+        // -0.01
+        checkFormat(-1, -2, 9, "-0.01");
+        checkFormat(-10, -3, 9, "-0.01");
+        checkFormat(-100, -4, 9, "-0.01");
+        checkFormat(-1000, -5, 9, "-0.01");
 
         // 0.1
         checkFormat(1, -1, 9, "0.1");
