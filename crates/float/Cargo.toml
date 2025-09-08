@@ -1,0 +1,38 @@
+[package]
+name = "rain-math-float"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+alloy.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+wasm-bindgen-utils = { git = "https://github.com/rainlanguage/rain.wasm", rev = "06990d85a0b7c55378a1c8cca4dd9e2bc34a596a" }
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+revm = { workspace = true, default-features = false, features = [
+    "c-kzg",
+    "portable",
+    "std",
+    "tracer",
+] }
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+revm = { workspace = true, default-features = false, features = [
+    "kzg-rs",
+    "portable",
+    "std",
+    "tracer",
+] }
+getrandom = { version = "0.2.11", features = ["js", "js-sys"] }
+
+[dev-dependencies]
+alloy = { workspace = true, features = ["sol-types", "json-rpc", "arbitrary"] }
+anyhow = "1.0.98"
+proptest.workspace = true
+serde_json = "1.0.140"

@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
 import {
@@ -14,27 +15,16 @@ import {
     Log10Zero,
     NegativeFixedDecimalConversion,
     LossyConversionFromFloat,
-    LossyConversionToFloat
+    LossyConversionToFloat,
+    ZeroNegativePower
 } from "../error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
-    NORMALIZED_ZERO_SIGNED_COEFFICIENT,
-    NORMALIZED_ZERO_EXPONENT,
-    NORMALIZED_MIN,
-    NORMALIZED_MAX,
-    EXPONENT_STEP_SIZE,
-    SIGNED_NORMALIZED_MAX,
     EXPONENT_MAX,
     EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
 type Float is bytes32;
-
-/// @dev When normalizing a number, how far we "leap" when very far from
-/// normalized.
-int256 constant EXPONENT_LEAP_SIZE = 24;
-/// @dev The multiplier for the leap size, calculated at compile time.
-int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_LEAP_SIZE)));
 
 /// @title LibDecimalFloat
 /// Floating point math library for Rainlang.
@@ -58,34 +48,56 @@ int256 constant EXPONENT_LEAP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT
 /// fraction. This technically results in less precision than a binary floating
 /// point system, but is much more predictable and easier to reason about in the
 /// context of financial inputs and outputs, which are typically all decimal
-/// values as understood by humans. However, consider that we have 127 bits of
+/// values as understood by humans. However, consider that we have 224 bits of
 /// precision in the coefficient, which is far more than the 53 bits of a double
 /// precision floating point number regardless of binary/decimal considerations,
 /// and should be more than enough for most defi use cases.
-///
-/// A typical defi fixed point value has 18 decimals, while a normalized decimal
-/// float in this system has 37 decimals. This means, for example, that we can
-/// represent the entire supply of any 18 decimal fixed point token amount up to
-/// 10 quintillion tokens, without any loss of precision.
-///
-/// One use case for this number system is representing ratios of tokens that
-/// have both large differences in their decimals and unit value. For example,
-/// at the time of writing, 1 SHIB is worth about 2.7e-10 BTC while the
-/// WTBC contract only supports 8 decimals vs. SHIB's 18 decimals. It's literally
-/// not possible to represent a purchase of 1 SHIB (1e18) worth of WBTC, so it's
-/// easy to see how a fixed point decimal system could accidentally round
-/// something down to `0` or up to `1` or similarly bad precision loss, simply
-/// due to the large difference in OOMs in _representation_ of any two tokens
-/// being considered.
-///
-/// Of course there are workarounds, such as temporarily inflating values during
-/// calculations and rescaling them afterwards, but they are ad-hoc and error
-/// prone. Importantly, the workarounds are typically not obvious to the target
-/// demographic of Rainlang, and it is not obvious where/when they need to be
-/// applied without rigourous testing/mathematical models that are beyond the
-/// scope of the typical user of Rainlang.
 library LibDecimalFloat {
     using LibDecimalFloat for Float;
+
+    address constant LOG_TABLES_ADDRESS = 0x295180b25A5059a2e7eC64272ba4F85047B4146A;
+
+    /// A zero valued float.
+    Float constant FLOAT_ZERO = Float.wrap(0);
+
+    /// A one valued float.
+    Float constant FLOAT_ONE = Float.wrap(bytes32(uint256(1)));
+
+    /// A half valued float.
+    // slither-disable-next-line too-many-digits
+    Float constant FLOAT_HALF =
+        Float.wrap(bytes32(uint256(0xffffffff00000000000000000000000000000000000000000000000000000005)));
+
+    /// A two valued float.
+    Float constant FLOAT_TWO = Float.wrap(bytes32(uint256(0x02)));
+
+    /// Largest possible positive value.
+    /// type(int224).max, type(int32).max
+    Float constant FLOAT_MAX_POSITIVE_VALUE =
+        Float.wrap(bytes32(uint256(0x7fffffff7fffffffffffffffffffffffffffffffffffffffffffffffffffffff)));
+
+    /// Smallest possible positive value.
+    /// 1, type(int32).min
+    // slither-disable-next-line too-many-digits
+    Float constant FLOAT_MIN_POSITIVE_VALUE =
+        Float.wrap(bytes32(uint256(0x8000000000000000000000000000000000000000000000000000000000000001)));
+
+    /// Largest possible (closest to zero) negative value.
+    /// -1, type(int32).min
+    // slither-disable-next-line too-many-digits
+    Float constant FLOAT_MAX_NEGATIVE_VALUE =
+        Float.wrap(bytes32(uint256(0x80000000ffffffffffffffffffffffffffffffffffffffffffffffffffffffff)));
+
+    /// Smallest possible (most negative) negative value.
+    /// type (int224).min, type(int32).max
+    // slither-disable-next-line too-many-digits
+    Float constant FLOAT_MIN_NEGATIVE_VALUE =
+        Float.wrap(bytes32(uint256(0x7fffffff80000000000000000000000000000000000000000000000000000000)));
+
+    /// Euler's number
+    /// 2.718281828459045235360287471352662497757247093699959574966967627724e66, -66
+    Float constant FLOAT_E =
+        Float.wrap(bytes32(uint256(0xffffffbe19cfc6ef4f44cf88f14500d013df534fcaad48fca1d5ca47bea26fcc)));
 
     /// Convert a fixed point decimal value to a signed coefficient and exponent.
     /// The conversion can be lossy if the unsigned value is too large to fit in
@@ -120,6 +132,7 @@ library LibDecimalFloat {
     /// e.g. If 1e18 represents 1 this would be 18 decimals.
     /// @return float The Float struct containing the signed coefficient and
     /// exponent.
+    /// @return lossless `true` if the conversion is lossless.
     function fromFixedDecimalLossyPacked(uint256 value, uint8 decimals) internal pure returns (Float, bool) {
         (int256 signedCoefficient, int256 exponent, bool lossless) = fromFixedDecimalLossy(value, decimals);
         (Float float, bool losslessPack) = packLossy(signedCoefficient, exponent);
@@ -276,13 +289,6 @@ library LibDecimalFloat {
     /// Pack a signed coefficient and exponent into a single `PackedFloat`.
     /// Clearly this involves fitting 64 bytes into 32 bytes, so there will be
     /// data loss.
-    /// Normalized numbers are guaranteed to round trip through pack/unpack in
-    /// a lossless manner. The normalization process will _truncate_ on precision
-    /// loss if required, which is significantly better than potentially
-    /// _decapitating_ a non-normalized number during the pack operation. It is
-    /// highly recomended to normalize numbers before packing them.
-    /// Note that mathematical operations in this lib all output normalized
-    /// so typically this is implicit.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// representation.
     /// @param exponent The exponent of the floating point representation.
@@ -330,8 +336,7 @@ library LibDecimalFloat {
     }
 
     /// Unpack a packed bytes32 into a signed coefficient and exponent. This is
-    /// the inverse of `pack`. Note that the unpacked values are not necessarily
-    /// normalized, especially if their provenance is unknown or user input.
+    /// the inverse of `pack`.
     /// @param float The packed representation of the signed coefficient and
     /// exponent.
     /// @return signedCoefficient The signed coefficient of the floating point
@@ -363,7 +368,7 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Subtract two floats together as a normalized result.
+    /// Subtract float a from float b.
     ///
     /// This is effectively shorthand for adding the two floats with the second
     /// float negated. Therefore, the same caveats apply as for `add`.
@@ -478,7 +483,6 @@ library LibDecimalFloat {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
         (Float result, bool lossless) = packLossy(signedCoefficient, exponent);
-        // Inversion cannot be lossy as long as the denominator is normalized.
         (lossless);
         return result;
     }
@@ -497,8 +501,6 @@ library LibDecimalFloat {
     /// Numeric less than for floats.
     /// A float is less than another if its numeric value is less than the other.
     /// For example, 1e2 is less than 1e3, and 1e2 is less than 2e2.
-    /// Any representable value can be compared without precision loss, e.g. no
-    /// normalization is done internally.
     /// @param a The first float to compare.
     /// @param b The second float to compare.
     function lt(Float a, Float b) internal pure returns (bool) {
@@ -513,8 +515,6 @@ library LibDecimalFloat {
     /// Numeric greater than for floats.
     /// A float is greater than another if its numeric value is greater than the
     /// other. For example, 1e3 is greater than 1e2, and 2e2 is greater than 1e2.
-    /// Any representable value can be compared without precision loss, e.g. no
-    /// normalization is done internally.
     /// @param a The first float to compare.
     /// @param b The second float to compare.
     function gt(Float a, Float b) internal pure returns (bool) {
@@ -523,6 +523,30 @@ library LibDecimalFloat {
         (signedCoefficientA, signedCoefficientB) =
             LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         return signedCoefficientA > signedCoefficientB;
+    }
+
+    /// Numeric less than or equal to for floats.
+    /// A float is less than or equal to another if its numeric value is less
+    /// than or equal to the other. For example, 1e2 is less than or equal to 1e3
+    /// and 1e2 is less than or equal to 1e2.
+    function lte(Float a, Float b) internal pure returns (bool) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return signedCoefficientA <= signedCoefficientB;
+    }
+
+    /// Numeric greater than or equal to for floats.
+    /// A float is greater than or equal to another if its numeric value is
+    /// greater than or equal to the other. For example, 1e3 is greater than or
+    /// equal to 1e2 and 1e2 is greater than or equal to 1e2.
+    function gte(Float a, Float b) internal pure returns (bool) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (signedCoefficientA, signedCoefficientB) =
+            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return signedCoefficientA >= signedCoefficientB;
     }
 
     /// Fractional component of a float.
@@ -542,11 +566,43 @@ library LibDecimalFloat {
     /// @param float The float to floor.
     function floor(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
+        // If the exponent is 0 or greater then the float is already an integer.
+        if (exponent >= 0) {
+            return float;
+        }
         (int256 characteristic, int256 mantissa) =
             LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
         (Float result, bool lossless) = packLossy(characteristic, exponent);
         // Flooring is lossy by definition.
         (lossless, mantissa);
+        return result;
+    }
+
+    /// Smallest integer value greater than or equal to the float.
+    /// @param float The float to ceil.
+    function ceil(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        // If the exponent is 0 or greater then the float is already an integer.
+        if (exponent >= 0) {
+            return float;
+        }
+        (int256 characteristic, int256 mantissa) =
+            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
+
+        // If the mantissa is 0, then the float is already an integer.
+        if (mantissa == 0) {
+            return float;
+        }
+        // Truncate the fractional part when exponent < 0:
+        //   mantissa < 0 (input < 0) → truncation towards zero increases the value (correct ceil).
+        //   mantissa == 0 → value is already an integer.
+        //   mantissa > 0 (input > 0) → truncation decreases the value, so add 1 to round up.
+        else if (mantissa > 0) {
+            (characteristic, exponent) = LibDecimalFloatImplementation.add(characteristic, exponent, 1e76, -76);
+        }
+
+        (Float result, bool lossless) = packLossy(characteristic, exponent);
+        (lossless);
         return result;
     }
 
@@ -599,6 +655,22 @@ library LibDecimalFloat {
     /// logarithm tables.
     function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        if (b.isZero()) {
+            return FLOAT_ONE;
+        } else if (signedCoefficientA == 0) {
+            if (b.lt(FLOAT_ZERO)) {
+                // If b is negative, and a is 0, so we revert.
+                revert ZeroNegativePower(b);
+            }
+
+            // If a is zero, then a^b is always zero, regardless of b.
+            // This is a special case because log10(0) is undefined.
+            return FLOAT_ZERO;
+        }
+        // Handle identity case for positive values of a, i.e. a^1.
+        else if (b.eq(FLOAT_ONE) && a.gt(FLOAT_ZERO)) {
+            return a;
+        }
 
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
@@ -615,6 +687,22 @@ library LibDecimalFloat {
         // We don't care if power is lossy because it's an approximation anyway.
         (lossless);
         return c;
+    }
+
+    /// sqrt a = a ^ 0.5
+    ///
+    /// Due to the inaccuracies of log10 and power10, this is not perfectly
+    /// accurate, a round trip like sqrt(x)^2 will typically be within half a
+    /// percent or less of the original value, but this can vary depending on
+    /// the input values.
+    ///
+    /// Doesn't lose precision due to the exponent, for a wide range of
+    /// exponents.
+    /// @param a The float to take the square root of.
+    /// @param tablesDataContract The address of the contract containing the
+    /// logarithm tables.
+    function sqrt(Float a, address tablesDataContract) internal view returns (Float) {
+        return pow(a, FLOAT_HALF, tablesDataContract);
     }
 
     /// Returns the minimum of two values.

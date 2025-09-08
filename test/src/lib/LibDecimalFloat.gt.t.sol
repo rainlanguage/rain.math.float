@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
@@ -23,8 +24,8 @@ contract LibDecimalFloatGtTest is Test {
     }
 
     /// x !> x
-    function testGtX(int224 x) external pure {
-        Float a = LibDecimalFloat.packLossless(x, 0);
+    function testGtX(int224 x, int32 exponent) external pure {
+        Float a = LibDecimalFloat.packLossless(x, exponent);
         bool gt = a.gt(a);
         assertTrue(!gt);
     }

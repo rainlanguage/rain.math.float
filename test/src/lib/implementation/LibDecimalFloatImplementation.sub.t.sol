@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std/Test.sol";
@@ -45,5 +46,30 @@ contract LibDecimalFloatImplementationSubTest is Test {
 
         assertEq(signedCoefficient, expectedSignedCoefficient);
         assertEq(exponent, expectedExponent);
+    }
+
+    function checkSub(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        int256 expectedSignedCoefficient,
+        int256 expectedExponent
+    ) internal pure {
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(signedCoefficient, expectedSignedCoefficient, "LibDecimalFloatImplementation.sub coefficient");
+        assertEq(exponent, expectedExponent, "LibDecimalFloatImplementation.sub exponent");
+    }
+
+    function testSubOneFromMax() external pure {
+        checkSub(type(int224).max, type(int32).max, 1, 0, int256(type(int224).max) * 1e9, type(int32).max - 9);
+    }
+
+    function testSubSelf(int224 signedCoefficientA, int32 exponentA) external pure {
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientA, exponentA);
+        (exponent);
+        assertEq(signedCoefficient, 0, "LibDecimalFloatImplementation.sub self coefficient");
     }
 }

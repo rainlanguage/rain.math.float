@@ -1,13 +1,49 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "../lib/LibDecimalFloat.sol";
-import {LOG_TABLES_ADDRESS} from "../lib/deploy/LibDecimalFloatDeploy.sol";
 import {LibFormatDecimalFloat} from "../lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "../lib/parse/LibParseDecimalFloat.sol";
 
 contract DecimalFloat {
     using LibDecimalFloat for Float;
+
+    /// Exposes `LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE` for offchain use.
+    /// @return The maximum positive value of a Float.
+    function maxPositiveValue() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE;
+    }
+
+    /// Exposes `LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE` for offchain use.
+    /// @return The minimum positive value of a Float.
+    function minPositiveValue() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE;
+    }
+
+    /// Exposes `LibDecimalFloat.FLOAT_MAX_NEGATIVE_VALUE` for offchain use.
+    /// @return The maximum negative value of a Float.
+    function maxNegativeValue() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MAX_NEGATIVE_VALUE;
+    }
+
+    /// Exposes `LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE` for offchain use.
+    /// @return The minimum negative value of a Float.
+    function minNegativeValue() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
+    }
+
+    /// Exposes `LibDecimalFloat.FLOAT_ZERO` for offchain use.
+    /// @return The zero value of a Float in its maximized representation.
+    function zero() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_ZERO;
+    }
+    /// Exposes `LibDecimalFloat.FLOAT_E` for offchain use.
+    /// @return The constant value of Euler's number as a Float.
+
+    function e() external pure returns (Float) {
+        return LibDecimalFloat.FLOAT_E;
+    }
 
     /// Exposes `LibParseDecimalFloat.parseDecimalFloat` for offchain use.
     /// @param str The string to parse.
@@ -22,9 +58,10 @@ contract DecimalFloat {
 
     /// Exposes `LibFormatDecimalFloat.toDecimalString` for offchain use.
     /// @param a The float to format.
+    /// @param sigFigsLimit The significant figures limit.
     /// @return The string representation of the float.
-    function format(Float a) external pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(a);
+    function format(Float a, uint256 sigFigsLimit) external pure returns (string memory) {
+        return LibFormatDecimalFloat.toDecimalString(a, sigFigsLimit);
     }
 
     /// Exposes `LibDecimalFloat.add` for offchain use.
@@ -105,6 +142,24 @@ contract DecimalFloat {
         return a.gt(b);
     }
 
+    /// Exposes `LibDecimalFloat.lte` for offchain use.
+    /// @param a The first float to compare.
+    /// @param b The second float to compare.
+    /// @return True if the first float is less than or equal to the second,
+    /// false otherwise.
+    function lte(Float a, Float b) external pure returns (bool) {
+        return a.lte(b);
+    }
+
+    /// Exposes `LibDecimalFloat.gte` for offchain use.
+    /// @param a The first float to compare.
+    /// @param b The second float to compare.
+    /// @return True if the first float is greater than or equal to the second,
+    /// false otherwise.
+    function gte(Float a, Float b) external pure returns (bool) {
+        return a.gte(b);
+    }
+
     /// Exposes `LibDecimalFloat.frac` for offchain use.
     /// @param a The float to get the fractional part of.
     /// @return The fractional part of the float.
@@ -119,18 +174,25 @@ contract DecimalFloat {
         return a.floor();
     }
 
+    /// Exposes `LibDecimalFloat.ceil` for offchain use.
+    /// @param a The float to get the ceiling of.
+    /// @return The ceiled float.
+    function ceil(Float a) external pure returns (Float) {
+        return a.ceil();
+    }
+
     /// Exposes `LibDecimalFloat.pow10` for offchain use.
     /// @param a The float to raise to the power of 10.
     /// @return The result of raising the float to the power of 10.
     function pow10(Float a) external view returns (Float) {
-        return a.pow10(LOG_TABLES_ADDRESS);
+        return a.pow10(LibDecimalFloat.LOG_TABLES_ADDRESS);
     }
 
     /// Exposes `LibDecimalFloat.log10` for offchain use.
     /// @param a The float to take the logarithm of.
     /// @return The logarithm of the float.
     function log10(Float a) external view returns (Float) {
-        return a.log10(LOG_TABLES_ADDRESS);
+        return a.log10(LibDecimalFloat.LOG_TABLES_ADDRESS);
     }
 
     /// Exposes `LibDecimalFloat.pow` for offchain use.
@@ -138,7 +200,14 @@ contract DecimalFloat {
     /// @param b The exponent float.
     /// @return The result of raising the base float to the power of the exponent
     function pow(Float a, Float b) external view returns (Float) {
-        return a.pow(b, LOG_TABLES_ADDRESS);
+        return a.pow(b, LibDecimalFloat.LOG_TABLES_ADDRESS);
+    }
+
+    /// Exposes `LibDecimalFloat.sqrt` for offchain use.
+    /// @param a The float to take the square root of.
+    /// @return The square root of the float.
+    function sqrt(Float a) external view returns (Float) {
+        return a.sqrt(LibDecimalFloat.LOG_TABLES_ADDRESS);
     }
 
     /// Exposes `LibDecimalFloat.min` for offchain use.
@@ -162,5 +231,49 @@ contract DecimalFloat {
     /// @return True if the float is zero, false otherwise.
     function isZero(Float a) external pure returns (bool) {
         return a.isZero();
+    }
+
+    /// Exposes `LibDecimalFloat.fromFixedDecimalLosslessPacked` for offchain
+    /// use.
+    /// @param value The fixed point decimal value to convert.
+    /// @param decimals The number of decimals in the fixed point
+    /// representation. e.g. If 1e18 represents 1 this would be 18 decimals.
+    /// @return float The Float struct containing the signed coefficient and
+    /// exponent.
+    function fromFixedDecimalLossless(uint256 value, uint8 decimals) external pure returns (Float) {
+        return LibDecimalFloat.fromFixedDecimalLosslessPacked(value, decimals);
+    }
+
+    /// Exposes `LibDecimalFloat.toFixedDecimalLossless` for offchain use.
+    /// @param float The Float struct to convert.
+    /// @param decimals The number of decimals in the fixed point
+    /// representation. e.g. If 1e18 represents 1 this would be 18 decimals.
+    /// @return The fixed point decimal value as a uint256.
+    function toFixedDecimalLossless(Float float, uint8 decimals) external pure returns (uint256) {
+        return LibDecimalFloat.toFixedDecimalLossless(float, decimals);
+    }
+
+    /// Exposes `LibDecimalFloat.fromFixedDecimalLossyPacked` for offchain
+    /// use.
+    /// @param value The fixed point decimal value to convert.
+    /// @param decimals The number of decimals in the fixed point
+    /// representation. e.g. If 1e18 represents 1 this would be 18 decimals.
+    /// @return float The Float struct containing the signed coefficient and
+    /// exponent.
+    /// @return lossless True if the conversion was lossless, false otherwise.
+    function fromFixedDecimalLossy(uint256 value, uint8 decimals) external pure returns (Float, bool) {
+        //slither-disable-next-line unused-return
+        return LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
+    }
+
+    /// Exposes `LibDecimalFloat.toFixedDecimalLossy` for offchain use.
+    /// @param float The Float struct to convert.
+    /// @param decimals The number of decimals in the fixed point
+    /// representation. e.g. If 1e18 represents 1 this would be 18 decimals.
+    /// @return value The fixed point decimal value as a uint256.
+    /// @return lossless True if the conversion was lossless, false otherwise.
+    function toFixedDecimalLossy(Float float, uint8 decimals) external pure returns (uint256, bool) {
+        //slither-disable-next-line unused-return
+        return LibDecimalFloat.toFixedDecimalLossy(float, decimals);
     }
 }

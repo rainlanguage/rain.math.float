@@ -1,7 +1,8 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ExponentOverflow, Log10Negative, Log10Zero} from "../../error/ErrDecimalFloat.sol";
+import {ExponentOverflow, Log10Negative, Log10Zero, MulDivOverflow} from "../../error/ErrDecimalFloat.sol";
 import {
     LOG_TABLES,
     LOG_TABLES_SMALL,
@@ -13,11 +14,11 @@ import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
-uint256 constant ADD_MAX_EXPONENT_DIFF = 37;
+uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
 
-/// @dev The maximum exponent that can be normalized.
+/// @dev The maximum exponent that can be maximized.
 /// This is crazy large, so should never be a problem for any real use case.
-/// We need it to guard against overflow when normalizing.
+/// We need it to guard against overflow when maximizing.
 int256 constant EXPONENT_MAX = type(int256).max / 2;
 int256 constant EXPONENT_MAX_PLUS_ONE = EXPONENT_MAX + 1;
 
@@ -26,38 +27,15 @@ int256 constant EXPONENT_MAX_PLUS_ONE = EXPONENT_MAX + 1;
 /// We need it to guard against overflow when normalizing.
 int256 constant EXPONENT_MIN = -EXPONENT_MAX;
 
-/// @dev When normalizing a number, how far we "step" when close to normalized.
-int256 constant EXPONENT_STEP_SIZE = 1;
-/// @dev The multiplier for the step size, calculated at compile time.
-int256 constant EXPONENT_STEP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_STEP_SIZE)));
-/// @dev When normalizing a number, how far we "jump" when somewhat far from
-/// normalized.
-int256 constant EXPONENT_JUMP_SIZE = 6;
-/// @dev The multiplier for the jump size, calculated at compile time.
-int256 constant PRECISION_JUMP_MULTIPLIER = int256(uint256(10 ** uint256(EXPONENT_JUMP_SIZE)));
-/// @dev Every value above or equal to this can jump down while normalizing
-/// without overshooting and causing unnecessary precision loss.
-int256 constant NORMALIZED_JUMP_DOWN_THRESHOLD = SIGNED_NORMALIZED_MAX * PRECISION_JUMP_MULTIPLIER;
-/// @dev Every value below this can jump up while normalizing without
-/// overshooting the normalized range.
-int256 constant NORMALIZED_JUMP_UP_THRESHOLD = SIGNED_NORMALIZED_MIN / PRECISION_JUMP_MULTIPLIER;
+/// @dev The signed coefficient of maximized zero.
+int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
+/// @dev The exponent of maximized zero.
+int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
 
-/// @dev The minimum absolute value of a normalized signed coefficient.
-uint256 constant NORMALIZED_MIN = 1e37;
-int256 constant SIGNED_NORMALIZED_MIN = 1e37;
-/// @dev The maximum absolute value of a normalized signed coefficient.
-uint256 constant NORMALIZED_MAX = 1e38 - 1;
-int256 constant SIGNED_NORMALIZED_MAX = 1e38 - 1;
-uint256 constant NORMALIZED_MAX_PLUS_ONE = 1e38;
-int256 constant SIGNED_NORMALIZED_MAX_PLUS_ONE = 1e38;
-
-/// @dev The signed coefficient of zero when normalized.
-int256 constant NORMALIZED_ZERO_SIGNED_COEFFICIENT = 0;
-/// @dev The exponent of zero when normalized.
-int256 constant NORMALIZED_ZERO_EXPONENT = 0;
+int256 constant LOG10_Y_EXPONENT = -76;
 
 library LibDecimalFloatImplementation {
-    /// Negates and normalizes a float.
+    /// Negates a float.
     /// Equivalent to `0 - x`.
     ///
     /// https://speleotrove.com/decimal/daops.html#refplusmin
@@ -89,42 +67,106 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// Stack only implementation of `mul`.
-    function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    function absUnsignedSignedCoefficient(int256 signedCoefficient) internal pure returns (uint256) {
+        unchecked {
+            if (signedCoefficient < 0) {
+                if (signedCoefficient == type(int256).min) {
+                    return uint256(type(int256).max) + 1;
+                } else {
+                    return uint256(-signedCoefficient);
+                }
+            } else {
+                return uint256(signedCoefficient);
+            }
+        }
+    }
+
+    function unabsUnsignedMulOrDivLossy(int256 a, int256 b, uint256 signedCoefficientAbs, int256 exponent)
         internal
         pure
         returns (int256, int256)
     {
         unchecked {
-            // Unchecked mul the coefficients and add the exponents.
-            int256 signedCoefficient = signedCoefficientA * signedCoefficientB;
+            // Need to minus the coefficient because a and b had different signs.
+            if ((a ^ b) < 0) {
+                if (signedCoefficientAbs > uint256(type(int256).max)) {
+                    if (signedCoefficientAbs == uint256(type(int256).max) + 1) {
+                        // Edge case where the absolute value is exactly
+                        // type(int256).min.
+                        return (type(int256).min, exponent);
+                    } else {
+                        return (-int256(signedCoefficientAbs / 10), exponent + 1);
+                    }
+                } else {
+                    return (-int256(signedCoefficientAbs), exponent);
+                }
+            } else {
+                if (signedCoefficientAbs > uint256(type(int256).max)) {
+                    return (int256(signedCoefficientAbs / 10), exponent + 1);
+                } else {
+                    return (int256(signedCoefficientAbs), exponent);
+                }
+            }
+        }
+    }
 
-            // Need to return early if the result is zero to avoid divide by
-            // zero in the overflow check.
-            if (signedCoefficient == 0) {
-                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+    /// Stack only implementation of `mul`.
+    function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (int256 signedCoefficient, int256 exponent)
+    {
+        bool isZero;
+        assembly ("memory-safe") {
+            isZero := or(iszero(signedCoefficientA), iszero(signedCoefficientB))
+        }
+        if (isZero) {
+            // These sets are redundant as both are zero but this makes it
+            // clearer and more explicit.
+            signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
+            exponent = MAXIMIZED_ZERO_EXPONENT;
+        } else {
+            exponent = exponentA + exponentB;
+
+            // mulDiv only works with unsigned integers, so get the absolute
+            // values of the coefficients.
+            uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
+            uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
+
+            (uint256 prod1,) = mul512(signedCoefficientAAbs, signedCoefficientBAbs);
+
+            uint256 adjustExponent = 0;
+            unchecked {
+                if (prod1 > 1e37) {
+                    prod1 /= 1e37;
+                    adjustExponent += 37;
+                }
+                if (prod1 > 1e18) {
+                    prod1 /= 1e18;
+                    adjustExponent += 18;
+                }
+                if (prod1 > 1e9) {
+                    prod1 /= 1e9;
+                    adjustExponent += 9;
+                }
+                if (prod1 > 1e4) {
+                    prod1 /= 1e4;
+                    adjustExponent += 4;
+                }
+                while (prod1 > 0) {
+                    prod1 /= 10;
+                    adjustExponent++;
+                }
             }
 
-            int256 exponent = exponentA + exponentB;
+            exponent += int256(adjustExponent);
 
-            // No jumps to see if we overflowed.
-            bool didOverflow;
-            assembly ("memory-safe") {
-                didOverflow :=
-                    or(
-                        iszero(eq(sdiv(signedCoefficient, signedCoefficientA), signedCoefficientB)),
-                        iszero(eq(sub(exponent, exponentA), exponentB))
-                    )
-            }
-            // If we did overflow, normalize and try again. Normalized values
-            // cannot overflow, so this will always succeed, provided the
-            // exponents are not out of bounds.
-            if (didOverflow) {
-                (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
-                (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
-                return mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-            }
-            return (signedCoefficient, exponent);
+            (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
+                signedCoefficientA,
+                signedCoefficientB,
+                mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
+                exponent
+            );
         }
     }
 
@@ -181,35 +223,160 @@ library LibDecimalFloatImplementation {
     function div(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
-        returns (int256, int256)
+        returns (int256 signedCoefficient, int256 exponent)
     {
-        unchecked {
-            (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
-            (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
+        if (signedCoefficientA == 0 && signedCoefficientB != 0) {
+            signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
+            exponent = MAXIMIZED_ZERO_EXPONENT;
+        } else {
+            // Move both coefficients into the e75/e76 range, so that the result
+            // of division will not cause a mulDiv overflow.
+            (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
+            (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
 
-            int256 signedCoefficient = (signedCoefficientA * 1e38) / signedCoefficientB;
-            int256 exponent = exponentA - exponentB - 38;
-            return (signedCoefficient, exponent);
+            // mulDiv only works with unsigned integers, so get the absolute
+            // values of the coefficients.
+            uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
+            uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
+
+            uint256 scale = 1e76;
+            int256 adjustExponent = 76;
+
+            // We are going to scale the numerator up by the largest power of ten
+            // that is smaller than the denominator. This will always overflow
+            // internally to the mulDiv during the initial multiplication, in
+            // 512 bits, but will subsequently always be reduced back down to
+            // fit in 256 bits by the division of a denominator that is larger
+            // than the scale up.
+            if (signedCoefficientBAbs < scale) {
+                scale = 1e75;
+                adjustExponent = 75;
+            }
+            // The order of subtraction matters in edge cases. For non-negative
+            // exponentA, apply the adjust exponent first to move the value
+            // towards 0 before exponentB is applied. This reduces the chance of
+            // a transient overflow in the intermediate subtraction.
+            if (exponentA >= 0) {
+                exponent = exponentA - adjustExponent - exponentB;
+            } else {
+                exponent = exponentA - exponentB - adjustExponent;
+            }
+
+            (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
+                signedCoefficientA,
+                signedCoefficientB,
+                mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs),
+                exponent
+            );
         }
     }
 
-    /// Add two floats together as a normalized result.
+    /// mul512 from Open Zeppelin.
+    /// Simply part of the original mulDiv function abstracted out for reuse
+    /// elsewhere.
+    function mul512(uint256 a, uint256 b) internal pure returns (uint256 high, uint256 low) {
+        // 512-bit multiply [high low] = x * y. Compute the product mod 2²⁵⁶ and mod 2²⁵⁶ - 1, then use
+        // the Chinese Remainder Theorem to reconstruct the 512 bit result. The result is stored in two 256
+        // variables such that product = high * 2²⁵⁶ + low.
+        assembly ("memory-safe") {
+            let mm := mulmod(a, b, not(0))
+            low := mul(a, b)
+            high := sub(sub(mm, low), lt(mm, low))
+        }
+    }
+
+    /// mulDiv as seen in Open Zeppelin, PRB Math, Solady, and other libraries.
+    /// Credit to Remco Bloemen under MIT license: https://2π.com/21/muldiv
+    function mulDiv(uint256 x, uint256 y, uint256 denominator) internal pure returns (uint256 result) {
+        (uint256 prod1, uint256 prod0) = mul512(x, y);
+
+        // Handle non-overflow cases, 256 by 256 division.
+        if (prod1 == 0) {
+            unchecked {
+                return prod0 / denominator;
+            }
+        }
+
+        // Make sure the result is less than 2^256. Also prevents denominator == 0.
+        if (prod1 >= denominator) {
+            revert MulDivOverflow(x, y, denominator);
+        }
+
+        ////////////////////////////////////////////////////////////////////////////
+        // 512 by 256 division
+        ////////////////////////////////////////////////////////////////////////////
+
+        // Make division exact by subtracting the remainder from [prod1 prod0].
+        uint256 remainder;
+        assembly ("memory-safe") {
+            // Compute remainder using the mulmod Yul instruction.
+            remainder := mulmod(x, y, denominator)
+
+            // Subtract 256 bit number from 512-bit number.
+            prod1 := sub(prod1, gt(remainder, prod0))
+            prod0 := sub(prod0, remainder)
+        }
+
+        unchecked {
+            // Calculate the largest power of two divisor of the denominator using the unary operator ~. This operation cannot overflow
+            // because the denominator cannot be zero at this point in the function execution. The result is always >= 1.
+            // For more detail, see https://cs.stackexchange.com/q/138556/92363.
+            uint256 lpotdod = denominator & (~denominator + 1);
+            uint256 flippedLpotdod;
+
+            assembly ("memory-safe") {
+                // Factor powers of two out of denominator.
+                // slither-disable-next-line divide-before-multiply
+                denominator := div(denominator, lpotdod)
+
+                // Divide [prod1 prod0] by lpotdod.
+                // slither-disable-next-line divide-before-multiply
+                prod0 := div(prod0, lpotdod)
+
+                // Get the flipped value `2^256 / lpotdod`. If the `lpotdod` is zero, the flipped value is one.
+                // `sub(0, lpotdod)` produces the two's complement version of `lpotdod`, which is equivalent to flipping all the bits.
+                // However, `div` interprets this value as an unsigned value: https://ethereum.stackexchange.com/q/147168/24693
+                flippedLpotdod := add(div(sub(0, lpotdod), lpotdod), 1)
+            }
+
+            // Shift in bits from prod1 into prod0.
+            prod0 |= prod1 * flippedLpotdod;
+
+            // Invert denominator mod 2^256. Now that denominator is an odd number, it has an inverse modulo 2^256 such
+            // that denominator * inv = 1 mod 2^256. Compute the inverse by starting with a seed that is correct for
+            // four bits. That is, denominator * inv = 1 mod 2^4.
+            // slither-disable-next-line incorrect-exp
+            uint256 inverse = (3 * denominator) ^ 2;
+
+            // Use the Newton-Raphson iteration to improve the precision. Thanks to Hensel's lifting lemma, this also works
+            // in modular arithmetic, doubling the correct bits in each step.
+            inverse *= 2 - denominator * inverse; // inverse mod 2^8
+            inverse *= 2 - denominator * inverse; // inverse mod 2^16
+            inverse *= 2 - denominator * inverse; // inverse mod 2^32
+            inverse *= 2 - denominator * inverse; // inverse mod 2^64
+            inverse *= 2 - denominator * inverse; // inverse mod 2^128
+            inverse *= 2 - denominator * inverse; // inverse mod 2^256
+
+            // Because the division is now exact we can divide by multiplying with the modular inverse of denominator.
+            // This will give us the correct result modulo 2^256. Since the preconditions guarantee that the outcome is
+            // less than 2^256, this is the final result. We don't need to compute the high bits of the result and prod1
+            // is no longer required.
+            result = prod0 * inverse;
+        }
+    }
+
+    /// Add two floats together.
     ///
     /// Note that because the input values can have arbitrary exponents that may
-    /// be very far apart, the normalization process is necessarily lossy.
-    /// For example, normalized 1 is 1e37 coefficient and -37 exponent.
-    /// Consider adding 1e37 coefficient with exponent 1.
-    /// These two numbers are identical in coefficient but their exponents are
-    /// 38 OOMs apart. While we can perform the addition and get the correct
-    /// result internally, as soon as we normalize the result, we will lose
-    /// precision and the result will be 1e37 coefficient with -37 exponent.
-    /// The precision of addition is therefore best case the full 37 decimals
-    /// representable in normalized form, if the two numbers share the same
-    /// exponent, but each step of exponent difference will lose a decimal of
-    /// precision in the output. In practise, this rarely matters as the onchain
-    /// conventions for amounts are typically 18 decimals or less, and so entire
-    /// token supplies are typically representable within ~26-33 decimals of
-    /// precision, making addition lossless for all actual possible values.
+    /// be very far apart, the addition process is necessarily lossy.
+    /// Consider adding 1e100 to 1e-100, for example. The result is 1e100.
+    /// This is because we can't fit 200 OOMs of precision into the result.
+    /// However, we can easily fit ~26-33 decimals of precision into values,
+    /// which covers most or all token supplies and amounts we care about in
+    /// practice. This means that addition is typically lossless for all values
+    /// we will receive onchain. However, precision loss is still to be expected
+    /// when combined with other operations such as division that can result in
+    /// infinite recursion such a 1/3.
     ///
     /// https://speleotrove.com/decimal/daops.html#refaddsub
     /// > add and subtract both take two operands. If either operand is a special
@@ -270,11 +437,11 @@ library LibDecimalFloatImplementation {
             }
         }
 
-        // Normalizing A and B gives us similar coefficients, which simplifies
+        // Maximizing A and B gives us similar coefficients, which simplifies
         // detecting when their exponents are too far apart to add without
         // simply ignoring one of them.
-        (signedCoefficientA, exponentA) = normalize(signedCoefficientA, exponentA);
-        (signedCoefficientB, exponentB) = normalize(signedCoefficientB, exponentB);
+        (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
+        (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
 
         // We want A to represent the larger exponent. If this is not the case
         // then swap them.
@@ -288,30 +455,42 @@ library LibDecimalFloatImplementation {
             exponentB = tmp;
         }
 
-        // After normalization the signed coefficients are the same OOM in
+        // After maximization the signed coefficients are the same OOM in
         // magnitude. However, what we need is for the exponents to be the same.
-        // If the exponents are close enough we can multiply coefficient A by
+        // If the exponents are close enough we can divide coefficient B by
         // some power of 10 to align their exponents without precision loss.
         // If the exponents are too far apart, then all the information in B
-        // would be lost by the final normalization step, so we can just ignore
-        // B and return A.
-        uint256 multiplier;
+        // would be lost, so we can just ignore B and return A.
         unchecked {
             uint256 alignmentExponentDiff = uint256(exponentA - exponentB);
             // The early return here allows us to do unchecked pow on the
-            // multiplier and means we never revert due to overflow here.
+            // scaler and means we never revert due to overflow here.
             if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
                 return (signedCoefficientA, exponentA);
             }
-            multiplier = 10 ** alignmentExponentDiff;
+            signedCoefficientB /= int256(10 ** alignmentExponentDiff);
         }
-        signedCoefficientA *= int256(multiplier);
 
         // The actual addition step.
         unchecked {
-            signedCoefficientA += signedCoefficientB;
+            int256 c = signedCoefficientA + signedCoefficientB;
+            bool didOverflow;
+            assembly ("memory-safe") {
+                let sameSignAB := iszero(shr(0xff, xor(signedCoefficientA, signedCoefficientB)))
+                let sameSignAC := iszero(shr(0xff, xor(signedCoefficientA, c)))
+                didOverflow := and(sameSignAB, iszero(sameSignAC))
+            }
+            // Be careful to handle overflow.
+            if (didOverflow) {
+                signedCoefficientA /= 10;
+                signedCoefficientB /= 10;
+                exponentA += 1;
+                signedCoefficientA += signedCoefficientB;
+            } else {
+                signedCoefficientA = c;
+            }
         }
-        return (signedCoefficientA, exponentB);
+        return (signedCoefficientA, exponentA);
     }
 
     /// @param signedCoefficientA The signed coefficient of the first floating
@@ -336,7 +515,6 @@ library LibDecimalFloatImplementation {
     /// For example, 1e2, 10e1, and 100e0 are all equal. Also implies that 0eX
     /// and 0eY are equal for all X and Y.
     /// Any representable value can be equality checked without precision loss,
-    /// e.g. no normalization is done internally.
     /// @param signedCoefficientA The signed coefficient of the first floating
     /// point number.
     /// @param exponentA The exponent of the first floating point number.
@@ -355,14 +533,9 @@ library LibDecimalFloatImplementation {
         return signedCoefficientA == signedCoefficientB;
     }
 
-    /// Inverts a float. Equivalent to `1 / x` with modest gas optimizations.
+    /// Inverts a float. Equivalent to `1 / x`.
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
-
-        signedCoefficient = 1e75 / signedCoefficient;
-        exponent = -exponent - 75;
-
-        return (signedCoefficient, exponent);
+        return div(1e76, -76, signedCoefficient, exponent);
     }
 
     /// log10(x) for a float x.
@@ -383,8 +556,6 @@ library LibDecimalFloatImplementation {
     {
         unchecked {
             {
-                (signedCoefficient, exponent) = normalize(signedCoefficient, exponent);
-
                 if (signedCoefficient <= 0) {
                     if (signedCoefficient == 0) {
                         revert Log10Zero();
@@ -392,25 +563,35 @@ library LibDecimalFloatImplementation {
                         revert Log10Negative(signedCoefficient, exponent);
                     }
                 }
+                (signedCoefficient, exponent) = maximize(signedCoefficient, exponent);
             }
 
-            // This is a positive log. i.e. log(x) where x >= 1.
-            if (exponent > -38) {
-                // This is an exact power of 10.
-                if (signedCoefficient == 1e37) {
-                    return (exponent + 37, 0);
-                }
+            // all powers of 10 look like 1 with a different exponent
+            if (signedCoefficient == 1e76) {
+                return (exponent + 76, 0);
+            }
+            bool isAtLeastE76 = signedCoefficient >= 1e76;
 
+            // This is a positive log. i.e. log(x) where x >= 1.
+            if (exponent >= (isAtLeastE76 ? -76 : -75)) {
                 int256 y1Coefficient;
                 int256 y2Coefficient;
                 int256 x1Coefficient;
                 int256 x2Coefficient;
-                int256 x1Exponent = exponent;
-                bool interpolate;
+                // exact powers of 10 are already caught above.
+                // but e.g. 20 would be 2e76, -75 and true for isAtLeastE76
+                // => adding exp 76 yields 1, which is the correct result.
+                // 200 would be 2e76, -74 and true for isAtLeastE76
+                // => adding exp 76 yields 2, which is the correct result.
+                // however 90 would be 9e75, -74 and false for isAtLeastE76
+                // => adding exp 75 yields 1, which is the correct result.
+                // 900 would be 9e75, -73 and false for isAtLeastE76
+                // => adding exp 75 yields 2, which is the correct result.
+                int256 powerOfTen = exponent + int256(isAtLeastE76 ? int256(76) : int256(75));
 
                 // Table lookup.
                 {
-                    uint256 scale = 1e34;
+                    int256 scale = 1e72;
                     assembly ("memory-safe") {
                         //slither-disable-next-line divide-before-multiply
                         function lookupTableVal(tables, index) -> result {
@@ -437,6 +618,11 @@ library LibDecimalFloatImplementation {
                             result := add(result, mload(0))
                         }
 
+                        // Need to increase the scale by one OOM here so that the
+                        // signed coefficient has 4 digits always, to make it
+                        // easy to calculate the idx.
+                        if isAtLeastE76 { scale := mul(scale, 10) }
+
                         // Truncate the signed coefficient to what we can look
                         // up in the table.
                         // Slither false positive because the truncation is
@@ -445,30 +631,45 @@ library LibDecimalFloatImplementation {
                         x1Coefficient := div(signedCoefficient, scale)
                         let idx := sub(x1Coefficient, 1000)
                         x1Coefficient := mul(x1Coefficient, scale)
+                        // Technically we only need to do this if we need to
+                        // interpolate but it's cheaper to just do an `add`
+                        // unconditionally than pay for an `if` and often also
+                        // do the `add`.
                         x2Coefficient := add(x1Coefficient, scale)
-                        interpolate := iszero(eq(x1Coefficient, signedCoefficient))
+
+                        // If we don't bring the scale back down here we can get
+                        // overflows when multiplying the output of the lookups.
+                        // We are reusing the same scale variable to avoid a
+                        // compiler stack overflow.
+                        // Slither false positive here, this division is simply
+                        // the inverse of the mul above.
+                        //slither-disable-next-line divide-before-multiply
+                        if isAtLeastE76 { scale := div(scale, 10) }
 
                         y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
-
-                        if interpolate { y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1))) }
+                        // Only do the second lookup if we expect interpolation
+                        // to need it.
+                        if iszero(eq(x1Coefficient, signedCoefficient)) {
+                            y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1)))
+                        }
                     }
                 }
 
-                if (interpolate) {
-                    (signedCoefficient, exponent) = unitLinearInterpolation(
-                        x1Coefficient, signedCoefficient, x2Coefficient, exponent, y1Coefficient, y2Coefficient, -38
-                    );
-                } else {
-                    signedCoefficient = y1Coefficient;
-                    exponent = -38;
-                }
-
-                return add(signedCoefficient, exponent, x1Exponent + 37, 0);
+                (signedCoefficient, exponent) = unitLinearInterpolation(
+                    x1Coefficient,
+                    signedCoefficient,
+                    x2Coefficient,
+                    exponent,
+                    y1Coefficient,
+                    y2Coefficient,
+                    LOG10_Y_EXPONENT
+                );
+                return add(signedCoefficient, exponent, powerOfTen, 0);
             }
             // This is a negative log. i.e. log(x) where 0 < x < 1.
             // log(x) = -log(1/x)
             else {
-                (signedCoefficient, exponent) = div(1e37, -37, signedCoefficient, exponent);
+                (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
                 (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
                 return minus(signedCoefficient, exponent);
             }
@@ -523,77 +724,53 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    function isNormalized(int256 signedCoefficient, int256 exponent) internal pure returns (bool) {
-        bool result;
-        uint256 normalizedMaxPlusOne = NORMALIZED_MAX_PLUS_ONE;
-        uint256 normalizedMin = NORMALIZED_MIN;
-        assembly {
-            result :=
-                or(
-                    and(
-                        iszero(sdiv(signedCoefficient, normalizedMaxPlusOne)),
-                        iszero(iszero(sdiv(signedCoefficient, normalizedMin)))
-                    ),
-                    and(iszero(signedCoefficient), iszero(exponent))
-                )
-        }
-        return result;
-    }
-
-    function normalize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
-            if (isNormalized(signedCoefficient, exponent)) {
-                return (signedCoefficient, exponent);
-            }
-
             if (signedCoefficient == 0) {
-                return (NORMALIZED_ZERO_SIGNED_COEFFICIENT, NORMALIZED_ZERO_EXPONENT);
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
             }
+            int256 initialExponent = exponent;
 
-            if (exponent / EXPONENT_MAX_PLUS_ONE != 0) {
-                revert ExponentOverflow(signedCoefficient, exponent);
-            }
-
-            if (signedCoefficient / SIGNED_NORMALIZED_MAX_PLUS_ONE != 0) {
-                if (signedCoefficient / 1e56 != 0) {
-                    signedCoefficient /= 1e19;
-                    exponent += 19;
+            // Check if already maximized before dropping into a block full of
+            // jumps.
+            if (signedCoefficient / 1e75 == 0) {
+                if (signedCoefficient / 1e38 == 0) {
+                    signedCoefficient *= 1e38;
+                    exponent -= 38;
                 }
 
-                if (signedCoefficient / 1e46 != 0) {
-                    signedCoefficient /= 1e9;
-                    exponent += 9;
-                }
-
-                while (signedCoefficient / 1e39 != 0) {
-                    signedCoefficient /= 100;
-                    exponent += 2;
-                }
-
-                if (signedCoefficient / 1e38 != 0) {
-                    signedCoefficient /= 10;
-                    exponent += 1;
-                }
-            } else {
-                if (signedCoefficient / 1e18 == 0) {
+                if (signedCoefficient / 1e57 == 0) {
                     signedCoefficient *= 1e19;
                     exponent -= 19;
                 }
 
-                if (signedCoefficient / 1e28 == 0) {
-                    signedCoefficient *= 1e9;
-                    exponent -= 9;
+                if (signedCoefficient / 1e66 == 0) {
+                    signedCoefficient *= 1e10;
+                    exponent -= 10;
                 }
 
-                while (signedCoefficient / 1e36 == 0) {
-                    signedCoefficient *= 100;
+                while (signedCoefficient / 1e74 == 0) {
+                    signedCoefficient *= 1e2;
                     exponent -= 2;
                 }
 
-                if (signedCoefficient / 1e37 == 0) {
+                if (signedCoefficient / 1e75 == 0) {
                     signedCoefficient *= 10;
                     exponent -= 1;
                 }
+            }
+
+            // Maybe we can fit in one more OOM without overflow, but we won't
+            // know until we try. This pushes us into [1e76,type(int256).max] and
+            // [-type(int256).max,-1e76] ranges, if that's possible.
+            int256 trySignedCoefficient = signedCoefficient * 10;
+            if (signedCoefficient == trySignedCoefficient / 10) {
+                signedCoefficient = trySignedCoefficient;
+                exponent -= 1;
+            }
+
+            if (initialExponent < exponent) {
+                revert ExponentOverflow(signedCoefficient, initialExponent);
             }
 
             return (signedCoefficient, exponent);
@@ -701,8 +878,8 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// Sets the coefficient so that exponent is -37. Truncates the coefficient
-    /// if shrinking, will error on overflow when growing.
+    /// Sets the coefficient so that exponent is the target exponent. Truncates
+    /// the coefficient if shrinking, will error on overflow when growing.
     /// @param signedCoefficient The signed coefficient.
     /// @param exponent The exponent.
     /// @param targetExponent The target exponent.
@@ -718,7 +895,7 @@ library LibDecimalFloatImplementation {
             } else if (targetExponent > exponent) {
                 int256 exponentDiff = targetExponent - exponent;
                 if (exponentDiff > 76 || exponentDiff < 0) {
-                    return (NORMALIZED_ZERO_SIGNED_COEFFICIENT);
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT);
                 }
 
                 return signedCoefficient / int256(10 ** uint256(exponentDiff));
@@ -750,7 +927,7 @@ library LibDecimalFloatImplementation {
             }
 
             // If the exponent is less than -76, the characteristic is 0.
-            // and the mantissa is the number itself.
+            // and the mantissa is the whole coefficient.
             if (exponent < -76) {
                 return (0, signedCoefficient);
             }
@@ -761,6 +938,7 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    /// First 4 digits of the mantissa and whether we need to interpolate.
     function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256, bool, int256) {
         unchecked {
             if (exponent == -4) {
@@ -821,6 +999,10 @@ library LibDecimalFloatImplementation {
         int256 y2Coefficient,
         int256 yExponent
     ) internal pure returns (int256, int256) {
+        // Short circuit if the amount of interpolation is 0.
+        if (xCoefficient == x1Coefficient) {
+            return (y1Coefficient, yExponent);
+        }
         int256 numeratorSignedCoefficient;
         int256 numeratorExponent;
 

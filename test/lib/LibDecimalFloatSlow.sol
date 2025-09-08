@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
@@ -13,29 +14,37 @@ library LibDecimalFloatSlow {
         returns (int256, int256)
     {
         unchecked {
-            int256 signedCoefficient = signedCoefficientA * signedCoefficientB;
-            int256 exponent = exponentA + exponentB;
-
             // If the expected signed coefficient is 0 then everything is just
             // normalized 0.
-            if (signedCoefficient == 0) {
+            if (signedCoefficientA == 0 || signedCoefficientB == 0) {
                 return (0, 0);
             }
-            // If nothing overflowed then our expected outcome is correct.
-            else if (signedCoefficient / signedCoefficientA == signedCoefficientB && exponent - exponentA == exponentB)
-            {
-                return (signedCoefficient, exponent);
-            }
-            // If something overflowed then we have to normalize and try again.
-            else {
-                (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.normalize(signedCoefficientA, exponentA);
-                (signedCoefficientB, exponentB) = LibDecimalFloatImplementation.normalize(signedCoefficientB, exponentB);
 
-                signedCoefficient = signedCoefficientA * signedCoefficientB;
-                exponent = exponentA + exponentB;
+            int256 exponent = exponentA + exponentB;
 
-                return (signedCoefficient, exponent);
+            uint256 signedCoefficientAAbs =
+                LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientA);
+            uint256 signedCoefficientBAbs =
+                LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientB);
+
+            (uint256 prod1,) = LibDecimalFloatImplementation.mul512(signedCoefficientAAbs, signedCoefficientBAbs);
+
+            uint256 adjustExponent = 0;
+            while (prod1 > 0) {
+                prod1 /= 10;
+                adjustExponent++;
             }
+
+            uint256 signedCoefficientAbs = LibDecimalFloatImplementation.mulDiv(
+                signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent
+            );
+
+            exponent += int256(adjustExponent);
+            int256 signedCoefficient;
+            (signedCoefficient, exponent) = LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(
+                signedCoefficientA, signedCoefficientB, signedCoefficientAbs, exponent
+            );
+            return (signedCoefficient, exponent);
         }
     }
 
@@ -80,6 +89,22 @@ library LibDecimalFloatSlow {
         }
 
         return eqSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function gteSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        return !ltSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function lteSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        return !gtSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     function gtSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -166,5 +191,20 @@ library LibDecimalFloatSlow {
         }
 
         return ltSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function maximizeSlow(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        unchecked {
+            if (signedCoefficient == 0) {
+                return (0, 0);
+            }
+            int256 trySignedCoefficient = signedCoefficient * 10;
+            while (trySignedCoefficient / 10 == signedCoefficient) {
+                signedCoefficient = trySignedCoefficient;
+                exponent--;
+                trySignedCoefficient *= 10;
+            }
+            return (signedCoefficient, exponent);
+        }
     }
 }

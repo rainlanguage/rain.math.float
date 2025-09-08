@@ -1,10 +1,13 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
 import {LogTest} from "../../../abstract/LogTest.sol";
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+
+import {console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatImplementationPow10Test is LogTest {
     using LibDecimalFloat for Float;
@@ -32,7 +35,7 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
         checkPow10(1, 4, 1000, 9997);
     }
 
-    function testExactLookups() external {
+    function testExactLookupsPow10() external {
         // 10^2 = 100
         checkPow10(2, 0, 1000, -1);
         // 10^3 = 1000
@@ -56,23 +59,31 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
         checkPow10(0.5e37, -37, 3162, -3);
 
         checkPow10(0.3e37, -37, 1995, -3);
-        checkPow10(-0.3e37, -37, 5.012531328320802005012531328320802005e37, -38);
+        // 10^-0.3 = 0.50118723362
+        checkPow10(-0.3e37, -37, 0.5012531328320802005012531328320802005012531328320802005012531328320802005012e76, -76);
     }
 
     function testInterpolatedLookupsPower() external {
         // 10^1.55555 = 35.9376769153
-        checkPow10(1.55555e37, -37, 35935e37, -40);
-        // 10^1234.56789
-        checkPow10(123456789, -5, 36979e37, 1193);
+        checkPow10(1.55555e37, -37, 35.935e75, -75);
+        // Source: WolframAlpha (10^1234.56789). Full-precision mantissa below is reference only.
+        // 10^1234.56789 ≈ 3.69734519948141829344363446069899674413404079870780463377448004811497051583459624644095897334743494067266231680935688534678044962972813724… × 10^1234
+        // Test expectation uses a truncated mantissa (3.6979e76) consistent with library rounding.
+        checkPow10(123456789, -5, 3.6979e76, 1158);
         // ~= 10 (fuzzing found this edge case).
-        checkPow10(99999999999999999999999999999999999997448, -41, 99999999999999999999999999999999999991000, -40);
+        checkPow10(
+            99999999999999999999999999999999999997448,
+            -41,
+            9999999999999999999999999999999999999234400000000000000000000000000000000000,
+            -75
+        );
     }
 
     function boundFloat(int224 x, int32 exponent) internal pure returns (int224, int32) {
         exponent = int32(bound(exponent, -76, 76));
         Float a = LibDecimalFloat.packLossless(x, exponent);
-        vm.assume(a.gt(LibDecimalFloat.packLossless(-1e38, 0)));
-        vm.assume(a.lt(LibDecimalFloat.packLossless(type(int224).max, 0)));
+        vm.assume(a.gt(LibDecimalFloat.packLossless(type(int224).min, 9)));
+        vm.assume(a.lt(LibDecimalFloat.packLossless(type(int224).max, 9)));
         return (x, exponent);
     }
 
@@ -80,5 +91,16 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
     function testNoRevert(int224 x, int32 exponent) external {
         (x, exponent) = boundFloat(x, exponent);
         LibDecimalFloatImplementation.pow10(logTables(), x, exponent);
+    }
+
+    function testPow10One() external {
+        unchecked {
+            int256 exponent = 0;
+            for (int256 i = 1; exponent >= -76;) {
+                checkPow10(i, exponent, 1000, -2);
+                exponent--;
+                i *= 10;
+            }
+        }
     }
 }

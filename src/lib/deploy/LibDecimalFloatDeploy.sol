@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
 import {
@@ -12,8 +13,6 @@ import {LibDataContract, DataContractMemoryContainer} from "rain.datacontract/li
 import {LibBytes} from "rain.solmem/lib/LibBytes.sol";
 import {LibMemCpy, Pointer} from "rain.solmem/lib/LibMemCpy.sol";
 import {DecimalFloat} from "../../concrete/DecimalFloat.sol";
-
-address constant LOG_TABLES_ADDRESS = 0x7A0D94F55792C434d74a40883C6ed8545E406D12;
 
 library LibDecimalFloatDeploy {
     function combinedTables() internal pure returns (bytes memory) {

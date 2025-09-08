@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
@@ -23,10 +24,16 @@ contract LibDecimalFloatPow10Test is LogTest {
         ) {
             if (exponent > type(int32).max) {
                 vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
-                Float floatPower10 = this.pow10External(float);
+                this.pow10External(float);
             } else {
                 Float floatPower10 = this.pow10External(float);
                 (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = floatPower10.unpack();
+
+                // Compensate for the implied pack and unpack.
+                (Float resultPacked, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+                (lossless);
+                (signedCoefficient, exponent) = resultPacked.unpack();
+
                 assertEq(signedCoefficient, signedCoefficientUnpacked);
                 assertEq(exponent, exponentUnpacked);
             }

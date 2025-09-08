@@ -1,14 +1,8 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {
-    LibDecimalFloat,
-    ExponentOverflow,
-    NORMALIZED_MAX,
-    NORMALIZED_MIN,
-    NegativeFixedDecimalConversion,
-    Float
-} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, ExponentOverflow, NegativeFixedDecimalConversion, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test, console2, stdError} from "forge-std/Test.sol";
@@ -59,7 +53,7 @@ contract LibDecimalFloatDecimalTest is Test {
 
     /// Round trip from/to decimal values without precision loss
     function testFixedDecimalRoundTripLossless(uint256 value, uint8 decimals) external pure {
-        value = bound(value, 0, uint256(NORMALIZED_MAX));
+        value = uint256(bound(value, 0, uint256(int256(type(int224).max))));
 
         (int256 signedCoefficient, int256 exponent, bool lossless0) =
             LibDecimalFloat.fromFixedDecimalLossy(value, decimals);
@@ -125,20 +119,10 @@ contract LibDecimalFloatDecimalTest is Test {
         }
     }
 
-    /// The max normalized value will be lossless.
-    function testFromFixedDecimalLossyNormalizedMax() external pure {
+    /// The max int256 value will be lossless because there is no packing.
+    function testFromFixedDecimalLossyMax() external pure {
         for (uint8 i = 0; i < type(uint8).max; i++) {
-            checkFromFixedDecimalLossless(
-                uint256(NORMALIZED_MAX), i, 99999999999999999999999999999999999999, -int256(uint256(i))
-            );
-        }
-    }
-
-    /// The max normalized value + 1 will be lossless because the least
-    /// significant digit is 0.
-    function testFromFixedDecimalLossyNormalizedMaxPlusOne() external pure {
-        for (uint8 i = 0; i < type(uint8).max; i++) {
-            checkFromFixedDecimalLossless(uint256(NORMALIZED_MAX) + 1, i, 1e38, 0 - int256(uint256(i)));
+            checkFromFixedDecimalLossless(uint256(type(int256).max), i, type(int256).max, -int256(uint256(i)));
         }
     }
 
@@ -153,7 +137,7 @@ contract LibDecimalFloatDecimalTest is Test {
     /// Any conversion where only 0 digits are truncated will be lossless.
     function testFromFixedDecimalLossyTruncateZero(uint256 value, uint8 decimals) external pure {
         uint256 scale = 0;
-        while (value > uint256(NORMALIZED_MAX)) {
+        while (value > type(uint224).max) {
             value /= 10;
             scale++;
         }

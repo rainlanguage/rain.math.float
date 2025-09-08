@@ -1,4 +1,5 @@
-// SPDX-License-Identifier: CAL
+// SPDX-License-Identifier: LicenseRef-DCL-1.0
+// SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
@@ -11,20 +12,20 @@ import {F} from "test/src/concrete/TestUtilsLib.sol";
 contract DecimalFloatFormatTest is Test {
     using LibDecimalFloat for Float;
 
-    function formatExternal(Float a) external pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(a);
+    function formatExternal(Float a, uint256 sigFigsLimit) external pure returns (string memory) {
+        return LibFormatDecimalFloat.toDecimalString(a, sigFigsLimit);
     }
 
-    function testFormatDeployed(Float a) external {
+    function testFormatDeployed(Float a, uint256 sigFigsLimit) external {
         DecimalFloat deployed = new DecimalFloat();
 
-        try this.formatExternal(a) returns (string memory str) {
-            string memory deployedStr = deployed.format(a);
+        try this.formatExternal(a, sigFigsLimit) returns (string memory str) {
+            string memory deployedStr = deployed.format(a, sigFigsLimit);
 
             assertEq(str, deployedStr);
         } catch (bytes memory err) {
             vm.expectRevert(err);
-            deployed.format(a);
+            deployed.format(a, sigFigsLimit);
         }
     }
 
