@@ -465,6 +465,37 @@ impl Float {
         })
     }
 
+    /// Returns the zero value of a `Float` in its maximized representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The zero value.
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let zero = Float::zero()?;
+    /// assert!(zero.is_zero()?);
+    /// assert_eq!(zero.format()?, "0");
+    ///
+    /// // Should be equal to parsed zero
+    /// let parsed_zero = Float::parse("0".to_string())?;
+    /// assert!(zero.eq(parsed_zero)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn zero() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::zeroCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::zeroCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
     /// Formats the float as a decimal string with a default significant figures limit of 18.
     ///
     /// # Returns
@@ -1096,6 +1127,20 @@ mod tests {
     #[test]
     fn test_default() {
         let zero = Float::parse("0".to_string()).unwrap();
+        assert!(zero.eq(Float::default()).unwrap());
+    }
+
+    #[test]
+    fn test_zero() {
+        let zero = Float::zero().unwrap();
+        assert!(zero.is_zero().unwrap());
+        assert_eq!(zero.format().unwrap(), "0");
+
+        // Test that zero equals parsed zero
+        let parsed_zero = Float::parse("0".to_string()).unwrap();
+        assert!(zero.eq(parsed_zero).unwrap());
+
+        // Test that zero equals default
         assert!(zero.eq(Float::default()).unwrap());
     }
 
