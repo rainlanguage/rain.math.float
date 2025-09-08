@@ -335,6 +335,136 @@ impl Float {
         Ok(Float(bytes))
     }
 
+    /// Returns the maximum positive value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The maximum positive value.
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let max_pos = Float::max_positive_value()?;
+    /// let zero = Float::parse("0".to_string())?;
+    ///
+    /// // Max positive is greater than zero
+    /// assert!(max_pos.gt(zero)?);
+    ///
+    /// // Max positive is greater than any normal large number
+    /// let big_number = Float::parse("999999999999999999999".to_string())?;
+    /// assert!(max_pos.gt(big_number)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn max_positive_value() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::maxPositiveValueCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::maxPositiveValueCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    /// Returns the minimum positive value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The minimum positive value.
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let min_pos = Float::min_positive_value()?;
+    /// let zero = Float::parse("0".to_string())?;
+    ///
+    /// // Min positive is greater than zero but smaller than any other positive number
+    /// assert!(min_pos.gt(zero)?);
+    ///
+    /// let small_number = Float::parse("0.000000000000000001".to_string())?;
+    /// assert!(min_pos.lt(small_number)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn min_positive_value() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::minPositiveValueCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::minPositiveValueCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    /// Returns the maximum negative value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The maximum negative value (closest to zero).
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let max_neg = Float::max_negative_value()?;
+    /// let zero = Float::parse("0".to_string())?;
+    ///
+    /// // Max negative is less than zero but greater than any other negative number
+    /// assert!(max_neg.lt(zero)?);
+    ///
+    /// let small_negative = Float::parse("-0.000000000000000001".to_string())?;
+    /// assert!(max_neg.gt(small_negative)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn max_negative_value() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::maxNegativeValueCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::maxNegativeValueCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
+    /// Returns the minimum negative value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The minimum negative value (furthest from zero).
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let min_neg = Float::min_negative_value()?;
+    /// let zero = Float::parse("0".to_string())?;
+    ///
+    /// // Min negative is less than zero
+    /// assert!(min_neg.lt(zero)?);
+    ///
+    /// // Min negative is less than any normal negative number
+    /// let big_negative = Float::parse("-999999999999999999999".to_string())?;
+    /// assert!(min_neg.lt(big_negative)?);
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn min_negative_value() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::minNegativeValueCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::minNegativeValueCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
     /// Formats the float as a decimal string with a default significant figures limit of 18.
     ///
     /// # Returns
@@ -1050,6 +1180,47 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn test_float_constants() {
+        // Test that all constant methods return valid floats
+        let max_pos = Float::max_positive_value().unwrap();
+        let min_pos = Float::min_positive_value().unwrap();
+        let max_neg = Float::max_negative_value().unwrap();
+        let min_neg = Float::min_negative_value().unwrap();
+
+        let zero = Float::parse("0".to_string()).unwrap();
+
+        // Test mathematical properties without exposing binary representation
+
+        // All constants should be distinct
+        assert!(!max_pos.eq(min_pos).unwrap());
+        assert!(!max_neg.eq(min_neg).unwrap());
+        assert!(!max_pos.eq(max_neg).unwrap());
+        assert!(!min_pos.eq(min_neg).unwrap());
+
+        // Test sign properties
+        assert!(min_pos.gt(zero).unwrap()); // min positive should be > 0
+        assert!(max_pos.gt(zero).unwrap()); // max positive should be > 0
+        assert!(max_neg.lt(zero).unwrap()); // max negative should be < 0
+        assert!(min_neg.lt(zero).unwrap()); // min negative should be < 0
+
+        // Test ordering relationships
+        assert!(min_pos.lt(max_pos).unwrap()); // min positive < max positive
+        assert!(min_neg.lt(max_neg).unwrap()); // min negative < max negative
+
+        // Test boundary properties
+        let one = Float::parse("1".to_string()).unwrap();
+        let neg_one = Float::parse("-1".to_string()).unwrap();
+
+        // Positive constants should be greater than normal values
+        assert!(max_pos.gt(one).unwrap());
+        assert!(min_pos.lt(one).unwrap());
+
+        // Negative constants should be more extreme than normal negative values
+        assert!(max_neg.gt(neg_one).unwrap());
+        assert!(min_neg.lt(neg_one).unwrap());
+    }
+
     proptest! {
         #[test]
         fn test_format_parse(float in reasonable_float()) {
@@ -1705,6 +1876,71 @@ mod tests {
 
             let fixed = float.to_fixed_decimal_lossy(decimals).unwrap();
             assert_eq!(fixed, value / U256::from(10));
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_constants_relationships(float in reasonable_float()) {
+            let max_pos = Float::max_positive_value().unwrap();
+            let min_pos = Float::min_positive_value().unwrap();
+            let max_neg = Float::max_negative_value().unwrap();
+            let min_neg = Float::min_negative_value().unwrap();
+            let zero = Float::parse("0".to_string()).unwrap();
+
+            // Test that constants are the extremes
+            // Any reasonable positive float should be <= max_positive and >= min_positive
+            if float.gt(zero).unwrap() {
+                prop_assert!(float.lte(max_pos).unwrap());
+                prop_assert!(float.gte(min_pos).unwrap());
+            }
+
+            // Any reasonable negative float should be <= max_negative and >= min_negative
+            // (max_negative is closest to zero, min_negative is furthest from zero)
+            if float.lt(zero).unwrap() {
+                prop_assert!(float.lte(max_neg).unwrap());
+                prop_assert!(float.gte(min_neg).unwrap());
+            }
+
+            // Constants should be consistent regardless of arbitrary float
+            prop_assert!(max_pos.gt(zero).unwrap());
+            prop_assert!(min_pos.gt(zero).unwrap());
+            prop_assert!(max_neg.lt(zero).unwrap());
+            prop_assert!(min_neg.lt(zero).unwrap());
+
+            // Verify constants maintain their ordering
+            prop_assert!(min_pos.lt(max_pos).unwrap());
+            prop_assert!(min_neg.lt(max_neg).unwrap());
+            prop_assert!(max_neg.lt(zero).unwrap());
+            prop_assert!(min_pos.gt(zero).unwrap());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn test_constants_edge_cases(float in arb_float()) {
+            let max_pos = Float::max_positive_value().unwrap();
+            let min_pos = Float::min_positive_value().unwrap();
+            let max_neg = Float::max_negative_value().unwrap();
+            let min_neg = Float::min_negative_value().unwrap();
+
+            // Constants should always be distinct
+            prop_assert!(!max_pos.eq(min_pos).unwrap());
+            prop_assert!(!max_neg.eq(min_neg).unwrap());
+            prop_assert!(!max_pos.eq(max_neg).unwrap());
+            prop_assert!(!min_pos.eq(min_neg).unwrap());
+
+            // Test that constants are at the boundaries
+            // (Note: We can't test arithmetic operations that would overflow/underflow
+            // since those would fail, but we can test comparisons)
+
+            // No arbitrary float should be greater than max_pos or less than min_neg
+            if !float.eq(max_pos).unwrap() {
+                prop_assert!(!float.gt(max_pos).unwrap());
+            }
+            if !float.eq(min_neg).unwrap() {
+                prop_assert!(!float.lt(min_neg).unwrap());
+            }
         }
     }
 }

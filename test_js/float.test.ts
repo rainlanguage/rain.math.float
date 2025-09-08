@@ -109,5 +109,52 @@ describe('Test Float Bindings', () => {
 			expect(a.div(b)?.value!.format()?.value!).toBe('-1');
 			expect(a.add(b)?.value!.format()?.value!).toBe('0');
 		});
+
+		it('should test float constants', () => {
+			// Test that all constant methods return valid floats
+			const maxPosResult = Float.maxPositiveValue();
+			const minPosResult = Float.minPositiveValue();
+			const maxNegResult = Float.maxNegativeValue();
+			const minNegResult = Float.minNegativeValue();
+
+			// Verify no errors occurred
+			expect(maxPosResult.error).toBeUndefined();
+			expect(minPosResult.error).toBeUndefined();
+			expect(maxNegResult.error).toBeUndefined();
+			expect(minNegResult.error).toBeUndefined();
+
+			const maxPos = maxPosResult.value!;
+			const minPos = minPosResult.value!;
+			const maxNeg = maxNegResult.value!;
+			const minNeg = minNegResult.value!;
+
+			const zero = Float.fromBigint(0n);
+			const one = Float.parse('1')?.value!;
+			const negOne = Float.parse('-1')?.value!;
+
+			// Test mathematical properties without exposing binary representation
+			
+			// All constants should be distinct
+			expect(maxPos.eq(minPos)?.value!).toBe(false);
+			expect(maxNeg.eq(minNeg)?.value!).toBe(false);
+			expect(maxPos.eq(maxNeg)?.value!).toBe(false);
+			expect(minPos.eq(minNeg)?.value!).toBe(false);
+
+			// Test sign properties
+			expect(minPos.gt(zero)?.value!).toBe(true); // min positive > 0
+			expect(maxPos.gt(zero)?.value!).toBe(true); // max positive > 0
+			expect(maxNeg.lt(zero)?.value!).toBe(true); // max negative < 0
+			expect(minNeg.lt(zero)?.value!).toBe(true); // min negative < 0
+
+			// Test ordering relationships
+			expect(minPos.lt(maxPos)?.value!).toBe(true); // min positive < max positive
+			expect(minNeg.lt(maxNeg)?.value!).toBe(true); // min negative < max negative
+
+			// Test boundary properties
+			expect(maxPos.gt(one)?.value!).toBe(true); // max positive > 1
+			expect(minPos.lt(one)?.value!).toBe(true); // min positive < 1
+			expect(maxNeg.gt(negOne)?.value!).toBe(true); // max negative > -1
+			expect(minNeg.lt(negOne)?.value!).toBe(true); // min negative < -1
+		});
 	}
 });

@@ -290,6 +290,94 @@ impl Float {
         Self::from_hex(hex)
     }
 
+    /// Returns the maximum positive value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The maximum positive value.
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const maxPosResult = Float.maxPositiveValue();
+    /// if (maxPosResult.error) {
+    ///    console.error(maxPosResult.error);
+    /// }
+    /// const maxPos = maxPosResult.value;
+    /// assert(!maxPos.format().error);
+    /// ```
+    #[wasm_export(js_name = "maxPositiveValue", preserve_js_class)]
+    pub fn max_positive_value_js() -> Result<Float, FloatError> {
+        Self::max_positive_value()
+    }
+
+    /// Returns the minimum positive value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The minimum positive value.
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const minPosResult = Float.minPositiveValue();
+    /// if (minPosResult.error) {
+    ///    console.error(minPosResult.error);
+    /// }
+    /// const minPos = minPosResult.value;
+    /// assert(!minPos.format().error);
+    /// ```
+    #[wasm_export(js_name = "minPositiveValue", preserve_js_class)]
+    pub fn min_positive_value_js() -> Result<Float, FloatError> {
+        Self::min_positive_value()
+    }
+
+    /// Returns the maximum negative value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The maximum negative value (closest to zero).
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const maxNegResult = Float.maxNegativeValue();
+    /// if (maxNegResult.error) {
+    ///    console.error(maxNegResult.error);
+    /// }
+    /// const maxNeg = maxNegResult.value;
+    /// assert(!maxNeg.format().error);
+    /// ```
+    #[wasm_export(js_name = "maxNegativeValue", preserve_js_class)]
+    pub fn max_negative_value_js() -> Result<Float, FloatError> {
+        Self::max_negative_value()
+    }
+
+    /// Returns the minimum negative value that can be represented as a `Float`.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The minimum negative value (furthest from zero).
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const minNegResult = Float.minNegativeValue();
+    /// if (minNegResult.error) {
+    ///    console.error(minNegResult.error);
+    /// }
+    /// const minNeg = minNegResult.value;
+    /// assert(!minNeg.format().error);
+    /// ```
+    #[wasm_export(js_name = "minNegativeValue", preserve_js_class)]
+    pub fn min_negative_value_js() -> Result<Float, FloatError> {
+        Self::min_negative_value()
+    }
+
     /// Formats the float as a decimal string.
     ///
     /// # Returns
