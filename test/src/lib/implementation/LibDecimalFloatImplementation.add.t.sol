@@ -251,10 +251,8 @@ contract LibDecimalFloatImplementationAddTest is Test {
         int256 exponentB;
         int256 signedCoefficientAMaximized;
         int256 signedCoefficientBMaximized;
-        bool fullA;
-        bool fullB;
-        (signedCoefficientAMaximized, exponentA, fullA) = LibDecimalFloatImplementation.maximize(signedCoefficientA, 0);
-        (signedCoefficientBMaximized, exponentB, fullB) = LibDecimalFloatImplementation.maximize(signedCoefficientB, 0);
+        (signedCoefficientAMaximized, exponentA) = LibDecimalFloatImplementation.maximizeFull(signedCoefficientA, 0);
+        (signedCoefficientBMaximized, exponentB) = LibDecimalFloatImplementation.maximizeFull(signedCoefficientB, 0);
 
         if (signedCoefficientA == 0 || signedCoefficientB == 0) {
             exponentA = 0;
