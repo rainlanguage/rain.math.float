@@ -7,7 +7,7 @@ import {
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
     EXPONENT_MAX,
-    MulDivOverflow
+    DivisionByZero
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
 
@@ -36,35 +36,11 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     function testDivZero(int256 signedCoefficient, int256 exponent) external {
         exponent = bound(exponent, type(int256).min / 2, type(int256).max);
-        (int256 signedCoefficientMaximized, int256 exponentMaximized, bool full) =
-            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
-        if (signedCoefficient == 0) {
-            vm.expectRevert(stdError.divisionError);
-        } else {
-            vm.expectRevert(
-                abi.encodeWithSelector(
-                    MulDivOverflow.selector,
-                    LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientMaximized),
-                    1e75,
-                    0
-                )
-            );
-        }
+        vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, signedCoefficient, exponent));
         this.divExternal(signedCoefficient, exponent, 0, 0);
     }
 
-    function testDivMaxPositiveValue(int256 signedCoefficient, int256 exponent) external {
-        // (int256 signedCoefficientMaximized, int256 exponentMaximized) =
-        //     LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
-        // vm.expectRevert(
-        //     abi.encodeWithSelector(
-        //         MulDivOverflow.selector,
-        //         LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientMaximized),
-        //         1e75,
-        //         0
-        //     )
-        // );
-        // this.divExternal(signedCoefficient, exponent, 1, -76);
+    function testDivMaxPositiveValueNotRevert(int256 signedCoefficient, int256 exponent) external pure {
         LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
     }
 

@@ -231,14 +231,15 @@ library LibDecimalFloatImplementation {
     function div(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
-        returns (int256 signedCoefficient, int256 exponent)
+        returns (int256, int256)
     {
         if (signedCoefficientB == 0) {
             revert DivisionByZero(signedCoefficientA, exponentA);
         } else if (signedCoefficientA == 0) {
-            signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
-            exponent = MAXIMIZED_ZERO_EXPONENT;
+            return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
         } else {
+            int256 signedCoefficient;
+            int256 exponent;
             bool fullA;
             bool fullB;
             // Move both coefficients into the e75/e76 range, so that the result
@@ -250,7 +251,6 @@ library LibDecimalFloatImplementation {
             // values of the coefficients.
             uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
             uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
-            console2.log(signedCoefficientAAbs, signedCoefficientBAbs);
 
             uint256 scale = 1e76;
             int256 adjustExponent = 76;
@@ -268,60 +268,53 @@ library LibDecimalFloatImplementation {
                 } else {
                     // This is potentially quite a slow edge case.
                     while (signedCoefficientBAbs < scale) {
-                        scale /= 10;
-                        adjustExponent -= 1;
+                        unchecked {
+                            scale /= 10;
+                            adjustExponent -= 1;
+                        }
                     }
                 }
             }
-
-            int256 underflowBy;
-            {
-                if (exponentA >= 0) {
-                    if (exponentB <= 0) {
-                        // This can't underflow because B is subtracted from A.
-                        // (it could overflow).
-                    } else {
-                        // This can't underflow because subtracting a positive
-                        // value from another positive value cannot underflow
-                        // as the space of negative numbers is larger than
-                        // positive values in signed integers.
-                    }
-                } else {
-                    if (exponentB <= 0) {
-                        // This can't underflow because B is subtracted from A.
-                        // A is negative so it can't overflow either.
-                    } else {
-                        int256 headroom = -(type(int256).min - exponentA);
-                        underflowBy = exponentB > headroom ? exponentB - headroom : int256(0);
-                    }
-                }
-            }
-            if (underflowBy > 76) {
-                // If the underflow is this large then the result is zero.
-                signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
-                exponent = MAXIMIZED_ZERO_EXPONENT;
+            if (exponentA >= 0) {
+                exponentA -= adjustExponent;
             } else {
-                // The order of subtraction matters in edge cases. For non-negative
-                // exponentA, apply the adjust exponent first to move the value
-                // towards 0 before exponentB is applied. This reduces the chance of
-                // a transient overflow in the intermediate subtraction.
-                if (exponentA >= 0) {
-                    exponent = exponentA - adjustExponent - exponentB;
+                if (exponentB <= type(int256).max - adjustExponent) {
+                    exponentB += adjustExponent;
                 } else {
-                    exponent = exponentA + underflowBy - exponentB - adjustExponent;
+                    // The numerator is at most ~1e76 because the exponent is negative
+                    // and the denominator is incredibly large due to the exponent
+                    // being very close to type(int256).max. This means the result
+                    // is effectively zero.
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
                 }
+            }
 
-                console2.log("final");
+            int256 underflowExponentBy;
+
+            // This is the only case that can underflow.
+            if (exponentA < 0 && exponentB > 0) {
+                unchecked {
+                    int256 headroom = -(type(int256).min - exponentA);
+                    underflowExponentBy = exponentB > headroom ? exponentB - headroom : int256(0);
+                }
+            }
+
+            if (underflowExponentBy > 76) {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+            } else {
+                exponent = exponentA + underflowExponentBy - exponentB;
+
                 (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                     signedCoefficientA,
                     signedCoefficientB,
                     mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs),
                     exponent
                 );
-                signedCoefficient /= int256(10 ** uint256(underflowBy));
+                signedCoefficient /= int256(10 ** uint256(underflowExponentBy));
                 if (signedCoefficient == 0) {
                     exponent = MAXIMIZED_ZERO_EXPONENT;
                 }
+                return (signedCoefficient, exponent);
             }
         }
     }
