@@ -284,7 +284,7 @@ library LibDecimalFloatImplementation {
             // If we still have some left over then we just return zero as
             // the difference in exponents is too large to represent in
             // a single result negative exponent.
-            {
+            unchecked {
                 if (exponentA >= type(int256).min + adjustExponent) {
                     exponentA -= adjustExponent;
                 } else {
@@ -303,36 +303,36 @@ library LibDecimalFloatImplementation {
 
             int256 underflowExponentBy = 0;
 
-            // This is the only case that can underflow.
-            if (exponentA < 0 && exponentB > 0) {
-                unchecked {
+            unchecked {
+                // This is the only case that can underflow.
+                if (exponentA < 0 && exponentB > 0) {
                     int256 headroom = exponentA - type(int256).min;
                     underflowExponentBy = exponentB > headroom ? exponentB - headroom : int256(0);
                 }
-            }
 
-            exponent = exponentA + underflowExponentBy - exponentB;
+                exponent = exponentA + underflowExponentBy - exponentB;
 
-            (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
-                signedCoefficientA,
-                signedCoefficientB,
-                mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs),
-                exponent
-            );
+                (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
+                    signedCoefficientA,
+                    signedCoefficientB,
+                    mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs),
+                    exponent
+                );
 
-            if (underflowExponentBy > 0) {
-                if (underflowExponentBy > 76) {
-                    // This means the exponent is too small to represent even if
-                    // we truncate and downscale the signed coefficient.
-                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                if (underflowExponentBy > 0) {
+                    if (underflowExponentBy > 76) {
+                        // This means the exponent is too small to represent even if
+                        // we truncate and downscale the signed coefficient.
+                        return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                    }
+
+                    signedCoefficient /= int256(10 ** uint256(underflowExponentBy));
+                    if (signedCoefficient == 0) {
+                        exponent = MAXIMIZED_ZERO_EXPONENT;
+                    }
                 }
-
-                signedCoefficient /= int256(10 ** uint256(underflowExponentBy));
-                if (signedCoefficient == 0) {
-                    exponent = MAXIMIZED_ZERO_EXPONENT;
-                }
+                return (signedCoefficient, exponent);
             }
-            return (signedCoefficient, exponent);
         }
     }
 
