@@ -18,7 +18,6 @@ import {
     ANTI_LOG_TABLES_SMALL
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
-import {console2} from "forge-std/Test.sol";
 
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
@@ -304,28 +303,32 @@ library LibDecimalFloatImplementation {
             // This is the only case that can underflow.
             if (exponentA < 0 && exponentB > 0) {
                 unchecked {
-                    int256 headroom = -(type(int256).min - exponentA);
+                    int256 headroom = exponentA - type(int256).min;
                     underflowExponentBy = exponentB > headroom ? exponentB - headroom : int256(0);
                 }
             }
 
-            if (underflowExponentBy > 76) {
-                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
-            } else {
-                exponent = exponentA + underflowExponentBy - exponentB;
+            exponent = exponentA + underflowExponentBy - exponentB;
 
-                (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
-                    signedCoefficientA,
-                    signedCoefficientB,
-                    mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs),
-                    exponent
-                );
+            (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
+                signedCoefficientA,
+                signedCoefficientB,
+                mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs),
+                exponent
+            );
+
+            if (underflowExponentBy > 0) {
+                if (underflowExponentBy > 76) {
+                    // This means the exponent is too small to represent.
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                }
+
                 signedCoefficient /= int256(10 ** uint256(underflowExponentBy));
                 if (signedCoefficient == 0) {
                     exponent = MAXIMIZED_ZERO_EXPONENT;
                 }
-                return (signedCoefficient, exponent);
             }
+            return (signedCoefficient, exponent);
         }
     }
 
@@ -500,8 +503,8 @@ library LibDecimalFloatImplementation {
         // simply ignoring one of them.
         bool fullA;
         bool fullB;
-        (signedCoefficientA, exponentA, fullA) = maximize(signedCoefficientA, exponentA);
-        (signedCoefficientB, exponentB, fullB) = maximize(signedCoefficientB, exponentB);
+        (signedCoefficientA, exponentA) = maximizeFull(signedCoefficientA, exponentA);
+        (signedCoefficientB, exponentB) = maximizeFull(signedCoefficientB, exponentB);
 
         // We want A to represent the larger exponent. If this is not the case
         // then swap them.
