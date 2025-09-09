@@ -36,7 +36,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     function testDivZero(int256 signedCoefficient, int256 exponent) external {
         exponent = bound(exponent, type(int256).min / 2, type(int256).max);
-        (int256 signedCoefficientMaximized, int256 exponentMaximized) =
+        (int256 signedCoefficientMaximized, int256 exponentMaximized, bool full) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
         if (signedCoefficient == 0) {
             vm.expectRevert(stdError.divisionError);
@@ -51,6 +51,21 @@ contract LibDecimalFloatImplementationDivTest is Test {
             );
         }
         this.divExternal(signedCoefficient, exponent, 0, 0);
+    }
+
+    function testDivMaxPositiveValue(int256 signedCoefficient, int256 exponent) external {
+        // (int256 signedCoefficientMaximized, int256 exponentMaximized) =
+        //     LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+        // vm.expectRevert(
+        //     abi.encodeWithSelector(
+        //         MulDivOverflow.selector,
+        //         LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientMaximized),
+        //         1e75,
+        //         0
+        //     )
+        // );
+        // this.divExternal(signedCoefficient, exponent, 1, -76);
+        LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
     }
 
     /// 1 / 3 gas by parts 10
@@ -131,7 +146,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// Should be possible to divide every number by 1.
     function testDivBy1(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, type(int256).min + 76, type(int256).max);
-        (int256 expectedCoefficient, int256 expectedExponent) =
+        (int256 expectedCoefficient, int256 expectedExponent, bool full) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
 
         int256 one = 1;
@@ -146,7 +161,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     function testDivByNegativeOneFloat(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, type(int256).min + 76, type(int256).max - 1);
-        (int256 expectedCoefficient, int256 expectedExponent) =
+        (int256 expectedCoefficient, int256 expectedExponent, bool full) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
         (expectedCoefficient, expectedExponent) =
             LibDecimalFloatImplementation.minus(expectedCoefficient, expectedExponent);

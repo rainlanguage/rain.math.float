@@ -152,9 +152,9 @@ contract LibDecimalFloatImplementationAddTest is Test {
         vm.assume(signedCoefficientA != 0);
         vm.assume(signedCoefficientB != 0);
 
-        (int256 normalizedSignedCoefficientA, int256 normalizedExponentA) =
+        (int256 normalizedSignedCoefficientA, int256 normalizedExponentA, bool fullA) =
             LibDecimalFloatImplementation.maximize(signedCoefficientA, exponentA);
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+        (int256 expectedSignedCoefficient, int256 expectedExponent, bool fullExpected) =
             LibDecimalFloatImplementation.maximize(signedCoefficientB, exponentB);
 
         vm.assume(normalizedSignedCoefficientA != 0);
@@ -251,8 +251,10 @@ contract LibDecimalFloatImplementationAddTest is Test {
         int256 exponentB;
         int256 signedCoefficientAMaximized;
         int256 signedCoefficientBMaximized;
-        (signedCoefficientAMaximized, exponentA) = LibDecimalFloatImplementation.maximize(signedCoefficientA, 0);
-        (signedCoefficientBMaximized, exponentB) = LibDecimalFloatImplementation.maximize(signedCoefficientB, 0);
+        bool fullA;
+        bool fullB;
+        (signedCoefficientAMaximized, exponentA, fullA) = LibDecimalFloatImplementation.maximize(signedCoefficientA, 0);
+        (signedCoefficientBMaximized, exponentB, fullB) = LibDecimalFloatImplementation.maximize(signedCoefficientB, 0);
 
         if (signedCoefficientA == 0 || signedCoefficientB == 0) {
             exponentA = 0;

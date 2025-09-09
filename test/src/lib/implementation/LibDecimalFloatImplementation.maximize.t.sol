@@ -33,7 +33,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     /// Every normalized number is maximized.
     function testMaximizedEverything(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
-        (int256 actualSignedCoefficient, int256 actualExponent) =
+        (int256 actualSignedCoefficient, int256 actualExponent, bool full) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
         assertTrue(isMaximized(actualSignedCoefficient, actualExponent));
     }
@@ -44,7 +44,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         int256 expectedCoefficient,
         int256 expectedExponent
     ) internal pure {
-        (int256 actualSignedCoefficient, int256 actualExponent) =
+        (int256 actualSignedCoefficient, int256 actualExponent, bool full) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
         assertEq(actualSignedCoefficient, expectedCoefficient);
         assertEq(actualExponent, expectedExponent);
@@ -74,9 +74,9 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     /// Maximization should be idempotent.
     function testMaximizedIdempotent(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
-        (int256 maximizedSignedCoefficient, int256 maximizedExponent) =
+        (int256 maximizedSignedCoefficient, int256 maximizedExponent, bool full) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
-        (int256 actualSignedCoefficient, int256 actualExponent) =
+        (int256 actualSignedCoefficient, int256 actualExponent, bool fullActual) =
             LibDecimalFloatImplementation.maximize(maximizedSignedCoefficient, maximizedExponent);
         assertEq(actualSignedCoefficient, maximizedSignedCoefficient);
         assertEq(actualExponent, maximizedExponent);
@@ -85,7 +85,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     /// Maximization against reference.
     function testMaximizedReference(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
-        (int256 actualSignedCoefficient, int256 actualExponent) =
+        (int256 actualSignedCoefficient, int256 actualExponent, bool fullActual) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
             LibDecimalFloatSlow.maximizeSlow(signedCoefficient, exponent);
