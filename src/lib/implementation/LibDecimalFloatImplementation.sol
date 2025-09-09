@@ -8,7 +8,8 @@ import {
     Log10Zero,
     MulDivOverflow,
     MaximizeUnderflow,
-    DivisionByZero
+    DivisionByZero,
+    MaximizeOverflow
 } from "../../error/ErrDecimalFloat.sol";
 import {
     LOG_TABLES,
@@ -273,6 +274,9 @@ library LibDecimalFloatImplementation {
                         }
                     }
                 }
+                if (!fullA) {
+                    revert MaximizeOverflow(signedCoefficientA, exponentA);
+                }
             }
 
             // Attempt to apply the exponent adjustment.
@@ -319,7 +323,8 @@ library LibDecimalFloatImplementation {
 
             if (underflowExponentBy > 0) {
                 if (underflowExponentBy > 76) {
-                    // This means the exponent is too small to represent.
+                    // This means the exponent is too small to represent even if
+                    // we truncate and downscale the signed coefficient.
                     return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
                 }
 
@@ -501,8 +506,6 @@ library LibDecimalFloatImplementation {
         // Maximizing A and B gives us similar coefficients, which simplifies
         // detecting when their exponents are too far apart to add without
         // simply ignoring one of them.
-        bool fullA;
-        bool fullB;
         (signedCoefficientA, exponentA) = maximizeFull(signedCoefficientA, exponentA);
         (signedCoefficientB, exponentB) = maximizeFull(signedCoefficientB, exponentB);
 

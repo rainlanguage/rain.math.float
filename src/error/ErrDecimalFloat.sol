@@ -37,6 +37,9 @@ error MulDivOverflow(uint256 x, uint256 y, uint256 denominator);
 /// @dev Thrown when a maximize underflows where it is not appropriate.
 error MaximizeUnderflow(int256 signedCoefficient, int256 exponent);
 
+/// @dev Thrown when a maximize overflows where it is not appropriate.
+error MaximizeOverflow(int256 signedCoefficient, int256 exponent);
+
 /// @dev Thrown when dividing by zero.
 /// @param signedCoefficient The signed coefficient of the numerator.
 /// @param exponent The exponent of the numerator.

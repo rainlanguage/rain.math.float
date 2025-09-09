@@ -8,7 +8,6 @@ import {
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
     EXPONENT_MAX,
-    MulDivOverflow,
     DivisionByZero
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
