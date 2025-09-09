@@ -7,7 +7,6 @@ import {
     Log10Negative,
     Log10Zero,
     MulDivOverflow,
-    MaximizeUnderflow,
     DivisionByZero,
     MaximizeOverflow
 } from "../../error/ErrDecimalFloat.sol";
@@ -848,7 +847,7 @@ library LibDecimalFloatImplementation {
     function maximizeFull(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (int256 trySignedCoefficient, int256 tryExponent, bool full) = maximize(signedCoefficient, exponent);
         if (!full) {
-            revert MaximizeUnderflow(signedCoefficient, exponent);
+            revert MaximizeOverflow(signedCoefficient, exponent);
         }
         return (trySignedCoefficient, tryExponent);
     }
