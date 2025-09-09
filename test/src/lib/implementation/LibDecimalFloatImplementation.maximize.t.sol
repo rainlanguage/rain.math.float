@@ -34,7 +34,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     function testMaximizedEverything(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         (int256 actualSignedCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+            LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
         assertTrue(isMaximized(actualSignedCoefficient, actualExponent));
     }
 
@@ -45,7 +45,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         int256 expectedExponent
     ) internal pure {
         (int256 actualSignedCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+            LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
         assertEq(actualSignedCoefficient, expectedCoefficient);
         assertEq(actualExponent, expectedExponent);
     }
@@ -75,9 +75,9 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     function testMaximizedIdempotent(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         (int256 maximizedSignedCoefficient, int256 maximizedExponent) =
-            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+            LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
         (int256 actualSignedCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.maximize(maximizedSignedCoefficient, maximizedExponent);
+            LibDecimalFloatImplementation.maximizeFull(maximizedSignedCoefficient, maximizedExponent);
         assertEq(actualSignedCoefficient, maximizedSignedCoefficient);
         assertEq(actualExponent, maximizedExponent);
     }
@@ -86,7 +86,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     function testMaximizedReference(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         (int256 actualSignedCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+            LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
             LibDecimalFloatSlow.maximizeSlow(signedCoefficient, exponent);
         assertEq(actualSignedCoefficient, expectedSignedCoefficient);

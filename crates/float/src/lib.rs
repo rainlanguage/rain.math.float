@@ -1510,7 +1510,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            FloatError::DecimalFloat(DecimalFloatErrors::MulDivOverflow(_))
+            FloatError::DecimalFloat(DecimalFloatErrors::DivisionByZero(_))
         ));
     }
 
