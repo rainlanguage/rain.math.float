@@ -275,21 +275,31 @@ library LibDecimalFloatImplementation {
                     }
                 }
             }
-            if (exponentA >= 0) {
-                exponentA -= adjustExponent;
-            } else {
-                if (exponentB <= type(int256).max - adjustExponent) {
-                    exponentB += adjustExponent;
+
+            // Attempt to apply the exponent adjustment.
+            // First we try to apply it to exponentA.
+            // If we cannot fully apply it we try to apply the rest to exponentB.
+            // If we still have some left over then we just return zero as
+            // the difference in exponents is too large to represent in
+            // a single result negative exponent.
+            {
+                if (exponentA >= type(int256).min + adjustExponent) {
+                    exponentA -= adjustExponent;
                 } else {
-                    // The numerator is at most ~1e76 because the exponent is negative
-                    // and the denominator is incredibly large due to the exponent
-                    // being very close to type(int256).max. This means the result
-                    // is effectively zero.
-                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                    adjustExponent -= exponentA - type(int256).min;
+                    exponentA = type(int256).min;
+
+                    if (adjustExponent > 0) {
+                        if (exponentB <= type(int256).max - adjustExponent) {
+                            exponentB += adjustExponent;
+                        } else {
+                            return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                        }
+                    }
                 }
             }
 
-            int256 underflowExponentBy;
+            int256 underflowExponentBy = 0;
 
             // This is the only case that can underflow.
             if (exponentA < 0 && exponentB > 0) {
