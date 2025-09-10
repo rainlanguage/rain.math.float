@@ -160,7 +160,7 @@ contract LibDecimalFloatPowTest is LogTest {
                     // The round trip should not error so we do not try.
                     Float roundTrip = this.powExternal(c, inv);
                     if (!roundTrip.isZero()) {
-                        Float diff = a.div(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
+                        Float diff = a.div(roundTrip).sub(LibDecimalFloat.FLOAT_ONE).abs();
                         assertTrue(!diff.gt(diffLimit()), "diff");
                     }
                 }
