@@ -150,18 +150,19 @@ contract LibDecimalFloatPowTest is LogTest {
 
     function testRoundTripFuzzPow(Float a, Float b) external {
         try this.powExternal(a, b) returns (Float c) {
-            // If b is zero we'll divide by zero on the inv.
-            // If c is 1 then it's not round trippable because 1^x = 1 for all x.
-            // C will be 1 when a is 1 or b is 0 (or very close to either).
-            if (b.isZero() || c.eq(LibDecimalFloat.FLOAT_ONE)) {} else {
+            // If C is 1 then either a is 1 or b is 0 or so close that we round to 0.
+            // The case where a is 1 should round trip, but all other cases won't.
+            if (a.eq(LibDecimalFloat.FLOAT_ONE) || !c.eq(LibDecimalFloat.FLOAT_ONE)) {
                 Float inv = b.inv();
-                try this.powExternal(c, inv) returns (Float roundTrip) {
-                    if (roundTrip.isZero()) {} else {
-                        Float diff = a.div(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
-                        assertTrue(!diff.gt(diffLimit()), "diff");
-                    }
-                } catch (bytes memory err) {}
+                // The round trip should not error so we do not try.
+                Float roundTrip = this.powExternal(c, inv);
+                if (roundTrip.isZero()) {} else {
+                    Float diff = a.div(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
+                    assertTrue(!diff.gt(diffLimit()), "diff");
+                }
             }
-        } catch (bytes memory err) {}
+        } catch (bytes memory) {
+            // Can't round trip something that errors.
+        }
     }
 }
