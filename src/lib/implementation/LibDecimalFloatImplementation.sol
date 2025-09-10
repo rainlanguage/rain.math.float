@@ -2,7 +2,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ExponentOverflow, Log10Negative, Log10Zero, MulDivOverflow} from "../../error/ErrDecimalFloat.sol";
+import {
+    ExponentOverflow,
+    Log10Negative,
+    Log10Zero,
+    MulDivOverflow,
+    DivisionByZero,
+    MaximizeOverflow
+} from "../../error/ErrDecimalFloat.sol";
 import {
     LOG_TABLES,
     LOG_TABLES_SMALL,
@@ -223,16 +230,21 @@ library LibDecimalFloatImplementation {
     function div(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
-        returns (int256 signedCoefficient, int256 exponent)
+        returns (int256, int256)
     {
-        if (signedCoefficientA == 0 && signedCoefficientB != 0) {
-            signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
-            exponent = MAXIMIZED_ZERO_EXPONENT;
+        if (signedCoefficientB == 0) {
+            revert DivisionByZero(signedCoefficientA, exponentA);
+        } else if (signedCoefficientA == 0) {
+            return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
         } else {
+            int256 signedCoefficient;
+            int256 exponent;
+            bool fullA;
+            bool fullB;
             // Move both coefficients into the e75/e76 range, so that the result
             // of division will not cause a mulDiv overflow.
-            (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
-            (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
+            (signedCoefficientA, exponentA, fullA) = maximize(signedCoefficientA, exponentA);
+            (signedCoefficientB, exponentB, fullB) = maximize(signedCoefficientB, exponentB);
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
@@ -249,25 +261,78 @@ library LibDecimalFloatImplementation {
             // fit in 256 bits by the division of a denominator that is larger
             // than the scale up.
             if (signedCoefficientBAbs < scale) {
-                scale = 1e75;
-                adjustExponent = 75;
-            }
-            // The order of subtraction matters in edge cases. For non-negative
-            // exponentA, apply the adjust exponent first to move the value
-            // towards 0 before exponentB is applied. This reduces the chance of
-            // a transient overflow in the intermediate subtraction.
-            if (exponentA >= 0) {
-                exponent = exponentA - adjustExponent - exponentB;
-            } else {
-                exponent = exponentA - exponentB - adjustExponent;
+                if (fullB) {
+                    scale = 1e75;
+                    adjustExponent = 75;
+                } else {
+                    // This is potentially quite a slow edge case.
+                    while (signedCoefficientBAbs < scale) {
+                        unchecked {
+                            scale /= 10;
+                            adjustExponent -= 1;
+                        }
+                    }
+                }
+                if (!fullA) {
+                    revert MaximizeOverflow(signedCoefficientA, exponentA);
+                }
             }
 
-            (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
-                signedCoefficientA,
-                signedCoefficientB,
-                mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs),
-                exponent
-            );
+            // Attempt to apply the exponent adjustment.
+            // First we try to apply it to exponentA.
+            // If we cannot fully apply it we try to apply the rest to exponentB.
+            // If we still have some left over then we just return zero as
+            // the difference in exponents is too large to represent in
+            // a single result negative exponent.
+            unchecked {
+                if (exponentA >= type(int256).min + adjustExponent) {
+                    exponentA -= adjustExponent;
+                } else {
+                    adjustExponent -= exponentA - type(int256).min;
+                    exponentA = type(int256).min;
+
+                    if (adjustExponent > 0) {
+                        if (exponentB <= type(int256).max - adjustExponent) {
+                            exponentB += adjustExponent;
+                        } else {
+                            return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                        }
+                    }
+                }
+            }
+
+            int256 underflowExponentBy = 0;
+
+            unchecked {
+                // This is the only case that can underflow.
+                if (exponentA < 0 && exponentB > 0) {
+                    int256 headroom = exponentA - type(int256).min;
+                    underflowExponentBy = exponentB > headroom ? exponentB - headroom : int256(0);
+                }
+
+                exponent = exponentA + underflowExponentBy - exponentB;
+
+                (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
+                    signedCoefficientA,
+                    signedCoefficientB,
+                    mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs),
+                    exponent
+                );
+
+                if (underflowExponentBy > 0) {
+                    if (underflowExponentBy > 76) {
+                        // This means the exponent is too small to represent even if
+                        // we truncate and downscale the signed coefficient.
+                        return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                    }
+
+                    signedCoefficient /= int256(10 ** uint256(underflowExponentBy));
+                    if (signedCoefficient == 0) {
+                        exponent = MAXIMIZED_ZERO_EXPONENT;
+                    }
+                }
+                return (signedCoefficient, exponent);
+            }
         }
     }
 
@@ -440,8 +505,8 @@ library LibDecimalFloatImplementation {
         // Maximizing A and B gives us similar coefficients, which simplifies
         // detecting when their exponents are too far apart to add without
         // simply ignoring one of them.
-        (signedCoefficientA, exponentA) = maximize(signedCoefficientA, exponentA);
-        (signedCoefficientB, exponentB) = maximize(signedCoefficientB, exponentB);
+        (signedCoefficientA, exponentA) = maximizeFull(signedCoefficientA, exponentA);
+        (signedCoefficientB, exponentB) = maximizeFull(signedCoefficientB, exponentB);
 
         // We want A to represent the larger exponent. If this is not the case
         // then swap them.
@@ -556,14 +621,17 @@ library LibDecimalFloatImplementation {
     {
         unchecked {
             {
+                int256 unmaximizedCoefficient = signedCoefficient;
+                int256 unmaximizedExponent = exponent;
+                (signedCoefficient, exponent) = maximizeFull(signedCoefficient, exponent);
+
                 if (signedCoefficient <= 0) {
                     if (signedCoefficient == 0) {
                         revert Log10Zero();
                     } else {
-                        revert Log10Negative(signedCoefficient, exponent);
+                        revert Log10Negative(unmaximizedCoefficient, unmaximizedExponent);
                     }
                 }
-                (signedCoefficient, exponent) = maximize(signedCoefficient, exponent);
             }
 
             // all powers of 10 look like 1 with a different exponent
@@ -724,37 +792,40 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    /// @return signedCoefficient The maximized signed coefficient.
+    /// @return exponent The maximized exponent.
+    /// @return full `true` if the result is fully maximized, `false` if it was
+    /// not possible to maximize without overflow.
+    function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, bool) {
         unchecked {
             if (signedCoefficient == 0) {
-                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT, true);
             }
-            int256 initialExponent = exponent;
 
             // Check if already maximized before dropping into a block full of
             // jumps.
             if (signedCoefficient / 1e75 == 0) {
-                if (signedCoefficient / 1e38 == 0) {
+                if (signedCoefficient / 1e38 == 0 && exponent >= type(int256).min + 38) {
                     signedCoefficient *= 1e38;
                     exponent -= 38;
                 }
 
-                if (signedCoefficient / 1e57 == 0) {
+                if (signedCoefficient / 1e57 == 0 && exponent >= type(int256).min + 19) {
                     signedCoefficient *= 1e19;
                     exponent -= 19;
                 }
 
-                if (signedCoefficient / 1e66 == 0) {
+                if (signedCoefficient / 1e66 == 0 && exponent >= type(int256).min + 10) {
                     signedCoefficient *= 1e10;
                     exponent -= 10;
                 }
 
-                while (signedCoefficient / 1e74 == 0) {
+                while (signedCoefficient / 1e74 == 0 && exponent >= type(int256).min + 2) {
                     signedCoefficient *= 1e2;
                     exponent -= 2;
                 }
 
-                if (signedCoefficient / 1e75 == 0) {
+                if (signedCoefficient / 1e75 == 0 && exponent >= type(int256).min + 1) {
                     signedCoefficient *= 10;
                     exponent -= 1;
                 }
@@ -764,17 +835,21 @@ library LibDecimalFloatImplementation {
             // know until we try. This pushes us into [1e76,type(int256).max] and
             // [-type(int256).max,-1e76] ranges, if that's possible.
             int256 trySignedCoefficient = signedCoefficient * 10;
-            if (signedCoefficient == trySignedCoefficient / 10) {
+            if (signedCoefficient == trySignedCoefficient / 10 && exponent >= type(int256).min + 1) {
                 signedCoefficient = trySignedCoefficient;
                 exponent -= 1;
             }
 
-            if (initialExponent < exponent) {
-                revert ExponentOverflow(signedCoefficient, initialExponent);
-            }
-
-            return (signedCoefficient, exponent);
+            return (signedCoefficient, exponent, signedCoefficient / 1e75 != 0);
         }
+    }
+
+    function maximizeFull(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (int256 trySignedCoefficient, int256 tryExponent, bool full) = maximize(signedCoefficient, exponent);
+        if (!full) {
+            revert MaximizeOverflow(signedCoefficient, exponent);
+        }
+        return (trySignedCoefficient, tryExponent);
     }
 
     /// Rescale two floats so that they are possible to directly compare using

@@ -8,7 +8,7 @@ import {
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
     EXPONENT_MAX,
-    MulDivOverflow
+    DivisionByZero
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationInvTest is Test {
@@ -42,7 +42,7 @@ contract LibDecimalFloatImplementationInvTest is Test {
     }
 
     function testInv0() external {
-        vm.expectRevert(abi.encodeWithSelector(MulDivOverflow.selector, 1e76, 1e75, 0));
+        vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, 1e76, -76));
         this.invExternal(0, 0);
     }
 }

@@ -57,7 +57,7 @@ library LibFormatDecimalFloat {
         uint256 scaleExponent;
         uint256 scale = 0;
         if (scientific) {
-            (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+            (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
 
             bool isAtLeastE76 = signedCoefficient / 1e76 != 0;
             scaleExponent = isAtLeastE76 ? uint256(76) : uint256(75);

@@ -22,16 +22,24 @@ contract LibDecimalFloatSubTest is Test {
         return LibDecimalFloat.sub(floatA, floatB);
     }
 
+    function packLossyExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float, bool) {
+        return LibDecimalFloat.packLossy(signedCoefficient, exponent);
+    }
+
     function testSubPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         try this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
             int256 signedCoefficient, int256 exponent
         ) {
-            Float float = this.subExternal(a, b);
-            (Float floatImplementation, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-            (lossless);
-            assertTrue(float.eq(floatImplementation));
+            try this.packLossyExternal(signedCoefficient, exponent) returns (Float float, bool lossless) {
+                (lossless);
+                Float floatImplementation = this.subExternal(a, b);
+                assertTrue(float.eq(floatImplementation));
+            } catch (bytes memory err) {
+                vm.expectRevert(err);
+                this.packLossyExternal(signedCoefficient, exponent);
+            }
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.subExternal(a, b);
