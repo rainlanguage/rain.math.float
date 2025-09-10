@@ -155,7 +155,7 @@ contract LibDecimalFloatPowTest is LogTest {
             if (a.eq(LibDecimalFloat.FLOAT_ONE) || !c.eq(LibDecimalFloat.FLOAT_ONE)) {
                 if (b.isZero()) {
                     assertTrue(c.eq(LibDecimalFloat.FLOAT_ONE), "b is 0 so c should be 1");
-                } else if (!c.isZero() || !b.lt(LibDecimalFloat.FLOAT_ZERO)) {
+                } else if (!(c.isZero() && b.lt(LibDecimalFloat.FLOAT_ZERO))) {
                     Float inv = b.inv();
                     // The round trip should not error so we do not try.
                     Float roundTrip = this.powExternal(c, inv);
