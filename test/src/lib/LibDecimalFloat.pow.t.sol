@@ -150,7 +150,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     function testRoundTripFuzzPow(Float a, Float b) external {
         try this.powExternal(a, b) returns (Float c) {
-            // If C is 1 then either a is 1 or b is 0 or so close that we round to 0.
+            // If C is 1 then either a == 1 or b == 0 (or b rounds to 0).
             // The case where a is 1 should round trip, but all other cases won't.
             if (a.eq(LibDecimalFloat.FLOAT_ONE) || !c.eq(LibDecimalFloat.FLOAT_ONE)) {
                 if (b.isZero()) {
