@@ -153,12 +153,16 @@ contract LibDecimalFloatPowTest is LogTest {
             // If C is 1 then either a is 1 or b is 0 or so close that we round to 0.
             // The case where a is 1 should round trip, but all other cases won't.
             if (a.eq(LibDecimalFloat.FLOAT_ONE) || !c.eq(LibDecimalFloat.FLOAT_ONE)) {
-                Float inv = b.inv();
-                // The round trip should not error so we do not try.
-                Float roundTrip = this.powExternal(c, inv);
-                if (roundTrip.isZero()) {} else {
-                    Float diff = a.div(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
-                    assertTrue(!diff.gt(diffLimit()), "diff");
+                if (b.isZero()) {
+                    assertTrue(c.eq(LibDecimalFloat.FLOAT_ONE), "b is 0 so c should be 1");
+                } else {
+                    Float inv = b.inv();
+                    // The round trip should not error so we do not try.
+                    Float roundTrip = this.powExternal(c, inv);
+                    if (roundTrip.isZero()) {} else {
+                        Float diff = a.div(roundTrip).sub(LibDecimalFloat.packLossless(1, 0)).abs();
+                        assertTrue(!diff.gt(diffLimit()), "diff");
+                    }
                 }
             }
         } catch (bytes memory) {
