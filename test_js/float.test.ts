@@ -110,6 +110,26 @@ describe('Test Float Bindings', () => {
 			expect(a.add(b)?.value!.format()?.value!).toBe('0');
 		});
 
+		it('should test zero constant', () => {
+			// Test the zero function
+			const zeroResult = Float.zero();
+			expect(zeroResult.error).toBeUndefined();
+
+			const zero = zeroResult.value!;
+
+			// Test that zero is actually zero
+			expect(zero.isZero()?.value!).toBe(true);
+			expect(zero.format()?.value!).toBe('0');
+
+			// Test that zero equals parsed zero
+			const parsedZero = Float.parse('0')?.value!;
+			expect(zero.eq(parsedZero)?.value!).toBe(true);
+
+			// Test that zero equals bigint zero
+			const bigintZero = Float.fromBigint(0n);
+			expect(zero.eq(bigintZero)?.value!).toBe(true);
+		});
+
 		it('should test float constants', () => {
 			// Test that all constant methods return valid floats
 			const maxPosResult = Float.maxPositiveValue();

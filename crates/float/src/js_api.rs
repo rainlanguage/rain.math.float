@@ -378,6 +378,29 @@ impl Float {
         Self::min_negative_value()
     }
 
+    /// Returns the zero value of a `Float` in its maximized representation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The zero value.
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const zeroResult = Float.zero();
+    /// if (zeroResult.error) {
+    ///    console.error(zeroResult.error);
+    /// }
+    /// const zero = zeroResult.value;
+    /// assert(zero.isZero().value);
+    /// assert(zero.format().value === "0");
+    /// ```
+    #[wasm_export(js_name = "zero", preserve_js_class)]
+    pub fn zero_js() -> Result<Float, FloatError> {
+        Self::zero()
+    }
+
     /// Formats the float as a decimal string.
     ///
     /// # Returns
