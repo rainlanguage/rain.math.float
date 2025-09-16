@@ -24,4 +24,11 @@ contract LibDecimalFloatPackTest is Test {
         assertEq(signedCoefficient, signedCoefficientOut, "coefficient");
         assertEq(exponent, exponentOut, "exponent");
     }
+
+    /// Packing 0 is always lossless and returns standard zero float.
+    function testPackZero(int256 exponent) external pure {
+        (Float float, bool lossless) = LibDecimalFloat.packLossy(0, exponent);
+        assertTrue(lossless, "lossless");
+        assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "float");
+    }
 }

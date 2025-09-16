@@ -312,6 +312,10 @@ library LibDecimalFloat {
                     signedCoefficient /= 10;
                     ++exponent;
                 }
+            } else {
+                if (signedCoefficient == 0) {
+                    return (FLOAT_ZERO, true);
+                }
             }
 
             if (int32(exponent) != exponent) {
