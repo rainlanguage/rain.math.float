@@ -45,7 +45,7 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.fromFixedDecimalLossless(value, decimals);
         (int256 signedCoefficientPacked, int256 exponentPacked) = float.unpack();
         assertEq(signedCoefficient, signedCoefficientPacked);
-        assertEq(exponent, exponentPacked);
+        assertEq(signedCoefficient == 0 ? int256(0) : exponent, exponentPacked);
     }
 
     function testToFixedDecimalLosslessPacked(Float float, uint8 decimals) external {

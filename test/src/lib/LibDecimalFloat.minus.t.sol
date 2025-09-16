@@ -26,7 +26,7 @@ contract LibDecimalFloatMinusTest is Test {
             Float floatMinus = this.minusExternal(float);
             (int256 signedCoefficientMinus, int256 exponentMinus) = floatMinus.unpack();
             assertEq(signedCoefficient, signedCoefficientMinus);
-            assertEq(exponent, exponentMinus);
+            assertEq(signedCoefficient == 0 ? int256(0) : exponent, exponentMinus);
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.minusExternal(float);

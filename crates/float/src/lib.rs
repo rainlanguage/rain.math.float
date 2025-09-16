@@ -1588,11 +1588,8 @@ mod tests {
         let near_min_exp = Float::parse("1e-2147483646".to_string()).unwrap();
         let one_e_neg_three = Float::parse("1e-3".to_string()).unwrap();
 
-        let err = (near_min_exp * one_e_neg_three).unwrap_err();
-        assert!(matches!(
-            err,
-            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
-        ));
+        let float = (near_min_exp * one_e_neg_three).unwrap();
+        assert!(float.is_zero().unwrap());
     }
 
     #[test]

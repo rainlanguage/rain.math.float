@@ -23,20 +23,21 @@ contract LibDecimalFloatFloorTest is Test {
     /// Every non negative exponent is identity for floor.
     function testFloorNonNegative(int224 x, int256 exponent) external pure {
         exponent = bound(exponent, 0, type(int32).max);
-        checkFloor(x, exponent, x, exponent);
+        checkFloor(x, exponent, x, x == 0 ? int256(0) : exponent);
     }
 
     /// If the exponent is less than -76 then the floor is 0.
     function testFloorLessThanMin(int224 x, int256 exponent) external pure {
         exponent = bound(exponent, type(int32).min, -77);
-        checkFloor(x, exponent, 0, exponent);
+        checkFloor(x, exponent, 0, 0);
     }
 
     /// For exponents [-76,-1] the floor is the / 1.
     function testFloorInRange(int224 x, int256 exponent) external pure {
         exponent = bound(exponent, -76, -1);
         int256 scale = int256(10 ** uint256(-exponent));
-        checkFloor(x, exponent, (x / scale) * scale, exponent);
+        int256 y = (x / scale) * scale;
+        checkFloor(x, exponent, y, y == 0 ? int256(0) : exponent);
     }
 
     /// Examples
@@ -50,9 +51,9 @@ contract LibDecimalFloatFloorTest is Test {
         checkFloor(123456789, -6, 123000000, -6);
         checkFloor(123456789, -7, 120000000, -7);
         checkFloor(123456789, -8, 100000000, -8);
-        checkFloor(123456789, -9, 0, -9);
-        checkFloor(123456789, -10, 0, -10);
-        checkFloor(123456789, -11, 0, -11);
+        checkFloor(123456789, -9, 0, 0);
+        checkFloor(123456789, -10, 0, 0);
+        checkFloor(123456789, -11, 0, 0);
         checkFloor(type(int224).max, 0, type(int224).max, 0);
         checkFloor(type(int224).min, 0, type(int224).min, 0);
 
@@ -63,9 +64,9 @@ contract LibDecimalFloatFloorTest is Test {
         checkFloor(type(int224).max, -2, 13479973333575319897333507543509815336818572211270286240551805124600, -2);
         checkFloor(type(int224).max, -3, 13479973333575319897333507543509815336818572211270286240551805124000, -3);
         checkFloor(type(int224).max, -4, 13479973333575319897333507543509815336818572211270286240551805120000, -4);
-        checkFloor(type(int224).max, -77, 0, -77);
-        checkFloor(type(int224).max, -78, 0, -78);
-        checkFloor(type(int224).max, -76, 0, -76);
+        checkFloor(type(int224).max, -77, 0, 0);
+        checkFloor(type(int224).max, -78, 0, 0);
+        checkFloor(type(int224).max, -76, 0, 0);
     }
 
     function testFloorGasZero() external pure {
