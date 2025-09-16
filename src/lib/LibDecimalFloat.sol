@@ -296,6 +296,8 @@ library LibDecimalFloat {
     /// exponent.
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {
+            int256 initialSignedCoefficient = signedCoefficient;
+            int256 initialExponent = exponent;
             lossless = int224(signedCoefficient) == signedCoefficient;
 
             // The reason that we can do unchecked exponent addition here is that
@@ -319,7 +321,12 @@ library LibDecimalFloat {
             }
 
             if (int32(exponent) != exponent) {
-                revert ExponentOverflow(signedCoefficient, exponent);
+                // If the exponent is negative then this is a number too small
+                // to pack. We return zero but it is not a lossless conversion.
+                if (exponent < 0) {
+                    return (FLOAT_ZERO, false);
+                }
+                revert ExponentOverflow(initialSignedCoefficient, initialExponent);
             }
 
             // Need a mask to zero out the bits that could be set to 1 if the

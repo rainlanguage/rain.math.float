@@ -22,7 +22,7 @@ contract LibDecimalFloatPackTest is Test {
 
         assertTrue(lossless, "lossless");
         assertEq(signedCoefficient, signedCoefficientOut, "coefficient");
-        assertEq(exponent, exponentOut, "exponent");
+        assertEq(signedCoefficient == 0 ? int256(0) : exponent, exponentOut, "exponent");
     }
 
     /// Packing 0 is always lossless and returns standard zero float.
@@ -30,5 +30,13 @@ contract LibDecimalFloatPackTest is Test {
         (Float float, bool lossless) = LibDecimalFloat.packLossy(0, exponent);
         assertTrue(lossless, "lossless");
         assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "float");
+    }
+
+    /// Error when exponent larger than int32.max except for zero.
+    function testPackExponentOverflow(int256 signedCoefficient, int256 exponent) external {
+        exponent = bound(exponent, int256(type(int32).max) + 1, type(int256).max - 100);
+        vm.assume(signedCoefficient != 0);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+        this.packLossyExternal(signedCoefficient, exponent);
     }
 }
