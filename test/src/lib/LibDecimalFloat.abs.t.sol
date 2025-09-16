@@ -16,7 +16,7 @@ contract LibDecimalFloatAbsTest is Test {
         Float result = float.abs();
         (int256 resultSignedCoefficient, int256 resultExponent) = LibDecimalFloat.unpack(result);
         assertEq(resultSignedCoefficient, signedCoefficient);
-        assertEq(resultExponent, exponent);
+        assertEq(resultExponent, resultSignedCoefficient == 0 ? int256(0) : exponent);
     }
 
     /// Anything negative is negated. Except for the minimum value.

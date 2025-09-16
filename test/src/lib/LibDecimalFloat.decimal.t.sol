@@ -31,7 +31,7 @@ contract LibDecimalFloatDecimalTest is Test {
         (Float float, bool floatLossless) = LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
         (int256 signedCoefficientFloat, int256 exponentFloat) = LibDecimalFloat.unpack(float);
         assertEq(signedCoefficientFloat, signedCoefficient, "signedCoefficient");
-        assertEq(exponentFloat, exponent, "exponent");
+        assertEq(exponentFloat, signedCoefficientFloat == 0 ? int256(0) : exponent, "exponent");
         assertEq(floatLossless, lossless, "lossless");
     }
 
