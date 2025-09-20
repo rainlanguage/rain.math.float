@@ -547,9 +547,13 @@ library LibDecimalFloatImplementation {
             }
             // Be careful to handle overflow.
             if (didOverflow) {
+                if (type(int256).max == exponentA) {
+                    revert ExponentOverflow(signedCoefficientA, exponentA);
+                }
+
                 signedCoefficientA /= 10;
                 signedCoefficientB /= 10;
-                exponentA += 1;
+                exponentA++;
                 signedCoefficientA += signedCoefficientB;
             } else {
                 signedCoefficientA = c;
@@ -619,128 +623,124 @@ library LibDecimalFloatImplementation {
         view
         returns (int256, int256)
     {
-        unchecked {
+        {
+            int256 unmaximizedCoefficient = signedCoefficient;
+            int256 unmaximizedExponent = exponent;
+            (signedCoefficient, exponent) = maximizeFull(signedCoefficient, exponent);
+
+            if (signedCoefficient <= 0) {
+                if (signedCoefficient == 0) {
+                    revert Log10Zero();
+                } else {
+                    revert Log10Negative(unmaximizedCoefficient, unmaximizedExponent);
+                }
+            }
+        }
+
+        // all powers of 10 look like 1 with a different exponent
+        if (signedCoefficient == 1e76) {
+            return (exponent + 76, 0);
+        }
+        bool isAtLeastE76 = signedCoefficient >= 1e76;
+
+        // This is a positive log. i.e. log(x) where x >= 1.
+        if (exponent >= (isAtLeastE76 ? -76 : -75)) {
+            int256 y1Coefficient;
+            int256 y2Coefficient;
+            int256 x1Coefficient;
+            int256 x2Coefficient;
+            // exact powers of 10 are already caught above.
+            // but e.g. 20 would be 2e76, -75 and true for isAtLeastE76
+            // => adding exp 76 yields 1, which is the correct result.
+            // 200 would be 2e76, -74 and true for isAtLeastE76
+            // => adding exp 76 yields 2, which is the correct result.
+            // however 90 would be 9e75, -74 and false for isAtLeastE76
+            // => adding exp 75 yields 1, which is the correct result.
+            // 900 would be 9e75, -73 and false for isAtLeastE76
+            // => adding exp 75 yields 2, which is the correct result.
+            int256 powerOfTen = exponent + int256(isAtLeastE76 ? int256(76) : int256(75));
+
+            // Table lookup.
             {
-                int256 unmaximizedCoefficient = signedCoefficient;
-                int256 unmaximizedExponent = exponent;
-                (signedCoefficient, exponent) = maximizeFull(signedCoefficient, exponent);
+                int256 scale = 1e72;
+                assembly ("memory-safe") {
+                    //slither-disable-next-line divide-before-multiply
+                    function lookupTableVal(tables, index) -> result {
+                        // First byte of the data contract must be skipped.
+                        let mainOffset := add(1, mul(div(index, 10), 2))
+                        mstore(0, 0)
+                        extcodecopy(tables, 30, mainOffset, 2)
+                        let mainTableVal := mload(0)
 
-                if (signedCoefficient <= 0) {
-                    if (signedCoefficient == 0) {
-                        revert Log10Zero();
-                    } else {
-                        revert Log10Negative(unmaximizedCoefficient, unmaximizedExponent);
+                        result := and(mainTableVal, 0x7FFF)
+                        // Skip first byte of data contract then 1820 bytes
+                        // of the log tables.
+                        let smallTableOffset := 1821
+                        if iszero(iszero(and(mainTableVal, 0x8000))) {
+                            // Small table is half the size of the main
+                            // table.
+                            smallTableOffset := add(smallTableOffset, 910)
+                        }
+
+                        mstore(0, 0)
+                        extcodecopy(tables, 31, add(smallTableOffset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
+                        result := add(result, mload(0))
+                    }
+
+                    // Need to increase the scale by one OOM here so that the
+                    // signed coefficient has 4 digits always, to make it
+                    // easy to calculate the idx.
+                    if isAtLeastE76 { scale := mul(scale, 10) }
+
+                    // Truncate the signed coefficient to what we can look
+                    // up in the table.
+                    // Slither false positive because the truncation is
+                    // deliberate here.
+                    //slither-disable-next-line divide-before-multiply
+                    x1Coefficient := div(signedCoefficient, scale)
+                    let idx := sub(x1Coefficient, 1000)
+                    x1Coefficient := mul(x1Coefficient, scale)
+                    // Technically we only need to do this if we need to
+                    // interpolate but it's cheaper to just do an `add`
+                    // unconditionally than pay for an `if` and often also
+                    // do the `add`.
+                    x2Coefficient := add(x1Coefficient, scale)
+
+                    // If we don't bring the scale back down here we can get
+                    // overflows when multiplying the output of the lookups.
+                    // We are reusing the same scale variable to avoid a
+                    // compiler stack overflow.
+                    // Slither false positive here, this division is simply
+                    // the inverse of the mul above.
+                    //slither-disable-next-line divide-before-multiply
+                    if isAtLeastE76 { scale := div(scale, 10) }
+
+                    y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
+                    // Only do the second lookup if we expect interpolation
+                    // to need it.
+                    if iszero(eq(x1Coefficient, signedCoefficient)) {
+                        y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1)))
                     }
                 }
             }
 
-            // all powers of 10 look like 1 with a different exponent
-            if (signedCoefficient == 1e76) {
-                return (exponent + 76, 0);
-            }
-            bool isAtLeastE76 = signedCoefficient >= 1e76;
-
-            // This is a positive log. i.e. log(x) where x >= 1.
-            if (exponent >= (isAtLeastE76 ? -76 : -75)) {
-                int256 y1Coefficient;
-                int256 y2Coefficient;
-                int256 x1Coefficient;
-                int256 x2Coefficient;
-                // exact powers of 10 are already caught above.
-                // but e.g. 20 would be 2e76, -75 and true for isAtLeastE76
-                // => adding exp 76 yields 1, which is the correct result.
-                // 200 would be 2e76, -74 and true for isAtLeastE76
-                // => adding exp 76 yields 2, which is the correct result.
-                // however 90 would be 9e75, -74 and false for isAtLeastE76
-                // => adding exp 75 yields 1, which is the correct result.
-                // 900 would be 9e75, -73 and false for isAtLeastE76
-                // => adding exp 75 yields 2, which is the correct result.
-                int256 powerOfTen = exponent + int256(isAtLeastE76 ? int256(76) : int256(75));
-
-                // Table lookup.
-                {
-                    int256 scale = 1e72;
-                    assembly ("memory-safe") {
-                        //slither-disable-next-line divide-before-multiply
-                        function lookupTableVal(tables, index) -> result {
-                            // First byte of the data contract must be skipped.
-                            let mainOffset := add(1, mul(div(index, 10), 2))
-                            mstore(0, 0)
-                            extcodecopy(tables, 30, mainOffset, 2)
-                            let mainTableVal := mload(0)
-
-                            result := and(mainTableVal, 0x7FFF)
-                            // Skip first byte of data contract then 1820 bytes
-                            // of the log tables.
-                            let smallTableOffset := 1821
-                            if iszero(iszero(and(mainTableVal, 0x8000))) {
-                                // Small table is half the size of the main
-                                // table.
-                                smallTableOffset := add(smallTableOffset, 910)
-                            }
-
-                            mstore(0, 0)
-                            extcodecopy(
-                                tables, 31, add(smallTableOffset, add(mul(div(index, 100), 10), mod(index, 10))), 1
-                            )
-                            result := add(result, mload(0))
-                        }
-
-                        // Need to increase the scale by one OOM here so that the
-                        // signed coefficient has 4 digits always, to make it
-                        // easy to calculate the idx.
-                        if isAtLeastE76 { scale := mul(scale, 10) }
-
-                        // Truncate the signed coefficient to what we can look
-                        // up in the table.
-                        // Slither false positive because the truncation is
-                        // deliberate here.
-                        //slither-disable-next-line divide-before-multiply
-                        x1Coefficient := div(signedCoefficient, scale)
-                        let idx := sub(x1Coefficient, 1000)
-                        x1Coefficient := mul(x1Coefficient, scale)
-                        // Technically we only need to do this if we need to
-                        // interpolate but it's cheaper to just do an `add`
-                        // unconditionally than pay for an `if` and often also
-                        // do the `add`.
-                        x2Coefficient := add(x1Coefficient, scale)
-
-                        // If we don't bring the scale back down here we can get
-                        // overflows when multiplying the output of the lookups.
-                        // We are reusing the same scale variable to avoid a
-                        // compiler stack overflow.
-                        // Slither false positive here, this division is simply
-                        // the inverse of the mul above.
-                        //slither-disable-next-line divide-before-multiply
-                        if isAtLeastE76 { scale := div(scale, 10) }
-
-                        y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
-                        // Only do the second lookup if we expect interpolation
-                        // to need it.
-                        if iszero(eq(x1Coefficient, signedCoefficient)) {
-                            y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1)))
-                        }
-                    }
-                }
-
-                (signedCoefficient, exponent) = unitLinearInterpolation(
-                    x1Coefficient,
-                    signedCoefficient,
-                    x2Coefficient,
-                    exponent,
-                    y1Coefficient,
-                    y2Coefficient,
-                    LOG10_Y_EXPONENT
-                );
-                return add(signedCoefficient, exponent, powerOfTen, 0);
-            }
-            // This is a negative log. i.e. log(x) where 0 < x < 1.
-            // log(x) = -log(1/x)
-            else {
-                (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
-                (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
-                return minus(signedCoefficient, exponent);
-            }
+            (signedCoefficient, exponent) = unitLinearInterpolation(
+                x1Coefficient,
+                signedCoefficient,
+                x2Coefficient,
+                exponent,
+                y1Coefficient,
+                y2Coefficient,
+                LOG10_Y_EXPONENT
+            );
+            return add(signedCoefficient, exponent, powerOfTen, 0);
+        }
+        // This is a negative log. i.e. log(x) where 0 < x < 1.
+        // log(x) = -log(1/x)
+        else {
+            (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
+            (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
+            return minus(signedCoefficient, exponent);
         }
     }
 
@@ -760,36 +760,32 @@ library LibDecimalFloatImplementation {
         view
         returns (int256, int256)
     {
-        unchecked {
-            if (signedCoefficient < 0) {
-                (signedCoefficient, exponent) = minus(signedCoefficient, exponent);
-                (signedCoefficient, exponent) = pow10(tablesDataContract, signedCoefficient, exponent);
-                return inv(signedCoefficient, exponent);
-            }
-
-            // Table lookup.
-            (int256 characteristicCoefficient, int256 mantissaCoefficient) =
-                characteristicMantissa(signedCoefficient, exponent);
-            int256 characteristicExponent = exponent;
-            {
-                (int256 idx, bool interpolate, int256 scale) = mantissa4(mantissaCoefficient, exponent);
-                (int256 y1Coefficient, int256 y2Coefficient) =
-                    lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
-                if (interpolate) {
-                    (signedCoefficient, exponent) = unitLinearInterpolation(
-                        idx * scale, mantissaCoefficient, (idx + 1) * scale, exponent, y1Coefficient, y2Coefficient, -4
-                    );
-                } else {
-                    signedCoefficient = y1Coefficient;
-                    exponent = -4;
-                }
-            }
-
-            return (
-                signedCoefficient,
-                1 + exponent + withTargetExponent(characteristicCoefficient, characteristicExponent, 0)
-            );
+        if (signedCoefficient < 0) {
+            (signedCoefficient, exponent) = minus(signedCoefficient, exponent);
+            (signedCoefficient, exponent) = pow10(tablesDataContract, signedCoefficient, exponent);
+            return inv(signedCoefficient, exponent);
         }
+
+        // Table lookup.
+        (int256 characteristicCoefficient, int256 mantissaCoefficient) =
+            characteristicMantissa(signedCoefficient, exponent);
+        int256 characteristicExponent = exponent;
+        {
+            (int256 idx, bool interpolate, int256 scale) = mantissa4(mantissaCoefficient, exponent);
+            (int256 y1Coefficient, int256 y2Coefficient) =
+                lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
+            if (interpolate) {
+                (signedCoefficient, exponent) = unitLinearInterpolation(
+                    idx * scale, mantissaCoefficient, (idx + 1) * scale, exponent, y1Coefficient, y2Coefficient, -4
+                );
+            } else {
+                signedCoefficient = y1Coefficient;
+                exponent = -4;
+            }
+        }
+
+        return
+            (signedCoefficient, 1 + exponent + withTargetExponent(characteristicCoefficient, characteristicExponent, 0));
     }
 
     /// @return signedCoefficient The maximized signed coefficient.
