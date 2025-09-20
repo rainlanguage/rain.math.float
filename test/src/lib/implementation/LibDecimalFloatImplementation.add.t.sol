@@ -3,6 +3,7 @@
 pragma solidity =0.8.25;
 
 import {
+    ExponentOverflow,
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
     EXPONENT_MAX,
@@ -11,6 +12,14 @@ import {
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatImplementationAddTest is Test {
+    function addExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (int256 signedCoefficient, int256 exponent)
+    {
+        return LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
     function willOverflow(int256 a, int256 b) internal pure returns (bool) {
         unchecked {
             if (a > 0 && b > 0) {
@@ -124,6 +133,11 @@ contract LibDecimalFloatImplementationAddTest is Test {
 
     function testGasAddOne() external pure {
         LibDecimalFloatImplementation.add(1e37, -37, 1e37, -37);
+    }
+
+    function testAddRevertMaxA() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, type(int256).max, type(int256).max));
+        this.addExternal(type(int256).max, type(int256).max, 1, type(int256).max);
     }
 
     /// Provided our exponents are in range we should never revert.
