@@ -148,4 +148,60 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         int256 expectedSignedCoefficient = signedCoefficient / int256(10 ** uint256(targetExponentDiff));
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
     }
+
+    function testWithTargetExponentScaleUpLargeDiffRevert(
+        int256 signedCoefficient,
+        int256 exponent,
+        int256 targetExponent
+    ) external {
+        exponent = bound(exponent, type(int256).min + 77, type(int256).max);
+        targetExponent = bound(targetExponent, type(int256).min, exponent - 77);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(WithTargetExponentOverflow.selector, signedCoefficient, exponent, targetExponent)
+        );
+        this.withTargetExponentExternal(signedCoefficient, exponent, targetExponent);
+    }
+
+    function testWithTargetExponentScaleUpNotOverflow(
+        int256 signedCoefficient,
+        int256 exponent,
+        int256 targetExponentDiff
+    ) external pure {
+        targetExponentDiff = bound(targetExponentDiff, int256(1), int256(76));
+        exponent = bound(exponent, type(int256).min + targetExponentDiff, type(int256).max);
+        int256 targetExponent = exponent - targetExponentDiff;
+
+        // Assume not overflow.
+        unchecked {
+            int256 scale = int256(10 ** uint256(exponent - targetExponent));
+            int256 c = signedCoefficient * scale;
+            vm.assume(c / scale == signedCoefficient);
+        }
+
+        int256 actualSignedCoefficient =
+            LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
+        int256 expectedSignedCoefficient = signedCoefficient * int256(10 ** uint256(exponent - targetExponent));
+        assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
+    }
+
+    function testWithTargetExponentScaleUpOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponentDiff)
+        external
+    {
+        targetExponentDiff = bound(targetExponentDiff, int256(1), int256(76));
+        exponent = bound(exponent, type(int256).min + targetExponentDiff, type(int256).max);
+        int256 targetExponent = exponent - targetExponentDiff;
+
+        // Assume overflow.
+        unchecked {
+            int256 scale = int256(10 ** uint256(exponent - targetExponent));
+            int256 c = signedCoefficient * scale;
+            vm.assume(c / scale != signedCoefficient);
+        }
+
+        vm.expectRevert(
+            abi.encodeWithSelector(WithTargetExponentOverflow.selector, signedCoefficient, exponent, targetExponent)
+        );
+        this.withTargetExponentExternal(signedCoefficient, exponent, targetExponent);
+    }
 }
