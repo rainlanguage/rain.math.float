@@ -965,14 +965,14 @@ library LibDecimalFloatImplementation {
                 return signedCoefficient;
             } else if (targetExponent > exponent) {
                 int256 exponentDiff = targetExponent - exponent;
-                if (exponentDiff > 76 || exponentDiff < 0) {
+                if (exponentDiff > 76 || exponentDiff <= 0) {
                     return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT);
                 }
 
                 return signedCoefficient / int256(10 ** uint256(exponentDiff));
             } else {
                 int256 exponentDiff = exponent - targetExponent;
-                if (exponentDiff > 76 || exponentDiff < 0) {
+                if (exponentDiff > 76 || exponentDiff <= 0) {
                     revert WithTargetExponentOverflow(signedCoefficient, exponent, targetExponent);
                 }
                 int256 scale = int256(10 ** uint256(exponentDiff));
