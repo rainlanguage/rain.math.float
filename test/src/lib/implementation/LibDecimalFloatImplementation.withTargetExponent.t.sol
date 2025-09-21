@@ -110,7 +110,6 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         checkWithTargetExponent(type(int256).max, 0, 1, type(int256).max / 10);
     }
 
-
     function testWithTargetExponentTargetMoreThan76Larger(
         int256 signedCoefficient,
         int256 exponent,
