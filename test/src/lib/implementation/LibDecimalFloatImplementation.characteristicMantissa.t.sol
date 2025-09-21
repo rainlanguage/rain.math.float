@@ -47,4 +47,25 @@ contract LibDecimalFloatImplementationCharacteristicMantissaTest is Test {
         checkCharacteristicMantissa(1, -77, 0, 1);
         checkCharacteristicMantissa(-1, -77, 0, -1);
     }
+
+    function testCharacteristicMantissaNonNegExponent(int256 signedCoefficient, int256 exponent) public pure {
+        exponent = bound(exponent, 0, type(int256).max);
+        checkCharacteristicMantissa(signedCoefficient, exponent, signedCoefficient, 0);
+    }
+
+    function testCharacteristicMantissaNegExponentLarge(int256 signedCoefficient, int256 exponent) public pure {
+        exponent = bound(exponent, type(int256).min, -77);
+        checkCharacteristicMantissa(signedCoefficient, exponent, 0, signedCoefficient);
+    }
+
+    function testCharacteristicMantissaNegExponentSmall(int256 signedCoefficient) public pure {
+        for (int256 exponent = 1; exponent <= 76; exponent++) {
+            int256 scale = int256(10 ** uint256(exponent));
+
+            int256 expectedMantissa = signedCoefficient % scale;
+            int256 expectedCharacteristic = signedCoefficient / scale * scale;
+
+            checkCharacteristicMantissa(signedCoefficient, -exponent, expectedCharacteristic, expectedMantissa);
+        }
+    }
 }
