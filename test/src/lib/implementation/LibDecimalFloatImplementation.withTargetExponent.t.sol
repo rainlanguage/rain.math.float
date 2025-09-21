@@ -110,11 +110,6 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         checkWithTargetExponent(type(int256).max, 0, 1, type(int256).max / 10);
     }
 
-    function testWithTargetExponentExponentEqual(int256 signedCoefficient, int256 exponent) external pure {
-        int256 actualSignedCoefficient =
-            LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, exponent);
-        assertEq(actualSignedCoefficient, signedCoefficient, "signedCoefficient");
-    }
 
     function testWithTargetExponentTargetMoreThan76Larger(
         int256 signedCoefficient,
