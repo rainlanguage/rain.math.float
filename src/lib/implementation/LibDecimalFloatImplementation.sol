@@ -271,86 +271,71 @@ library LibDecimalFloatImplementation {
                                 if (signedCoefficientBAbs < 1e5) {
                                     scale = 1e5;
                                     adjustExponent = 5;
-                                }
-                                else {
+                                } else {
                                     scale = 1e10;
                                     adjustExponent = 10;
                                 }
-                            }
-                            else {
+                            } else {
                                 if (signedCoefficientBAbs < 1e14) {
                                     scale = 1e14;
                                     adjustExponent = 14;
-                                }
-                                else {
+                                } else {
                                     scale = 1e19;
                                     adjustExponent = 19;
                                 }
                             }
-                        }
-                        else {
+                        } else {
                             if (signedCoefficientBAbs < 1e28) {
                                 if (signedCoefficientBAbs < 1e23) {
                                     scale = 1e23;
                                     adjustExponent = 23;
-                                }
-                                else {
+                                } else {
                                     scale = 1e28;
                                     adjustExponent = 28;
                                 }
-                            }
-                            else {
+                            } else {
                                 if (signedCoefficientBAbs < 1e33) {
                                     scale = 1e33;
                                     adjustExponent = 33;
-                                }
-                                else {
+                                } else {
                                     scale = 1e38;
                                     adjustExponent = 38;
                                 }
                             }
                         }
-                    }
-                    else {
+                    } else {
                         if (signedCoefficientBAbs < 1e58) {
                             if (signedCoefficientBAbs < 1e48) {
                                 if (signedCoefficientBAbs < 1e43) {
                                     scale = 1e43;
                                     adjustExponent = 43;
-                                }
-                                else {
+                                } else {
                                     scale = 1e48;
                                     adjustExponent = 48;
                                 }
-                            }
-                            else {
+                            } else {
                                 if (signedCoefficientBAbs < 1e53) {
                                     scale = 1e53;
                                     adjustExponent = 53;
-                                }
-                                else {
+                                } else {
                                     scale = 1e58;
                                     adjustExponent = 58;
                                 }
                             }
-                        }
-                        else {
+                        } else {
                             if (signedCoefficientBAbs < 1e68) {
                                 if (signedCoefficientBAbs < 1e63) {
                                     scale = 1e63;
                                     adjustExponent = 63;
-                                }
-                                else {
+                                } else {
                                     scale = 1e68;
                                     adjustExponent = 68;
                                 }
-                            }
-                            else {
+                            } else {
                                 if (signedCoefficientBAbs < 1e73) {
                                     scale = 1e73;
                                     adjustExponent = 73;
-                                }
-                                else {
+                                } else {
                                     // Noop as we already have a starting scale.
                                 }
                             }
