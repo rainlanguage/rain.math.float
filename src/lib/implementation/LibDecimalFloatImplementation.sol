@@ -265,7 +265,99 @@ library LibDecimalFloatImplementation {
                     scale = 1e75;
                     adjustExponent = 75;
                 } else {
-                    // This is potentially quite a slow edge case.
+                    if (signedCoefficientBAbs < 1e38) {
+                        if (signedCoefficientBAbs < 1e19) {
+                            if (signedCoefficientBAbs < 1e10) {
+                                if (signedCoefficientBAbs < 1e5) {
+                                    scale = 1e5;
+                                    adjustExponent = 5;
+                                }
+                                else {
+                                    scale = 1e10;
+                                    adjustExponent = 10;
+                                }
+                            }
+                            else {
+                                if (signedCoefficientBAbs < 1e14) {
+                                    scale = 1e14;
+                                    adjustExponent = 14;
+                                }
+                                else {
+                                    scale = 1e19;
+                                    adjustExponent = 19;
+                                }
+                            }
+                        }
+                        else {
+                            if (signedCoefficientBAbs < 1e28) {
+                                if (signedCoefficientBAbs < 1e23) {
+                                    scale = 1e23;
+                                    adjustExponent = 23;
+                                }
+                                else {
+                                    scale = 1e28;
+                                    adjustExponent = 28;
+                                }
+                            }
+                            else {
+                                if (signedCoefficientBAbs < 1e33) {
+                                    scale = 1e33;
+                                    adjustExponent = 33;
+                                }
+                                else {
+                                    scale = 1e38;
+                                    adjustExponent = 38;
+                                }
+                            }
+                        }
+                    }
+                    else {
+                        if (signedCoefficientBAbs < 1e58) {
+                            if (signedCoefficientBAbs < 1e48) {
+                                if (signedCoefficientBAbs < 1e43) {
+                                    scale = 1e43;
+                                    adjustExponent = 43;
+                                }
+                                else {
+                                    scale = 1e48;
+                                    adjustExponent = 48;
+                                }
+                            }
+                            else {
+                                if (signedCoefficientBAbs < 1e53) {
+                                    scale = 1e53;
+                                    adjustExponent = 53;
+                                }
+                                else {
+                                    scale = 1e58;
+                                    adjustExponent = 58;
+                                }
+                            }
+                        }
+                        else {
+                            if (signedCoefficientBAbs < 1e68) {
+                                if (signedCoefficientBAbs < 1e63) {
+                                    scale = 1e63;
+                                    adjustExponent = 63;
+                                }
+                                else {
+                                    scale = 1e68;
+                                    adjustExponent = 68;
+                                }
+                            }
+                            else {
+                                if (signedCoefficientBAbs < 1e73) {
+                                    scale = 1e73;
+                                    adjustExponent = 73;
+                                }
+                                else {
+                                    // Noop as we already have a starting scale.
+                                }
+                            }
+                        }
+                    }
+
+                    // Finalize the scale after the binary search.
                     while (signedCoefficientBAbs < scale) {
                         unchecked {
                             scale /= 10;
