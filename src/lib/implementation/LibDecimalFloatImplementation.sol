@@ -227,6 +227,7 @@ library LibDecimalFloatImplementation {
     /// > The result is then rounded to precision digits, if necessary, according
     /// > to the rounding algorithm and taking into account the remainder from
     /// > the division.
+    //slither-disable-next-line cyclomatic-complexity
     function div(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
