@@ -1,7 +1,7 @@
 {
     "name": "@rainlanguage/float",
     "description": "Rainlanguage rust Float library in JS/TS through wasm bindgen",
-    "version": "0.0.0-alpha.29",
+    "version": "0.0.0-alpha.30",
     "license": "LicenseRef-DCL-1.0",
     "author": "Rain Open Source Software Ltd",
     "repository": {
