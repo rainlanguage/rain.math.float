@@ -344,7 +344,7 @@ library LibDecimalFloatImplementation {
                     }
 
                     // Finalize the scale after the binary search.
-                    while (signedCoefficientBAbs < scale) {
+                    while (signedCoefficientBAbs <= scale) {
                         unchecked {
                             scale /= 10;
                             adjustExponent -= 1;
