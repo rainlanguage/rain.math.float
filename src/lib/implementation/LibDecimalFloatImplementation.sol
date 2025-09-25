@@ -19,6 +19,8 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
+import {console2} from "forge-std/Test.sol";
+
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -685,6 +687,30 @@ library LibDecimalFloatImplementation {
         return div(1e76, -76, signedCoefficient, exponent);
     }
 
+    function lookupLogTableVal(address tables, int256 index) internal view returns (int256 result) {
+        assembly ("memory-safe") {
+            // First byte of the data contract must be skipped.
+            let mainOffset := add(1, mul(div(index, 10), 2))
+            mstore(0, 0)
+            extcodecopy(tables, 30, mainOffset, 2)
+            let mainTableVal := mload(0)
+
+            result := and(mainTableVal, 0x7FFF)
+            // Skip first byte of data contract then 1820 bytes
+            // of the log tables.
+            let smallTableOffset := 1821
+            if iszero(iszero(and(mainTableVal, 0x8000))) {
+                // Small table is half the size of the main
+                // table.
+                smallTableOffset := add(smallTableOffset, 910)
+            }
+
+            mstore(0, 0)
+            extcodecopy(tables, 31, add(smallTableOffset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
+            result := add(result, mload(0))
+        }
+    }
+
     /// log10(x) for a float x.
     ///
     /// Internally uses log tables so is not perfectly accurate, but also doesn't
@@ -740,50 +766,28 @@ library LibDecimalFloatImplementation {
 
             // Table lookup.
             {
+                int256 idx = 0;
                 int256 scale = 1e72;
-                assembly ("memory-safe") {
-                    //slither-disable-next-line divide-before-multiply
-                    function lookupTableVal(tables, index) -> result {
-                        // First byte of the data contract must be skipped.
-                        let mainOffset := add(1, mul(div(index, 10), 2))
-                        mstore(0, 0)
-                        extcodecopy(tables, 30, mainOffset, 2)
-                        let mainTableVal := mload(0)
-
-                        result := and(mainTableVal, 0x7FFF)
-                        // Skip first byte of data contract then 1820 bytes
-                        // of the log tables.
-                        let smallTableOffset := 1821
-                        if iszero(iszero(and(mainTableVal, 0x8000))) {
-                            // Small table is half the size of the main
-                            // table.
-                            smallTableOffset := add(smallTableOffset, 910)
-                        }
-
-                        mstore(0, 0)
-                        extcodecopy(tables, 31, add(smallTableOffset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
-                        result := add(result, mload(0))
-                    }
-
+                unchecked {
                     // Need to increase the scale by one OOM here so that the
                     // signed coefficient has 4 digits always, to make it
                     // easy to calculate the idx.
-                    if isAtLeastE76 { scale := mul(scale, 10) }
-
+                    if (isAtLeastE76) {
+                        scale *= 10;
+                    }
                     // Truncate the signed coefficient to what we can look
                     // up in the table.
                     // Slither false positive because the truncation is
                     // deliberate here.
                     //slither-disable-next-line divide-before-multiply
-                    x1Coefficient := div(signedCoefficient, scale)
-                    let idx := sub(x1Coefficient, 1000)
-                    x1Coefficient := mul(x1Coefficient, scale)
+                    x1Coefficient = signedCoefficient / scale;
+                    idx = x1Coefficient - 1000;
+                    x1Coefficient = x1Coefficient * scale;
                     // Technically we only need to do this if we need to
                     // interpolate but it's cheaper to just do an `add`
                     // unconditionally than pay for an `if` and often also
                     // do the `add`.
-                    x2Coefficient := add(x1Coefficient, scale)
-
+                    x2Coefficient = x1Coefficient + scale;
                     // If we don't bring the scale back down here we can get
                     // overflows when multiplying the output of the lookups.
                     // We are reusing the same scale variable to avoid a
@@ -791,16 +795,26 @@ library LibDecimalFloatImplementation {
                     // Slither false positive here, this division is simply
                     // the inverse of the mul above.
                     //slither-disable-next-line divide-before-multiply
-                    if isAtLeastE76 { scale := div(scale, 10) }
-
-                    y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
+                    if (isAtLeastE76) {
+                        scale /= 10;
+                    }
+                    y1Coefficient = scale * lookupLogTableVal(tablesDataContract, idx);
                     // Only do the second lookup if we expect interpolation
                     // to need it.
-                    if iszero(eq(x1Coefficient, signedCoefficient)) {
-                        y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1)))
+                    if (x1Coefficient != signedCoefficient) {
+                        y2Coefficient = scale * lookupLogTableVal(tablesDataContract, (idx + 1) % 9000);
                     }
                 }
+                console2.logInt(idx);
             }
+
+            console2.log("log10");
+            console2.logInt(x1Coefficient);
+            console2.logInt(signedCoefficient);
+            console2.logInt(x2Coefficient);
+            console2.log("---");
+            console2.logInt(y1Coefficient);
+            console2.logInt(y2Coefficient);
 
             (signedCoefficient, exponent) = unitLinearInterpolation(
                 x1Coefficient,
@@ -811,6 +825,8 @@ library LibDecimalFloatImplementation {
                 y2Coefficient,
                 LOG10_Y_EXPONENT
             );
+            console2.logInt(signedCoefficient);
+            console2.logInt(exponent);
             return add(signedCoefficient, exponent, powerOfTen, 0);
         }
         // This is a negative log. i.e. log(x) where 0 < x < 1.

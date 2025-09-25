@@ -24,6 +24,8 @@ import {
     EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
+import {console2} from "forge-std/Test.sol";
+
 type Float is bytes32;
 
 /// @title LibDecimalFloat
@@ -666,6 +668,9 @@ library LibDecimalFloat {
     /// logarithm tables.
     function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        console2.logInt(signedCoefficientA);
+        console2.logInt(exponentA);
+
         if (b.isZero()) {
             return FLOAT_ONE;
         } else if (signedCoefficientA == 0) {
@@ -685,6 +690,9 @@ library LibDecimalFloat {
 
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
+
+        console2.logInt(signedCoefficientC);
+        console2.logInt(exponentC);
 
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
 
