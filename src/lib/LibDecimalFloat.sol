@@ -24,8 +24,6 @@ import {
     EXPONENT_MIN
 } from "./implementation/LibDecimalFloatImplementation.sol";
 
-import {console2} from "forge-std/Test.sol";
-
 type Float is bytes32;
 
 /// @title LibDecimalFloat
@@ -696,14 +694,18 @@ library LibDecimalFloat {
             uint256(LibDecimalFloatImplementation.withTargetExponent(characteristicB, exponentB, 0));
 
         // Exponentiation by squaring.
-        Float result = FLOAT_ONE;
-        Float base = a;
+        (int256 signedCoefficientResult, int256 exponentResult) = (1, 0);
+        (int256 signedCoefficientBase, int256 exponentBase) = a.unpack();
         while (exponentBInteger >= 1) {
             if (exponentBInteger & 0x01 == 0x01) {
-                result = result.mul(base);
+                (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
+                    signedCoefficientResult, exponentResult, signedCoefficientBase, exponentBase
+                );
             }
             exponentBInteger >>= 1;
-            base = base.mul(base);
+            (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
+                signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
+            );
         }
 
         (int256 signedCoefficientC, int256 exponentC) =
@@ -715,10 +717,13 @@ library LibDecimalFloat {
         (signedCoefficientC, exponentC) =
             LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficientC, exponentC);
 
+        (signedCoefficientC, exponentC) =
+            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientResult, exponentResult);
+
         (Float c, bool lossless) = packLossy(signedCoefficientC, exponentC);
         // We don't care if power is lossy because it's an approximation anyway.
         (lossless);
-        return c.mul(result);
+        return c;
     }
 
     /// sqrt a = a ^ 0.5

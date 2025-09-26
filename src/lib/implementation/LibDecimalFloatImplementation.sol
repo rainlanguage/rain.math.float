@@ -20,8 +20,6 @@ import {
 } from "../../generated/LogTables.pointers.sol";
 import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
-import {console2} from "forge-std/Test.sol";
-
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -811,16 +809,7 @@ library LibDecimalFloatImplementation {
                             : int256(scale * lookupLogTableVal(tablesDataContract, idx + 1));
                     }
                 }
-                console2.log(idx);
             }
-
-            console2.log("log10");
-            console2.logInt(x1Coefficient);
-            console2.logInt(signedCoefficient);
-            console2.logInt(x2Coefficient);
-            console2.log("---");
-            console2.logInt(y1Coefficient);
-            console2.logInt(y2Coefficient);
 
             (signedCoefficient, exponent) = unitLinearInterpolation(
                 x1Coefficient,
@@ -831,8 +820,6 @@ library LibDecimalFloatImplementation {
                 y2Coefficient,
                 LOG10_Y_EXPONENT
             );
-            console2.logInt(signedCoefficient);
-            console2.logInt(exponent);
             return add(signedCoefficient, exponent, powerOfTen, 0);
         }
         // This is a negative log. i.e. log(x) where 0 < x < 1.
