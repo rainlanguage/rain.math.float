@@ -6,7 +6,7 @@ uint16 constant ALT_TABLE_FLAG = 0x8000;
 
 /// @dev https://icap.org.pk/files/per/students/exam/notices/log-table.pdf
 library LibLogTable {
-    function toBytes(uint16[10][91] memory table) internal pure returns (bytes memory) {
+    function toBytes(uint16[10][90] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         assembly ("memory-safe") {
             encoded := mload(0x40)
@@ -34,7 +34,7 @@ library LibLogTable {
         return encoded;
     }
 
-    function toBytes(uint8[10][91] memory table) internal pure returns (bytes memory) {
+    function toBytes(uint8[10][90] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         assembly ("memory-safe") {
             encoded := mload(0x40)
@@ -146,7 +146,7 @@ library LibLogTable {
         return encoded;
     }
 
-    function logTableDec() internal pure returns (uint16[10][91] memory) {
+    function logTableDec() internal pure returns (uint16[10][90] memory) {
         return [
             [
                 0,
@@ -347,14 +347,11 @@ library LibLogTable {
             [9823, 9827, 9832, 9836, 9841, 9845, 9850, 9854, 9859, 9863],
             [9868, 9872, 9877, 9881, 9886, 9890, 9894, 9899, 9903, 9908],
             [9912, 9917, 9921, 9926, 9930, 9934, 9939, 9943, 9948, 9952],
-            [9956, 9961, 9965, 9969, 9974, 9978, 9983, 9987, 9991, 9996],
-            // This row is a placeholder for when we interpolate past the last
-            // entry in the table. The last entry is 10000, so we just use that.
-            [10001, 10001, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000]
+            [9956, 9961, 9965, 9969, 9974, 9978, 9983, 9987, 9991, 9996]
         ];
     }
 
-    function logTableDecSmall() internal pure returns (uint8[10][91] memory) {
+    function logTableDecSmall() internal pure returns (uint8[10][90] memory) {
         return [
             [0, 4, 9, 13, 17, 21, 26, 30, 34, 38],
             [0, 4, 8, 12, 15, 19, 23, 27, 31, 35],
@@ -445,10 +442,7 @@ library LibLogTable {
             [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
             [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
             [0, 0, 1, 1, 2, 2, 3, 3, 4, 4],
-            [0, 0, 1, 1, 2, 2, 3, 3, 3, 4],
-            // This row is a placeholder for when we interpolate past the last
-            // entry in the table.
-            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+            [0, 0, 1, 1, 2, 2, 3, 3, 3, 4]
         ];
     }
 

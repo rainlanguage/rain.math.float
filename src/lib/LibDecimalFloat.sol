@@ -668,8 +668,6 @@ library LibDecimalFloat {
     /// logarithm tables.
     function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        console2.logInt(signedCoefficientA);
-        console2.logInt(exponentA);
 
         if (b.isZero()) {
             return FLOAT_ONE;
@@ -688,16 +686,31 @@ library LibDecimalFloat {
             return a;
         }
 
+        // @todo handle negative exponents.
+
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 characteristicB, int256 mantissaB) =
+            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficientB, exponentB);
+
+        uint256 exponentBInteger =
+            uint256(LibDecimalFloatImplementation.withTargetExponent(characteristicB, exponentB, 0));
+
+        // Exponentiation by squaring.
+        Float result = FLOAT_ONE;
+        Float base = a;
+        while (exponentBInteger >= 1) {
+            if (exponentBInteger & 0x01 == 0x01) {
+                result = result.mul(base);
+            }
+            exponentBInteger >>= 1;
+            base = base.mul(base);
+        }
+
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
 
-        console2.logInt(signedCoefficientC);
-        console2.logInt(exponentC);
-
-        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-
         (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientB, exponentB);
+            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, mantissaB, exponentB);
 
         (signedCoefficientC, exponentC) =
             LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficientC, exponentC);
@@ -705,7 +718,7 @@ library LibDecimalFloat {
         (Float c, bool lossless) = packLossy(signedCoefficientC, exponentC);
         // We don't care if power is lossy because it's an approximation anyway.
         (lossless);
-        return c;
+        return c.mul(result);
     }
 
     /// sqrt a = a ^ 0.5
