@@ -41,3 +41,6 @@ error MaximizeOverflow(int256 signedCoefficient, int256 exponent);
 /// @param signedCoefficient The signed coefficient of the numerator.
 /// @param exponent The exponent of the numerator.
 error DivisionByZero(int256 signedCoefficient, int256 exponent);
+
+/// @dev Thrown when an index is out of bounds for the log table.
+error LogTableIndexOutOfBounds(uint256 index);

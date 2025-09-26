@@ -666,6 +666,7 @@ library LibDecimalFloat {
     /// logarithm tables.
     function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+
         if (b.isZero()) {
             return FLOAT_ONE;
         } else if (signedCoefficientA == 0) {
@@ -683,16 +684,41 @@ library LibDecimalFloat {
             return a;
         }
 
+        // @todo handle negative exponents.
+
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 characteristicB, int256 mantissaB) =
+            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficientB, exponentB);
+
+        uint256 exponentBInteger =
+            uint256(LibDecimalFloatImplementation.withTargetExponent(characteristicB, exponentB, 0));
+
+        // Exponentiation by squaring.
+        (int256 signedCoefficientResult, int256 exponentResult) = (1, 0);
+        (int256 signedCoefficientBase, int256 exponentBase) = a.unpack();
+        while (exponentBInteger >= 1) {
+            if (exponentBInteger & 0x01 == 0x01) {
+                (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
+                    signedCoefficientResult, exponentResult, signedCoefficientBase, exponentBase
+                );
+            }
+            exponentBInteger >>= 1;
+            (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
+                signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
+            );
+        }
+
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
 
-        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-
         (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientB, exponentB);
+            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, mantissaB, exponentB);
 
         (signedCoefficientC, exponentC) =
             LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficientC, exponentC);
+
+        (signedCoefficientC, exponentC) =
+            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientResult, exponentResult);
 
         (Float c, bool lossless) = packLossy(signedCoefficientC, exponentC);
         // We don't care if power is lossy because it's an approximation anyway.
