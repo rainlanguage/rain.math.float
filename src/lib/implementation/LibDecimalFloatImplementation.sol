@@ -778,12 +778,21 @@ library LibDecimalFloatImplementation {
                         // deliberate here.
                         //slither-disable-next-line divide-before-multiply
                         x1Coefficient = signedCoefficient / int256(scale);
+                        // x1Coefficient is positive here so won't truncate when
+                        // cast.
+                        // forge-lint: disable-next-line(unsafe-typecast)
                         idx = uint256(x1Coefficient - 1000);
+                        // scale is one of two possible values so won't truncate
+                        // when cast.
+                        // forge-lint: disable-next-line(unsafe-typecast)
                         x1Coefficient = x1Coefficient * int256(scale);
                         // Technically we only need to do this if we need to
                         // interpolate but it's cheaper to just do an `add`
                         // unconditionally than pay for an `if` and often also
                         // do the `add`.
+                        // scale is one of two possible values so won't truncate
+                        // when cast.
+                        // forge-lint: disable-next-line(unsafe-typecast)
                         x2Coefficient = x1Coefficient + int256(scale);
                     }
 

@@ -3,10 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {
-    LibDecimalFloatImplementation,
-    ADD_MAX_EXPONENT_DIFF
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std/Test.sol";
 

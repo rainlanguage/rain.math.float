@@ -117,8 +117,12 @@ library LibDecimalFloat {
             // Catch an edge case where unsigned value looks like a negative
             // value when coerced.
             if (value > uint256(type(int256).max)) {
+                // value is divided by 10 so won't truncate when cast.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return (int256(value / 10), exponent + 1, value % 10 == 0);
             } else {
+                // case that would truncate is handled above.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return (int256(value), exponent, true);
             }
         }
@@ -192,6 +196,7 @@ library LibDecimalFloat {
             return (0, true);
         } else {
             // Safe to do this conversion because we revert above on negative.
+            // forge-lint: disable-next-line(unsafe-typecast)
             uint256 unsignedCoefficient = uint256(signedCoefficient);
             int256 finalExponent;
 

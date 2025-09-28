@@ -291,6 +291,8 @@ contract LibDecimalFloatDecimalTest is Test {
         int256 finalExponent = exponent + int256(uint256(decimals));
         uint256 scale = 10 ** uint256(finalExponent);
 
+        // signedCoefficient is bound to the int256 range.
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 unsignedCoefficient = uint256(signedCoefficient);
         unchecked {
             uint256 c = scale * unsignedCoefficient;

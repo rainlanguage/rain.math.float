@@ -84,6 +84,8 @@ library LibParseDecimalFloat {
                 scale = 10 ** scale;
                 int256 rescaledIntValue = signedCoefficient * int256(scale);
                 if (
+                    // trunaction is intentional as it is part of the check here.
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     rescaledIntValue / int256(scale) != signedCoefficient
                         || int224(rescaledIntValue) != rescaledIntValue
                 ) {
