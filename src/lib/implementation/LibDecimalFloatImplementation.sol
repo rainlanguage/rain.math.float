@@ -769,44 +769,30 @@ library LibDecimalFloatImplementation {
             // Table lookup.
             {
                 uint256 idx = 0;
-                uint256 scale = 1e72;
                 unchecked {
-                    // Need to increase the scale by one OOM here so that the
-                    // signed coefficient has 4 digits always, to make it
-                    // easy to calculate the idx.
-                    if (isAtLeastE76) {
-                        scale *= 10;
+                    {
+                        uint256 scale = isAtLeastE76 ? 1e73 : 1e72;
+                        // Truncate the signed coefficient to what we can look
+                        // up in the table.
+                        // Slither false positive because the truncation is
+                        // deliberate here.
+                        //slither-disable-next-line divide-before-multiply
+                        x1Coefficient = signedCoefficient / int256(scale);
+                        idx = uint256(x1Coefficient - 1000);
+                        x1Coefficient = x1Coefficient * int256(scale);
+                        // Technically we only need to do this if we need to
+                        // interpolate but it's cheaper to just do an `add`
+                        // unconditionally than pay for an `if` and often also
+                        // do the `add`.
+                        x2Coefficient = x1Coefficient + int256(scale);
                     }
-                    // Truncate the signed coefficient to what we can look
-                    // up in the table.
-                    // Slither false positive because the truncation is
-                    // deliberate here.
-                    //slither-disable-next-line divide-before-multiply
-                    x1Coefficient = signedCoefficient / int256(scale);
-                    idx = uint256(x1Coefficient - 1000);
-                    x1Coefficient = x1Coefficient * int256(scale);
-                    // Technically we only need to do this if we need to
-                    // interpolate but it's cheaper to just do an `add`
-                    // unconditionally than pay for an `if` and often also
-                    // do the `add`.
-                    x2Coefficient = x1Coefficient + int256(scale);
-                    // If we don't bring the scale back down here we can get
-                    // overflows when multiplying the output of the lookups.
-                    // We are reusing the same scale variable to avoid a
-                    // compiler stack overflow.
-                    // Slither false positive here, this division is simply
-                    // the inverse of the mul above.
-                    //slither-disable-next-line divide-before-multiply
-                    if (isAtLeastE76) {
-                        scale /= 10;
-                    }
-                    y1Coefficient = int256(scale * lookupLogTableVal(tablesDataContract, idx));
+
+                    y1Coefficient = int256(1e72 * lookupLogTableVal(tablesDataContract, idx));
                     // Only do the second lookup if we expect interpolation
                     // to need it.
                     if (x1Coefficient != signedCoefficient) {
-                        y2Coefficient = idx == 8999
-                            ? int256(scale * 10000)
-                            : int256(scale * lookupLogTableVal(tablesDataContract, idx + 1));
+                        y2Coefficient =
+                            idx == 8999 ? int256(1e76) : int256(1e72 * lookupLogTableVal(tablesDataContract, idx + 1));
                     }
                 }
             }
