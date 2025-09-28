@@ -16,7 +16,8 @@ import {
     NegativeFixedDecimalConversion,
     LossyConversionFromFloat,
     LossyConversionToFloat,
-    ZeroNegativePower
+    ZeroNegativePower,
+    PowNegativeBase
 } from "../error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
@@ -669,22 +670,26 @@ library LibDecimalFloat {
 
         if (b.isZero()) {
             return FLOAT_ONE;
-        } else if (signedCoefficientA == 0) {
-            if (b.lt(FLOAT_ZERO)) {
-                // If b is negative, and a is 0, so we revert.
-                revert ZeroNegativePower(b);
-            }
+        } else if (signedCoefficientA <= 0) {
+            if (signedCoefficientA == 0) {
+                if (b.lt(FLOAT_ZERO)) {
+                    // If b is negative, and a is 0, so we revert.
+                    revert ZeroNegativePower(b);
+                }
 
-            // If a is zero, then a^b is always zero, regardless of b.
-            // This is a special case because log10(0) is undefined.
-            return FLOAT_ZERO;
+                // If a is zero, then a^b is always zero, regardless of b.
+                // This is a special case because log10(0) is undefined.
+                return FLOAT_ZERO;
+            } else {
+                revert PowNegativeBase(signedCoefficientA, exponentA);
+            }
         }
         // Handle identity case for positive values of a, i.e. a^1.
         else if (b.eq(FLOAT_ONE) && a.gt(FLOAT_ZERO)) {
             return a;
+        } else if (b.lt(FLOAT_ZERO)) {
+            return pow(a.inv(), b.minus(), tablesDataContract);
         }
-
-        // @todo handle negative exponents.
 
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 characteristicB, int256 mantissaB) =

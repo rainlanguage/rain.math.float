@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ZeroNegativePower, Log10Negative} from "src/error/ErrDecimalFloat.sol";
+import {ZeroNegativePower, Log10Negative, PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {console2} from "forge-std/Test.sol";
 
@@ -68,7 +68,7 @@ contract LibDecimalFloatSqrtTest is LogTest {
         address tables = logTables();
 
         (int256 signedCoefficient, int256 exponent) = a.unpack();
-        vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficient, exponent));
+        vm.expectRevert(abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficient, exponent));
         this.sqrtExternal(a, tables);
     }
 

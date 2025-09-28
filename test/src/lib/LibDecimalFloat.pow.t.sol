@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ZeroNegativePower, Log10Negative} from "src/error/ErrDecimalFloat.sol";
+import {ZeroNegativePower, Log10Negative, PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {console2} from "forge-std/Test.sol";
 
@@ -59,6 +59,13 @@ contract LibDecimalFloatPowTest is LogTest {
         // 05146977035502651573305246467342588868622024704
         checkPow(1785215562, 0, 18, 0, 3.39181340264437326833371724490610161292169214732614339791381077839e66, 100);
 
+        // 1.1295514523570834631500830078383428992881418895780763453451
+        // 678937388891303478211805800680150846537485488564609577873121
+        // 201465463889111526015508340821749525697772648457658570819388
+        // 829891895455052532621e-60910
+        // very close, final two digits are different
+        checkPow(99999, 0, -12182, 0, 1.1295514523570834631500830078383428992881418895780763453451678937375e67, -60977);
+
         {
             (int256 signedCoefficientE, int256 exponentE) = LibDecimalFloat.FLOAT_E.unpack();
             checkPow(signedCoefficientE, exponentE, 1, 0, signedCoefficientE, exponentE);
@@ -77,7 +84,7 @@ contract LibDecimalFloatPowTest is LogTest {
             a = a.minus();
         }
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficientA, exponentA));
+        vm.expectRevert(abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA));
         this.powExternal(a, b);
     }
 

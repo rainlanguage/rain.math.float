@@ -44,3 +44,6 @@ error DivisionByZero(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when an index is out of bounds for the log table.
 error LogTableIndexOutOfBounds(uint256 index);
+
+/// @dev Thrown when attempting to exponentiate a negative base.
+error PowNegativeBase(int256 signedCoefficient, int256 exponent);
