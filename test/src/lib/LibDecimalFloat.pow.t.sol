@@ -146,7 +146,8 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// X^Y^(1/Y) = X
-    /// Can generally round trip whatever within 0.25% of the original value.
+    /// Can generally round trip whatever within `diffLimit` of the original
+    /// value.
     function testRoundTripSimple() external {
         checkRoundTrip(5, 0, 2, 0);
         checkRoundTrip(5, 0, 3, 0);
