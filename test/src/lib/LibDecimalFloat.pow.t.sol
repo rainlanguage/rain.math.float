@@ -13,7 +13,7 @@ contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
 
     function diffLimit() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(96, -3);
+        return LibDecimalFloat.packLossless(86, -3);
     }
 
     function checkPow(
