@@ -217,6 +217,9 @@ library LibDecimalFloat {
 
                     // At this point, scale cannot revert, so it is safe to do
                     // this unchecked.
+                    // finalExponent is negative here so making it absolute will
+                    // always fit in uint256.
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     scale = 10 ** uint256(-finalExponent);
                     fixedDecimal = unsignedCoefficient / scale;
 
@@ -226,6 +229,8 @@ library LibDecimalFloat {
                     return (fixedDecimal, fixedDecimal * scale == unsignedCoefficient);
                 }
             } else if (finalExponent > 0) {
+                // finalExponent is positive here.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 scale = 10 ** uint256(finalExponent);
                 fixedDecimal = unsignedCoefficient * scale;
                 unchecked {
@@ -299,6 +304,10 @@ library LibDecimalFloat {
         unchecked {
             int256 initialSignedCoefficient = signedCoefficient;
             int256 initialExponent = exponent;
+            // lossless is true if the signed coefficient fits in int224.
+            // truncation here is intentional if it happens as that is what we
+            // are testing for.
+            // forge-lint: disable-next-line(unsafe-typecast)
             lossless = int224(signedCoefficient) == signedCoefficient;
 
             // The reason that we can do unchecked exponent addition here is that
@@ -311,6 +320,9 @@ library LibDecimalFloat {
                     exponent += 5;
                 }
 
+                // truncation here is intentional if it happens as that is what we
+                // are testing for.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 while (int224(signedCoefficient) != signedCoefficient) {
                     signedCoefficient /= 10;
                     ++exponent;
@@ -321,6 +333,9 @@ library LibDecimalFloat {
                 }
             }
 
+            // truncation here is intentional if it happens as that is what we
+            // are testing for.
+            // forge-lint: disable-next-line(unsafe-typecast)
             if (int32(exponent) != exponent) {
                 // If the exponent is negative then this is a number too small
                 // to pack. We return zero but it is not a lossless conversion.

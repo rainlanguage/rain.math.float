@@ -94,6 +94,9 @@ library LibFormatDecimalFloat {
             if (fractional != 0) {
                 uint256 fracLeadingZeros = 0;
                 uint256 fracScale = scale / 10;
+                // fracScale being 10x less than scale means it cannot overflow
+                // when cast to `int256`.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 while (fractional / int256(fracScale) == 0) {
                     fracScale /= 10;
                     fracLeadingZeros++;
@@ -113,7 +116,10 @@ library LibFormatDecimalFloat {
         }
 
         string memory integralString = Strings.toString(integral);
-
+        // scaleExponent comes from either hardcoded values or `exponent` which
+        // is an `int256` that was cast to `uint256` above, which can be cast
+        // back to `int256` without truncation.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 displayExponent = exponent + int256(scaleExponent);
         string memory exponentString =
             (displayExponent == 0 || !scientific) ? "" : string.concat("e", Strings.toString(displayExponent));

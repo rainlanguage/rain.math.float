@@ -859,8 +859,11 @@ library LibDecimalFloatImplementation {
         int256 characteristicExponent = exponent;
         {
             (int256 idx, bool interpolate, int256 scale) = mantissa4(mantissaCoefficient, exponent);
+            // idx is positive here because the signedCoefficient is positive due
+            // to the opening `if` above.
             (int256 y1Coefficient, int256 y2Coefficient) =
-                lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
+            // forge-lint: disable-next-line(unsafe-typecast)
+             lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
             if (interpolate) {
                 (signedCoefficient, exponent) = unitLinearInterpolation(
                     idx * scale, mantissaCoefficient, (idx + 1) * scale, exponent, y1Coefficient, y2Coefficient, -4
@@ -1019,6 +1022,8 @@ library LibDecimalFloatImplementation {
                     return (signedCoefficientA, 0);
                 }
             }
+            // exponentDiff [0, 76]
+            // forge-lint: disable-next-line(unsafe-typecast)
             int256 scale = int256(10 ** uint256(exponentDiff));
             int256 rescaled = signedCoefficientA * scale;
 
@@ -1055,13 +1060,16 @@ library LibDecimalFloatImplementation {
                 if (exponentDiff > 76 || exponentDiff <= 0) {
                     return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT);
                 }
-
+                // exponentDiff [1, 76]
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return signedCoefficient / int256(10 ** uint256(exponentDiff));
             } else {
                 int256 exponentDiff = exponent - targetExponent;
                 if (exponentDiff > 76 || exponentDiff <= 0) {
                     revert WithTargetExponentOverflow(signedCoefficient, exponent, targetExponent);
                 }
+                // exponentDiff [1, 76]
+                // forge-lint: disable-next-line(unsafe-typecast)
                 int256 scale = int256(10 ** uint256(exponentDiff));
                 int256 rescaled = signedCoefficient * scale;
                 if (rescaled / scale != signedCoefficient) {
@@ -1090,6 +1098,8 @@ library LibDecimalFloatImplementation {
                 return (0, signedCoefficient);
             }
 
+            // exponent [-76, -1]
+            // forge-lint: disable-next-line(unsafe-typecast)
             int256 unit = int256(10 ** uint256(-exponent));
             mantissa = signedCoefficient % unit;
             characteristic = signedCoefficient - mantissa;
@@ -1113,6 +1123,7 @@ library LibDecimalFloatImplementation {
                 return (0, false, 1);
             } else {
                 // exponent is [-3, -1]
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return (signedCoefficient * int256(10 ** uint256(4 + exponent)), false, 1);
             }
         }

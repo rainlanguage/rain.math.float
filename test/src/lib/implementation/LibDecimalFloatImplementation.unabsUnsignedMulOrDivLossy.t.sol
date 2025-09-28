@@ -140,8 +140,11 @@ contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
         a = bound(a, 1, uint256(type(int256).max));
         b = bound(b, 1, uint256(type(int256).max));
         uint256 c = uint256(type(int256).max) + 1;
+        // b is capped at type(int256).max so won't truncate when cast and can
+        // be negated directly.
         (int256 actualSignedCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(int256(a), -int256(b), c, exponent);
+        // forge-lint: disable-next-line(unsafe-typecast)
+         LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(int256(a), -int256(b), c, exponent);
         // Expect the result to be negative.
         int256 expectedSignedCoefficient = type(int256).min;
         int256 expectedExponent = exponent;

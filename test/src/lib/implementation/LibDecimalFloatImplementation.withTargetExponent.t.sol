@@ -188,6 +188,8 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
 
         // Assume overflow.
         unchecked {
+            // targetExponent > exponent
+            // forge-lint: disable-next-line(unsafe-typecast)
             int256 scale = int256(10 ** uint256(exponent - targetExponent));
             int256 c = signedCoefficient * scale;
             vm.assume(c / scale != signedCoefficient);
