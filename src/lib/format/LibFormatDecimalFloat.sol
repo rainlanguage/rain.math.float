@@ -4,7 +4,6 @@ pragma solidity ^0.8.25;
 
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 
-import {LibFixedPointDecimalFormat} from "rain.math.fixedpoint/lib/format/LibFixedPointDecimalFormat.sol";
 import {LibDecimalFloatImplementation} from "../../lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
@@ -32,8 +31,12 @@ library LibFormatDecimalFloat {
         // Adjust for exponent
         if (exponent < 0) {
             exponent = -exponent;
+            // exponent > 0
+            // forge-lint: disable-next-line(unsafe-typecast)
             sigFigs = sigFigs > uint256(exponent) ? sigFigs : uint256(exponent);
         } else if (exponent > 0) {
+            // exponent > 0
+            // forge-lint: disable-next-line(unsafe-typecast)
             sigFigs += uint256(exponent);
         }
 
@@ -68,6 +71,8 @@ library LibFormatDecimalFloat {
             }
         } else {
             if (exponent > 0) {
+                // exponent > 0
+                // forge-lint: disable-next-line(unsafe-typecast)
                 signedCoefficient *= int256(10) ** uint256(exponent);
                 exponent = 0;
             }

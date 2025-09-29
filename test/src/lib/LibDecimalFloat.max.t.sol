@@ -16,6 +16,7 @@ contract LibDecimalFloatMaxTest is Test {
 
     /// x.max(y) == y.max(x)
     function testMaxXY(Float x, Float y) external pure {
+        // forge-lint: disable-next-line(mixed-case-variable)
         Float maxXY = x.max(y);
         // forge-lint: disable-next-line(mixed-case-variable)
         Float maxYX = y.max(x);

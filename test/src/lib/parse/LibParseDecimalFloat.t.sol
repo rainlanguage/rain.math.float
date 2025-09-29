@@ -105,6 +105,8 @@ contract LibParseDecimalFloatTest is Test {
 
         checkParseDecimalFloat(
             input,
+            // value is bound to the int256 range so won't truncate when cast.
+            // forge-lint: disable-next-line(unsafe-typecast)
             isNeg ? (value == (uint256(type(int256).max) + 1) ? type(int256).min : -int256(value)) : int256(value),
             0,
             bytes(input).length

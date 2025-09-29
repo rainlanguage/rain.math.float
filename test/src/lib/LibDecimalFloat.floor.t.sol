@@ -38,6 +38,8 @@ contract LibDecimalFloatFloorTest is Test {
         // exponent [-76, -1]
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 scale = int256(10 ** uint256(-exponent));
+        // truncation is intentional here.
+        // forge-lint: disable-next-line(divide-before-multiply)
         int256 y = (x / scale) * scale;
         checkFloor(x, exponent, y, y == 0 ? int256(0) : exponent);
     }

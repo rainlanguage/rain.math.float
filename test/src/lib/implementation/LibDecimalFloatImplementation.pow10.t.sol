@@ -7,8 +7,6 @@ import {LogTest} from "../../../abstract/LogTest.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
-import {console2} from "forge-std/Test.sol";
-
 contract LibDecimalFloatImplementationPow10Test is LogTest {
     using LibDecimalFloat for Float;
 

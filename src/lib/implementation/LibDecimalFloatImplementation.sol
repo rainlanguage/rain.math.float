@@ -11,14 +11,6 @@ import {
     MaximizeOverflow,
     LogTableIndexOutOfBounds
 } from "../../error/ErrDecimalFloat.sol";
-import {
-    LOG_TABLES,
-    LOG_TABLES_SMALL,
-    LOG_TABLES_SMALL_ALT,
-    ANTI_LOG_TABLES,
-    ANTI_LOG_TABLES_SMALL
-} from "../../generated/LogTables.pointers.sol";
-import {LibDecimalFloat} from "../LibDecimalFloat.sol";
 
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
@@ -81,9 +73,13 @@ library LibDecimalFloatImplementation {
                 if (signedCoefficient == type(int256).min) {
                     return uint256(type(int256).max) + 1;
                 } else {
+                    // signedCoefficient < 0
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     return uint256(-signedCoefficient);
                 }
             } else {
+                // signedCoefficient >= 0
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return uint256(signedCoefficient);
             }
         }
@@ -102,9 +98,14 @@ library LibDecimalFloatImplementation {
                     // type(int256).min.
                     return (type(int256).min, exponent);
                 } else {
+                    // signedCoefficientAbs divided by 10 so won't truncate when
+                    // cast.
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     return (-int256(signedCoefficientAbs / 10), exponent + 1);
                 }
             } else {
+                // signedCoefficientAbs [0, type(int256).max]
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return (-int256(signedCoefficientAbs), exponent);
             }
         } else {
@@ -1140,6 +1141,7 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    // forge-lint: disable-next-line(mixed-case-function)
     function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx, bool lossyIdx)
         internal
         view

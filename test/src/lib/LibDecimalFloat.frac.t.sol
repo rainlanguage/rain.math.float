@@ -36,6 +36,8 @@ contract LibDecimalFloatFracTest is Test {
     /// For exponents [-76,-1] the fractional component is the modulo of 1.
     function testFracInRange(int224 x, int256 exponent) external pure {
         exponent = bound(exponent, -76, -1);
+        // exponent [-76, -1]
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 y = x % int256(10 ** uint256(-exponent));
         checkFrac(x, exponent, y, y == 0 ? int256(0) : exponent);
     }

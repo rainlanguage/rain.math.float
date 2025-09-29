@@ -39,6 +39,9 @@ library LibDecimalFloatSlow {
                 signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent
             );
 
+            // adjust exponent comes from looping an inc so can't possibly
+            // overflow in int256.
+            // forge-lint: disable-next-line(unsafe-typecast)
             exponent += int256(adjustExponent);
             int256 signedCoefficient;
             (signedCoefficient, exponent) = LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(

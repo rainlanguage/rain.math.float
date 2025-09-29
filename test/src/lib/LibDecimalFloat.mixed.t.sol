@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {THREES_PACKED, ONES} from "../../lib/LibCommonResults.sol";
+import {THREES_PACKED} from "../../lib/LibCommonResults.sol";
 
 import {Test} from "forge-std/Test.sol";
 

@@ -3,7 +3,6 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation, EXPONENT_MAX} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPackTest is Test {

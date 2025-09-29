@@ -12,9 +12,8 @@ import {
 } from "rain.string/lib/parse/LibParseCMask.sol";
 import {LibParseDecimal} from "rain.string/lib/parse/LibParseDecimal.sol";
 import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoint} from "../../error/ErrParse.sol";
-import {ParseDecimalOverflow, ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
+import {ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
 import {ParseDecimalFloatExcessCharacters} from "../../error/ErrParse.sol";
 
 library LibParseDecimalFloat {
@@ -76,22 +75,40 @@ library LibParseDecimalFloat {
 
                 // We want to _decrease_ the exponent by the number of digits in the
                 // fractional part.
+                // _technically_ these numbers could be out of range but in
+                // the intended use case that would imply a memory region that
+                // is physically impossible to exist.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 exponent = int256(fracStart) - int256(nonZeroCursor);
-                uint256 scale = uint256(-exponent);
-                if (scale > 67 && signedCoefficient != 0) {
-                    return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
+                // Should not be possible but guard against it in case.
+                if (exponent > 0) {
+                    revert MalformedExponentDigits(nonZeroCursor);
                 }
-                scale = 10 ** scale;
-                int256 rescaledIntValue = signedCoefficient * int256(scale);
-                if (
-                    // trunaction is intentional as it is part of the check here.
+
+                if (signedCoefficient == 0) {
+                    signedCoefficient = fracValue;
+                } else {
+                    // exponent is non positive here.
                     // forge-lint: disable-next-line(unsafe-typecast)
-                    rescaledIntValue / int256(scale) != signedCoefficient
-                        || int224(rescaledIntValue) != rescaledIntValue
-                ) {
-                    return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
+                    uint256 scale = uint256(-exponent);
+                    if (scale > 67) {
+                        return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
+                    }
+                    scale = 10 ** scale;
+                    // scale [0, 1e67]
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    int256 rescaledIntValue = signedCoefficient * int256(scale);
+                    // scale [0, 1e67]
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    bool mulDidOverflow = rescaledIntValue / int256(scale) != signedCoefficient;
+                    // truncation is intentional as it is part of the check here.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    bool mulDidTruncate = int224(rescaledIntValue) != rescaledIntValue;
+                    if (mulDidOverflow || mulDidTruncate) {
+                        return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
+                    }
+                    signedCoefficient = rescaledIntValue + fracValue;
                 }
-                signedCoefficient = rescaledIntValue + fracValue;
             }
 
             int256 eValue = int256(LibParseChar.isMask(cursor, end, CMASK_E_NOTATION));

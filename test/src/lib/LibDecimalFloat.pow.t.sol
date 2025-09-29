@@ -5,8 +5,7 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ZeroNegativePower, Log10Negative, PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {ZeroNegativePower, PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
 import {console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPowTest is LogTest {

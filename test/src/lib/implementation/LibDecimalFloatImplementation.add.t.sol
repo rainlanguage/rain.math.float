@@ -174,6 +174,8 @@ contract LibDecimalFloatImplementationAddTest is Test {
         vm.assume(normalizedSignedCoefficientA != 0);
         vm.assume(expectedSignedCoefficient != 0);
 
+        // ADD_MAX_EXPONENT_DIFF = 76
+        // forge-lint: disable-next-line(unsafe-typecast)
         vm.assume((expectedExponent - normalizedExponentA) > int256(ADD_MAX_EXPONENT_DIFF));
 
         (int256 signedCoefficient, int256 exponent) =

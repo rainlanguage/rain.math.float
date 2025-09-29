@@ -16,7 +16,9 @@ contract LibDecimalFloatMinTest is Test {
 
     /// x.min(y) == y.min(x)
     function testMinXY(Float x, Float y) external pure {
+        // forge-lint: disable-next-line(mixed-case-variable)
         Float minXY = x.min(y);
+        // forge-lint: disable-next-line(mixed-case-variable)
         Float minYX = y.min(x);
         assertTrue(minXY.eq(minYX), "minXY != minYX");
     }

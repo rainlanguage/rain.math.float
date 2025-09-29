@@ -116,6 +116,8 @@ contract LibFormatDecimalFloatCountSigFigs is Test {
 
     function testCountSigFigsOne(int256 exponent) external pure {
         exponent = bound(exponent, -76, 0);
+        // exponent [-76, 0]
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 one = int256(10 ** uint256(-exponent));
         checkCountSigFigs(one, exponent, 1);
         checkCountSigFigs(-one, exponent, 1);
