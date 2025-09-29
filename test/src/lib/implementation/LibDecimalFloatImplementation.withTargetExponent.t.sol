@@ -76,12 +76,16 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         exponent = bound(exponent, targetExponent + 1, targetExponent + 76);
 
         unchecked {
+            // exponent - targetExponent [1, 76]
+            // forge-lint: disable-next-line(unsafe-typecast)
             int256 scale = int256(10 ** uint256(exponent - targetExponent));
             int256 c = signedCoefficient * scale;
             vm.assume(c / scale == signedCoefficient);
         }
         int256 actualSignedCoefficient =
             LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
+        // exponent - targetExponent [1, 76]
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 expectedSignedCoefficient = signedCoefficient * int256(10 ** uint256(exponent - targetExponent));
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
     }
@@ -139,6 +143,8 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
 
         int256 actualSignedCoefficient =
             LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
+        // targetExponentDiff [1, 76]
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 expectedSignedCoefficient = signedCoefficient / int256(10 ** uint256(targetExponentDiff));
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
     }

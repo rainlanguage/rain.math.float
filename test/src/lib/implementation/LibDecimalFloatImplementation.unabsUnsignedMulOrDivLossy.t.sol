@@ -36,6 +36,8 @@ contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(int256(a), int256(b), c, exponent);
         // Expect the result to be positive.
+        // c is divided by 10 before being cast to int256 so won't truncate.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 expectedSignedCoefficient = int256(c / 10);
         int256 expectedExponent = exponent + 1;
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signed coefficient mismatch");
@@ -49,8 +51,12 @@ contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
         c = bound(c, 0, uint256(type(int256).max));
 
         (int256 actualSignedCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(-int256(a), -int256(b), c, exponent);
+        // a and b are both bound to the int256 range.
+        // forge-lint: disable-next-line(unsafe-typecast)
+         LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(-int256(a), -int256(b), c, exponent);
 
+        // c is range bound so won't truncate when cast.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 expectedSignedCoefficient = int256(c);
         int256 expectedExponent = exponent;
 
@@ -69,9 +75,13 @@ contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
         vm.assume(exponent != type(int256).max); // Prevent overflow in exponent.
 
         (int256 actualSignedCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(-int256(a), -int256(b), c, exponent);
+        // a and b are both bound to the int256 range.
+        // forge-lint: disable-next-line(unsafe-typecast)
+         LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(-int256(a), -int256(b), c, exponent);
 
         // Expect the result to be positive.
+        // c is divided by 10 before being cast to int256 so won't truncate.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 expectedSignedCoefficient = int256(c / 10);
         int256 expectedExponent = exponent + 1;
 
@@ -86,9 +96,13 @@ contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
         c = bound(c, 0, uint256(type(int256).max));
 
         (int256 actualSignedCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(-int256(a), int256(b), c, exponent);
+        // a and b are both bound to the int256 range.
+        // forge-lint: disable-next-line(unsafe-typecast)
+         LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(-int256(a), int256(b), c, exponent);
 
         // Expect the result to be negative.
+        // c is range bound so won't truncate when cast.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 expectedSignedCoefficient = -int256(c);
         int256 expectedExponent = exponent;
 

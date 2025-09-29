@@ -35,6 +35,8 @@ contract LibDecimalFloatFloorTest is Test {
     /// For exponents [-76,-1] the floor is the / 1.
     function testFloorInRange(int224 x, int256 exponent) external pure {
         exponent = bound(exponent, -76, -1);
+        // exponent [-76, -1]
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 scale = int256(10 ** uint256(-exponent));
         int256 y = (x / scale) * scale;
         checkFloor(x, exponent, y, y == 0 ? int256(0) : exponent);

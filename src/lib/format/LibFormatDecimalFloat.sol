@@ -59,24 +59,42 @@ library LibFormatDecimalFloat {
         if (scientific) {
             (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
 
-            bool isAtLeastE76 = signedCoefficient / 1e76 != 0;
-            scaleExponent = isAtLeastE76 ? uint256(76) : uint256(75);
-            scale = uint256(10) ** scaleExponent;
+            if (signedCoefficient / 1e76 != 0) {
+                scaleExponent = 76;
+                scale = 1e76;
+            } else {
+                scaleExponent = 75;
+                scale = 1e75;
+            }
         } else {
             if (exponent > 0) {
                 signedCoefficient *= int256(10) ** uint256(exponent);
                 exponent = 0;
             }
             if (exponent < 0) {
+                // negating a signed exponent will always fit in uint256.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 scale = uint256(10) ** uint256(-exponent);
+                // negating a signed exponent will always fit in uint256.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 scaleExponent = uint256(-exponent);
             } else {
-                scaleExponent = uint256(exponent);
+                // exponent is zero here.
+                scaleExponent = 0;
             }
         }
 
-        int256 integral = scale != 0 ? signedCoefficient / int256(scale) : signedCoefficient;
-        int256 fractional = scale != 0 ? signedCoefficient % int256(scale) : int256(0);
+        int256 integral = signedCoefficient;
+        int256 fractional = int256(0);
+        if (scale != 0) {
+            // scale is one of two possible values so won't truncate when cast.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            integral = signedCoefficient / int256(scale);
+            // scale is one of two possible values so won't truncate when cast.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            fractional = signedCoefficient % int256(scale);
+        }
+
         bool isNeg = false;
         if (integral < 0) {
             isNeg = true;

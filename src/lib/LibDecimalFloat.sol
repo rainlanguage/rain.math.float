@@ -3,27 +3,15 @@
 pragma solidity ^0.8.25;
 
 import {
-    LOG_TABLES,
-    LOG_TABLES_SMALL,
-    LOG_TABLES_SMALL_ALT,
-    ANTI_LOG_TABLES,
-    ANTI_LOG_TABLES_SMALL
-} from "../generated/LogTables.pointers.sol";
-import {
     ExponentOverflow,
     CoefficientOverflow,
-    Log10Zero,
     NegativeFixedDecimalConversion,
     LossyConversionFromFloat,
     LossyConversionToFloat,
     ZeroNegativePower,
     PowNegativeBase
 } from "../error/ErrDecimalFloat.sol";
-import {
-    LibDecimalFloatImplementation,
-    EXPONENT_MAX,
-    EXPONENT_MIN
-} from "./implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImplementation.sol";
 
 type Float is bytes32;
 

@@ -94,26 +94,29 @@ library LibDecimalFloatImplementation {
         pure
         returns (int256, int256)
     {
-        unchecked {
-            // Need to minus the coefficient because a and b had different signs.
-            if ((a ^ b) < 0) {
-                if (signedCoefficientAbs > uint256(type(int256).max)) {
-                    if (signedCoefficientAbs == uint256(type(int256).max) + 1) {
-                        // Edge case where the absolute value is exactly
-                        // type(int256).min.
-                        return (type(int256).min, exponent);
-                    } else {
-                        return (-int256(signedCoefficientAbs / 10), exponent + 1);
-                    }
+        // Need to minus the coefficient because a and b had different signs.
+        if ((a ^ b) < 0) {
+            if (signedCoefficientAbs > uint256(type(int256).max)) {
+                if (signedCoefficientAbs == uint256(type(int256).max) + 1) {
+                    // Edge case where the absolute value is exactly
+                    // type(int256).min.
+                    return (type(int256).min, exponent);
                 } else {
-                    return (-int256(signedCoefficientAbs), exponent);
+                    return (-int256(signedCoefficientAbs / 10), exponent + 1);
                 }
             } else {
-                if (signedCoefficientAbs > uint256(type(int256).max)) {
-                    return (int256(signedCoefficientAbs / 10), exponent + 1);
-                } else {
-                    return (int256(signedCoefficientAbs), exponent);
-                }
+                return (-int256(signedCoefficientAbs), exponent);
+            }
+        } else {
+            if (signedCoefficientAbs > uint256(type(int256).max)) {
+                // signedCoefficientAbs divided by 10 so won't truncate when
+                // cast.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return (int256(signedCoefficientAbs / 10), exponent + 1);
+            } else {
+                // signedCoefficientAbs is bound to the int256 range.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return (int256(signedCoefficientAbs), exponent);
             }
         }
     }
@@ -167,6 +170,8 @@ library LibDecimalFloatImplementation {
                 }
             }
 
+            // adjustExponent [0, 76]
+            // forge-lint: disable-next-line(unsafe-typecast)
             exponent += int256(adjustExponent);
 
             (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
@@ -405,6 +410,8 @@ library LibDecimalFloatImplementation {
                         return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
                     }
 
+                    // underflowExponentBy [1, 76]
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     signedCoefficient /= int256(10 ** uint256(underflowExponentBy));
                     if (signedCoefficient == 0) {
                         exponent = MAXIMIZED_ZERO_EXPONENT;
@@ -606,12 +613,18 @@ library LibDecimalFloatImplementation {
         // If the exponents are too far apart, then all the information in B
         // would be lost, so we can just ignore B and return A.
         unchecked {
+            // exponentA >= exponentB so exponentA - exponentB will fit in
+            // uint256.
+            // forge-lint: disable-next-line(unsafe-typecast)
             uint256 alignmentExponentDiff = uint256(exponentA - exponentB);
             // The early return here allows us to do unchecked pow on the
             // scaler and means we never revert due to overflow here.
             if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
                 return (signedCoefficientA, exponentA);
             }
+            // alignmentExponentDiff can't be greater than 76 so will pow
+            // without truncation.
+            // forge-lint: disable-next-line(unsafe-typecast)
             signedCoefficientB /= int256(10 ** alignmentExponentDiff);
         }
 
@@ -777,6 +790,9 @@ library LibDecimalFloatImplementation {
                         // Slither false positive because the truncation is
                         // deliberate here.
                         //slither-disable-next-line divide-before-multiply
+                        // scale is one of two possible values so won't truncate
+                        // when cast.
+                        // forge-lint: disable-next-line(unsafe-typecast)
                         x1Coefficient = signedCoefficient / int256(scale);
                         // x1Coefficient is positive here so won't truncate when
                         // cast.
