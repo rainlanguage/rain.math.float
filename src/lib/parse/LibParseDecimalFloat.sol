@@ -82,7 +82,7 @@ library LibParseDecimalFloat {
                 exponent = int256(fracStart) - int256(nonZeroCursor);
                 // Should not be possible but guard against it in case.
                 if (exponent > 0) {
-                    revert MalformedExponentDigits(nonZeroCursor);
+                    return (MalformedExponentDigits.selector, cursor, 0, 0);
                 }
 
                 if (signedCoefficient == 0) {
