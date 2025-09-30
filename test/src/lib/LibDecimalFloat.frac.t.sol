@@ -84,6 +84,10 @@ contract LibDecimalFloatFracTest is Test {
         checkFrac(-123456789, -10, -123456789, -10);
         checkFrac(-123456789, -11, -123456789, -11);
         checkFrac(-2.5e37, -37, -0.5e37, -37);
+
+        // int224 minimum edge cases.
+        checkFrac(type(int224).min, -1, -8, -1);
+        checkFrac(type(int224).min, -76, type(int224).min, -76);
     }
 
     function testFracGasZero() external pure {
