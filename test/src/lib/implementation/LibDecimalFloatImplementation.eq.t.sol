@@ -37,11 +37,16 @@ contract LibDecimalFloatImplementationEqTest is Test {
             } else if (y > x) {
                 assertTrue(exponentY < exponentX, "y > x but exponentY >= exponentX");
                 assertTrue(exponentX - exponentY < 77, "y > x but exponentX - exponentY >= 77");
+                // we assert that exponentY < exponentX and the diff is < 77.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 assertEq(x / y, int256(10 ** uint256(exponentX - exponentY)), "y > x but x / y != 10^(X - Y)");
                 assertEq(x % y, 0, "y > x but x % y != 0");
             } else {
                 assertTrue(exponentX < exponentY, "x < y but exponentX >= exponentY");
                 assertTrue(exponentY - exponentX < 77, "x < y but exponentY - exponentX >= 77");
+                // x < y and they are eq so exponentY - exponentX will always be
+                // positive.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 assertEq(y / x, int256(10 ** uint256(exponentY - exponentX)), "x < y but y / x != 10^(Y - X)");
                 assertEq(y % x, 0, "x < y but y % x != 0");
             }

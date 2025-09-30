@@ -64,6 +64,8 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         checkMaximized(88e74, -74, 8.8e75, -74);
 
         for (int256 i = 76; i >= 0; i--) {
+            // i [0, 76]
+            // forge-lint: disable-next-line(unsafe-typecast)
             checkMaximized(int256(10 ** uint256(i)), 0, 1e76, i - 76);
         }
 

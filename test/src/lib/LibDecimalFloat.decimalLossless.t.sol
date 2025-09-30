@@ -80,6 +80,8 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
     function testFromFixedDecimalLosslessPass(uint256 value, uint8 decimals) external pure {
         value = bound(value, 0, uint256(type(int256).max));
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.fromFixedDecimalLossless(value, decimals);
+        assertTrue(signedCoefficient >= 0, "signedCoefficient is negative");
+        // forge-lint: disable-next-line(unsafe-typecast)
         assertEq(uint256(signedCoefficient), value);
         assertEq(exponent, -int256(uint256(decimals)));
     }

@@ -36,6 +36,8 @@ contract LibDecimalFloatFracTest is Test {
     /// For exponents [-76,-1] the fractional component is the modulo of 1.
     function testFracInRange(int224 x, int256 exponent) external pure {
         exponent = bound(exponent, -76, -1);
+        // exponent [-76, -1]
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 y = x % int256(10 ** uint256(-exponent));
         checkFrac(x, exponent, y, y == 0 ? int256(0) : exponent);
     }
@@ -66,7 +68,26 @@ contract LibDecimalFloatFracTest is Test {
         checkFrac(type(int224).max, -4, 4607, -4);
         checkFrac(type(int224).max, -77, type(int224).max, -77);
         checkFrac(type(int224).max, -78, type(int224).max, -78);
-        checkFrac(type(int224).max, -76, 13479973333575319897333507543509815336818572211270286240551805124607, -76);
+        checkFrac(type(int224).max, -76, type(int224).max, -76);
+
+        // Negatives.
+        checkFrac(-123456789, 0, 0, 0);
+        checkFrac(-123456789, -1, -9, -1);
+        checkFrac(-123456789, -2, -89, -2);
+        checkFrac(-123456789, -3, -789, -3);
+        checkFrac(-123456789, -4, -6789, -4);
+        checkFrac(-123456789, -5, -56789, -5);
+        checkFrac(-123456789, -6, -456789, -6);
+        checkFrac(-123456789, -7, -3456789, -7);
+        checkFrac(-123456789, -8, -23456789, -8);
+        checkFrac(-123456789, -9, -123456789, -9);
+        checkFrac(-123456789, -10, -123456789, -10);
+        checkFrac(-123456789, -11, -123456789, -11);
+        checkFrac(-2.5e37, -37, -0.5e37, -37);
+
+        // int224 minimum edge cases.
+        checkFrac(type(int224).min, -1, -8, -1);
+        checkFrac(type(int224).min, -76, type(int224).min, -76);
     }
 
     function testFracGasZero() external pure {

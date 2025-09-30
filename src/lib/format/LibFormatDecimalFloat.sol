@@ -4,10 +4,11 @@ pragma solidity ^0.8.25;
 
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 
-import {LibFixedPointDecimalFormat} from "rain.math.fixedpoint/lib/format/LibFixedPointDecimalFormat.sol";
 import {LibDecimalFloatImplementation} from "../../lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
+
+import {UnformatableExponent} from "../../error/ErrFormat.sol";
 
 library LibFormatDecimalFloat {
     function countSigFigs(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
@@ -32,8 +33,12 @@ library LibFormatDecimalFloat {
         // Adjust for exponent
         if (exponent < 0) {
             exponent = -exponent;
+            // exponent > 0
+            // forge-lint: disable-next-line(unsafe-typecast)
             sigFigs = sigFigs > uint256(exponent) ? sigFigs : uint256(exponent);
         } else if (exponent > 0) {
+            // exponent > 0
+            // forge-lint: disable-next-line(unsafe-typecast)
             sigFigs += uint256(exponent);
         }
 
@@ -59,24 +64,49 @@ library LibFormatDecimalFloat {
         if (scientific) {
             (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
 
-            bool isAtLeastE76 = signedCoefficient / 1e76 != 0;
-            scaleExponent = isAtLeastE76 ? uint256(76) : uint256(75);
-            scale = uint256(10) ** scaleExponent;
+            if (signedCoefficient / 1e76 != 0) {
+                scaleExponent = 76;
+                scale = 1e76;
+            } else {
+                scaleExponent = 75;
+                scale = 1e75;
+            }
         } else {
             if (exponent > 0) {
+                // exponent > 0
+                // forge-lint: disable-next-line(unsafe-typecast)
                 signedCoefficient *= int256(10) ** uint256(exponent);
                 exponent = 0;
             }
             if (exponent < 0) {
+                if (exponent < -76) {
+                    revert UnformatableExponent(exponent);
+                }
+                // negating a signed exponent will always fit in uint256.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 scale = uint256(10) ** uint256(-exponent);
+                // negating a signed exponent will always fit in uint256.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 scaleExponent = uint256(-exponent);
             } else {
-                scaleExponent = uint256(exponent);
+                // exponent is zero here.
+                scaleExponent = 0;
             }
         }
 
-        int256 integral = scale != 0 ? signedCoefficient / int256(scale) : signedCoefficient;
-        int256 fractional = scale != 0 ? signedCoefficient % int256(scale) : int256(0);
+        int256 integral = signedCoefficient;
+        int256 fractional = int256(0);
+        if (scale != 0) {
+            // scale is one of two possible values so won't truncate when cast
+            // or explicitly has a guard against it truncating.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            integral = signedCoefficient / int256(scale);
+            // scale is one of two possible values so won't truncate when cast
+            // or explicitly has a guard against it truncating.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            fractional = signedCoefficient % int256(scale);
+        }
+
         bool isNeg = false;
         if (integral < 0) {
             isNeg = true;
@@ -94,6 +124,9 @@ library LibFormatDecimalFloat {
             if (fractional != 0) {
                 uint256 fracLeadingZeros = 0;
                 uint256 fracScale = scale / 10;
+                // fracScale being 10x less than scale means it cannot overflow
+                // when cast to `int256`.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 while (fractional / int256(fracScale) == 0) {
                     fracScale /= 10;
                     fracLeadingZeros++;
@@ -113,7 +146,10 @@ library LibFormatDecimalFloat {
         }
 
         string memory integralString = Strings.toString(integral);
-
+        // scaleExponent comes from either hardcoded values or `exponent` which
+        // is an `int256` that was cast to `uint256` above, which can be cast
+        // back to `int256` without truncation.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 displayExponent = exponent + int256(scaleExponent);
         string memory exponentString =
             (displayExponent == 0 || !scientific) ? "" : string.concat("e", Strings.toString(displayExponent));

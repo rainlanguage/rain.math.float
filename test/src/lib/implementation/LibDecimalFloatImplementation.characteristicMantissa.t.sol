@@ -60,6 +60,8 @@ contract LibDecimalFloatImplementationCharacteristicMantissaTest is Test {
 
     function testCharacteristicMantissaNegExponentSmall(int256 signedCoefficient) public pure {
         for (int256 exponent = 1; exponent <= 76; exponent++) {
+            // exponent [1, 76]
+            // forge-lint: disable-next-line(unsafe-typecast)
             int256 scale = int256(10 ** uint256(exponent));
 
             int256 expectedMantissa = signedCoefficient % scale;

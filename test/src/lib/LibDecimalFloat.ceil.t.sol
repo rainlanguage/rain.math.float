@@ -58,6 +58,8 @@ contract LibDecimalFloatCeilTest is Test {
     /// For exponents [-76,-1] the ceil is the + 1.
     function testCeilInRange(int224 x, int256 exponent) external pure {
         exponent = bound(exponent, -76, -1);
+        // exponent [-76, -1]
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 scale = int256(10 ** uint256(-exponent));
 
         int256 characteristic = x / scale;

@@ -3,6 +3,7 @@
 pragma solidity =0.8.25;
 
 // Re-export console2 here for convenience.
+// forge-lint: disable-next-line(unused-import)
 import {Test, console2} from "forge-std/Test.sol";
 import {DataContractMemoryContainer, LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
 import {LibDecimalFloatDeploy} from "src/lib/deploy/LibDecimalFloatDeploy.sol";

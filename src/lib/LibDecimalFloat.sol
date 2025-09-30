@@ -3,26 +3,15 @@
 pragma solidity ^0.8.25;
 
 import {
-    LOG_TABLES,
-    LOG_TABLES_SMALL,
-    LOG_TABLES_SMALL_ALT,
-    ANTI_LOG_TABLES,
-    ANTI_LOG_TABLES_SMALL
-} from "../generated/LogTables.pointers.sol";
-import {
     ExponentOverflow,
     CoefficientOverflow,
-    Log10Zero,
     NegativeFixedDecimalConversion,
     LossyConversionFromFloat,
     LossyConversionToFloat,
-    ZeroNegativePower
+    ZeroNegativePower,
+    PowNegativeBase
 } from "../error/ErrDecimalFloat.sol";
-import {
-    LibDecimalFloatImplementation,
-    EXPONENT_MAX,
-    EXPONENT_MIN
-} from "./implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImplementation.sol";
 
 type Float is bytes32;
 
@@ -116,8 +105,12 @@ library LibDecimalFloat {
             // Catch an edge case where unsigned value looks like a negative
             // value when coerced.
             if (value > uint256(type(int256).max)) {
+                // value is divided by 10 so won't truncate when cast.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return (int256(value / 10), exponent + 1, value % 10 == 0);
             } else {
+                // case that would truncate is handled above.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return (int256(value), exponent, true);
             }
         }
@@ -191,6 +184,7 @@ library LibDecimalFloat {
             return (0, true);
         } else {
             // Safe to do this conversion because we revert above on negative.
+            // forge-lint: disable-next-line(unsafe-typecast)
             uint256 unsignedCoefficient = uint256(signedCoefficient);
             int256 finalExponent;
 
@@ -216,6 +210,9 @@ library LibDecimalFloat {
 
                     // At this point, scale cannot revert, so it is safe to do
                     // this unchecked.
+                    // finalExponent is negative here so making it absolute will
+                    // always fit in uint256.
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     scale = 10 ** uint256(-finalExponent);
                     fixedDecimal = unsignedCoefficient / scale;
 
@@ -225,6 +222,8 @@ library LibDecimalFloat {
                     return (fixedDecimal, fixedDecimal * scale == unsignedCoefficient);
                 }
             } else if (finalExponent > 0) {
+                // finalExponent is positive here.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 scale = 10 ** uint256(finalExponent);
                 fixedDecimal = unsignedCoefficient * scale;
                 unchecked {
@@ -298,6 +297,10 @@ library LibDecimalFloat {
         unchecked {
             int256 initialSignedCoefficient = signedCoefficient;
             int256 initialExponent = exponent;
+            // lossless is true if the signed coefficient fits in int224.
+            // truncation here is intentional if it happens as that is what we
+            // are testing for.
+            // forge-lint: disable-next-line(unsafe-typecast)
             lossless = int224(signedCoefficient) == signedCoefficient;
 
             // The reason that we can do unchecked exponent addition here is that
@@ -310,6 +313,9 @@ library LibDecimalFloat {
                     exponent += 5;
                 }
 
+                // truncation here is intentional if it happens as that is what we
+                // are testing for.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 while (int224(signedCoefficient) != signedCoefficient) {
                     signedCoefficient /= 10;
                     ++exponent;
@@ -320,6 +326,9 @@ library LibDecimalFloat {
                 }
             }
 
+            // truncation here is intentional if it happens as that is what we
+            // are testing for.
+            // forge-lint: disable-next-line(unsafe-typecast)
             if (int32(exponent) != exponent) {
                 // If the exponent is negative then this is a number too small
                 // to pack. We return zero but it is not a lossless conversion.
@@ -666,33 +675,63 @@ library LibDecimalFloat {
     /// logarithm tables.
     function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+
         if (b.isZero()) {
             return FLOAT_ONE;
-        } else if (signedCoefficientA == 0) {
-            if (b.lt(FLOAT_ZERO)) {
-                // If b is negative, and a is 0, so we revert.
-                revert ZeroNegativePower(b);
-            }
+        } else if (signedCoefficientA <= 0) {
+            if (signedCoefficientA == 0) {
+                if (b.lt(FLOAT_ZERO)) {
+                    // If b is negative, and a is 0, so we revert.
+                    revert ZeroNegativePower(b);
+                }
 
-            // If a is zero, then a^b is always zero, regardless of b.
-            // This is a special case because log10(0) is undefined.
-            return FLOAT_ZERO;
+                // If a is zero, then a^b is always zero, regardless of b.
+                // This is a special case because log10(0) is undefined.
+                return FLOAT_ZERO;
+            } else {
+                revert PowNegativeBase(signedCoefficientA, exponentA);
+            }
         }
         // Handle identity case for positive values of a, i.e. a^1.
         else if (b.eq(FLOAT_ONE) && a.gt(FLOAT_ZERO)) {
             return a;
+        } else if (b.lt(FLOAT_ZERO)) {
+            return pow(a.inv(), b.minus(), tablesDataContract);
+        }
+
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 characteristicB, int256 mantissaB) =
+            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficientB, exponentB);
+
+        uint256 exponentBInteger =
+            uint256(LibDecimalFloatImplementation.withTargetExponent(characteristicB, exponentB, 0));
+
+        // Exponentiation by squaring.
+        (int256 signedCoefficientResult, int256 exponentResult) = (1, 0);
+        (int256 signedCoefficientBase, int256 exponentBase) = a.unpack();
+        while (exponentBInteger >= 1) {
+            if (exponentBInteger & 0x01 == 0x01) {
+                (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
+                    signedCoefficientResult, exponentResult, signedCoefficientBase, exponentBase
+                );
+            }
+            exponentBInteger >>= 1;
+            (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
+                signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
+            );
         }
 
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
 
-        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-
         (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientB, exponentB);
+            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, mantissaB, exponentB);
 
         (signedCoefficientC, exponentC) =
             LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficientC, exponentC);
+
+        (signedCoefficientC, exponentC) =
+            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientResult, exponentResult);
 
         (Float c, bool lossless) = packLossy(signedCoefficientC, exponentC);
         // We don't care if power is lossy because it's an approximation anyway.

@@ -11,13 +11,11 @@ import {
     MaximizeOverflow
 } from "../../error/ErrDecimalFloat.sol";
 import {
-    LOG_TABLES,
-    LOG_TABLES_SMALL,
-    LOG_TABLES_SMALL_ALT,
-    ANTI_LOG_TABLES,
-    ANTI_LOG_TABLES_SMALL
-} from "../../generated/LogTables.pointers.sol";
-import {LibDecimalFloat} from "../LibDecimalFloat.sol";
+    LOG_TABLE_SIZE_BYTES,
+    LOG_TABLE_SIZE_BASE,
+    LOG_MANTISSA_LAST_INDEX,
+    ANTILOG_IDX_LAST_INDEX
+} from "../table/LibLogTable.sol";
 
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
@@ -80,9 +78,13 @@ library LibDecimalFloatImplementation {
                 if (signedCoefficient == type(int256).min) {
                     return uint256(type(int256).max) + 1;
                 } else {
+                    // signedCoefficient < 0
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     return uint256(-signedCoefficient);
                 }
             } else {
+                // signedCoefficient >= 0
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return uint256(signedCoefficient);
             }
         }
@@ -93,26 +95,34 @@ library LibDecimalFloatImplementation {
         pure
         returns (int256, int256)
     {
-        unchecked {
-            // Need to minus the coefficient because a and b had different signs.
-            if ((a ^ b) < 0) {
-                if (signedCoefficientAbs > uint256(type(int256).max)) {
-                    if (signedCoefficientAbs == uint256(type(int256).max) + 1) {
-                        // Edge case where the absolute value is exactly
-                        // type(int256).min.
-                        return (type(int256).min, exponent);
-                    } else {
-                        return (-int256(signedCoefficientAbs / 10), exponent + 1);
-                    }
+        // Need to minus the coefficient because a and b had different signs.
+        if ((a ^ b) < 0) {
+            if (signedCoefficientAbs > uint256(type(int256).max)) {
+                if (signedCoefficientAbs == uint256(type(int256).max) + 1) {
+                    // Edge case where the absolute value is exactly
+                    // type(int256).min.
+                    return (type(int256).min, exponent);
                 } else {
-                    return (-int256(signedCoefficientAbs), exponent);
+                    // signedCoefficientAbs divided by 10 so won't truncate when
+                    // cast.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    return (-int256(signedCoefficientAbs / 10), exponent + 1);
                 }
             } else {
-                if (signedCoefficientAbs > uint256(type(int256).max)) {
-                    return (int256(signedCoefficientAbs / 10), exponent + 1);
-                } else {
-                    return (int256(signedCoefficientAbs), exponent);
-                }
+                // signedCoefficientAbs [0, type(int256).max]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return (-int256(signedCoefficientAbs), exponent);
+            }
+        } else {
+            if (signedCoefficientAbs > uint256(type(int256).max)) {
+                // signedCoefficientAbs divided by 10 so won't truncate when
+                // cast.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return (int256(signedCoefficientAbs / 10), exponent + 1);
+            } else {
+                // signedCoefficientAbs is bound to the int256 range.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return (int256(signedCoefficientAbs), exponent);
             }
         }
     }
@@ -166,6 +176,8 @@ library LibDecimalFloatImplementation {
                 }
             }
 
+            // adjustExponent [0, 76]
+            // forge-lint: disable-next-line(unsafe-typecast)
             exponent += int256(adjustExponent);
 
             (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
@@ -404,6 +416,8 @@ library LibDecimalFloatImplementation {
                         return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
                     }
 
+                    // underflowExponentBy [1, 76]
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     signedCoefficient /= int256(10 ** uint256(underflowExponentBy));
                     if (signedCoefficient == 0) {
                         exponent = MAXIMIZED_ZERO_EXPONENT;
@@ -605,12 +619,18 @@ library LibDecimalFloatImplementation {
         // If the exponents are too far apart, then all the information in B
         // would be lost, so we can just ignore B and return A.
         unchecked {
+            // exponentA >= exponentB so exponentA - exponentB will fit in
+            // uint256.
+            // forge-lint: disable-next-line(unsafe-typecast)
             uint256 alignmentExponentDiff = uint256(exponentA - exponentB);
             // The early return here allows us to do unchecked pow on the
             // scaler and means we never revert due to overflow here.
             if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
                 return (signedCoefficientA, exponentA);
             }
+            // alignmentExponentDiff can't be greater than 76 so will pow
+            // without truncation.
+            // forge-lint: disable-next-line(unsafe-typecast)
             signedCoefficientB /= int256(10 ** alignmentExponentDiff);
         }
 
@@ -685,6 +705,32 @@ library LibDecimalFloatImplementation {
         return div(1e76, -76, signedCoefficient, exponent);
     }
 
+    function lookupLogTableVal(address tables, uint256 index) internal view returns (uint256 result) {
+        // Skip first byte of data contract.
+        uint256 smallTableOffset = LOG_TABLE_SIZE_BYTES + 1;
+        uint256 logTableSizeBase = LOG_TABLE_SIZE_BASE;
+        assembly ("memory-safe") {
+            // First byte of the data contract must be skipped.
+            // truncation from the div by 10 is intentional here to keep the
+            // main offset and small offset distinct.
+            // slither-disable-next-line divide-before-multiply
+            let mainOffset := add(1, mul(div(index, 10), 2))
+            mstore(0, 0)
+            extcodecopy(tables, 30, mainOffset, 2)
+            let mainTableVal := mload(0)
+
+            result := and(mainTableVal, 0x7FFF)
+            if iszero(iszero(and(mainTableVal, 0x8000))) { smallTableOffset := add(smallTableOffset, logTableSizeBase) }
+
+            mstore(0, 0)
+            // truncation from the div by 100 is intentional here to keep the
+            // small table offset and small offset distinct.
+            // slither-disable-next-line divide-before-multiply
+            extcodecopy(tables, 31, add(smallTableOffset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
+            result := add(result, mload(0))
+        }
+    }
+
     /// log10(x) for a float x.
     ///
     /// Internally uses log tables so is not perfectly accurate, but also doesn't
@@ -740,64 +786,46 @@ library LibDecimalFloatImplementation {
 
             // Table lookup.
             {
-                int256 scale = 1e72;
-                assembly ("memory-safe") {
-                    //slither-disable-next-line divide-before-multiply
-                    function lookupTableVal(tables, index) -> result {
-                        // First byte of the data contract must be skipped.
-                        let mainOffset := add(1, mul(div(index, 10), 2))
-                        mstore(0, 0)
-                        extcodecopy(tables, 30, mainOffset, 2)
-                        let mainTableVal := mload(0)
-
-                        result := and(mainTableVal, 0x7FFF)
-                        // Skip first byte of data contract then 1820 bytes
-                        // of the log tables.
-                        let smallTableOffset := 1821
-                        if iszero(iszero(and(mainTableVal, 0x8000))) {
-                            // Small table is half the size of the main
-                            // table.
-                            smallTableOffset := add(smallTableOffset, 910)
-                        }
-
-                        mstore(0, 0)
-                        extcodecopy(tables, 31, add(smallTableOffset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
-                        result := add(result, mload(0))
+                uint256 idx = 0;
+                unchecked {
+                    {
+                        uint256 scale = isAtLeastE76 ? 1e73 : 1e72;
+                        // Truncate the signed coefficient to what we can look
+                        // up in the table.
+                        // Slither false positive because the truncation is
+                        // deliberate here.
+                        //slither-disable-start divide-before-multiply
+                        // scale is one of two possible values so won't truncate
+                        // when cast.
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        x1Coefficient = signedCoefficient / int256(scale);
+                        // slither-disable-end divide-before-multiply
+                        // x1Coefficient is positive here so won't truncate when
+                        // cast.
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        idx = uint256(x1Coefficient - 1000);
+                        // scale is one of two possible values so won't truncate
+                        // when cast.
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        x1Coefficient = x1Coefficient * int256(scale);
+                        // Technically we only need to do this if we need to
+                        // interpolate but it's cheaper to just do an `add`
+                        // unconditionally than pay for an `if` and often also
+                        // do the `add`.
+                        // scale is one of two possible values so won't truncate
+                        // when cast.
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        x2Coefficient = x1Coefficient + int256(scale);
                     }
 
-                    // Need to increase the scale by one OOM here so that the
-                    // signed coefficient has 4 digits always, to make it
-                    // easy to calculate the idx.
-                    if isAtLeastE76 { scale := mul(scale, 10) }
-
-                    // Truncate the signed coefficient to what we can look
-                    // up in the table.
-                    // Slither false positive because the truncation is
-                    // deliberate here.
-                    //slither-disable-next-line divide-before-multiply
-                    x1Coefficient := div(signedCoefficient, scale)
-                    let idx := sub(x1Coefficient, 1000)
-                    x1Coefficient := mul(x1Coefficient, scale)
-                    // Technically we only need to do this if we need to
-                    // interpolate but it's cheaper to just do an `add`
-                    // unconditionally than pay for an `if` and often also
-                    // do the `add`.
-                    x2Coefficient := add(x1Coefficient, scale)
-
-                    // If we don't bring the scale back down here we can get
-                    // overflows when multiplying the output of the lookups.
-                    // We are reusing the same scale variable to avoid a
-                    // compiler stack overflow.
-                    // Slither false positive here, this division is simply
-                    // the inverse of the mul above.
-                    //slither-disable-next-line divide-before-multiply
-                    if isAtLeastE76 { scale := div(scale, 10) }
-
-                    y1Coefficient := mul(scale, lookupTableVal(tablesDataContract, idx))
+                    y1Coefficient = int256(1e72 * lookupLogTableVal(tablesDataContract, idx));
+                    y2Coefficient = y1Coefficient;
                     // Only do the second lookup if we expect interpolation
                     // to need it.
-                    if iszero(eq(x1Coefficient, signedCoefficient)) {
-                        y2Coefficient := mul(scale, lookupTableVal(tablesDataContract, add(idx, 1)))
+                    if (x1Coefficient != signedCoefficient) {
+                        y2Coefficient = idx == LOG_MANTISSA_LAST_INDEX
+                            ? int256(1e76)
+                            : int256(1e72 * lookupLogTableVal(tablesDataContract, idx + 1));
                     }
                 }
             }
@@ -850,8 +878,15 @@ library LibDecimalFloatImplementation {
         int256 characteristicExponent = exponent;
         {
             (int256 idx, bool interpolate, int256 scale) = mantissa4(mantissaCoefficient, exponent);
-            (int256 y1Coefficient, int256 y2Coefficient) =
-                lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
+            // idx is positive here because the signedCoefficient is positive due
+            // to the opening `if` above.
+            int256 y1Coefficient = 9997;
+            int256 y2Coefficient = 10000;
+            if (idx != ANTILOG_IDX_LAST_INDEX) {
+                (y1Coefficient, y2Coefficient) =
+                // forge-lint: disable-next-line(unsafe-typecast)
+                 lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
+            }
             if (interpolate) {
                 (signedCoefficient, exponent) = unitLinearInterpolation(
                     idx * scale, mantissaCoefficient, (idx + 1) * scale, exponent, y1Coefficient, y2Coefficient, -4
@@ -1010,6 +1045,8 @@ library LibDecimalFloatImplementation {
                     return (signedCoefficientA, 0);
                 }
             }
+            // exponentDiff [0, 76]
+            // forge-lint: disable-next-line(unsafe-typecast)
             int256 scale = int256(10 ** uint256(exponentDiff));
             int256 rescaled = signedCoefficientA * scale;
 
@@ -1046,13 +1083,16 @@ library LibDecimalFloatImplementation {
                 if (exponentDiff > 76 || exponentDiff <= 0) {
                     return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT);
                 }
-
+                // exponentDiff [1, 76]
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return signedCoefficient / int256(10 ** uint256(exponentDiff));
             } else {
                 int256 exponentDiff = exponent - targetExponent;
                 if (exponentDiff > 76 || exponentDiff <= 0) {
                     revert WithTargetExponentOverflow(signedCoefficient, exponent, targetExponent);
                 }
+                // exponentDiff [1, 76]
+                // forge-lint: disable-next-line(unsafe-typecast)
                 int256 scale = int256(10 ** uint256(exponentDiff));
                 int256 rescaled = signedCoefficient * scale;
                 if (rescaled / scale != signedCoefficient) {
@@ -1081,6 +1121,8 @@ library LibDecimalFloatImplementation {
                 return (0, signedCoefficient);
             }
 
+            // exponent [-76, -1]
+            // forge-lint: disable-next-line(unsafe-typecast)
             int256 unit = int256(10 ** uint256(-exponent));
             mantissa = signedCoefficient % unit;
             characteristic = signedCoefficient - mantissa;
@@ -1104,36 +1146,39 @@ library LibDecimalFloatImplementation {
                 return (0, false, 1);
             } else {
                 // exponent is [-3, -1]
+                // forge-lint: disable-next-line(unsafe-typecast)
                 return (signedCoefficient * int256(10 ** uint256(4 + exponent)), false, 1);
             }
         }
     }
 
+    // forge-lint: disable-next-line(mixed-case-function)
     function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx, bool lossyIdx)
         internal
         view
         returns (int256 y1Coefficient, int256 y2Coefficient)
     {
+        // 1 byte for start of data contract
+        // + 1800 for log tables
+        // + 900 for small log tables
+        // + 100 for alt small log tables
+        uint256 offsetSize = 1 + LOG_TABLE_SIZE_BYTES + LOG_TABLE_SIZE_BASE + 100;
         assembly ("memory-safe") {
             //slither-disable-next-line divide-before-multiply
-            function lookupTableVal(tables, index) -> result {
-                // 1 byte for start of data contract
-                // + 1820 for log tables
-                // + 910 for small log tables
-                // + 100 for alt small log tables
-                let offset := 2831
+            function lookupTableVal(tables, offset, index) -> result {
                 mstore(0, 0)
                 extcodecopy(tables, 30, add(offset, mul(div(index, 10), 2)), 2)
                 let mainTableVal := mload(0)
 
-                offset := add(offset, 2020)
+                // add size of the alt log table = 2000
+                offset := add(offset, 2000)
                 mstore(0, 0)
                 extcodecopy(tables, 31, add(offset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
                 result := add(mainTableVal, mload(0))
             }
 
-            y1Coefficient := lookupTableVal(tablesDataContract, idx)
-            if lossyIdx { y2Coefficient := lookupTableVal(tablesDataContract, add(idx, 1)) }
+            y1Coefficient := lookupTableVal(tablesDataContract, offsetSize, idx)
+            if lossyIdx { y2Coefficient := lookupTableVal(tablesDataContract, offsetSize, add(idx, 1)) }
         }
     }
 

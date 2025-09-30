@@ -86,6 +86,8 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     /// Negative matches positive.
     function testFormatDecimalRoundTripNegative(int256 value, uint256 sigFigsLimit) external pure {
         value = bound(value, 1, int256(type(int128).max));
+        // value [1, int256(type(int128).max)]
+        // forge-lint: disable-next-line(unsafe-typecast)
         Float float = LibDecimalFloat.fromFixedDecimalLosslessPacked(uint256(value), 18);
         string memory formatted = float.toDecimalString(sigFigsLimit);
         float = float.minus();

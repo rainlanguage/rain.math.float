@@ -17,6 +17,9 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.log10(tables, signedCoefficient, exponent);
         uint256 bGas = gasleft();
+        // this is just a log, if the cast causes problems then the dev can
+        // deal with it.
+        // forge-lint: disable-next-line(unsafe-typecast)
         console2.log("%d %d Gas used: %d", uint256(signedCoefficient), uint256(exponent), aGas - bGas);
         assertEq(actualSignedCoefficient, expectedSignedCoefficient);
         assertEq(actualExponent, expectedExponent);

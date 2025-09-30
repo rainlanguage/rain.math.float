@@ -5,15 +5,14 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ZeroNegativePower, Log10Negative} from "src/error/ErrDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {ZeroNegativePower, PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
 import {console2} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
 
     function diffLimit() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(96, -3);
+        return LibDecimalFloat.packLossless(90, -3);
     }
 
     function checkPow(
@@ -37,19 +36,34 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     function testPows() external {
-        // 0.5 ^ 30 = 9.3132257e-10
-        checkPow(
-            5e37, -38, 3e37, -36, 9.328358208955223880597014925373134328358208955223880597014925373134e66, -66 - 10
-        );
+        checkPow(5, 0, 13, 0, 1220703125e3, -3);
+        // 0.5 ^ 30 = 9.3132257462e-10
+        checkPow(5e37, -38, 3e37, -36, 9.31322574615478515625e66, -66 - 10);
         // 0.5 ^ 60 = 8.6736174e-19
-        checkPow(
-            5e37, -38, 6e37, -36, 8.710801393728222996515679442508710801393728222996515679442508710801e66, -66 - 19
-        );
+        checkPow(5e37, -38, 6e37, -36, 8.67361737988403547205962240695953369140625e66, -66 - 19);
         // Issues found in fuzzing from here.
-        // 99999 ^ 12182 = 8.853071703048649170130397094169464632911643045383977634639832230468640539353...e60910
-        // 8.853071703048649170130397094169464632911643045383977634639832230468640539353e75 e60910
-        checkPow(99999, 0, 12182, 0, 1000, 60907);
-        checkPow(1785215562, 0, 18, 0, 3388, 163);
+        // 8.74538833058575652925523041334332969215722254574942755921268
+        // 633458353995901024989835096189737575745161722050119812356738
+        // 280497952674131705456780502007277553280469772918551495558754.. e48726
+        checkPow(9998, 0, 12182, 0, 8.745388330585756529255230413343329692157222545749427559212686334583e66, 48660);
+        // 783767830987557747626713214413804946776011874600896376644775
+        // 737184122084874429184097039019333746546707574834238563105201
+        // 601306157447680045947322051787243602068130996873443425180605.. e60909
+        checkPow(99998, 0, 12182, 0, 7.837678309875577476267132144138049467760118746008963766447757371841e66, 60843);
+        // 99999 ^ 12182 = 8.853071703048649170130397094169464632911643045383977634639832230468640539353...e60909
+        // 8.853071703048649170130397094169464632911643045383977634639832230468640539353e75 e60909
+        checkPow(99999, 0, 12182, 0, 8.853071703048649170130397094169464632911643045383977634639832230468e66, 60843);
+        // 339181340264437326833371724490610161292169214732614339791381
+        // 077839070153170394796050442886983271326431055976856477078397
+        // 05146977035502651573305246467342588868622024704
+        checkPow(1785215562, 0, 18, 0, 3.39181340264437326833371724490610161292169214732614339791381077839e66, 100);
+
+        // 1.1295514523570834631500830078383428992881418895780763453451
+        // 678937388891303478211805800680150846537485488564609577873121
+        // 201465463889111526015508340821749525697772648457658570819388
+        // 829891895455052532621e-60910
+        // very close, final two digits are different
+        checkPow(99999, 0, -12182, 0, 1.1295514523570834631500830078383428992881418895780763453451678937375e67, -60977);
 
         {
             (int256 signedCoefficientE, int256 exponentE) = LibDecimalFloat.FLOAT_E.unpack();
@@ -69,7 +83,7 @@ contract LibDecimalFloatPowTest is LogTest {
             a = a.minus();
         }
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficientA, exponentA));
+        vm.expectRevert(abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA));
         this.powExternal(a, b);
     }
 
@@ -131,7 +145,8 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// X^Y^(1/Y) = X
-    /// Can generally round trip whatever within 0.25% of the original value.
+    /// Can generally round trip whatever within `diffLimit` of the original
+    /// value.
     function testRoundTripSimple() external {
         checkRoundTrip(5, 0, 2, 0);
         checkRoundTrip(5, 0, 3, 0);
