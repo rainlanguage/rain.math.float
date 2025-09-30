@@ -34,6 +34,11 @@ int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
 
 int256 constant LOG10_Y_EXPONENT = -76;
 
+/// @dev The cardinality of the log mantissa for log table lookup.
+uint256 constant LOG_MANTISSA_IDX_CARDINALITY = 9000;
+/// @dev The last index of the log mantissa for log table lookup.
+uint256 constant LOG_MANTISSA_LAST_INDEX = LOG_MANTISSA_IDX_CARDINALITY - 1;
+
 library LibDecimalFloatImplementation {
     /// Negates a float.
     /// Equivalent to `0 - x`.
@@ -701,7 +706,7 @@ library LibDecimalFloatImplementation {
     }
 
     function lookupLogTableVal(address tables, uint256 index) internal view returns (uint256 result) {
-        if (index >= 9000) {
+        if (index >= LOG_MANTISSA_IDX_CARDINALITY) {
             revert LogTableIndexOutOfBounds(index);
         }
         assembly ("memory-safe") {
@@ -825,8 +830,9 @@ library LibDecimalFloatImplementation {
                     // Only do the second lookup if we expect interpolation
                     // to need it.
                     if (x1Coefficient != signedCoefficient) {
-                        y2Coefficient =
-                            idx == 8999 ? int256(1e76) : int256(1e72 * lookupLogTableVal(tablesDataContract, idx + 1));
+                        y2Coefficient = idx == LOG_MANTISSA_LAST_INDEX
+                            ? int256(1e76)
+                            : int256(1e72 * lookupLogTableVal(tablesDataContract, idx + 1));
                     }
                 }
             }
