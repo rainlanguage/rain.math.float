@@ -68,7 +68,7 @@ contract LibDecimalFloatFracTest is Test {
         checkFrac(type(int224).max, -4, 4607, -4);
         checkFrac(type(int224).max, -77, type(int224).max, -77);
         checkFrac(type(int224).max, -78, type(int224).max, -78);
-        checkFrac(type(int224).max, -76, 13479973333575319897333507543509815336818572211270286240551805124607, -76);
+        checkFrac(type(int224).max, -76, type(int224).max, -76);
 
         // Negatives.
         checkFrac(-123456789, 0, 0, 0);
