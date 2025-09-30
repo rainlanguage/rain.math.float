@@ -8,8 +8,7 @@ import {
     Log10Zero,
     MulDivOverflow,
     DivisionByZero,
-    MaximizeOverflow,
-    LogTableIndexOutOfBounds
+    MaximizeOverflow
 } from "../../error/ErrDecimalFloat.sol";
 import {
     LOG_TABLE_SIZE_BYTES,
@@ -1159,11 +1158,6 @@ library LibDecimalFloatImplementation {
         view
         returns (int256 y1Coefficient, int256 y2Coefficient)
     {
-        // casting a constant is safe as we know it does not truncate.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        if (idx > uint256(ANTILOG_IDX_LAST_INDEX)) {
-            revert LogTableIndexOutOfBounds(idx);
-        }
         // 1 byte for start of data contract
         // + 1800 for log tables
         // + 900 for small log tables
