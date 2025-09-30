@@ -11,6 +11,13 @@ import {
     MaximizeOverflow,
     LogTableIndexOutOfBounds
 } from "../../error/ErrDecimalFloat.sol";
+import {
+    LOG_TABLE_SIZE_BYTES,
+    LOG_TABLE_SIZE_BASE,
+    LOG_MANTISSA_IDX_CARDINALITY,
+    LOG_MANTISSA_LAST_INDEX,
+    ANTILOG_IDX_LAST_INDEX
+} from "../table/LibLogTable.sol";
 
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
@@ -33,11 +40,6 @@ int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
 int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
 
 int256 constant LOG10_Y_EXPONENT = -76;
-
-/// @dev The cardinality of the log mantissa for log table lookup.
-uint256 constant LOG_MANTISSA_IDX_CARDINALITY = 9000;
-/// @dev The last index of the log mantissa for log table lookup.
-uint256 constant LOG_MANTISSA_LAST_INDEX = LOG_MANTISSA_IDX_CARDINALITY - 1;
 
 library LibDecimalFloatImplementation {
     /// Negates a float.
@@ -706,9 +708,12 @@ library LibDecimalFloatImplementation {
     }
 
     function lookupLogTableVal(address tables, uint256 index) internal view returns (uint256 result) {
-        if (index >= LOG_MANTISSA_IDX_CARDINALITY) {
+        if (index > LOG_MANTISSA_LAST_INDEX) {
             revert LogTableIndexOutOfBounds(index);
         }
+        // Skip first byte of data contract.
+        uint256 smallTableOffset = LOG_TABLE_SIZE_BYTES + 1;
+        uint256 logTableSizeBase = LOG_TABLE_SIZE_BASE;
         assembly ("memory-safe") {
             // First byte of the data contract must be skipped.
             // truncation from the div by 10 is intentional here to keep the
@@ -720,14 +725,7 @@ library LibDecimalFloatImplementation {
             let mainTableVal := mload(0)
 
             result := and(mainTableVal, 0x7FFF)
-            // Skip first byte of data contract then 1820 bytes
-            // of the log tables.
-            let smallTableOffset := 1821
-            if iszero(iszero(and(mainTableVal, 0x8000))) {
-                // Small table is half the size of the main
-                // table.
-                smallTableOffset := add(smallTableOffset, 910)
-            }
+            if iszero(iszero(and(mainTableVal, 0x8000))) { smallTableOffset := add(smallTableOffset, logTableSizeBase) }
 
             mstore(0, 0)
             // truncation from the div by 100 is intentional here to keep the
@@ -887,9 +885,13 @@ library LibDecimalFloatImplementation {
             (int256 idx, bool interpolate, int256 scale) = mantissa4(mantissaCoefficient, exponent);
             // idx is positive here because the signedCoefficient is positive due
             // to the opening `if` above.
-            (int256 y1Coefficient, int256 y2Coefficient) =
-            // forge-lint: disable-next-line(unsafe-typecast)
-             lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
+            int256 y1Coefficient = 9997;
+            int256 y2Coefficient = 10000;
+            if (idx != ANTILOG_IDX_LAST_INDEX) {
+                (y1Coefficient, y2Coefficient) =
+                // forge-lint: disable-next-line(unsafe-typecast)
+                 lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
+            }
             if (interpolate) {
                 (signedCoefficient, exponent) = unitLinearInterpolation(
                     idx * scale, mantissaCoefficient, (idx + 1) * scale, exponent, y1Coefficient, y2Coefficient, -4
@@ -1161,26 +1163,30 @@ library LibDecimalFloatImplementation {
         view
         returns (int256 y1Coefficient, int256 y2Coefficient)
     {
+        if (idx > uint256(ANTILOG_IDX_LAST_INDEX)) {
+            revert LogTableIndexOutOfBounds(idx);
+        }
+        // 1 byte for start of data contract
+        // + 1800 for log tables
+        // + 900 for small log tables
+        // + 100 for alt small log tables
+        uint256 offsetSize = 1 + LOG_TABLE_SIZE_BYTES + LOG_TABLE_SIZE_BASE + 100;
         assembly ("memory-safe") {
             //slither-disable-next-line divide-before-multiply
-            function lookupTableVal(tables, index) -> result {
-                // 1 byte for start of data contract
-                // + 1820 for log tables
-                // + 910 for small log tables
-                // + 100 for alt small log tables
-                let offset := 2831
+            function lookupTableVal(tables, offset, index) -> result {
                 mstore(0, 0)
                 extcodecopy(tables, 30, add(offset, mul(div(index, 10), 2)), 2)
                 let mainTableVal := mload(0)
 
-                offset := add(offset, 2020)
+                // add size of the alt log table = 2000
+                offset := add(offset, 2000)
                 mstore(0, 0)
                 extcodecopy(tables, 31, add(offset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
                 result := add(mainTableVal, mload(0))
             }
 
-            y1Coefficient := lookupTableVal(tablesDataContract, idx)
-            if lossyIdx { y2Coefficient := lookupTableVal(tablesDataContract, add(idx, 1)) }
+            y1Coefficient := lookupTableVal(tablesDataContract, offsetSize, idx)
+            if lossyIdx { y2Coefficient := lookupTableVal(tablesDataContract, offsetSize, add(idx, 1)) }
         }
     }
 
