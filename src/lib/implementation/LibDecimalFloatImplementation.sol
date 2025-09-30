@@ -706,6 +706,9 @@ library LibDecimalFloatImplementation {
         }
         assembly ("memory-safe") {
             // First byte of the data contract must be skipped.
+            // truncation from the div by 10 is intentional here to keep the
+            // main offset and small offset distinct.
+            // slither-disable-next-line divide-before-multiply
             let mainOffset := add(1, mul(div(index, 10), 2))
             mstore(0, 0)
             extcodecopy(tables, 30, mainOffset, 2)
@@ -722,6 +725,9 @@ library LibDecimalFloatImplementation {
             }
 
             mstore(0, 0)
+            // truncation from the div by 100 is intentional here to keep the
+            // small table offset and small offset distinct.
+            // slither-disable-next-line divide-before-multiply
             extcodecopy(tables, 31, add(smallTableOffset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
             result := add(result, mload(0))
         }
@@ -790,11 +796,12 @@ library LibDecimalFloatImplementation {
                         // up in the table.
                         // Slither false positive because the truncation is
                         // deliberate here.
-                        //slither-disable-next-line divide-before-multiply
+                        //slither-disable-start divide-before-multiply
                         // scale is one of two possible values so won't truncate
                         // when cast.
                         // forge-lint: disable-next-line(unsafe-typecast)
                         x1Coefficient = signedCoefficient / int256(scale);
+                        // slither-disable-end divide-before-multiply
                         // x1Coefficient is positive here so won't truncate when
                         // cast.
                         // forge-lint: disable-next-line(unsafe-typecast)
@@ -814,6 +821,7 @@ library LibDecimalFloatImplementation {
                     }
 
                     y1Coefficient = int256(1e72 * lookupLogTableVal(tablesDataContract, idx));
+                    y2Coefficient = y1Coefficient;
                     // Only do the second lookup if we expect interpolation
                     // to need it.
                     if (x1Coefficient != signedCoefficient) {
