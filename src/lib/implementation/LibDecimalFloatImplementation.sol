@@ -707,9 +707,6 @@ library LibDecimalFloatImplementation {
     }
 
     function lookupLogTableVal(address tables, uint256 index) internal view returns (uint256 result) {
-        if (index > LOG_MANTISSA_LAST_INDEX) {
-            revert LogTableIndexOutOfBounds(index);
-        }
         // Skip first byte of data contract.
         uint256 smallTableOffset = LOG_TABLE_SIZE_BYTES + 1;
         uint256 logTableSizeBase = LOG_TABLE_SIZE_BASE;
