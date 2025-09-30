@@ -70,8 +70,20 @@ contract LibDecimalFloatFracTest is Test {
         checkFrac(type(int224).max, -78, type(int224).max, -78);
         checkFrac(type(int224).max, -76, 13479973333575319897333507543509815336818572211270286240551805124607, -76);
 
-        // AI recommendations.
+        // Negatives.
+        checkFrac(-123456789, 0, 0, 0);
+        checkFrac(-123456789, -1, -9, -1);
+        checkFrac(-123456789, -2, -89, -2);
+        checkFrac(-123456789, -3, -789, -3);
         checkFrac(-123456789, -4, -6789, -4);
+        checkFrac(-123456789, -5, -56789, -5);
+        checkFrac(-123456789, -6, -456789, -6);
+        checkFrac(-123456789, -7, -3456789, -7);
+        checkFrac(-123456789, -8, -23456789, -8);
+        checkFrac(-123456789, -9, -123456789, -9);
+        checkFrac(-123456789, -10, -123456789, -10);
+        checkFrac(-123456789, -11, -123456789, -11);
+        checkFrac(-2.5e37, -37, -0.5e37, -37);
     }
 
     function testFracGasZero() external pure {
