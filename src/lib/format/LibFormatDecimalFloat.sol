@@ -8,6 +8,8 @@ import {LibDecimalFloatImplementation} from "../../lib/implementation/LibDecimal
 
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 
+import {UnformatableExponent} from "../../error/ErrFormat.sol";
+
 library LibFormatDecimalFloat {
     function countSigFigs(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
         if (signedCoefficient == 0) {
@@ -77,6 +79,9 @@ library LibFormatDecimalFloat {
                 exponent = 0;
             }
             if (exponent < 0) {
+                if (exponent < -76) {
+                    revert UnformatableExponent(exponent);
+                }
                 // negating a signed exponent will always fit in uint256.
                 // forge-lint: disable-next-line(unsafe-typecast)
                 scale = uint256(10) ** uint256(-exponent);
@@ -92,10 +97,12 @@ library LibFormatDecimalFloat {
         int256 integral = signedCoefficient;
         int256 fractional = int256(0);
         if (scale != 0) {
-            // scale is one of two possible values so won't truncate when cast.
+            // scale is one of two possible values so won't truncate when cast
+            // or explicitly has a guard against it truncating.
             // forge-lint: disable-next-line(unsafe-typecast)
             integral = signedCoefficient / int256(scale);
-            // scale is one of two possible values so won't truncate when cast.
+            // scale is one of two possible values so won't truncate when cast
+            // or explicitly has a guard against it truncating.
             // forge-lint: disable-next-line(unsafe-typecast)
             fractional = signedCoefficient % int256(scale);
         }

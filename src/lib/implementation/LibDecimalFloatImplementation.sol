@@ -14,7 +14,6 @@ import {
 import {
     LOG_TABLE_SIZE_BYTES,
     LOG_TABLE_SIZE_BASE,
-    LOG_MANTISSA_IDX_CARDINALITY,
     LOG_MANTISSA_LAST_INDEX,
     ANTILOG_IDX_LAST_INDEX
 } from "../table/LibLogTable.sol";
@@ -1163,6 +1162,8 @@ library LibDecimalFloatImplementation {
         view
         returns (int256 y1Coefficient, int256 y2Coefficient)
     {
+        // casting a constant is safe as we know it does not truncate.
+        // forge-lint: disable-next-line(unsafe-typecast)
         if (idx > uint256(ANTILOG_IDX_LAST_INDEX)) {
             revert LogTableIndexOutOfBounds(idx);
         }
