@@ -59,8 +59,7 @@ resulted in an imprecise answer, so instead we round as necessary.
 Internal calculations all necessarily use EVM logic and so inherit all the
 EVM behaviour such as rounding directions.
 
-For example https://docs.soliditylang.org/en/latest/types.html#division
-
+ For example [Solidity division docs](https://docs.soliditylang.org/en/latest/types.html#division)
 > Since the type of the result of an operation is always the type of one of the
 > operands, division on integers always results in an integer. In Solidity,
 > division rounds towards zero.
