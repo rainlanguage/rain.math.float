@@ -38,8 +38,8 @@ The following situations are handled correctly in rain floats:
   approximated/rounded/estimated
 - Two different strings representing distinct numbers always map to different
   values
-    - e.g. 0e5 and 0e15 have the same numeric value and so do 10e1 and 1e2 but
-      different numeric value always means different onchain value
+  - e.g. 0e5 and 0e15 have the same numeric value and so do 10e1 and 1e2 but
+    different numeric value always means different onchain value
 - Two numerically different values always format canonically to two different
   strings
 - Every valid string has an associated numerical onchain value
