@@ -185,8 +185,8 @@ Most notable is that we do not currently support powers of negative number bases
 as this often results in complex numbers rather than real numbers.
 
 [rainlanguage/rain.math.float#88](https://github.com/rainlanguage/rain.math.float/issues/88)
-#### Parsing/formatting issues
 
+#### Parsing/formatting issues
 All parsing/formatting issues that introduce ambiguity or precision loss are
 treated as an error. This is because parsing and formatting is expected to be a
 "compile time" operation, and more importantly, all potentially ambiguous aspects
