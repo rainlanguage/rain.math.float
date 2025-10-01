@@ -47,9 +47,8 @@ The following situations are handled correctly in rain floats:
 
 ## Rounding vs. erroring vs. approximating
 
-Simply having an exact represenation for every number we can write does not mean
+Simply having an exact representation for every number we can write does not mean
 we have exact representations for all the outputs. E.g. 1/3.
-
 ### Rounding
 
 #### Rounding direction
