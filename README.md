@@ -193,7 +193,7 @@ treated as an error. This is because parsing and formatting is expected to be a
 are in full control of the user.
 
 There should be no situation where there is a disconnect between the value being
-parsed/formatted and the prevenance of the value, such that an error cannot
+parsed/formatted and the provenance of the value, such that an error cannot
 inform a valid revaluation by the author.
 
 #### Lossy conversions in "lossless" mode
