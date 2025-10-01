@@ -49,6 +49,7 @@ The following situations are handled correctly in rain floats:
 
 Simply having an exact representation for every number we can write does not mean
 we have exact representations for all the outputs. E.g. 1/3.
+
 ### Rounding
 
 #### Rounding direction
