@@ -153,7 +153,7 @@ describe('Test Float Bindings', () => {
 			const negOne = Float.parse('-1')?.value!;
 
 			// Test mathematical properties without exposing binary representation
-			
+
 			// All constants should be distinct
 			expect(maxPos.eq(minPos)?.value!).toBe(false);
 			expect(maxNeg.eq(minNeg)?.value!).toBe(false);
@@ -175,6 +175,99 @@ describe('Test Float Bindings', () => {
 			expect(minPos.lt(one)?.value!).toBe(true); // min positive < 1
 			expect(maxNeg.gt(negOne)?.value!).toBe(true); // max negative > -1
 			expect(minNeg.lt(negOne)?.value!).toBe(true); // min negative < -1
+		});
+
+		it('should test format default scientific notation constants', () => {
+			const minResult = Float.formatDefaultScientificMin();
+			const maxResult = Float.formatDefaultScientificMax();
+
+			expect(minResult.error).toBeUndefined();
+			expect(maxResult.error).toBeUndefined();
+
+			const min = minResult.value!;
+			const max = maxResult.value!;
+
+			// Verify the values
+			expect(min.format()?.value!).toBe('0.0001'); // 1e-4
+			expect(max.format()?.value!).toBe('1000000000'); // 1e9
+		});
+
+		it('should test default formatting behavior', () => {
+			// Values within default range (1e-4 to 1e9) should use decimal notation
+			const small = Float.parse('0.0001')?.value!;
+			expect(small.format()?.value!).toBe('0.0001');
+
+			const normal = Float.parse('123.456')?.value!;
+			expect(normal.format()?.value!).toBe('123.456');
+
+			const large = Float.parse('1000000000')?.value!;
+			expect(large.format()?.value!).toBe('1000000000');
+
+			// Values outside default range should use scientific notation
+			const tooSmall = Float.parse('0.00001')?.value!;
+			expect(tooSmall.format()?.value!).toBe('1e-5');
+
+			const tooLarge = Float.parse('10000000000')?.value!;
+			expect(tooLarge.format()?.value!).toBe('1e10');
+		});
+
+		it('should test formatWithScientific boolean control', () => {
+			const float = Float.parse('123.456')?.value!;
+
+			// Explicit decimal notation
+			const decimal = float.formatWithScientific(false);
+			expect(decimal.error).toBeUndefined();
+			expect(decimal.value!).toBe('123.456');
+
+			// Explicit scientific notation
+			const scientific = float.formatWithScientific(true);
+			expect(scientific.error).toBeUndefined();
+			expect(scientific.value!).toBe('1.23456e2');
+
+			// Test with very small number
+			const small = Float.parse('0.00001')?.value!;
+			const smallDecimal = small.formatWithScientific(false);
+			expect(smallDecimal.value!).toBe('0.00001');
+
+			const smallScientific = small.formatWithScientific(true);
+			expect(smallScientific.value!).toBe('1e-5');
+		});
+
+		it('should test formatWithRange custom ranges', () => {
+			const float = Float.parse('0.5')?.value!;
+			const min = Float.parse('1')?.value!;
+			const max = Float.parse('100')?.value!;
+
+			// 0.5 is smaller than min (1), so should use scientific notation
+			const result = float.formatWithRange(min, max);
+			expect(result.error).toBeUndefined();
+			expect(result.value!).toBe('5e-1');
+
+			// Value within custom range
+			const inRange = Float.parse('50')?.value!;
+			const inRangeResult = inRange.formatWithRange(min, max);
+			expect(inRangeResult.value!).toBe('50');
+
+			// Value outside custom range (too large)
+			const outOfRange = Float.parse('1000')?.value!;
+			const outOfRangeResult = outOfRange.formatWithRange(min, max);
+			expect(outOfRangeResult.value!).toBe('1e3');
+		});
+
+		it('should test formatting round-trip with new methods', () => {
+			const original = Float.parse('0.0001')?.value!;
+
+			// Format and parse back
+			const formatted = original.format()?.value!;
+			const parsed = Float.parse(formatted)?.value!;
+
+			expect(original.eq(parsed)?.value!).toBe(true);
+
+			// Test with scientific notation
+			const scientific = original.formatWithScientific(true)?.value!;
+			const parsedSci = Float.parse(scientific)?.value!;
+
+			expect(original.eq(parsedSci)?.value!).toBe(true);
 		});
 	}
 });

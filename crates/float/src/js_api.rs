@@ -401,7 +401,51 @@ impl Float {
         Self::zero()
     }
 
-    /// Formats the float as a decimal string.
+    /// Returns the default minimum value for scientific notation formatting (1e-4).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The default minimum (1e-4).
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const minResult = Float.formatDefaultScientificMin();
+    /// if (minResult.error) {
+    ///    console.error(minResult.error);
+    /// }
+    /// const min = minResult.value;
+    /// assert(min.format().value === "0.0001");
+    /// ```
+    #[wasm_export(js_name = "formatDefaultScientificMin", preserve_js_class)]
+    pub fn format_default_scientific_min_js() -> Result<Float, FloatError> {
+        Self::format_default_scientific_min()
+    }
+
+    /// Returns the default maximum value for scientific notation formatting (1e9).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The default maximum (1e9).
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const maxResult = Float.formatDefaultScientificMax();
+    /// if (maxResult.error) {
+    ///    console.error(maxResult.error);
+    /// }
+    /// const max = maxResult.value;
+    /// assert(max.format().value === "1000000000");
+    /// ```
+    #[wasm_export(js_name = "formatDefaultScientificMax", preserve_js_class)]
+    pub fn format_default_scientific_max_js() -> Result<Float, FloatError> {
+        Self::format_default_scientific_max()
+    }
+
+    /// Formats the float as a decimal string using default scientific notation range (1e-4 to 1e9).
     ///
     /// # Returns
     ///
@@ -416,18 +460,19 @@ impl Float {
     ///    console.error(floatResult.error);
     /// }
     /// const float = floatResult.value;
-    /// assert(float.format() === "2.5");
+    /// const formatResult = float.format();
+    /// assert(formatResult.value === "2.5");
     /// ```
     #[wasm_export(js_name = "format")]
     pub fn format_js(&self) -> Result<String, FloatError> {
         self.format()
     }
 
-    /// Formats the float as a decimal string with a specified significant figures limit.
+    /// Formats the float as a decimal string with explicit scientific notation control.
     ///
     /// # Arguments
     ///
-    /// * `sig_figs_limit` - The significant figures limit.
+    /// * `scientific` - If true, always use scientific notation. If false, use decimal notation.
     ///
     /// # Returns
     ///
@@ -437,16 +482,47 @@ impl Float {
     /// # Example
     ///
     /// ```typescript
-    /// const floatResult = Float.parse("3.14159265359");
-    /// if (floatResult.error) {
-    ///    console.error(floatResult.error);
-    /// }
-    /// const float = floatResult.value;
-    /// assert(float.formatWithLimit(5) === "3.1416");
+    /// const float = Float.parse("123.456").value!;
+    ///
+    /// const decResult = float.formatWithScientific(false);
+    /// assert(decResult.value === "123.456");
+    ///
+    /// const sciResult = float.formatWithScientific(true);
+    /// assert(sciResult.value === "1.23456e2");
     /// ```
-    #[wasm_export(js_name = "formatWithLimit")]
-    pub fn format_with_limit_js(&self, sig_figs_limit: u32) -> Result<String, FloatError> {
-        self.format_with_limit(sig_figs_limit)
+    #[wasm_export(js_name = "formatWithScientific")]
+    pub fn format_with_scientific_js(&self, scientific: bool) -> Result<String, FloatError> {
+        self.format_with_scientific(scientific)
+    }
+
+    /// Formats the float as a decimal string with a custom scientific notation range.
+    ///
+    /// # Arguments
+    ///
+    /// * `scientific_min` - Values smaller than this (in absolute value) use scientific notation.
+    /// * `scientific_max` - Values larger than this (in absolute value) use scientific notation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The formatted string.
+    /// * `Err(FloatError)` - If formatting fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const float = Float.parse("0.5").value!;
+    /// const min = Float.parse("1").value!;
+    /// const max = Float.parse("100").value!;
+    /// const result = float.formatWithRange(min, max);
+    /// assert(result.value === "5e-1");
+    /// ```
+    #[wasm_export(js_name = "formatWithRange")]
+    pub fn format_with_range_js(
+        &self,
+        scientific_min: &Self,
+        scientific_max: &Self,
+    ) -> Result<String, FloatError> {
+        self.format_with_range(*scientific_min, *scientific_max)
     }
 
     /// Returns `true` if `self` is less than `b`.
