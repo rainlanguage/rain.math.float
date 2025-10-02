@@ -57,8 +57,6 @@ library LibFormatDecimalFloat {
             return "0";
         }
 
-        // uint256 sigFigs = countSigFigs(signedCoefficient, exponent);
-        // bool scientific = sigFigs > sigFigsLimit;
         uint256 scaleExponent;
         uint256 scale = 0;
         if (scientific) {
