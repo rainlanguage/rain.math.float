@@ -28,4 +28,15 @@ contract DecimalFloatFormatTest is Test {
             deployed.format(a, scientificMin, scientificMax);
         }
     }
+
+    function testFormatConstants() external {
+        DecimalFloat deployed = new DecimalFloat();
+
+        assertEq(
+            Float.unwrap(deployed.FORMAT_DEFAULT_SCIENTIFIC_MIN()), Float.unwrap(LibDecimalFloat.packLossless(1, -4))
+        );
+        assertEq(
+            Float.unwrap(deployed.FORMAT_DEFAULT_SCIENTIFIC_MAX()), Float.unwrap(LibDecimalFloat.packLossless(1, 9))
+        );
+    }
 }
