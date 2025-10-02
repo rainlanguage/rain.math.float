@@ -58,10 +58,14 @@ contract DecimalFloat {
 
     /// Exposes `LibFormatDecimalFloat.toDecimalString` for offchain use.
     /// @param a The float to format.
-    /// @param sigFigsLimit The significant figures limit.
+    /// @param scientificMin The smallest number that won't be formatted in
+    /// scientific notation.
+    /// @param scientificMax The largest number that won't be formatted in
+    /// scientific notation.
     /// @return The string representation of the float.
-    function format(Float a, uint256 sigFigsLimit) external pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(a, sigFigsLimit);
+    function format(Float a, Float scientificMin, Float scientificMax) external pure returns (string memory) {
+        require(scientificMin.lt(scientificMax), "scientificMin must be less than scientificMax");
+        return LibFormatDecimalFloat.toDecimalString(a, a.lt(scientificMin) || a.gt(scientificMax));
     }
 
     /// Exposes `LibDecimalFloat.add` for offchain use.

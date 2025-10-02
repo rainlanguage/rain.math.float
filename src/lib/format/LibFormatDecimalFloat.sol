@@ -51,14 +51,14 @@ library LibFormatDecimalFloat {
     /// @param float The decimal float to format.
     /// @return The string representation of the decimal float.
     //slither-disable-next-line cyclomatic-complexity
-    function toDecimalString(Float float, uint256 sigFigsLimit) internal pure returns (string memory) {
+    function toDecimalString(Float float, bool scientific) internal pure returns (string memory) {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
         if (signedCoefficient == 0) {
             return "0";
         }
 
-        uint256 sigFigs = countSigFigs(signedCoefficient, exponent);
-        bool scientific = sigFigs > sigFigsLimit;
+        // uint256 sigFigs = countSigFigs(signedCoefficient, exponent);
+        // bool scientific = sigFigs > sigFigsLimit;
         uint256 scaleExponent;
         uint256 scale = 0;
         if (scientific) {
