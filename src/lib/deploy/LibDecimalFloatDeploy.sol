@@ -13,11 +13,18 @@ import {LibDataContract, DataContractMemoryContainer} from "rain.datacontract/li
 import {LibBytes} from "rain.solmem/lib/LibBytes.sol";
 import {LibMemCpy, Pointer} from "rain.solmem/lib/LibMemCpy.sol";
 import {DecimalFloat} from "../../concrete/DecimalFloat.sol";
+import {LOG_TABLE_DISAMBIGUATOR} from "../table/LibLogTable.sol";
 
 library LibDecimalFloatDeploy {
     function combinedTables() internal pure returns (bytes memory) {
-        return
-            abi.encodePacked(LOG_TABLES, LOG_TABLES_SMALL, LOG_TABLES_SMALL_ALT, ANTI_LOG_TABLES, ANTI_LOG_TABLES_SMALL);
+        return abi.encodePacked(
+            LOG_TABLES,
+            LOG_TABLES_SMALL,
+            LOG_TABLES_SMALL_ALT,
+            ANTI_LOG_TABLES,
+            ANTI_LOG_TABLES_SMALL,
+            LOG_TABLE_DISAMBIGUATOR
+        );
     }
 
     function dataContract() internal pure returns (DataContractMemoryContainer) {

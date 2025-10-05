@@ -44,7 +44,7 @@ type Float is bytes32;
 library LibDecimalFloat {
     using LibDecimalFloat for Float;
 
-    address constant LOG_TABLES_ADDRESS = 0xdc564999251875a2728Eec15962c5456C9259f54;
+    address constant LOG_TABLES_ADDRESS = 0x6421E8a23cdEe2E6E579b2cDebc8C2A514843593;
 
     /// A zero valued float.
     Float constant FLOAT_ZERO = Float.wrap(0);
