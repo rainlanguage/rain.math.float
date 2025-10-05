@@ -9,7 +9,7 @@ import {LibDecimalFloatDeploy} from "../src/lib/deploy/LibDecimalFloatDeploy.sol
 contract Deploy is Script {
     using LibDataContract for DataContractMemoryContainer;
 
-    function deployDataContract(DataContractMemoryContainer container) external {
+    function deployDataContract(DataContractMemoryContainer container) internal {
         container.writeZoltu();
     }
 
