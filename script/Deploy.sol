@@ -9,6 +9,10 @@ import {LibDecimalFloatDeploy} from "../src/lib/deploy/LibDecimalFloatDeploy.sol
 contract Deploy is Script {
     using LibDataContract for DataContractMemoryContainer;
 
+    function deployDataContract(DataContractMemoryContainer container) external {
+        container.writeZoltu();
+    }
+
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY");
 
@@ -16,9 +20,9 @@ contract Deploy is Script {
 
         vm.startBroadcast(deployerPrivateKey);
 
-        container.writeZoltu();
+        deployDataContract(container);
 
-        LibDecimalFloatDeploy.decimalFloatZoltu();
+        // LibDecimalFloatDeploy.decimalFloatZoltu();
 
         vm.stopBroadcast();
     }
