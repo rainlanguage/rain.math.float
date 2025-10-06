@@ -888,14 +888,17 @@ library LibDecimalFloatImplementation {
                  lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
             }
             if (interpolate) {
-                // This case causes an overflow below.
-                if (idx > 4 && scale == 1e76) {
-                    scale = 1e75;
-                    mantissaCoefficient /= 10;
+                // This avoids a potential overflow below.
+                int256 idxPlus1 = (idx + 1);
+                unchecked {
+                    while ((idxPlus1 * scale) / scale != idxPlus1) {
+                        scale /= 10;
+                        mantissaCoefficient /= 10;
+                    }
                 }
 
                 (signedCoefficient, exponent) = unitLinearInterpolation(
-                    idx * scale, mantissaCoefficient, (idx + 1) * scale, exponent, y1Coefficient, y2Coefficient, -4
+                    idx * scale, mantissaCoefficient, idxPlus1 * scale, exponent, y1Coefficient, y2Coefficient, -4
                 );
             } else {
                 signedCoefficient = y1Coefficient;
