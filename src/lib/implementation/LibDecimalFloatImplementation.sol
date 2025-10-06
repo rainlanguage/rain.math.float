@@ -889,8 +889,8 @@ library LibDecimalFloatImplementation {
             }
             if (interpolate) {
                 // This avoids a potential overflow below.
+                int256 idxPlus1 = (idx + 1);
                 unchecked {
-                    int256 idxPlus1 = (idx + 1);
                     while ((idxPlus1 * scale) / scale != idxPlus1) {
                         scale /= 10;
                         mantissaCoefficient /= 10;
@@ -898,7 +898,7 @@ library LibDecimalFloatImplementation {
                 }
 
                 (signedCoefficient, exponent) = unitLinearInterpolation(
-                    idx * scale, mantissaCoefficient, (idx + 1) * scale, exponent, y1Coefficient, y2Coefficient, -4
+                    idx * scale, mantissaCoefficient, idxPlus1 * scale, exponent, y1Coefficient, y2Coefficient, -4
                 );
             } else {
                 signedCoefficient = y1Coefficient;
