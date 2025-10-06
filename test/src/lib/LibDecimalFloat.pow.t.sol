@@ -71,6 +71,7 @@ contract LibDecimalFloatPowTest is LogTest {
         }
 
         checkPow(1.0029e67, -67, 0.41e2, -2, 1.001e3, -3);
+        checkPow(96001e62, -62, 0.00115e5, -5, 1.014e3, -3);
     }
 
     /// a^b is error for negative a and all b.
