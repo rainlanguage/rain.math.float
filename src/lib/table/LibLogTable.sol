@@ -19,6 +19,10 @@ int256 constant ANTILOG_IDX_LAST_INDEX = ANTILOG_IDX_CARDINALITY - 1;
 uint256 constant LOG_TABLE_SIZE_BASE = LOG_MANTISSA_IDX_CARDINALITY / 10;
 uint256 constant LOG_TABLE_SIZE_BYTES = LOG_TABLE_SIZE_BASE * 2;
 
+/// @dev As we deterministically deploy the log tables, we can run into
+/// collisions when we actually want distinct addresses.
+bytes32 constant LOG_TABLE_DISAMBIGUATOR = keccak256("LOG_TABLE_DISAMBIGUATOR_1");
+
 /// @dev https://icap.org.pk/files/per/students/exam/notices/log-table.pdf
 library LibLogTable {
     function toBytes(uint16[10][90] memory table) internal pure returns (bytes memory) {
