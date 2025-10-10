@@ -8,12 +8,13 @@ import {LibParseDecimalFloat} from "../lib/parse/LibParseDecimalFloat.sol";
 
 contract DecimalFloat {
     using LibDecimalFloat for Float;
-    /// 1e-4
-    // slither-disable-next-line too-many-digits
 
+    /// The default minimum value for scientific formatting. 1e-4
+    // slither-disable-next-line too-many-digits
     Float public constant FORMAT_DEFAULT_SCIENTIFIC_MIN =
         Float.wrap(0xfffffffc00000000000000000000000000000000000000000000000000000001);
-    /// 1e9
+
+    /// The default maximum value for scientific formatting. 1e9
     // slither-disable-next-line too-many-digits
     Float public constant FORMAT_DEFAULT_SCIENTIFIC_MAX =
         Float.wrap(0x0000000900000000000000000000000000000000000000000000000000000001);
