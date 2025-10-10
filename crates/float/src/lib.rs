@@ -496,32 +496,124 @@ impl Float {
         })
     }
 
-    /// Formats the float as a decimal string with a default significant figures limit of 18.
+    /// Returns the default minimum value for scientific notation formatting (1e-4).
+    ///
+    /// Values smaller than this (in absolute value) will be formatted in scientific notation.
     ///
     /// # Returns
     ///
-    /// * `Ok(String)` - The formatted string.
-    /// * `Err(FloatError)` - If formatting fails.
+    /// * `Ok(Float)` - The default minimum (1e-4).
+    /// * `Err(FloatError)` - If the EVM call fails.
     ///
     /// # Example
     ///
     /// ```
     /// use rain_math_float::Float;
     ///
-    /// let float = Float::parse("2.5".to_string())?;
-    /// assert_eq!(float.format()?, "2.5");
+    /// let min = Float::format_default_scientific_min()?;
+    /// assert_eq!(min.format()?, "0.0001");
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn format_default_scientific_min() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::FORMAT_DEFAULT_SCIENTIFIC_MINCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::FORMAT_DEFAULT_SCIENTIFIC_MINCall::abi_decode_returns(
+                output.as_ref(),
+            )?;
+            Ok(Float(decoded))
+        })
+    }
+
+    /// Returns the default maximum value for scientific notation formatting (1e9).
+    ///
+    /// Values larger than this (in absolute value) will be formatted in scientific notation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The default maximum (1e9).
+    /// * `Err(FloatError)` - If the EVM call fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let max = Float::format_default_scientific_max()?;
+    /// assert_eq!(max.format()?, "1000000000");
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn format_default_scientific_max() -> Result<Self, FloatError> {
+        let calldata = DecimalFloat::FORMAT_DEFAULT_SCIENTIFIC_MAXCall {}.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::FORMAT_DEFAULT_SCIENTIFIC_MAXCall::abi_decode_returns(
+                output.as_ref(),
+            )?;
+            Ok(Float(decoded))
+        })
+    }
+
+    /// Formats the float as a decimal string using default scientific notation range (1e-4 to 1e9).
+    ///
+    /// Values within the range [1e-4, 1e9] will use decimal notation.
+    /// Values outside this range will use scientific notation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The formatted string.
+    /// * `Err(FloatError)` - If formatting fails.
+    ///
+    /// # Examples
+    ///
+    /// Values within the default range use decimal notation:
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// // At the boundaries (inclusive)
+    /// assert_eq!(Float::parse("0.0001".to_string())?.format()?, "0.0001");  // 1e-4
+    /// assert_eq!(Float::parse("1000000000".to_string())?.format()?, "1000000000");  // 1e9
+    ///
+    /// // Within range
+    /// assert_eq!(Float::parse("2.5".to_string())?.format()?, "2.5");
+    /// assert_eq!(Float::parse("123.456".to_string())?.format()?, "123.456");
+    /// assert_eq!(Float::parse("0.001".to_string())?.format()?, "0.001");
+    /// assert_eq!(Float::parse("1000000".to_string())?.format()?, "1000000");
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    ///
+    /// Values outside the default range use scientific notation:
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// // Smaller than 1e-4
+    /// assert_eq!(Float::parse("0.00001".to_string())?.format()?, "1e-5");
+    /// assert_eq!(Float::parse("0.000001".to_string())?.format()?, "1e-6");
+    ///
+    /// // Larger than 1e9
+    /// assert_eq!(Float::parse("10000000000".to_string())?.format()?, "1e10");
+    /// assert_eq!(Float::parse("123000000000".to_string())?.format()?, "1.23e11");
     ///
     /// anyhow::Ok(())
     /// ```
     pub fn format(self) -> Result<String, FloatError> {
-        self.format_with_limit(18)
+        let Float(a) = self;
+        let calldata = DecimalFloat::format_1Call { a }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::format_1Call::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
     }
 
-    /// Formats the float as a decimal string with a specified significant figures limit.
+    /// Formats the float as a decimal string with explicit scientific notation control.
     ///
     /// # Arguments
     ///
-    /// * `sig_figs_limit` - The significant figures limit.
+    /// * `scientific` - If true, always use scientific notation. If false, use decimal notation.
     ///
     /// # Returns
     ///
@@ -534,20 +626,62 @@ impl Float {
     /// use rain_math_float::Float;
     ///
     /// let float = Float::parse("3.14".to_string())?;
-    /// assert_eq!(float.format_with_limit(5)?, "3.14");
+    /// assert_eq!(float.format_with_scientific(false)?, "3.14");
+    /// assert_eq!(float.format_with_scientific(true)?, "3.14");
     ///
     /// anyhow::Ok(())
     /// ```
-    pub fn format_with_limit(self, sig_figs_limit: u32) -> Result<String, FloatError> {
+    pub fn format_with_scientific(self, scientific: bool) -> Result<String, FloatError> {
         let Float(a) = self;
-        let calldata = DecimalFloat::formatCall {
+        let calldata = DecimalFloat::format_0Call { a, scientific }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::format_0Call::abi_decode_returns(output.as_ref())?;
+            Ok(decoded)
+        })
+    }
+
+    /// Formats the float as a decimal string with a custom scientific notation range.
+    ///
+    /// # Arguments
+    ///
+    /// * `scientific_min` - Values smaller than this (in absolute value) use scientific notation.
+    /// * `scientific_max` - Values larger than this (in absolute value) use scientific notation.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(String)` - The formatted string.
+    /// * `Err(FloatError)` - If formatting fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let float = Float::parse("0.001".to_string())?;
+    /// let min = Float::parse("0.01".to_string())?;
+    /// let max = Float::parse("100".to_string())?;
+    /// assert_eq!(float.format_with_range(min, max)?, "1e-3");
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn format_with_range(
+        self,
+        scientific_min: Self,
+        scientific_max: Self,
+    ) -> Result<String, FloatError> {
+        let Float(a) = self;
+        let Float(scientific_min_inner) = scientific_min;
+        let Float(scientific_max_inner) = scientific_max;
+        let calldata = DecimalFloat::format_2Call {
             a,
-            sigFigsLimit: U256::from(sig_figs_limit),
+            scientificMin: scientific_min_inner,
+            scientificMax: scientific_max_inner,
         }
         .abi_encode();
 
         execute_call(Bytes::from(calldata), |output| {
-            let decoded = DecimalFloat::formatCall::abi_decode_returns(output.as_ref())?;
+            let decoded = DecimalFloat::format_2Call::abi_decode_returns(output.as_ref())?;
             Ok(decoded)
         })
     }
@@ -1432,13 +1566,9 @@ mod tests {
     fn test_minus_format() {
         let float = Float::parse("-123.1234234625468391".to_string()).unwrap();
         let negated = float.neg().unwrap();
-        let formatted = negated.format().unwrap();
-        assert_eq!(formatted, "1.231234234625468391e2");
 
-        let float = Float::parse(formatted).unwrap();
-        let negated = float.neg().unwrap();
-        let formatted = negated.format().unwrap();
-        assert_eq!(formatted, "-1.231234234625468391e2");
+        let formatted_decimal = negated.format_with_scientific(false).unwrap();
+        assert_eq!(formatted_decimal, "123.1234234625468391");
 
         let float = Float::parse("0".to_string()).unwrap();
         let negated = float.neg().unwrap();

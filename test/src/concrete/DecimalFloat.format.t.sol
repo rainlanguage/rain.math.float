@@ -10,20 +10,33 @@ import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 contract DecimalFloatFormatTest is Test {
     using LibDecimalFloat for Float;
 
-    function formatExternal(Float a, uint256 sigFigsLimit) external pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(a, sigFigsLimit);
+    function formatExternal(Float a, Float scientificMin, Float scientificMax) external pure returns (string memory) {
+        return LibFormatDecimalFloat.toDecimalString(a, a.lt(scientificMin) || a.gt(scientificMax));
     }
 
-    function testFormatDeployed(Float a, uint256 sigFigsLimit) external {
+    function testFormatDeployed(Float a, Float scientificMin, Float scientificMax) external {
+        vm.assume(scientificMin.lt(scientificMax));
+
         DecimalFloat deployed = new DecimalFloat();
 
-        try this.formatExternal(a, sigFigsLimit) returns (string memory str) {
-            string memory deployedStr = deployed.format(a, sigFigsLimit);
+        try this.formatExternal(a, scientificMin, scientificMax) returns (string memory str) {
+            string memory deployedStr = deployed.format(a, scientificMin, scientificMax);
 
             assertEq(str, deployedStr);
         } catch (bytes memory err) {
             vm.expectRevert(err);
-            deployed.format(a, sigFigsLimit);
+            deployed.format(a, scientificMin, scientificMax);
         }
+    }
+
+    function testFormatConstants() external {
+        DecimalFloat deployed = new DecimalFloat();
+
+        assertEq(
+            Float.unwrap(deployed.FORMAT_DEFAULT_SCIENTIFIC_MIN()), Float.unwrap(LibDecimalFloat.packLossless(1, -4))
+        );
+        assertEq(
+            Float.unwrap(deployed.FORMAT_DEFAULT_SCIENTIFIC_MAX()), Float.unwrap(LibDecimalFloat.packLossless(1, 9))
+        );
     }
 }

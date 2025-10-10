@@ -9,6 +9,16 @@ import {LibParseDecimalFloat} from "../lib/parse/LibParseDecimalFloat.sol";
 contract DecimalFloat {
     using LibDecimalFloat for Float;
 
+    /// The default minimum value for scientific formatting. 1e-4
+    // slither-disable-next-line too-many-digits
+    Float public constant FORMAT_DEFAULT_SCIENTIFIC_MIN =
+        Float.wrap(0xfffffffc00000000000000000000000000000000000000000000000000000001);
+
+    /// The default maximum value for scientific formatting. 1e9
+    // slither-disable-next-line too-many-digits
+    Float public constant FORMAT_DEFAULT_SCIENTIFIC_MAX =
+        Float.wrap(0x0000000900000000000000000000000000000000000000000000000000000001);
+
     /// Exposes `LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE` for offchain use.
     /// @return The maximum positive value of a Float.
     function maxPositiveValue() external pure returns (Float) {
@@ -58,10 +68,31 @@ contract DecimalFloat {
 
     /// Exposes `LibFormatDecimalFloat.toDecimalString` for offchain use.
     /// @param a The float to format.
-    /// @param sigFigsLimit The significant figures limit.
+    /// @param scientificMin The smallest number that won't be formatted in
+    /// scientific notation.
+    /// @param scientificMax The largest number that won't be formatted in
+    /// scientific notation.
     /// @return The string representation of the float.
-    function format(Float a, uint256 sigFigsLimit) external pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(a, sigFigsLimit);
+    function format(Float a, Float scientificMin, Float scientificMax) public pure returns (string memory) {
+        require(scientificMin.lt(scientificMax), "scientificMin must be less than scientificMax");
+        return LibFormatDecimalFloat.toDecimalString(a, a.lt(scientificMin) || a.gt(scientificMax));
+    }
+
+    /// Exposes `LibFormatDecimalFloat.toDecimalString` for offchain use.
+    /// provides raw bool interface for custom scientific formatting.
+    /// @param a The float to format.
+    /// @param scientific Whether to format the float in scientific notation.
+    /// @return The string representation of the float.
+    function format(Float a, bool scientific) external pure returns (string memory) {
+        return LibFormatDecimalFloat.toDecimalString(a, scientific);
+    }
+
+    /// Exposes `format(Float, Float, Float)` for offchain use.
+    /// Provides default scientific formatting.
+    /// @param a The float to format.
+    /// @return The string representation of the float.
+    function format(Float a) external pure returns (string memory) {
+        return format(a, FORMAT_DEFAULT_SCIENTIFIC_MIN, FORMAT_DEFAULT_SCIENTIFIC_MAX);
     }
 
     /// Exposes `LibDecimalFloat.add` for offchain use.
