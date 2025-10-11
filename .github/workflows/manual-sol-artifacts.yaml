@@ -20,6 +20,15 @@ on:
           - sepolia
           - songbird
 
+      suite:
+        description: "Suite to deploy"
+        required: true
+        type: choice
+        options:
+          - all
+          - deployment.suite.tables
+          - deployment.suite.contract
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -59,6 +68,7 @@ jobs:
       - name: deploy to ${{ inputs.network }}
         run: nix develop -c rainix-sol-artifacts
         env:
+          DEPLOYMENT_SUITE: ${{ inputs.suite }}
           DEPLOY_BROADCAST: '1'
           DEPLOYMENT_KEY: ${{ github.ref == 'refs/heads/main' && secrets.PRIVATE_KEY || secrets.PRIVATE_KEY_DEV }}
           ETH_RPC_URL: ${{ secrets[env.rpc_secret_name] || vars[env.rpc_secret_name] || '' }}
