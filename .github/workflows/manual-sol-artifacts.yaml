@@ -20,6 +20,15 @@ on:
           - sepolia
           - songbird
 
+      suite:
+        description: "Suite to deploy"
+        required: true
+        type: choice
+        options:
+          - all
+          - deployment.suite.tables
+          - deployment.suite.contract
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
