@@ -94,14 +94,11 @@ impl Float {
     ///
     /// FromFixedDecimalLossyResult containing the Float and lossless flag.
     #[wasm_bindgen(js_name = "fromFixedDecimalLossy")]
-    pub fn from_fixed_decimal_lossy_wasm(
+    pub fn from_fixed_decimal_lossy_js(
         value: BigInt,
         decimals: u8,
     ) -> Result<FromFixedDecimalLossyResult, JsValue> {
-        let value_str: String = value
-            .to_string(10)
-            .map(|s| s.into())
-            .map_err(|e| JsValue::from(&e))?;
+        let value_str: String = value.to_string(10).map_err(|e| JsValue::from(&e))?.into();
         let val = U256::from_str(&value_str).map_err(|e| JsValue::from_str(&e.to_string()))?;
         let (float, lossless) = Float::from_fixed_decimal_lossy(val, decimals)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
