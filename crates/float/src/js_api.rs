@@ -5,7 +5,10 @@ use std::{
     ops::{Add, Div, Mul, Neg, Sub},
     str::FromStr,
 };
-use wasm_bindgen_utils::prelude::{js_sys::BigInt, *};
+use wasm_bindgen_utils::{
+    impl_wasm_traits,
+    prelude::{js_sys::BigInt, *},
+};
 
 #[wasm_bindgen]
 pub struct FromFixedDecimalLossyResult {
@@ -27,17 +30,11 @@ impl FromFixedDecimalLossyResult {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Tsify)]
-#[tsify(into_wasm_abi, from_wasm_abi)]
 pub struct ToFixedDecimalLossyResult {
     pub value: String,
     pub lossless: bool,
 }
-
-impl From<ToFixedDecimalLossyResult> for JsValue {
-    fn from(val: ToFixedDecimalLossyResult) -> Self {
-        serde_wasm_bindgen::to_value(&val).unwrap()
-    }
-}
+impl_wasm_traits!(ToFixedDecimalLossyResult);
 
 #[wasm_bindgen]
 impl Float {
