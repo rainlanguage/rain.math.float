@@ -88,11 +88,47 @@ impl Float {
         Self::try_from_bigint(value).unwrap_throw()
     }
 
-    /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals lossy.
+    /// Converts a fixed-point decimal value to a `Float` using the specified number of decimals,
+    /// allowing lossy conversions and reporting whether precision was preserved.
+    ///
+    /// This function attempts to convert a fixed-point decimal representation to a `Float`.
+    /// Unlike `fromFixedDecimal`, this method will not fail if precision is lost during conversion,
+    /// but instead reports the loss through the `lossless` flag in the result.
+    ///
+    /// # Arguments
+    ///
+    /// * `value` - The fixed-point decimal value as a bigint (e.g., 12345n for 123.45 with 2 decimals).
+    /// * `decimals` - The number of decimal places in the fixed-point representation (0-255).
     ///
     /// # Returns
     ///
-    /// FromFixedDecimalLossyResult containing the Float and lossless flag.
+    /// Returns a `FromFixedDecimalLossyResult` containing:
+    /// * `float` - The resulting `Float` value.
+    /// * `lossless` - Boolean flag indicating whether the conversion preserved all precision (true) or was lossy (false).
+    ///
+    /// # Errors
+    ///
+    /// Throws a `JsValue` error if:
+    /// * The bigint value cannot be converted to a string.
+    /// * The value string cannot be parsed as a valid U256.
+    /// * The underlying EVM conversion fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// // Lossless conversion
+    /// const result = Float.fromFixedDecimalLossy(12345n, 2);
+    /// const float = result.float;
+    /// const wasLossless = result.lossless;
+    /// assert(float.format()?.value === "123.45");
+    /// assert(wasLossless === true);
+    ///
+    /// // Potentially lossy conversion
+    /// const result2 = Float.fromFixedDecimalLossy(123456789012345678901234567890n, 18);
+    /// if (!result2.lossless) {
+    ///   console.warn("Precision was lost during conversion");
+    /// }
+    /// ```
     #[wasm_bindgen(js_name = "fromFixedDecimalLossy")]
     pub fn from_fixed_decimal_lossy_js(
         value: BigInt,
