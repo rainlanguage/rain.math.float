@@ -132,7 +132,7 @@ impl Float {
     ///
     /// # Returns
     ///
-    /// * `Ok(Float)` - The resulting `Float` value.
+    /// * `Ok((Float, bool))` - The resulting `Float` value and a boolean indicating if the conversion was lossless.
     /// * `Err(FloatError)` - If the conversion fails.
     ///
     /// # Example
@@ -144,18 +144,19 @@ impl Float {
     /// // 123.45 with 2 decimals is represented as 12345
     /// let value = U256::from(12345u64);
     /// let decimals = 2u8;
-    /// let float = Float::from_fixed_decimal_lossy(value, decimals)?;
+    /// let (float, lossless) = Float::from_fixed_decimal_lossy(value, decimals)?;
     /// assert_eq!(float.format()?, "123.45");
+    /// assert!(lossless);
     ///
     /// anyhow::Ok(())
     /// ```
-    pub fn from_fixed_decimal_lossy(value: U256, decimals: u8) -> Result<Self, FloatError> {
+    pub fn from_fixed_decimal_lossy(value: U256, decimals: u8) -> Result<(Self, bool), FloatError> {
         let calldata = DecimalFloat::fromFixedDecimalLossyCall { value, decimals }.abi_encode();
 
         execute_call(Bytes::from(calldata), |output| {
             let decoded =
                 DecimalFloat::fromFixedDecimalLossyCall::abi_decode_returns(output.as_ref())?;
-            Ok(Float(decoded._0))
+            Ok((Float(decoded._0), decoded._1))
         })
     }
 
@@ -167,7 +168,7 @@ impl Float {
     ///
     /// # Returns
     ///
-    /// * `Ok(U256)` - The resulting fixed-point decimal value.
+    /// * `Ok((U256, bool))` - The resulting fixed-point decimal value and a boolean indicating if the conversion was lossless.
     /// * `Err(FloatError)` - If the conversion fails.
     ///
     /// # Example
@@ -178,19 +179,20 @@ impl Float {
     ///
     /// // 123.45 with 2 decimals becomes 12345
     /// let float = Float::from_fixed_decimal(U256::from(12345), 3)?;
-    /// let fixed = float.to_fixed_decimal_lossy(2)?;
+    /// let (fixed, lossless) = float.to_fixed_decimal_lossy(2)?;
     /// assert_eq!(fixed, U256::from(1234u64));
+    /// assert!(!lossless);
     ///
     /// anyhow::Ok(())
     /// ```
-    pub fn to_fixed_decimal_lossy(self, decimals: u8) -> Result<U256, FloatError> {
+    pub fn to_fixed_decimal_lossy(self, decimals: u8) -> Result<(U256, bool), FloatError> {
         let Float(float) = self;
         let calldata = DecimalFloat::toFixedDecimalLossyCall { float, decimals }.abi_encode();
 
         execute_call(Bytes::from(calldata), |output| {
             let decoded =
                 DecimalFloat::toFixedDecimalLossyCall::abi_decode_returns(output.as_ref())?;
-            Ok(decoded._0)
+            Ok((decoded._0, decoded._1))
         })
     }
 
@@ -2001,7 +2003,8 @@ mod tests {
 
     #[test]
     fn test_from_fixed_decimal_lossy() {
-        let cases = vec![
+        // Test lossless conversions (values that fit in Float's precision)
+        let lossless_cases = vec![
             (U256::from(0u128), 0u8, "0"),
             (U256::from(0u128), 18u8, "0"),
             (U256::from(1u128), 18u8, "1e-18"),
@@ -2010,27 +2013,74 @@ mod tests {
             (U256::from(1000000000000000000u128), 18u8, "1"),
         ];
 
-        for (amount, decimals, expected) in cases {
-            let float = Float::from_fixed_decimal_lossy(amount, decimals).expect("should convert");
+        for (amount, decimals, expected) in lossless_cases {
+            let (float, lossless) =
+                Float::from_fixed_decimal_lossy(amount, decimals).expect("should convert");
             let expected = Float::parse(expected.to_string()).unwrap();
             assert!(float.eq(expected).unwrap());
+            assert!(
+                lossless,
+                "conversion should be lossless for amount={}, decimals={}",
+                amount, decimals
+            );
         }
+
+        // Test lossy conversion with U256::MAX (too large to fit in Float's 224-bit coefficient)
+        let (float, lossless) = Float::from_fixed_decimal_lossy(U256::MAX, 1).unwrap();
+        assert!(!lossless, "U256::MAX conversion should be lossy");
+        assert!(!float.is_zero().unwrap(), "result should not be zero");
     }
 
     #[test]
     fn test_to_fixed_decimal_lossy() {
-        let cases = vec![
-            (U256::from(0), 0u8, 0u128),
-            (U256::from(0), 18u8, 0u128),
+        // Test lossy conversions (loss of precision)
+        let lossy_cases = vec![
             (U256::from(1), 18u8, 0u128),
             (U256::from(123456789), 0u8, 12345678u128),
             (U256::from(123456789), 2u8, 12345678u128),
         ];
 
-        for (input, decimals, expected) in cases {
+        for (input, decimals, expected) in lossy_cases {
             let float = Float::from_fixed_decimal(input, decimals + 1).unwrap();
-            let fixed = float.to_fixed_decimal_lossy(decimals).unwrap();
-            assert_eq!(fixed, U256::from(expected));
+            let (fixed, lossless) = float.to_fixed_decimal_lossy(decimals).unwrap();
+            assert_eq!(
+                fixed,
+                U256::from(expected),
+                "wrong value for input={}, decimals={}",
+                input,
+                decimals
+            );
+            assert!(
+                !lossless,
+                "should be lossy for input={}, decimals={}",
+                input, decimals
+            );
+        }
+
+        // Test lossless conversions (no loss of precision)
+        let lossless_cases = vec![
+            // Zero is always lossless
+            (U256::from(0), 0u8, 0u128),
+            (U256::from(0), 18u8, 0u128),
+            // Converting 12340 with 3 decimals (12.340) to 2 decimals (12.34) is lossless
+            (U256::from(12340), 3u8, 1234u128),
+        ];
+
+        for (input, decimals, expected) in lossless_cases {
+            let float = Float::from_fixed_decimal(input, decimals + 1).unwrap();
+            let (fixed, lossless) = float.to_fixed_decimal_lossy(decimals).unwrap();
+            assert_eq!(
+                fixed,
+                U256::from(expected),
+                "wrong value for input={}, decimals={}",
+                input,
+                decimals
+            );
+            assert!(
+                lossless,
+                "should be lossless for input={}, decimals={}",
+                input, decimals
+            );
         }
     }
 
@@ -2042,12 +2092,23 @@ mod tests {
             let exponent = -(decimals as i32 + 1);
             let value = U256::from(coeff);
 
-            let float = Float::from_fixed_decimal_lossy(value, decimals + 1).unwrap();
+            let (float, from_lossless) = Float::from_fixed_decimal_lossy(value, decimals + 1).unwrap();
             let expected = Float::pack_lossless(coeff, exponent).unwrap();
             prop_assert!(float.eq(expected).unwrap());
 
-            let fixed = float.to_fixed_decimal_lossy(decimals).unwrap();
+            // from_fixed_decimal_lossy should be lossless for values that fit in Float's precision
+            prop_assert!(from_lossless, "from_fixed_decimal_lossy should be lossless for coeff={coeff}");
+
+            let (fixed, to_lossless) = float.to_fixed_decimal_lossy(decimals).unwrap();
             assert_eq!(fixed, value / U256::from(10));
+
+            // Converting from decimals+1 to decimals should be lossy unless the value is zero or
+            // the last digit is zero (divisible by 10)
+            if value == U256::ZERO || value % U256::from(10) == U256::ZERO {
+                prop_assert!(to_lossless, "to_fixed_decimal_lossy should be lossless when last digit is 0: value={}", value);
+            } else {
+                prop_assert!(!to_lossless, "to_fixed_decimal_lossy should be lossy when losing precision: value={}", value);
+            }
         }
     }
 

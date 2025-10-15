@@ -41,6 +41,28 @@ describe('Test Float Bindings', () => {
 			expect(result).toBe(originalValue);
 		});
 
+		it('should test fromFixedDecimalLossy with lossless conversion', () => {
+			const result = Float.fromFixedDecimalLossy(12345n, 2);
+			expect(result.float.format()?.value!).toBe('123.45');
+			expect(result.lossless).toBe(true);
+		});
+
+		it('should test toFixedDecimalLossy with lossy conversion', () => {
+			const float = Float.fromFixedDecimal(12345n, 3)?.value!;
+			const result = float.toFixedDecimalLossy(2);
+			expect(result.error).toBeUndefined();
+			expect(result.value!.value).toBe('1234');
+			expect(result.value!.lossless).toBe(false);
+		});
+
+		it('should test toFixedDecimalLossy with lossless conversion', () => {
+			const float = Float.fromFixedDecimal(12340n, 3)?.value!;
+			const result = float.toFixedDecimalLossy(2);
+			expect(result.error).toBeUndefined();
+			expect(result.value!.value).toBe('1234');
+			expect(result.value!.lossless).toBe(true);
+		});
+
 
 		it('should try from bigint', () => {
 			const result = Float.tryFromBigint(5n);
