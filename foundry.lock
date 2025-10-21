@@ -1,0 +1,17 @@
+{
+  "lib/forge-std": {
+    "rev": "b8f065fda83b8cd94a6b2fec8fcd911dc3b444fd"
+  },
+  "lib/rain.datacontract": {
+    "rev": "9c8d6e64208fb1788ba38cec942e9234725f134d"
+  },
+  "lib/rain.math.fixedpoint": {
+    "rev": "0a1dbfb246d903768f52687555bab62a5a3d4da3"
+  },
+  "lib/rain.sol.codegen": {
+    "rev": "00734d24d91db3fc4aac87c0a3c885de28449f96"
+  },
+  "lib/rain.string": {
+    "rev": "85d0074c8cd1fdca3285366c15bc9b44b84ad5e9"
+  }
+}
