@@ -6,7 +6,7 @@
     "rev": "9c8d6e64208fb1788ba38cec942e9234725f134d"
   },
   "lib/rain.math.fixedpoint": {
-    "rev": "9ca0634452dc201f3c51c08f926febc2b75c30d4"
+    "rev": "0a1dbfb246d903768f52687555bab62a5a3d4da3"
   },
   "lib/rain.sol.codegen": {
     "rev": "769792d577a7ecae954a7cdd64a222b8d6fe450d"
