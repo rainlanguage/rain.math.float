@@ -1,6 +1,6 @@
 {
   "lib/forge-std": {
-    "rev": "f46d8301cf732f4f83846565aa475628265e51e0"
+    "rev": "b8f065fda83b8cd94a6b2fec8fcd911dc3b444fd"
   },
   "lib/rain.datacontract": {
     "rev": "9c8d6e64208fb1788ba38cec942e9234725f134d"
