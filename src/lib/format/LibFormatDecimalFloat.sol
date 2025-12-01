@@ -140,17 +140,17 @@ library LibFormatDecimalFloat {
             }
 
             fractionalString =
-                fractional == 0 ? "" : string.concat(".", fracLeadingZerosString, Strings.toString(fractional));
+                fractional == 0 ? "" : string.concat(".", fracLeadingZerosString, Strings.toStringSigned(fractional));
         }
 
-        string memory integralString = Strings.toString(integral);
+        string memory integralString = Strings.toStringSigned(integral);
         // scaleExponent comes from either hardcoded values or `exponent` which
         // is an `int256` that was cast to `uint256` above, which can be cast
         // back to `int256` without truncation.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 displayExponent = exponent + int256(scaleExponent);
         string memory exponentString =
-            (displayExponent == 0 || !scientific) ? "" : string.concat("e", Strings.toString(displayExponent));
+            (displayExponent == 0 || !scientific) ? "" : string.concat("e", Strings.toStringSigned(displayExponent));
 
         string memory prefix = isNeg ? "-" : "";
 

@@ -29,6 +29,7 @@ fs_permissions = [
 
 remappings = [
     "rain.solmem/=lib/rain.datacontract/lib/rain.solmem/src/",
+    "openzeppelin-contracts/=lib/rain.math.fixedpoint/lib/openzeppelin-contracts/",
 ]
 
 [fuzz]
