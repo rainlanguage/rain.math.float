@@ -47,17 +47,43 @@ contract LibDecimalFloatFloorTest is Test {
     /// Examples
     function testFloorExamples() external pure {
         checkFloor(123456789, 0, 123456789, 0);
+        checkFloor(-123456789, 0, -123456789, 0);
+        checkFloor(-1234567890, -1, -1234567890, -1);
+
         checkFloor(123456789, -1, 123456780, -1);
+        checkFloor(-123456789, -1, -12345679e60, -60);
+        checkFloor(12345678900, -2, 12345678900, -2);
+
         checkFloor(123456789, -2, 123456700, -2);
+        checkFloor(-123456789, -2, -1234568e61, -61);
+
         checkFloor(123456789, -3, 123456000, -3);
+        checkFloor(-123456789, -3, -123457e62, -62);
+
         checkFloor(123456789, -4, 123450000, -4);
+        checkFloor(-123456789, -4, -12346e63, -63);
+
         checkFloor(123456789, -5, 123400000, -5);
+        checkFloor(-123456789, -5, -1235e64, -64);
+
         checkFloor(123456789, -6, 123000000, -6);
+        checkFloor(-123456789, -6, -124e65, -65);
+
         checkFloor(123456789, -7, 120000000, -7);
+        checkFloor(-123456789, -7, -13e66, -66);
+
         checkFloor(123456789, -8, 100000000, -8);
+        checkFloor(-123456789, -8, -2e66, -66);
+
         checkFloor(123456789, -9, 0, 0);
+        checkFloor(-123456789, -9, -1e67, -67);
+
         checkFloor(123456789, -10, 0, 0);
+        checkFloor(-123456789, -10, -1e67, -67);
+
         checkFloor(123456789, -11, 0, 0);
+        checkFloor(-123456789, -11, -1e67, -67);
+
         checkFloor(type(int224).max, 0, type(int224).max, 0);
         checkFloor(type(int224).min, 0, type(int224).min, 0);
 
