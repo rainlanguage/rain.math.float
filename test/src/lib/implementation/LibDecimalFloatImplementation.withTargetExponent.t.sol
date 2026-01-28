@@ -98,8 +98,9 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         int256 targetExponent,
         int256 expectedSignedCoefficient
     ) internal pure {
-        int256 actualSignedCoefficient =
-            LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
+        int256 actualSignedCoefficient = LibDecimalFloatImplementation.withTargetExponent(
+            signedCoefficient, exponent, targetExponent
+        );
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
     }
 

@@ -18,8 +18,9 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         internal
         pure
     {
-        string memory actual =
-            LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(signedCoefficient, exponent), scientific);
+        string memory actual = LibFormatDecimalFloat.toDecimalString(
+            LibDecimalFloat.packLossless(signedCoefficient, exponent), scientific
+        );
         assertEq(actual, expected, "Formatted value mismatch");
     }
 

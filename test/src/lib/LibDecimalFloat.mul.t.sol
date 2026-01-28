@@ -29,8 +29,9 @@ contract LibDecimalFloatMulTest is Test {
     function testMulPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        try this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (Float floatExternal)
-        {
+        try this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
+            Float floatExternal
+        ) {
             (int256 signedCoefficient, int256 exponent) = floatExternal.unpack();
             Float float = this.mulExternal(a, b);
             (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = float.unpack();

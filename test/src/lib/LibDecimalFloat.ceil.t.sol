@@ -23,11 +23,9 @@ contract LibDecimalFloatCeilTest is Test {
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloat.ceil(LibDecimalFloat.packLossless(signedCoefficient, exponent)).unpack();
 
-        if (
-            !LibDecimalFloatImplementation.eq(
+        if (!LibDecimalFloatImplementation.eq(
                 actualSignedCoefficient, actualExponent, expectedSignedCoefficient, expectedExponent
-            )
-        ) {
+            )) {
             console2.log("signedCoefficient", signedCoefficient);
             console2.log("exponent", exponent);
             console2.log("expectedSignedCoefficient", expectedSignedCoefficient);

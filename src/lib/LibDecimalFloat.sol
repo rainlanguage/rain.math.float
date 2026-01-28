@@ -582,7 +582,7 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Integer component of a float.
+    /// Smallest integer value less than or equal to the float.
     /// @param float The float to floor.
     function floor(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
@@ -592,6 +592,11 @@ library LibDecimalFloat {
         }
         (int256 characteristic, int256 mantissa) =
             LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
+        if (signedCoefficient < 0 && mantissa < 0) {
+            // If the float is negative and has a fractional part, we need to
+            // subtract 1 from the characteristic to floor it.
+            (characteristic, exponent) = LibDecimalFloatImplementation.sub(characteristic, exponent, 1e76, -76);
+        }
         (Float result, bool lossless) = packLossy(characteristic, exponent);
         // Flooring is lossy by definition.
         (lossless, mantissa);
