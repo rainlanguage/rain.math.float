@@ -14,6 +14,11 @@ import {LibBytes} from "rain.solmem/lib/LibBytes.sol";
 import {LibMemCpy, Pointer} from "rain.solmem/lib/LibMemCpy.sol";
 import {DecimalFloat} from "../../concrete/DecimalFloat.sol";
 import {LOG_TABLE_DISAMBIGUATOR} from "../table/LibLogTable.sol";
+import {WriteError} from "../../error/ErrDecimalFloat.sol";
+
+/// @dev Zoltu deterministic deployment proxy address.
+/// https://github.com/Zoltu/deterministic-deployment-proxy?tab=readme-ov-file#proxy-address
+address constant ZOLTU_PROXY_ADDRESS = 0x7A0D94F55792C434d74a40883C6ed8545E406D12;
 
 library LibDecimalFloatDeploy {
     function combinedTables() internal pure returns (bytes memory) {
@@ -38,13 +43,12 @@ library LibDecimalFloatDeploy {
         //slither-disable-next-line too-many-digits
         bytes memory code = type(DecimalFloat).creationCode;
         bool success;
+        address zoltuProxy = ZOLTU_PROXY_ADDRESS;
         assembly ("memory-safe") {
             mstore(0, 0)
-            success := call(gas(), 0x7A0D94F55792C434d74a40883C6ed8545E406D12, 0, add(code, 0x20), mload(code), 12, 20)
+            success := call(gas(), zoltuProxy, 0, add(code, 0x20), mload(code), 12, 20)
             deployedAddress := mload(0)
         }
-        if (!success) {
-            revert("DecimalFloat: deploy failed");
-        }
+        if (address(deployedAddress) == address(0) || !success) revert WriteError();
     }
 }

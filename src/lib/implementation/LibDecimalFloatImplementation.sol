@@ -720,7 +720,9 @@ library LibDecimalFloatImplementation {
             let mainTableVal := mload(0)
 
             result := and(mainTableVal, 0x7FFF)
-            if iszero(iszero(and(mainTableVal, 0x8000))) { smallTableOffset := add(smallTableOffset, logTableSizeBase) }
+            if iszero(iszero(and(mainTableVal, 0x8000))) {
+                smallTableOffset := add(smallTableOffset, logTableSizeBase)
+            }
 
             mstore(0, 0)
             // truncation from the div by 100 is intentional here to keep the
@@ -885,7 +887,7 @@ library LibDecimalFloatImplementation {
             if (idx != ANTILOG_IDX_LAST_INDEX) {
                 (y1Coefficient, y2Coefficient) =
                 // forge-lint: disable-next-line(unsafe-typecast)
-                 lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
+                lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
             }
             if (interpolate) {
                 // This avoids a potential overflow below.
@@ -1012,17 +1014,16 @@ library LibDecimalFloatImplementation {
             {
                 bool noopRescale;
                 assembly ("memory-safe") {
-                    noopRescale :=
+                    noopRescale := or(
                         or(
-                            or(
-                                // Either is zero
-                                or(iszero(signedCoefficientA), iszero(signedCoefficientB)),
-                                // They have different signs
-                                xor(slt(signedCoefficientA, 0), slt(signedCoefficientB, 0))
-                            ),
-                            // Their exponents are equal
-                            eq(exponentA, exponentB)
-                        )
+                            // Either is zero
+                            or(iszero(signedCoefficientA), iszero(signedCoefficientB)),
+                            // They have different signs
+                            xor(slt(signedCoefficientA, 0), slt(signedCoefficientB, 0))
+                        ),
+                        // Their exponents are equal
+                        eq(exponentA, exponentB)
+                    )
                 }
                 if (noopRescale) {
                     return (signedCoefficientA, signedCoefficientB);
