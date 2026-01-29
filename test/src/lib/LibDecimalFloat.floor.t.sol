@@ -26,7 +26,7 @@ contract LibDecimalFloatFloorTest is Test {
         checkFloor(x, exponent, x, x == 0 ? int256(0) : exponent);
     }
 
-    /// If the exponent is less than -76 then the floor is 0.
+    /// If the exponent is less than -76 then the floor is 0 or -1.
     function testFloorLessThanMin(int224 x, int256 exponent) external pure {
         exponent = bound(exponent, type(int32).min, -77);
         checkFloor(x, exponent, 0, 0);

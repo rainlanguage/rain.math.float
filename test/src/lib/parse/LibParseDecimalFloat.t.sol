@@ -14,6 +14,7 @@ import {
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters
 } from "src/error/ErrParse.sol";
+import {ExponentOverflow, CoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 
 contract LibParseDecimalFloatTest is Test {
@@ -52,6 +53,17 @@ contract LibParseDecimalFloatTest is Test {
                 errorSelector = ParseDecimalFloatExcessCharacters.selector;
                 signedCoefficient = 0;
                 exponent = 0;
+            } else if (exponent != int32(exponent) && exponent > 0 && signedCoefficient == int224(signedCoefficient)) {
+                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+                signedCoefficient = 0;
+                exponent = 0;
+            } else {
+                (, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+                if (!lossless) {
+                    errorSelector = ParseDecimalPrecisionLoss.selector;
+                    signedCoefficient = 0;
+                    exponent = 0;
+                }
             }
 
             (bytes4 errorSelectorPacked, Float float) = this.parseDecimalFloatExternal(data);
@@ -204,10 +216,10 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloat("0e0", 0, 0, 3);
         // A capital E.
         checkParseDecimalFloat("0E0", 0, 0, 3);
-        checkParseDecimalFloat("0e1", 0, 1, 3);
-        checkParseDecimalFloat("0e2", 0, 2, 3);
-        checkParseDecimalFloat("0e-1", 0, -1, 4);
-        checkParseDecimalFloat("0e-2", 0, -2, 4);
+        checkParseDecimalFloat("0e1", 0, 0, 3);
+        checkParseDecimalFloat("0e2", 0, 0, 3);
+        checkParseDecimalFloat("0e-1", 0, 0, 4);
+        checkParseDecimalFloat("0e-2", 0, 0, 4);
 
         checkParseDecimalFloat("1e1", 1, 1, 3);
         checkParseDecimalFloat("1e2", 1, 2, 3);
@@ -275,7 +287,7 @@ contract LibParseDecimalFloatTest is Test {
         );
 
         checkParseDecimalFloat("0.0e0", 0, 0, 5);
-        checkParseDecimalFloat("0.0e1", 0, 1, 5);
+        checkParseDecimalFloat("0.0e1", 0, 0, 5);
         checkParseDecimalFloat("1.1e1", 11, 0, 5);
         checkParseDecimalFloat("1.1e-1", 11, -2, 6);
 
@@ -289,7 +301,7 @@ contract LibParseDecimalFloatTest is Test {
     function testParseLiteralDecimalFloatUnrelated() external pure {
         checkParseDecimalFloat("0.0hello", 0, 0, 3);
         checkParseDecimalFloat("0.0e0hello", 0, 0, 5);
-        checkParseDecimalFloat("0.0e1hello", 0, 1, 5);
+        checkParseDecimalFloat("0.0e1hello", 0, 0, 5);
         checkParseDecimalFloat("1.1e1hello", 11, 0, 5);
         checkParseDecimalFloat("1.1e-1hello", 11, -2, 6);
         checkParseDecimalFloat("-1.1e-1hello", -11, -2, 7);

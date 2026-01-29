@@ -573,10 +573,9 @@ library LibDecimalFloat {
     /// @param float The float to frac.
     function frac(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
-        (int256 characteristic, int256 mantissa) =
-            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
-        (characteristic);
-        (Float result, bool lossless) = packLossy(mantissa, exponent);
+        (int256 integer, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
+        (integer);
+        (Float result, bool lossless) = packLossy(fraction, exponent);
         // Frac is lossy by definition.
         (lossless);
         return result;
@@ -590,16 +589,15 @@ library LibDecimalFloat {
         if (exponent >= 0) {
             return float;
         }
-        (int256 characteristic, int256 mantissa) =
-            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
-        if (signedCoefficient < 0 && mantissa < 0) {
+        (int256 integer, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
+        if (signedCoefficient < 0 && fraction < 0) {
             // If the float is negative and has a fractional part, we need to
             // subtract 1 from the characteristic to floor it.
-            (characteristic, exponent) = LibDecimalFloatImplementation.sub(characteristic, exponent, 1e76, -76);
+            (integer, exponent) = LibDecimalFloatImplementation.sub(integer, exponent, 1e76, -76);
         }
-        (Float result, bool lossless) = packLossy(characteristic, exponent);
+        (Float result, bool lossless) = packLossy(integer, exponent);
         // Flooring is lossy by definition.
-        (lossless, mantissa);
+        (lossless, fraction);
         return result;
     }
 
@@ -611,22 +609,21 @@ library LibDecimalFloat {
         if (exponent >= 0) {
             return float;
         }
-        (int256 characteristic, int256 mantissa) =
-            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficient, exponent);
+        (int256 integer, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
 
-        // If the mantissa is 0, then the float is already an integer.
-        if (mantissa == 0) {
+        // If the fraction is 0, then the float is already an integer.
+        if (fraction == 0) {
             return float;
         }
         // Truncate the fractional part when exponent < 0:
-        //   mantissa < 0 (input < 0) → truncation towards zero increases the value (correct ceil).
-        //   mantissa == 0 → value is already an integer.
-        //   mantissa > 0 (input > 0) → truncation decreases the value, so add 1 to round up.
-        else if (mantissa > 0) {
-            (characteristic, exponent) = LibDecimalFloatImplementation.add(characteristic, exponent, 1e76, -76);
+        //   fraction < 0 (input < 0) → truncation towards zero increases the value (correct ceil).
+        //   fraction == 0 → value is already an integer.
+        //   fraction > 0 (input > 0) → truncation decreases the value, so add 1 to round up.
+        else if (fraction > 0) {
+            (integer, exponent) = LibDecimalFloatImplementation.add(integer, exponent, 1e76, -76);
         }
 
-        (Float result, bool lossless) = packLossy(characteristic, exponent);
+        (Float result, bool lossless) = packLossy(integer, exponent);
         (lossless);
         return result;
     }
@@ -705,11 +702,9 @@ library LibDecimalFloat {
         }
 
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (int256 characteristicB, int256 mantissaB) =
-            LibDecimalFloatImplementation.characteristicMantissa(signedCoefficientB, exponentB);
+        (int256 integerB, int256 fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
 
-        uint256 exponentBInteger =
-            uint256(LibDecimalFloatImplementation.withTargetExponent(characteristicB, exponentB, 0));
+        uint256 exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
 
         // Exponentiation by squaring.
         (int256 signedCoefficientResult, int256 exponentResult) = (1, 0);
@@ -730,7 +725,7 @@ library LibDecimalFloat {
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
 
         (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, mantissaB, exponentB);
+            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
 
         (signedCoefficientC, exponentC) =
             LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficientC, exponentC);

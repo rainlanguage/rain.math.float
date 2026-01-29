@@ -135,6 +135,12 @@ library LibParseDecimalFloat {
 
                 exponent += eValue;
             }
+
+            if (signedCoefficient == 0) {
+                // Normalize zero to have exponent zero. This ensures that parsed
+                // floats follow the behaviour of packed floats.
+                exponent = 0;
+            }
         }
     }
 
@@ -150,7 +156,12 @@ library LibParseDecimalFloat {
         if (errorSelector == 0) {
             if (cursor == end) {
                 // If we consumed the whole string, we can return the parsed value.
-                return (0, LibDecimalFloat.packLossless(signedCoefficient, exponent));
+                (Float result, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+                if (!lossless) {
+                    return (ParseDecimalPrecisionLoss.selector, Float.wrap(0));
+                } else {
+                    return (0, result);
+                }
             } else {
                 // If we didn't consume the whole string, it is malformed.
                 return (ParseDecimalFloatExcessCharacters.selector, Float.wrap(0));

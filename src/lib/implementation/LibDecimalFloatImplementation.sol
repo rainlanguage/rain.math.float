@@ -875,11 +875,10 @@ library LibDecimalFloatImplementation {
         }
 
         // Table lookup.
-        (int256 characteristicCoefficient, int256 mantissaCoefficient) =
-            characteristicMantissa(signedCoefficient, exponent);
+        (int256 intCoefficient, int256 fracCoefficient) = intFrac(signedCoefficient, exponent);
         int256 characteristicExponent = exponent;
         {
-            (int256 idx, bool interpolate, int256 scale) = mantissa4(mantissaCoefficient, exponent);
+            (int256 idx, bool interpolate, int256 scale) = mantissa4(fracCoefficient, exponent);
             // idx is positive here because the signedCoefficient is positive due
             // to the opening `if` above.
             int256 y1Coefficient = 9997;
@@ -895,12 +894,12 @@ library LibDecimalFloatImplementation {
                 unchecked {
                     while ((idxPlus1 * scale) / scale != idxPlus1) {
                         scale /= 10;
-                        mantissaCoefficient /= 10;
+                        fracCoefficient /= 10;
                     }
                 }
 
                 (signedCoefficient, exponent) = unitLinearInterpolation(
-                    idx * scale, mantissaCoefficient, idxPlus1 * scale, exponent, y1Coefficient, y2Coefficient, -4
+                    idx * scale, fracCoefficient, idxPlus1 * scale, exponent, y1Coefficient, y2Coefficient, -4
                 );
             } else {
                 signedCoefficient = y1Coefficient;
@@ -908,8 +907,7 @@ library LibDecimalFloatImplementation {
             }
         }
 
-        return
-            (signedCoefficient, 1 + exponent + withTargetExponent(characteristicCoefficient, characteristicExponent, 0));
+        return (signedCoefficient, 1 + exponent + withTargetExponent(intCoefficient, characteristicExponent, 0));
     }
 
     /// @return signedCoefficient The maximized signed coefficient.
@@ -1113,20 +1111,25 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    function characteristicMantissa(int256 signedCoefficient, int256 exponent)
-        internal
-        pure
-        returns (int256 characteristic, int256 mantissa)
-    {
+    /// Returns the integer and fractional parts of a float. Both parts retain
+    /// the sign and exponent of the input float such that integer + frac =
+    /// original float. For all non negative exponents, frac is 0 and the integer
+    /// part is the original float. For exponents less than -76, the corollary is
+    /// true: integer is always 0 and frac is the original float.
+    /// @param signedCoefficient The signed coefficient.
+    /// @param exponent The exponent.
+    /// @return integer The integer part of the float.
+    /// @return frac The fractional part of the float.
+    function intFrac(int256 signedCoefficient, int256 exponent) internal pure returns (int256 integer, int256 frac) {
         unchecked {
-            // if exponent is not negative the characteristic is the number
-            // itself and the mantissa is 0.
+            // if exponent is not negative the integer part is the number
+            // itself and the fractional part is 0.
             if (exponent >= 0) {
                 return (signedCoefficient, 0);
             }
 
-            // If the exponent is less than -76, the characteristic is 0.
-            // and the mantissa is the whole coefficient.
+            // If the exponent is less than -76, the integer part is 0.
+            // and the fractional part is the whole coefficient.
             if (exponent < -76) {
                 return (0, signedCoefficient);
             }
@@ -1134,8 +1137,8 @@ library LibDecimalFloatImplementation {
             // exponent [-76, -1]
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 unit = int256(10 ** uint256(-exponent));
-            mantissa = signedCoefficient % unit;
-            characteristic = signedCoefficient - mantissa;
+            frac = signedCoefficient % unit;
+            integer = signedCoefficient - frac;
         }
     }
 
