@@ -590,7 +590,7 @@ library LibDecimalFloat {
             return float;
         }
         (int256 integer, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
-        if (signedCoefficient < 0 && fraction < 0) {
+        if (signedCoefficient < 0 && fraction != 0) {
             // If the float is negative and has a fractional part, we need to
             // subtract 1 from the characteristic to floor it.
             (integer, exponent) = LibDecimalFloatImplementation.sub(integer, exponent, 1e76, -76);
