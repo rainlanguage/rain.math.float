@@ -44,6 +44,9 @@ type Float is bytes32;
 library LibDecimalFloat {
     using LibDecimalFloat for Float;
 
+    /// Address of the log tables data contract. Only valid if deployed using
+    /// the standard Rain deployment scripts that use Zoltu deterministic
+    /// deployment.
     address constant LOG_TABLES_ADDRESS = 0x6421E8a23cdEe2E6E579b2cDebc8C2A514843593;
 
     /// A zero valued float.
@@ -347,6 +350,11 @@ library LibDecimalFloat {
         }
     }
 
+    /// Lossless version of `packLossy`. This will revert if the conversion is
+    /// lossy.
+    /// @param signedCoefficient As per `packLossy`.
+    /// @param exponent As per `packLossy`.
+    /// @return float As per `packLossy`.
     function packLossless(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless) {
@@ -772,6 +780,9 @@ library LibDecimalFloat {
         return gt(a, b) ? a : b;
     }
 
+    /// Returns true if the float is zero. Handles the case where the signed
+    /// coefficient is zero and exponent is potentially non zero.
+    /// @param a The float to check.
     function isZero(Float a) internal pure returns (bool result) {
         uint256 mask = type(uint224).max;
         assembly ("memory-safe") {

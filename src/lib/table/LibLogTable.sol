@@ -2,14 +2,20 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
+/// @dev Flag indicating that an entry in the log table points to the alternate
+/// table.
 uint16 constant ALT_TABLE_FLAG = 0x8000;
 
 /// @dev The cardinality of the log mantissa for log table lookup.
 uint256 constant LOG_MANTISSA_IDX_CARDINALITY = 9000;
+
 /// @dev The last index of the log mantissa for log table lookup.
 uint256 constant LOG_MANTISSA_LAST_INDEX = LOG_MANTISSA_IDX_CARDINALITY - 1;
 
+/// @dev The cardinality of the antilog index for antilog table lookup.
 int256 constant ANTILOG_IDX_CARDINALITY = 10000;
+
+/// @dev The last index of the antilog index for antilog table lookup.
 int256 constant ANTILOG_IDX_LAST_INDEX = ANTILOG_IDX_CARDINALITY - 1;
 
 // The base size of the log tables is 1/10th the cardinality because the smallest
@@ -17,6 +23,8 @@ int256 constant ANTILOG_IDX_LAST_INDEX = ANTILOG_IDX_CARDINALITY - 1;
 // corresponding value in the small table, it is just that the large table has
 // 2 byte values while the small table has 1 byte values.
 uint256 constant LOG_TABLE_SIZE_BASE = LOG_MANTISSA_IDX_CARDINALITY / 10;
+
+/// @dev The size in bytes of the full log table (both large and small).
 uint256 constant LOG_TABLE_SIZE_BYTES = LOG_TABLE_SIZE_BASE * 2;
 
 /// @dev As we deterministically deploy the log tables, we can run into
@@ -25,6 +33,11 @@ bytes32 constant LOG_TABLE_DISAMBIGUATOR = keccak256("LOG_TABLE_DISAMBIGUATOR_1"
 
 /// @dev https://icap.org.pk/files/per/students/exam/notices/log-table.pdf
 library LibLogTable {
+    /// Encodes a log table into bytes for deployment. Used for AOT compilation
+    /// of the constants that are actually deployed on-chain. Compilation from
+    /// source and constants can be compared in CI.
+    /// @param table The log table to encode.
+    /// @return encoded The encoded log table.
     function toBytes(uint16[10][90] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         uint256 tableSize = LOG_TABLE_SIZE_BYTES;
@@ -54,6 +67,11 @@ library LibLogTable {
         return encoded;
     }
 
+    /// Encodes a log table into bytes for deployment. Used for AOT compilation
+    /// of the constants that are actually deployed on-chain. Compilation from
+    /// source and constants can be compared in CI.
+    /// @param table The log table to encode.
+    /// @return encoded The encoded log table.
     function toBytes(uint8[10][90] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         uint256 tableSize = LOG_TABLE_SIZE_BASE;
@@ -83,6 +101,11 @@ library LibLogTable {
         return encoded;
     }
 
+    /// Encodes a log table into bytes for deployment. Used for AOT compilation
+    /// of the constants that are actually deployed on-chain. Compilation from
+    /// source and constants can be compared in CI.
+    /// @param table The log table to encode.
+    /// @return encoded The encoded log table.
     function toBytes(uint8[10][100] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         assembly ("memory-safe") {
@@ -111,6 +134,11 @@ library LibLogTable {
         return encoded;
     }
 
+    /// Encodes a log table into bytes for deployment. Used for AOT compilation
+    /// of the constants that are actually deployed on-chain. Compilation from
+    /// source and constants can be compared in CI.
+    /// @param table The log table to encode.
+    /// @return encoded The encoded log table.
     function toBytes(uint8[10][10] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         assembly ("memory-safe") {
@@ -139,6 +167,11 @@ library LibLogTable {
         return encoded;
     }
 
+    /// Encodes a log table into bytes for deployment. Used for AOT compilation
+    /// of the constants that are actually deployed on-chain. Compilation from
+    /// source and constants can be compared in CI.
+    /// @param table The log table to encode.
+    /// @return encoded The encoded log table.
     function toBytes(uint16[10][100] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
         assembly ("memory-safe") {
@@ -167,6 +200,9 @@ library LibLogTable {
         return encoded;
     }
 
+    /// The decimal log table used for logarithm calculations. AOT copmiled into
+    /// bytes that are deployed on-chain as data contracts.
+    /// @return The decimal log table.
     function logTableDec() internal pure returns (uint16[10][90] memory) {
         return [
             [
@@ -372,6 +408,9 @@ library LibLogTable {
         ];
     }
 
+    /// The small decimal log table used for logarithm calculations. AOT compiled
+    /// into bytes that are deployed on-chain as data contracts.
+    /// @return The small decimal log table.
     function logTableDecSmall() internal pure returns (uint8[10][90] memory) {
         return [
             [0, 4, 9, 13, 17, 21, 26, 30, 34, 38],
@@ -467,6 +506,9 @@ library LibLogTable {
         ];
     }
 
+    /// The small decimal log table alternative used for logarithm calculations.
+    /// AOT compiled into bytes that are deployed on-chain as data contracts.
+    /// @return The small decimal log table alternative.
     function logTableDecSmallAlt() internal pure returns (uint8[10][10] memory) {
         return [
             [0, 4, 8, 12, 16, 20, 24, 28, 32, 37],
@@ -482,6 +524,9 @@ library LibLogTable {
         ];
     }
 
+    /// The decimal anti log table used for logarithm calculations. AOT compiled
+    /// into bytes that are deployed on-chain as data contracts.
+    /// @return The decimal anti log table.
     function antiLogTableDec() internal pure returns (uint16[10][100] memory) {
         return [
             [1000, 1002, 1005, 1007, 1009, 1012, 1014, 1016, 1019, 1021],
@@ -587,6 +632,9 @@ library LibLogTable {
         ];
     }
 
+    /// The small decimal anti log table used for logarithm calculations. AOT
+    /// compiled into bytes that are deployed on-chain as data contracts.
+    /// @return The small decimal anti log table.
     function antiLogTableDecSmall() internal pure returns (uint8[10][100] memory) {
         return [
             [0, 0, 0, 1, 1, 1, 1, 2, 2, 2],

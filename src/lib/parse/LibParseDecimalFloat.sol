@@ -16,7 +16,21 @@ import {ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 import {ParseDecimalFloatExcessCharacters} from "../../error/ErrParse.sol";
 
+/// @title LibParseDecimalFloat
+/// @notice Library for parsing decimal floating point numbers from strings.
+/// Not particularly gas efficient as it is intended for off-chain use cases.
+/// Main use case is ensuring consistent behaviour across all offchain
+/// implementations by standardizing in Solidity.
 library LibParseDecimalFloat {
+    /// @notice Parses a decimal float from a substring defined by [start, end).
+    /// @param start The starting index of the substring (inclusive).
+    /// @param end The ending index of the substring (exclusive).
+    /// @return errorSelector The error selector if an error occurred, otherwise
+    /// 0.
+    /// @return cursor The position in the string after parsing.
+    /// @return signedCoefficient The signed coefficient of the parsed decimal
+    /// float.
+    /// @return exponent The exponent of the parsed decimal float.
     function parseDecimalFloatInline(uint256 start, uint256 end)
         internal
         pure
@@ -144,6 +158,14 @@ library LibParseDecimalFloat {
         }
     }
 
+    /// @notice Parses a decimal float from a string. This a high-level wrapper
+    /// around `parseDecimalFloatInline` that handles string memory layout and
+    /// returns a packed `Float` amenable to subsequent operations with
+    /// `LibDecimalFloat`.
+    /// @param str The string to parse.
+    /// @return errorSelector The error selector if an error occurred, otherwise
+    /// 0.
+    /// @return result The parsed `Float` if no error occurred, otherwise zero.
     function parseDecimalFloat(string memory str) internal pure returns (bytes4, Float) {
         uint256 start;
         uint256 end;
