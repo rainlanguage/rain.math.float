@@ -57,8 +57,10 @@ contract LibDecimalFloatImplementationEqTest is Test {
         }
     }
 
-    /// xeX != yeY if x != y
+    /// xeX != yeY if x != y (assumiing maximized representation)
     function testEqXNotY(int256 x, int256 exponentX, int256 y, int256 exponentY) external pure {
+        (x, exponentX,) = LibDecimalFloatImplementation.maximize(x, exponentX);
+        (y, exponentY,) = LibDecimalFloatImplementation.maximize(y, exponentY);
         vm.assume(x != y);
         bool eq = LibDecimalFloatImplementation.eq(x, exponentX, y, exponentY);
         assertTrue(!eq);

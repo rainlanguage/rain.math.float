@@ -3,8 +3,9 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std/Test.sol";
+import {console2} from "forge-std/console2.sol";
 
 contract LibDecimalFloatFloorTest is Test {
     using LibDecimalFloat for Float;
@@ -20,6 +21,16 @@ contract LibDecimalFloatFloorTest is Test {
         assertEq(exponent, expectedFracExponent);
     }
 
+    function checkFloorEq(int256 x, int256 exponent, int256 expectedFrac, int256 expectedFracExponent) internal pure {
+        Float a = LibDecimalFloat.packLossless(x, exponent);
+        (x, exponent) = a.floor().unpack();
+        console2.log("x", x);
+        console2.log("exponent", exponent);
+        console2.log("expectedFrac", expectedFrac);
+        console2.log("expectedFracExponent", expectedFracExponent);
+        assertTrue((LibDecimalFloatImplementation.eq(x, exponent, expectedFrac, expectedFracExponent)));
+    }
+
     /// Every non negative exponent is identity for floor.
     function testFloorNonNegative(int224 x, int256 exponent) external pure {
         exponent = bound(exponent, 0, type(int32).max);
@@ -29,11 +40,16 @@ contract LibDecimalFloatFloorTest is Test {
     /// If the exponent is less than -76 then the floor is 0 or -1.
     function testFloorLessThanMin(int224 x, int256 exponent) external pure {
         exponent = bound(exponent, type(int32).min, -77);
-        checkFloor(x, exponent, 0, 0);
+        if (x >= 0) {
+            checkFloor(x, exponent, 0, 0);
+        } else {
+            checkFloor(x, exponent, -1e67, -67);
+        }
     }
 
     /// For exponents [-76,-1] the floor is the / 1.
-    function testFloorInRange(int224 x, int256 exponent) external pure {
+    function testFloorInRangeNonNegative(int224 x, int256 exponent) external pure {
+        x = int224(bound(int256(x), 0, int256(type(int224).max)));
         exponent = bound(exponent, -76, -1);
         // exponent [-76, -1]
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -42,6 +58,22 @@ contract LibDecimalFloatFloorTest is Test {
         // forge-lint: disable-next-line(divide-before-multiply)
         int256 y = (x / scale) * scale;
         checkFloor(x, exponent, y, y == 0 ? int256(0) : exponent);
+    }
+
+    /// For exponents [-76,-1] the floor is the / 1 - 1 if the float is negative.
+    function testFloorInRangeNegative(int224 x, int256 exponent) external pure {
+        x = int224(bound(int256(x), int256(type(int224).min), -1));
+        exponent = bound(exponent, -76, -1);
+        // exponent [-76, -1]
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 scale = int256(10 ** uint256(-exponent));
+        // truncation is intentional here.
+        // forge-lint: disable-next-line(divide-before-multiply)
+        int256 y = (x / scale) * scale;
+        if (y != x) {
+            y -= scale;
+        }
+        checkFloorEq(x, exponent, y, y == 0 ? int256(0) : exponent);
     }
 
     /// Examples
