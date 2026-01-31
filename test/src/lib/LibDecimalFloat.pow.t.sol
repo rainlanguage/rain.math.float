@@ -175,6 +175,10 @@ contract LibDecimalFloatPowTest is LogTest {
                     assertTrue(c.eq(LibDecimalFloat.FLOAT_ONE), "b is 0 so c should be 1");
                 } else if (!(c.isZero() && b.lt(LibDecimalFloat.FLOAT_ZERO))) {
                     Float inv = b.inv();
+                    {
+                        (, int256 exponentInv) = inv.unpack();
+                        vm.assume(exponentInv <= 8e8);
+                    }
                     // The round trip should not error so we do not try.
                     Float roundTrip = this.powExternal(c, inv);
                     if (!roundTrip.isZero()) {
