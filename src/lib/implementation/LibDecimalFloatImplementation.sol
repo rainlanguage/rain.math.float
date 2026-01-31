@@ -362,6 +362,9 @@ library LibDecimalFloatImplementation {
                             adjustExponent -= 1;
                         }
                     }
+                    if (scale == 0) {
+                        revert MaximizeOverflow(signedCoefficientB, exponentB);
+                    }
                 }
                 if (!fullA) {
                     revert MaximizeOverflow(signedCoefficientA, exponentA);
