@@ -53,6 +53,7 @@ contract LibParseDecimalFloatTest is Test {
                 errorSelector = ParseDecimalFloatExcessCharacters.selector;
                 signedCoefficient = 0;
                 exponent = 0;
+                // forge-lint: disable-next-line(unsafe-typecast)
             } else if (exponent != int32(exponent) && exponent > 0 && signedCoefficient == int224(signedCoefficient)) {
                 vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
                 signedCoefficient = 0;

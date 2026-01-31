@@ -31,6 +31,10 @@ library LibDecimalFloatDeploy {
     bytes32 constant DECIMAL_FLOAT_DATA_CONTRACT_HASH =
         0x2573004ac3a9ee7fc8d73654d76386f1b6b99e34cdf86a689c4691e47143420f;
 
+    /// Combines all log and anti-log tables into a single bytes array for
+    /// deployment. These are using packed encoding to minimize size and remove
+    /// the complexity of full ABI encoding.
+    /// @return The combined tables.
     function combinedTables() internal pure returns (bytes memory) {
         return abi.encodePacked(
             LOG_TABLES,
@@ -42,6 +46,10 @@ library LibDecimalFloatDeploy {
         );
     }
 
+    /// Creates a DataContractMemoryContainer containing all log and anti-log
+    /// tables.
+    /// @return dataContract The DataContractMemoryContainer containing the
+    /// tables.
     function dataContract() internal pure returns (DataContractMemoryContainer) {
         bytes memory tables = combinedTables();
         (DataContractMemoryContainer container, Pointer pointer) = LibDataContract.newContainer(tables.length);

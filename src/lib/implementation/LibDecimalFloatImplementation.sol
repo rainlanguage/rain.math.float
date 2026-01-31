@@ -17,28 +17,38 @@ import {
     ANTILOG_IDX_LAST_INDEX
 } from "../table/LibLogTable.sol";
 
+/// @dev Thrown when attempting to rescale a coefficient to a target exponent
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
+/// @dev The maximum difference in exponents when adding to rescale.
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
 
 /// @dev The maximum exponent that can be maximized.
 /// This is crazy large, so should never be a problem for any real use case.
 /// We need it to guard against overflow when maximizing.
 int256 constant EXPONENT_MAX = type(int256).max / 2;
-int256 constant EXPONENT_MAX_PLUS_ONE = EXPONENT_MAX + 1;
 
-/// @dev The minimum exponent that can be normalized.
+/// @dev The minimum exponent that can be maximized.
 /// This is crazy small, so should never be a problem for any real use case.
-/// We need it to guard against overflow when normalizing.
+/// We need it to guard against overflow when maximized.
 int256 constant EXPONENT_MIN = -EXPONENT_MAX;
 
 /// @dev The signed coefficient of maximized zero.
 int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
+
 /// @dev The exponent of maximized zero.
 int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
 
+/// @dev The exponent used in log10 calculations to get the correct result
+/// when using the log tables.
 int256 constant LOG10_Y_EXPONENT = -76;
 
+/// @dev Library implementing core DecimalFloat operations using only stack
+/// variables.
+/// NOT intended for external use, typical use is to treat the `Float` type
+/// as the interface to the float functionality. The tradeoff is better
+/// abstractions for some more gas and less range of the operations due to
+/// packing and unpacking having fundamental bit size limitations.
 library LibDecimalFloatImplementation {
     /// Negates a float.
     /// Equivalent to `0 - x`.
@@ -72,6 +82,10 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    /// Returns the absolute value of a signed coefficient as an unsigned
+    /// integer.
+    /// @param signedCoefficient The signed coefficient.
+    /// @return The absolute value as an unsigned integer.
     function absUnsignedSignedCoefficient(int256 signedCoefficient) internal pure returns (uint256) {
         unchecked {
             if (signedCoefficient < 0) {
@@ -90,6 +104,15 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    /// Given the absolute value of the result coefficient, and the signs of
+    /// the input coefficients, returns the signed coefficient and exponent of
+    /// the result of a multiplication or division operation.
+    /// @param a The signed coefficient of the first operand.
+    /// @param b The signed coefficient of the second operand.
+    /// @param signedCoefficientAbs The absolute value of the result coefficient.
+    /// @param exponent The exponent of the result.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
     function unabsUnsignedMulOrDivLossy(int256 a, int256 b, uint256 signedCoefficientAbs, int256 exponent)
         internal
         pure
@@ -128,6 +151,12 @@ library LibDecimalFloatImplementation {
     }
 
     /// Stack only implementation of `mul`.
+    /// @param signedCoefficientA The signed coefficient of the first operand.
+    /// @param exponentA The exponent of the first operand.
+    /// @param signedCoefficientB The signed coefficient of the second operand.
+    /// @param exponentB The exponent of the second operand.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
     function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -708,6 +737,10 @@ library LibDecimalFloatImplementation {
         return div(1e76, -76, signedCoefficient, exponent);
     }
 
+    /// Looks up the log10 table value for a given index.
+    /// @param tables The address of the log tables data contract.
+    /// @param index The index into the log table.
+    /// @return result The log10 table value.
     function lookupLogTableVal(address tables, uint256 index) internal view returns (uint256 result) {
         // Skip first byte of data contract.
         uint256 smallTableOffset = LOG_TABLE_SIZE_BYTES + 1;
@@ -913,6 +946,10 @@ library LibDecimalFloatImplementation {
         return (signedCoefficient, 1 + exponent + withTargetExponent(intCoefficient, characteristicExponent, 0));
     }
 
+    /// Maximizes a float's signed coefficient by increasing its magnitude
+    /// and decreasing its exponent accordingly. Greatly simplified a lot of
+    /// internal logic that involves comparing signed coefficients as integers,
+    /// or wanting them to have comparable magnitudes.
     /// @return signedCoefficient The maximized signed coefficient.
     /// @return exponent The maximized exponent.
     /// @return full `true` if the result is fully maximized, `false` if it was
@@ -965,6 +1002,12 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    /// Maximizes a float as per `maximize` but errors if not fully maximized.
+    /// This is analogous to other functions in the lib that are "lossless".
+    /// @param signedCoefficient The signed coefficient.
+    /// @param exponent The exponent.
+    /// @return signedCoefficient The maximized signed coefficient.
+    /// @return exponent The maximized exponent.
     function maximizeFull(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (int256 trySignedCoefficient, int256 tryExponent, bool full) = maximize(signedCoefficient, exponent);
         if (!full) {
@@ -1146,6 +1189,11 @@ library LibDecimalFloatImplementation {
     }
 
     /// First 4 digits of the mantissa and whether we need to interpolate.
+    /// @param signedCoefficient The signed coefficient.
+    /// @param exponent The exponent.
+    /// @return mantissa The first 4 digits of the mantissa.
+    /// @return interpolate `true` if we need to interpolate, `false` otherwise.
+    /// @return scale The scale used if we need to interpolate.
     function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256, bool, int256) {
         unchecked {
             if (exponent == -4) {
@@ -1168,6 +1216,13 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    /// Looks up the antilog table values y1 and y2 for a given index.
+    /// @param tablesDataContract The address of the log tables data contract.
+    /// @param idx The index into the antilog table.
+    /// @param lossyIdx `true` if the index may be lossy and we need y2, `false`
+    /// otherwise.
+    /// @return y1Coefficient The y1 antilog table coefficient.
+    /// @return y2Coefficient The y2 antilog table coefficient.
     // forge-lint: disable-next-line(mixed-case-function)
     function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx, bool lossyIdx)
         internal
@@ -1198,8 +1253,17 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    // Linear interpolation.
-    // y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
+    /// Linear interpolation.
+    /// y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
+    /// @param x1Coefficient The x1 coefficient.
+    /// @param xCoefficient The x coefficient.
+    /// @param x2Coefficient The x2 coefficient.
+    /// @param xExponent The x exponent.
+    /// @param y1Coefficient The y1 coefficient.
+    /// @param y2Coefficient The y2 coefficient.
+    /// @param yExponent The y exponent.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
     function unitLinearInterpolation(
         int256 x1Coefficient,
         int256 xCoefficient,
