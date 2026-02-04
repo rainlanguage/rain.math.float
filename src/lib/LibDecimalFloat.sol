@@ -390,9 +390,9 @@ library LibDecimalFloat {
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         // Addition can be lossy.
-        (lossless);
+
+        (Float c,) = packLossy(signedCoefficient, exponent);
         return c;
     }
 
@@ -407,9 +407,9 @@ library LibDecimalFloat {
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (Float c, bool lossless) = packLossy(signedCoefficientC, exponentC);
         // Subtraction can be lossy.
-        (lossless);
+
+        (Float c,) = packLossy(signedCoefficientC, exponentC);
         return c;
     }
 
@@ -421,9 +421,9 @@ library LibDecimalFloat {
     function minus(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
-        (Float result, bool lossless) = packLossy(signedCoefficient, exponent);
         // Minus is a lossy operation due to the asymmetry of signed integers.
-        (lossless);
+
+        (Float result,) = packLossy(signedCoefficient, exponent);
         return result;
     }
 
@@ -444,10 +444,9 @@ library LibDecimalFloat {
             (signedCoefficient, exponent) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
         }
 
-        (Float result, bool lossless) = packLossy(signedCoefficient, exponent);
         // At the limit of signed values there is the potential for a lossy
         // conversion when negating.
-        (lossless);
+        (Float result,) = packLossy(signedCoefficient, exponent);
         return result;
     }
 
@@ -477,9 +476,8 @@ library LibDecimalFloat {
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         // Multiplication is typically lossless, but can be lossy in edge cases.
-        (lossless);
+        (Float c,) = packLossy(signedCoefficient, exponent);
         return c;
     }
 
@@ -495,10 +493,9 @@ library LibDecimalFloat {
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         // Division is often lossy because it is very easy to end up with
         // infinite decimal representations.
-        (lossless);
+        (Float c,) = packLossy(signedCoefficient, exponent);
         return c;
     }
 
@@ -577,15 +574,25 @@ library LibDecimalFloat {
         return signedCoefficientA >= signedCoefficientB;
     }
 
+    /// Integer component of a float.
+    /// For positive numbers this is the floor, for negative numbers this is
+    /// the ceiling.
+    /// @param float The float to return the integer part of.
+    /// @return The integer component of the float.
+    function integer(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (int256 i,) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
+        (Float result,) = packLossy(i, exponent);
+        return result;
+    }
+
     /// Fractional component of a float.
-    /// @param float The float to frac.
+    /// @param float The float to return the fractional part of.
+    /// @return The fractional component of the float.
     function frac(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
-        (int256 integer, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
-        (integer);
-        (Float result, bool lossless) = packLossy(fraction, exponent);
-        // Frac is lossy by definition.
-        (lossless);
+        (, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
+        (Float result,) = packLossy(fraction, exponent);
         return result;
     }
 
@@ -597,15 +604,13 @@ library LibDecimalFloat {
         if (exponent >= 0) {
             return float;
         }
-        (int256 integer, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
+        (int256 i, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
         if (signedCoefficient < 0 && fraction != 0) {
             // If the float is negative and has a fractional part, we need to
             // subtract 1 from the characteristic to floor it.
-            (integer, exponent) = LibDecimalFloatImplementation.sub(integer, exponent, 1e76, -76);
+            (i, exponent) = LibDecimalFloatImplementation.sub(i, exponent, 1e76, -76);
         }
-        (Float result, bool lossless) = packLossy(integer, exponent);
-        // Flooring is lossy by definition.
-        (lossless, fraction);
+        (Float result,) = packLossy(i, exponent);
         return result;
     }
 
@@ -617,7 +622,7 @@ library LibDecimalFloat {
         if (exponent >= 0) {
             return float;
         }
-        (int256 integer, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
+        (int256 i, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
 
         // If the fraction is 0, then the float is already an integer.
         if (fraction == 0) {
@@ -628,11 +633,10 @@ library LibDecimalFloat {
         //   fraction == 0 → value is already an integer.
         //   fraction > 0 (input > 0) → truncation decreases the value, so add 1 to round up.
         else if (fraction > 0) {
-            (integer, exponent) = LibDecimalFloatImplementation.add(integer, exponent, 1e76, -76);
+            (i, exponent) = LibDecimalFloatImplementation.add(i, exponent, 1e76, -76);
         }
 
-        (Float result, bool lossless) = packLossy(integer, exponent);
-        (lossless);
+        (Float result,) = packLossy(i, exponent);
         return result;
     }
 
@@ -647,10 +651,9 @@ library LibDecimalFloat {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) =
             LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficient, exponent);
-        (Float result, bool lossless) = packLossy(signedCoefficient, exponent);
         // We don't care if power10 is lossy because it's an approximation
         // anyway.
-        (lossless);
+        (Float result,) = packLossy(signedCoefficient, exponent);
         return result;
     }
 
@@ -664,9 +667,8 @@ library LibDecimalFloat {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         (signedCoefficient, exponent) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficient, exponent);
-        (Float result, bool lossless) = packLossy(signedCoefficient, exponent);
         // We don't care if log10 is lossy because it's an approximation anyway.
-        (lossless);
+        (Float result,) = packLossy(signedCoefficient, exponent);
         return result;
     }
 
@@ -740,10 +742,8 @@ library LibDecimalFloat {
 
         (signedCoefficientC, exponentC) =
             LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientResult, exponentResult);
-
-        (Float c, bool lossless) = packLossy(signedCoefficientC, exponentC);
         // We don't care if power is lossy because it's an approximation anyway.
-        (lossless);
+        (Float c,) = packLossy(signedCoefficientC, exponentC);
         return c;
     }
 
