@@ -581,6 +581,7 @@ library LibDecimalFloat {
     /// @return The integer component of the float.
     function integer(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
+        //slither-disable-next-line unused-return
         (int256 i,) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
         (Float result,) = packLossy(i, exponent);
         return result;
@@ -591,6 +592,7 @@ library LibDecimalFloat {
     /// @return The fractional component of the float.
     function frac(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
+        //slither-disable-next-line unused-return
         (, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
         (Float result,) = packLossy(fraction, exponent);
         return result;
