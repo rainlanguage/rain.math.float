@@ -1,9 +1,9 @@
 [package]
 name = "rain-math-float"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-homepage.workspace = true
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-DCL-1.0"
+homepage = "https://github.com/rainlanguage/rain.math.float"
 
 [lib]
 crate-type = ["rlib", "cdylib"]
