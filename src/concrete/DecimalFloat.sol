@@ -194,6 +194,13 @@ contract DecimalFloat {
         return a.gte(b);
     }
 
+    /// Exposes `LibDecimalFloat.integer` for offchain use.
+    /// @param a The float to get the integer part of.
+    /// @return The integer part of the float.
+    function integer(Float a) external pure returns (Float) {
+        return a.integer();
+    }
+
     /// Exposes `LibDecimalFloat.frac` for offchain use.
     /// @param a The float to get the fractional part of.
     /// @return The fractional part of the float.
