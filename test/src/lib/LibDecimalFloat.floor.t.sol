@@ -5,7 +5,6 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std/Test.sol";
-import {console2} from "forge-std/console2.sol";
 
 contract LibDecimalFloatFloorTest is Test {
     using LibDecimalFloat for Float;
@@ -24,10 +23,6 @@ contract LibDecimalFloatFloorTest is Test {
     function checkFloorEq(int256 x, int256 exponent, int256 expectedFrac, int256 expectedFracExponent) internal pure {
         Float a = LibDecimalFloat.packLossless(x, exponent);
         (x, exponent) = a.floor().unpack();
-        console2.log("x", x);
-        console2.log("exponent", exponent);
-        console2.log("expectedFrac", expectedFrac);
-        console2.log("expectedFracExponent", expectedFracExponent);
         assertTrue((LibDecimalFloatImplementation.eq(x, exponent, expectedFrac, expectedFracExponent)));
     }
 
