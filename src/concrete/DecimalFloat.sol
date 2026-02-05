@@ -67,7 +67,9 @@ contract DecimalFloat {
     }
 
     /// Exposes `LibFormatDecimalFloat.toDecimalString` for offchain use.
-    /// @param a The float to format.
+    /// @param a The float to format. The absolute value of `a` is used to
+    /// determine if scientific notation is used, this allows negative numbers to
+    /// be formatted consistently with their positive counterparts.
     /// @param scientificMin The smallest number that won't be formatted in
     /// scientific notation.
     /// @param scientificMax The largest number that won't be formatted in
@@ -75,7 +77,8 @@ contract DecimalFloat {
     /// @return The string representation of the float.
     function format(Float a, Float scientificMin, Float scientificMax) public pure returns (string memory) {
         require(scientificMin.lt(scientificMax), "scientificMin must be less than scientificMax");
-        return LibFormatDecimalFloat.toDecimalString(a, a.lt(scientificMin) || a.gt(scientificMax));
+        Float absA = a.abs();
+        return LibFormatDecimalFloat.toDecimalString(a, absA.lt(scientificMin) || absA.gt(scientificMax));
     }
 
     /// Exposes `LibFormatDecimalFloat.toDecimalString` for offchain use.
@@ -189,6 +192,13 @@ contract DecimalFloat {
     /// false otherwise.
     function gte(Float a, Float b) external pure returns (bool) {
         return a.gte(b);
+    }
+
+    /// Exposes `LibDecimalFloat.integer` for offchain use.
+    /// @param a The float to get the integer part of.
+    /// @return The integer part of the float.
+    function integer(Float a) external pure returns (Float) {
+        return a.integer();
     }
 
     /// Exposes `LibDecimalFloat.frac` for offchain use.

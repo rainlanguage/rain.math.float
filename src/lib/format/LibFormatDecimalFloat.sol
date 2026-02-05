@@ -3,14 +3,18 @@
 pragma solidity ^0.8.25;
 
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
-
 import {LibDecimalFloatImplementation} from "../../lib/implementation/LibDecimalFloatImplementation.sol";
-
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
-
 import {UnformatableExponent} from "../../error/ErrFormat.sol";
 
+/// @dev Library for formatting DecimalFloat values as strings.
+/// Not particularly efficient as it is intended for offchain use that doesn't
+/// cost gas.
 library LibFormatDecimalFloat {
+    /// Counts the number of significant figures in a decimal float.
+    /// @param signedCoefficient The signed coefficient of the decimal float.
+    /// @param exponent The exponent of the decimal float.
+    /// @return sigFigs The number of significant figures.
     function countSigFigs(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
         if (signedCoefficient == 0) {
             return 1;

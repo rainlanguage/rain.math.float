@@ -227,10 +227,7 @@ contract LibDecimalFloatDecimalTest is Test {
 
     /// If the final exponent is less than -77 then every value will be 0 when
     /// converted to fixed decimal.
-    function testToFixedDecimalLossyUnderflow(int256 signedCoefficient, int256 exponent, uint8 decimals)
-        external
-        pure
-    {
+    function testToFixedDecimalLossyUnderflow(int256 signedCoefficient, int256 exponent, uint8 decimals) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         exponent = bound(exponent, type(int256).min, -78 - int256(uint256(decimals)));
         (uint256 value, bool lossless) = LibDecimalFloat.toFixedDecimalLossy(signedCoefficient, exponent, decimals);
