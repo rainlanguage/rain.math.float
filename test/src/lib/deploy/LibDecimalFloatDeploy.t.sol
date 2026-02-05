@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, console2} from "forge-std/Test.sol";
 
 import {LibDecimalFloatDeploy, DecimalFloat} from "src/lib/deploy/LibDecimalFloatDeploy.sol";
 
@@ -25,6 +25,7 @@ contract LibDecimalFloatDeployTest is Test {
         forkRpcUrls[2] = "CI_FORK_ARB_RPC_URL";
 
         for (uint256 i = 0; i < forkRpcUrls.length; i++) {
+            console2.log("Testing fork:", forkRpcUrls[i]);
             vm.createSelectFork(vm.envString(forkRpcUrls[i]));
 
             assertEq(
