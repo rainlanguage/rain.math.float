@@ -23,11 +23,9 @@ contract LibDecimalFloatCeilTest is Test {
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloat.ceil(LibDecimalFloat.packLossless(signedCoefficient, exponent)).unpack();
 
-        if (
-            !LibDecimalFloatImplementation.eq(
+        if (!LibDecimalFloatImplementation.eq(
                 actualSignedCoefficient, actualExponent, expectedSignedCoefficient, expectedExponent
-            )
-        ) {
+            )) {
             console2.log("signedCoefficient", signedCoefficient);
             console2.log("exponent", exponent);
             console2.log("expectedSignedCoefficient", expectedSignedCoefficient);
@@ -87,17 +85,41 @@ contract LibDecimalFloatCeilTest is Test {
     /// Examples
     function testCeilExamples() external pure {
         checkCeil(123456789, 0, 123456789, 0);
+        checkCeil(-123456789, 0, -123456789, 0);
+
         checkCeil(123456789, -1, 12345679000000000000000000000000000000000000000000000000000000000000, -60);
+        checkCeil(-123456789, -1, -123456780, -1);
+
         checkCeil(123456789, -2, 12345680000000000000000000000000000000000000000000000000000000000000, -61);
+        checkCeil(-123456789, -2, -1234567e61, -61);
+
         checkCeil(123456789, -3, 12345700000000000000000000000000000000000000000000000000000000000000, -62);
+        checkCeil(-123456789, -3, -123456e62, -62);
+
         checkCeil(123456789, -4, 12346000000000000000000000000000000000000000000000000000000000000000, -63);
+        checkCeil(-123456789, -4, -12345e63, -63);
+
         checkCeil(123456789, -5, 12350000000000000000000000000000000000000000000000000000000000000000, -64);
+        checkCeil(-123456789, -5, -1234e64, -64);
+
         checkCeil(123456789, -6, 12400000000000000000000000000000000000000000000000000000000000000000, -65);
+        checkCeil(-123456789, -6, -123e65, -65);
+
         checkCeil(123456789, -7, 13000000000000000000000000000000000000000000000000000000000000000000, -66);
+        checkCeil(-123456789, -7, -12e66, -66);
+
         checkCeil(123456789, -8, 2000000000000000000000000000000000000000000000000000000000000000000, -66);
+        checkCeil(-123456789, -8, -1e67, -67);
+
         checkCeil(123456789, -9, 1, 0);
+        checkCeil(-123456789, -9, 0, 0);
+
         checkCeil(123456789, -10, 1, 0);
+        checkCeil(-123456789, -10, 0, 0);
+
         checkCeil(123456789, -11, 1, 0);
+        checkCeil(-123456789, -11, 0, 0);
+
         checkCeil(type(int224).max, 0, type(int224).max, 0);
         checkCeil(type(int224).min, 0, type(int224).min, 0);
         checkCeil(2.5e37, -37, 3e66, -66);

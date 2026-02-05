@@ -7,7 +7,8 @@ import {
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
     EXPONENT_MAX,
-    DivisionByZero
+    DivisionByZero,
+    MaximizeOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
 
@@ -42,6 +43,12 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     function testDivMaxPositiveValueDenominatorNotRevert(int256 signedCoefficient, int256 exponent) external pure {
         LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
+    }
+
+    function testDivMinPositiveValueDenominatorRevert(int256 signedCoefficient, int256 exponent) external {
+        vm.assume(signedCoefficient != 0);
+        vm.expectRevert(abi.encodeWithSelector(MaximizeOverflow.selector, 1, type(int256).min));
+        this.divExternal(signedCoefficient, exponent, 1, type(int256).min);
     }
 
     /// 1 / 3 gas by parts 10

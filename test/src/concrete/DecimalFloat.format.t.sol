@@ -11,7 +11,8 @@ contract DecimalFloatFormatTest is Test {
     using LibDecimalFloat for Float;
 
     function formatExternal(Float a, Float scientificMin, Float scientificMax) external pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(a, a.lt(scientificMin) || a.gt(scientificMax));
+        Float absA = a.abs();
+        return LibFormatDecimalFloat.toDecimalString(a, absA.lt(scientificMin) || absA.gt(scientificMax));
     }
 
     function testFormatDeployed(Float a, Float scientificMin, Float scientificMax) external {

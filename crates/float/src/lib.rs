@@ -1052,6 +1052,38 @@ impl Div for Float {
 }
 
 impl Float {
+    /// Returns the integer part of the float (truncation toward zero).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The integer part.
+    /// * `Err(FloatError)` - If the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let x = Float::parse("3.75".to_string())?;
+    /// let int = x.integer()?;
+    /// assert_eq!(int.format()?, "3");
+    ///
+    /// let y = Float::parse("-3.75".to_string())?;
+    /// let int_y = y.integer()?;
+    /// assert_eq!(int_y.format()?, "-3");
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn integer(self) -> Result<Float, FloatError> {
+        let Float(a) = self;
+        let calldata = DecimalFloat::integerCall { a }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::integerCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
     /// Returns the fractional part of the float.
     ///
     /// # Returns
@@ -1804,6 +1836,48 @@ mod tests {
         assert!(frac.eq(expected_frac).unwrap());
     }
 
+    #[test]
+    fn test_integer_positive() {
+        let float = Float::parse("12345.6789".to_string()).unwrap();
+        let int = float.integer().unwrap();
+        let expected = Float::parse("12345".to_string()).unwrap();
+        assert!(int.eq(expected).unwrap());
+
+        let frac = float.frac().unwrap();
+        let recombined = (int + frac).unwrap();
+        assert!(float.eq(recombined).unwrap());
+    }
+
+    #[test]
+    fn test_integer_negative() {
+        let float = Float::parse("-12345.6789".to_string()).unwrap();
+        let int = float.integer().unwrap();
+        let frac = float.frac().unwrap();
+
+        // integer truncates toward zero, so -12345.6789 -> -12345
+        let expected_int = Float::parse("-12345".to_string()).unwrap();
+        let expected_frac = Float::parse("-0.6789".to_string()).unwrap();
+
+        assert!(int.eq(expected_int).unwrap());
+        assert!(frac.eq(expected_frac).unwrap());
+
+        // integer + frac == original
+        let recombined = (int + frac).unwrap();
+        assert!(float.eq(recombined).unwrap());
+    }
+
+    #[test]
+    fn test_integer_whole_numbers() {
+        let pos = Float::parse("42".to_string()).unwrap();
+        assert!(pos.integer().unwrap().eq(pos).unwrap());
+        let zero = Float::parse("0".to_string()).unwrap();
+        assert!(pos.frac().unwrap().eq(zero).unwrap());
+
+        let neg = Float::parse("-42".to_string()).unwrap();
+        assert!(neg.integer().unwrap().eq(neg).unwrap());
+        assert!(neg.frac().unwrap().eq(zero).unwrap());
+    }
+
     proptest! {
         #[test]
         fn test_from_to_fixed_decimal_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
@@ -1823,30 +1897,30 @@ mod tests {
 
     proptest! {
         #[test]
-        fn test_frac_floor_properties(float in arb_float()) {
-            let floor = float.floor().unwrap();
+        fn test_int_frac_properties(float in arb_float()) {
+            let int = float.integer().unwrap();
             let frac = float.frac().unwrap();
 
             let zero = Float::parse("0".to_string()).unwrap();
 
             prop_assert!(
-                floor.frac().unwrap().eq(zero).unwrap(),
-                "floor.frac() is not zero: {}",
-                floor.show_unpacked().unwrap()
+                int.frac().unwrap().eq(zero).unwrap(),
+                "int.frac() is not zero: {}",
+                int.show_unpacked().unwrap()
             );
 
             prop_assert!(
-                frac.floor().unwrap().eq(zero).unwrap(),
-                "frac.floor() is not zero: {}",
+                frac.integer().unwrap().eq(zero).unwrap(),
+                "frac.integer() is not zero: {}",
                 frac.show_unpacked().unwrap()
             );
 
-            let recombined = (floor + frac).unwrap();
+            let recombined = (int + frac).unwrap();
             prop_assert!(
                 float.eq(recombined).unwrap(),
-                "original: {}, floor: {}, frac: {}, recombined: {}",
+                "original: {}, int: {}, frac: {}, recombined: {}",
                 float.show_unpacked().unwrap(),
-                floor.show_unpacked().unwrap(),
+                int.show_unpacked().unwrap(),
                 frac.show_unpacked().unwrap(),
                 recombined.show_unpacked().unwrap()
             );

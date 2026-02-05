@@ -44,3 +44,6 @@ error DivisionByZero(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when attempting to exponentiate a negative base.
 error PowNegativeBase(int256 signedCoefficient, int256 exponent);
+
+/// @dev Thrown if writing the data by creating the contract fails somehow.
+error WriteError();
