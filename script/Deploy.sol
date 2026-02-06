@@ -15,21 +15,33 @@ contract Deploy is Script {
 
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY");
-        string memory suiteString = vm.envOr("DEPLOYMENT_SUITE", string("all"));
-        bytes32 suite = keccak256(bytes(suiteString));
 
-        DataContractMemoryContainer container = LibDecimalFloatDeploy.dataContract();
+        LibRainDeploy.deployAndBroadcastToSupportedNetworks(
+            vm,
+            LibRainDeploy.supportedNetworks(),
+            deployerPrivateKey,
+            type(DecimalFloat).creationCode,
+            "src/concrete/DecimalFloat.sol:DecimalFloat",
+            LibDecimalFloatDeploy.ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS,
+            LibDecimalFloatDeploy.DECIMAL_FLOAT_DATA_CONTRACT_HASH,
+            new address[](0)
+        );
 
-        vm.startBroadcast(deployerPrivateKey);
+        // string memory suiteString = vm.envOr("DEPLOYMENT_SUITE", string("all"));
+        // bytes32 suite = keccak256(bytes(suiteString));
 
-        if (suite == DEPLOYMENT_SUITE_ALL || suite == DEPLOYMENT_SUITE_TABLES) {
-            container.writeZoltu();
-        }
+        // DataContractMemoryContainer container = LibDecimalFloatDeploy.dataContract();
 
-        if (suite == DEPLOYMENT_SUITE_ALL || suite == DEPLOYMENT_SUITE_CONTRACT) {
-            LibDecimalFloatDeploy.decimalFloatZoltu();
-        }
+        // vm.startBroadcast(deployerPrivateKey);
 
-        vm.stopBroadcast();
+        // if (suite == DEPLOYMENT_SUITE_ALL || suite == DEPLOYMENT_SUITE_TABLES) {
+        //     container.writeZoltu();
+        // }
+
+        // if (suite == DEPLOYMENT_SUITE_ALL || suite == DEPLOYMENT_SUITE_CONTRACT) {
+        //     LibDecimalFloatDeploy.decimalFloatZoltu();
+        // }
+
+        // vm.stopBroadcast();
     }
 }
