@@ -5,6 +5,8 @@ pragma solidity =0.8.25;
 import {Script} from "forge-std/Script.sol";
 import {DataContractMemoryContainer, LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
 import {LibDecimalFloatDeploy} from "../src/lib/deploy/LibDecimalFloatDeploy.sol";
+import {LibRainDeploy} from "rain.deploy/lib/LibRainDeploy.sol";
+import {DecimalFloat} from "../src/concrete/DecimalFloat.sol";
 
 bytes32 constant DEPLOYMENT_SUITE_ALL = keccak256("all");
 bytes32 constant DEPLOYMENT_SUITE_TABLES = keccak256("deployment.suite.tables");
