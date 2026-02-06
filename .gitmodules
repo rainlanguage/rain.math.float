@@ -13,3 +13,6 @@
 [submodule "lib/rain.math.fixedpoint"]
 	path = lib/rain.math.fixedpoint
 	url = https://github.com/rainlanguage/rain.math.fixedpoint
+[submodule "lib/rain.deploy"]
+	path = lib/rain.deploy
+	url = https://github.com/rainlanguage/rain.deploy
