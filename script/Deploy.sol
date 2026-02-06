@@ -25,7 +25,7 @@ contract Deploy is Script {
             type(DecimalFloat).creationCode,
             "src/concrete/DecimalFloat.sol:DecimalFloat",
             LibDecimalFloatDeploy.ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS,
-            LibDecimalFloatDeploy.DECIMAL_FLOAT_DATA_CONTRACT_HASH,
+            LibDecimalFloatDeploy.DECIMAL_FLOAT_CONTRACT_HASH,
             new address[](0)
         );
 
