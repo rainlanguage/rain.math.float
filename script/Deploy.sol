@@ -22,11 +22,24 @@ contract Deploy is Script {
             vm,
             LibRainDeploy.supportedNetworks(),
             deployerPrivateKey,
+            LibDecimalFloatDeploy.combinedTables(),
+            "",
+            LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS,
+            LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH,
+            new address[](0)
+        );
+
+        address[] memory decimalFloatDependencies = new address[](1);
+        decimalFloatDependencies[0] = LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS;
+        LibRainDeploy.deployAndBroadcastToSupportedNetworks(
+            vm,
+            LibRainDeploy.supportedNetworks(),
+            deployerPrivateKey,
             type(DecimalFloat).creationCode,
             "src/concrete/DecimalFloat.sol:DecimalFloat",
             LibDecimalFloatDeploy.ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS,
             LibDecimalFloatDeploy.DECIMAL_FLOAT_CONTRACT_HASH,
-            new address[](0)
+            decimalFloatDependencies
         );
 
         // string memory suiteString = vm.envOr("DEPLOYMENT_SUITE", string("all"));

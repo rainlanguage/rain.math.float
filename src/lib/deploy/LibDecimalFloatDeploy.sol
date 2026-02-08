@@ -21,9 +21,9 @@ library LibDecimalFloatDeploy {
     /// the expected address or the codehash does not match the expected value.
     error DecimalFloatNotDeployed();
 
-    /// @dev Zoltu deterministic deployment proxy address.
-    /// https://github.com/Zoltu/deterministic-deployment-proxy?tab=readme-ov-file#proxy-address
-    address constant ZOLTU_PROXY_ADDRESS = 0x7A0D94F55792C434d74a40883C6ed8545E406D12;
+    address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS = address(0);
+
+    bytes32 constant LOG_TABLES_DATA_CONTRACT_HASH = 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890;
 
     /// @dev Address of the DecimalFloat contract deployed via Zoltu's
     /// deterministic deployment proxy.
@@ -56,35 +56,5 @@ library LibDecimalFloatDeploy {
             ANTI_LOG_TABLES_SMALL,
             LOG_TABLE_DISAMBIGUATOR
         );
-    }
-
-    /// Creates a DataContractMemoryContainer containing all log and anti-log
-    /// tables.
-    /// @return dataContract The DataContractMemoryContainer containing the
-    /// tables.
-    function dataContract() internal pure returns (DataContractMemoryContainer) {
-        bytes memory tables = combinedTables();
-        (DataContractMemoryContainer container, Pointer pointer) = LibDataContract.newContainer(tables.length);
-        LibMemCpy.unsafeCopyBytesTo(LibBytes.dataPointer(tables), pointer, tables.length);
-        return container;
-    }
-
-    /// Deploys a DecimalFloat contract using Zoltu's deterministic deployment
-    /// proxy contract. This allows the concrete DecimalFloat contract to be
-    /// found at a predictable location regardless of the network.
-    /// Reverts with WriteError if deployment fails.
-    /// @return deployedAddress The address of the deployed DecimalFloat
-    /// contract.
-    function decimalFloatZoltu() internal returns (DecimalFloat deployedAddress) {
-        //slither-disable-next-line too-many-digits
-        bytes memory code = type(DecimalFloat).creationCode;
-        bool success;
-        address zoltuProxy = ZOLTU_PROXY_ADDRESS;
-        assembly ("memory-safe") {
-            mstore(0, 0)
-            success := call(gas(), zoltuProxy, 0, add(code, 0x20), mload(code), 12, 20)
-            deployedAddress := mload(0)
-        }
-        if (address(deployedAddress) == address(0) || !success) revert WriteError();
     }
 }

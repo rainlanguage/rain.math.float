@@ -21,16 +21,16 @@ contract LibDecimalFloatDeployTest is Test {
         assertEq(address(decimalFloat).codehash, LibDecimalFloatDeploy.DECIMAL_FLOAT_CONTRACT_HASH);
     }
 
-    function testDecimalFloatZoltu() external {
-        vm.createSelectFork(vm.envString("CI_FORK_ETH_RPC_URL"));
+    // function testDecimalFloatZoltu() external {
+    //     vm.createSelectFork(vm.envString("CI_FORK_ETH_RPC_URL"));
 
-        DecimalFloat deployedZoltu = LibDecimalFloatDeploy.decimalFloatZoltu();
-        assertTrue(address(deployedZoltu) != address(0));
+    //     DecimalFloat deployedZoltu = LibDecimalFloatDeploy.decimalFloatZoltu();
+    //     assertTrue(address(deployedZoltu) != address(0));
 
-        DecimalFloat deployedDirect = new DecimalFloat();
+    //     DecimalFloat deployedDirect = new DecimalFloat();
 
-        assertEq(address(deployedZoltu).codehash, address(deployedDirect).codehash);
-    }
+    //     assertEq(address(deployedZoltu).codehash, address(deployedDirect).codehash);
+    // }
 
     // function testDecimalFloatZoltuProd() external {
     //     string[] memory forkRpcUrls = new string[](3);
