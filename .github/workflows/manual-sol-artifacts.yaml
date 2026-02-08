@@ -2,6 +2,13 @@ name: Manual sol artifacts
 on:
   workflow_dispatch:
     inputs:
+      suite:
+        description: "The suite to deploy"
+        required: true
+        type: choice
+        options:
+          - log-tables
+          - decimal-float
 
 jobs:
   deploy:
@@ -33,6 +40,7 @@ jobs:
       - run: nix develop -c forge selectors up --all
       - run: nix develop -c forge script script/Deploy.sol:Deploy -vvvvv --slow --broadcast --verify
         env:
+          DEPLOYMENT_SUITE: ${{ inputs.suite }}
           DEPLOYMENT_KEY: ${{ github.ref == 'refs/heads/main' && secrets.PRIVATE_KEY || secrets.PRIVATE_KEY_DEV }}
 
           CI_DEPLOY_ARBITRUM_RPC_URL: ${{ secrets.CI_DEPLOY_ARBITRUM_RPC_URL || vars.CI_DEPLOY_ARBITRUM_RPC_URL || '' }}

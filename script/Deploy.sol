@@ -8,9 +8,8 @@ import {LibDecimalFloatDeploy} from "../src/lib/deploy/LibDecimalFloatDeploy.sol
 import {LibRainDeploy} from "rain.deploy/lib/LibRainDeploy.sol";
 import {DecimalFloat} from "../src/concrete/DecimalFloat.sol";
 
-bytes32 constant DEPLOYMENT_SUITE_ALL = keccak256("all");
-bytes32 constant DEPLOYMENT_SUITE_TABLES = keccak256("deployment.suite.tables");
-bytes32 constant DEPLOYMENT_SUITE_CONTRACT = keccak256("deployment.suite.contract");
+bytes32 constant DEPLOYMENT_SUITE_TABLES = keccak256("log-tables");
+bytes32 constant DEPLOYMENT_SUITE_CONTRACT = keccak256("decimal-float");
 
 contract Deploy is Script {
     using LibDataContract for DataContractMemoryContainer;
@@ -18,14 +17,8 @@ contract Deploy is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY");
 
-        if (
-            LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.code.length == 0
-                || LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.codehash
-                    != LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH
-        ) {
-            console2.logBytes32(LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.codehash);
-            console2.logBytes32(LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH);
-            console2.log("Log tables not deployed, deploying now...");
+        bytes32 suite = keccak256(bytes(vm.envOr("DEPLOYMENT_SUITE", string("decimal-float"))));
+        if (suite == DEPLOYMENT_SUITE_TABLES) {
             LibRainDeploy.deployAndBroadcastToSupportedNetworks(
                 vm,
                 LibRainDeploy.supportedNetworks(),
@@ -36,14 +29,7 @@ contract Deploy is Script {
                 LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH,
                 new address[](0)
             );
-
-            console2.log("Log tables deployed successfully.");
-            console2.log(
-                "Please rerun the deployment script to deploy the DecimalFloat contract now that the dependency is in place."
-            );
-        } else {
-            console2.log("Log tables already deployed, proceeding to deploy DecimalFloat...");
-
+        } else if (suite == DEPLOYMENT_SUITE_CONTRACT) {
             address[] memory decimalFloatDependencies = new address[](1);
             decimalFloatDependencies[0] = LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS;
             LibRainDeploy.deployAndBroadcastToSupportedNetworks(
@@ -56,23 +42,10 @@ contract Deploy is Script {
                 LibDecimalFloatDeploy.DECIMAL_FLOAT_CONTRACT_HASH,
                 decimalFloatDependencies
             );
+        } else {
+            revert(
+                "Invalid deployment suite specified. Please set the DEPLOYMENT_SUITE environment variable to either 'log-tables' or 'decimal-float'."
+            );
         }
-
-        // string memory suiteString = vm.envOr("DEPLOYMENT_SUITE", string("all"));
-        // bytes32 suite = keccak256(bytes(suiteString));
-
-        // DataContractMemoryContainer container = LibDecimalFloatDeploy.dataContract();
-
-        // vm.startBroadcast(deployerPrivateKey);
-
-        // if (suite == DEPLOYMENT_SUITE_ALL || suite == DEPLOYMENT_SUITE_TABLES) {
-        //     container.writeZoltu();
-        // }
-
-        // if (suite == DEPLOYMENT_SUITE_ALL || suite == DEPLOYMENT_SUITE_CONTRACT) {
-        //     LibDecimalFloatDeploy.decimalFloatZoltu();
-        // }
-
-        // vm.stopBroadcast();
     }
 }
