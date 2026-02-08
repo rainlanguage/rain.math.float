@@ -40,6 +40,8 @@ contract Deploy is Script {
                 "Please reun the deployment script to deploy the DecimalFloat contract now that the dependency is in place."
             );
         } else {
+            console2.log("Log tables already deployed, proceeding to deploy DecimalFloat...");
+
             address[] memory decimalFloatDependencies = new address[](1);
             decimalFloatDependencies[0] = LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS;
             LibRainDeploy.deployAndBroadcastToSupportedNetworks(
