@@ -22,6 +22,17 @@ contract LibDecimalFloatDeployTest is Test {
         assertEq(address(decimalFloat).codehash, LibDecimalFloatDeploy.DECIMAL_FLOAT_CONTRACT_HASH);
     }
 
+    function testDeployAddressLogTables() external {
+        vm.createSelectFork(vm.envString("CI_FORK_ETH_RPC_URL"));
+        bytes memory logTables = LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
+
+        address deployedAddress = LibRainDeploy.deployZoltu(logTables);
+
+        assertEq(deployedAddress, LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS);
+
+        assertEq(address(deployedAddress).codehash, LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH);
+    }
+
     function testExpectedCodeHashLogTables() external {
         bytes memory logTables = LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
 

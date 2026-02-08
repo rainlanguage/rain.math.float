@@ -23,6 +23,8 @@ contract Deploy is Script {
                 || LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.codehash
                     != LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH
         ) {
+            console2.logBytes32(LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.codehash);
+            console2.logBytes32(LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH);
             console2.log("Log tables not deployed, deploying now...");
             LibRainDeploy.deployAndBroadcastToSupportedNetworks(
                 vm,
@@ -37,7 +39,7 @@ contract Deploy is Script {
 
             console2.log("Log tables deployed successfully.");
             console2.log(
-                "Please reun the deployment script to deploy the DecimalFloat contract now that the dependency is in place."
+                "Please rerun the deployment script to deploy the DecimalFloat contract now that the dependency is in place."
             );
         } else {
             console2.log("Log tables already deployed, proceeding to deploy DecimalFloat...");
