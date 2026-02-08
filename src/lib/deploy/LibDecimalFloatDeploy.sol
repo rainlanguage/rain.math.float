@@ -23,7 +23,7 @@ library LibDecimalFloatDeploy {
 
     address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS = address(0xA43E75ee92c2949B95c8a79f427958cC0B05473e);
 
-    bytes32 constant LOG_TABLES_DATA_CONTRACT_HASH = 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890;
+    bytes32 constant LOG_TABLES_DATA_CONTRACT_HASH = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
 
     /// @dev Address of the DecimalFloat contract deployed via Zoltu's
     /// deterministic deployment proxy.
