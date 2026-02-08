@@ -18,29 +18,41 @@ contract Deploy is Script {
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY");
 
-        LibRainDeploy.deployAndBroadcastToSupportedNetworks(
-            vm,
-            LibRainDeploy.supportedNetworks(),
-            deployerPrivateKey,
-            LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables()),
-            "",
-            LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS,
-            LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH,
-            new address[](0)
-        );
+        if (
+            LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.code.length == 0
+                || LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.codehash
+                    != LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH
+        ) {
+            console2.log("Log tables not deployed, deploying now...");
+            LibRainDeploy.deployAndBroadcastToSupportedNetworks(
+                vm,
+                LibRainDeploy.supportedNetworks(),
+                deployerPrivateKey,
+                LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables()),
+                "",
+                LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS,
+                LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH,
+                new address[](0)
+            );
 
-        address[] memory decimalFloatDependencies = new address[](1);
-        decimalFloatDependencies[0] = LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS;
-        LibRainDeploy.deployAndBroadcastToSupportedNetworks(
-            vm,
-            LibRainDeploy.supportedNetworks(),
-            deployerPrivateKey,
-            type(DecimalFloat).creationCode,
-            "src/concrete/DecimalFloat.sol:DecimalFloat",
-            LibDecimalFloatDeploy.ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS,
-            LibDecimalFloatDeploy.DECIMAL_FLOAT_CONTRACT_HASH,
-            decimalFloatDependencies
-        );
+            console2.log("Log tables deployed successfully.");
+            console2.log(
+                "Please reun the deployment script to deploy the DecimalFloat contract now that the dependency is in place."
+            );
+        } else {
+            address[] memory decimalFloatDependencies = new address[](1);
+            decimalFloatDependencies[0] = LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS;
+            LibRainDeploy.deployAndBroadcastToSupportedNetworks(
+                vm,
+                LibRainDeploy.supportedNetworks(),
+                deployerPrivateKey,
+                type(DecimalFloat).creationCode,
+                "src/concrete/DecimalFloat.sol:DecimalFloat",
+                LibDecimalFloatDeploy.ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS,
+                LibDecimalFloatDeploy.DECIMAL_FLOAT_CONTRACT_HASH,
+                decimalFloatDependencies
+            );
+        }
 
         // string memory suiteString = vm.envOr("DEPLOYMENT_SUITE", string("all"));
         // bytes32 suite = keccak256(bytes(suiteString));
