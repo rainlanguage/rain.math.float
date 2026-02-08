@@ -21,7 +21,7 @@ library LibDecimalFloatDeploy {
     /// the expected address or the codehash does not match the expected value.
     error DecimalFloatNotDeployed();
 
-    address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS = address(0);
+    address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS = address(0xA43E75ee92c2949B95c8a79f427958cC0B05473e);
 
     bytes32 constant LOG_TABLES_DATA_CONTRACT_HASH = 0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890;
 
