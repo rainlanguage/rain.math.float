@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Script, console2} from "forge-std/Script.sol";
-import {DataContractMemoryContainer, LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
+import {Script} from "forge-std/Script.sol";
+import {LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
 import {LibDecimalFloatDeploy} from "../src/lib/deploy/LibDecimalFloatDeploy.sol";
 import {LibRainDeploy} from "rain.deploy/lib/LibRainDeploy.sol";
 import {DecimalFloat} from "../src/concrete/DecimalFloat.sol";
@@ -12,8 +12,6 @@ bytes32 constant DEPLOYMENT_SUITE_TABLES = keccak256("log-tables");
 bytes32 constant DEPLOYMENT_SUITE_CONTRACT = keccak256("decimal-float");
 
 contract Deploy is Script {
-    using LibDataContract for DataContractMemoryContainer;
-
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY");
 
