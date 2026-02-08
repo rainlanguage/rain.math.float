@@ -22,7 +22,7 @@ contract Deploy is Script {
             vm,
             LibRainDeploy.supportedNetworks(),
             deployerPrivateKey,
-            LibDecimalFloatDeploy.combinedTables(),
+            LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables()),
             "",
             LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS,
             LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH,
