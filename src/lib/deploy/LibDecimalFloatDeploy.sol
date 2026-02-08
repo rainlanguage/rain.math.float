@@ -17,10 +17,6 @@ import {LOG_TABLE_DISAMBIGUATOR} from "../table/LibLogTable.sol";
 import {WriteError} from "../../error/ErrDecimalFloat.sol";
 
 library LibDecimalFloatDeploy {
-    /// Thrown when failing to ensure the DecimalFloat contract is deployed at
-    /// the expected address or the codehash does not match the expected value.
-    error DecimalFloatNotDeployed();
-
     /// @dev Address of the log tables deployed via Zoltu's deterministic
     /// deployment proxy. This address is the same across all EVM-compatible
     /// networks.
