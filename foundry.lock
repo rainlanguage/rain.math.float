@@ -3,7 +3,10 @@
     "rev": "1801b0541f4fda118a10798fd3486bb7051c5dd6"
   },
   "lib/rain.datacontract": {
-    "rev": "82590300cf768b6c5efc8b92c64b7f402bd34bee"
+    "rev": "3bff30782e408386f73b9353c5122e2e0ab24df2"
+  },
+  "lib/rain.deploy": {
+    "rev": "1af8ca2a981c2f67844f343e224f4c7b1969de1c"
   },
   "lib/rain.math.fixedpoint": {
     "rev": "8308cbb6da0e231c6f3437f1861e66eff7ea2b00"

@@ -15,8 +15,19 @@ abstract contract LogTest is Test {
 
     function logTables() internal returns (address) {
         if (sTables == address(0)) {
-            DataContractMemoryContainer container = LibDecimalFloatDeploy.dataContract();
-            sTables = container.write();
+            bytes memory tables = LibDecimalFloatDeploy.combinedTables();
+            bytes memory creationCode = LibDataContract.contractCreationCode(tables);
+            address tablesAddress;
+            assembly ("memory-safe") {
+                tablesAddress := create(0, add(creationCode, 0x20), mload(creationCode))
+            }
+            assertTrue(tablesAddress != address(0), "Failed to deploy tables");
+            assertEq(
+                tablesAddress.codehash,
+                LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH,
+                "Deployed tables codehash does not match expected value"
+            );
+            sTables = tablesAddress;
         }
         return sTables;
     }
