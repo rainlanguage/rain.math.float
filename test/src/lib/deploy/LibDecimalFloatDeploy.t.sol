@@ -42,5 +42,6 @@ contract LibDecimalFloatDeployTest is Test {
         }
 
         assertEq(deployedAddress.codehash, LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH);
+        assertTrue(address(deployedAddress).code.length > 0, "Deployed address has no code");
     }
 }
