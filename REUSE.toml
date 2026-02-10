@@ -6,6 +6,7 @@ path = [
     ".gas-snapshot",
     ".github/workflows/**/",
     ".vscode/**/",
+    "audit/**/",
     "Cargo.lock",
     "Cargo.toml",
     ".gitignore",
