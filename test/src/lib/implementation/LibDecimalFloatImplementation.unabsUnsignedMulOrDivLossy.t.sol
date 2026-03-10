@@ -2,11 +2,35 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, stdError} from "forge-std/Test.sol";
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
+    function unabsExternal(int256 a, int256 b, uint256 c, int256 exponent)
+        external
+        pure
+        returns (int256, int256)
+    {
+        return LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(a, b, c, exponent);
+    }
+
+    /// exponent + 1 overflows when exponent is type(int256).max and c
+    /// exceeds int256 range (same-sign operands).
+    function testUnabsExponentOverflowSameSign() external {
+        uint256 c = uint256(type(int256).max) + 2;
+        vm.expectRevert(stdError.arithmeticError);
+        this.unabsExternal(1, 1, c, type(int256).max);
+    }
+
+    /// exponent + 1 overflows when exponent is type(int256).max and c
+    /// exceeds int256 range (mixed-sign operands).
+    function testUnabsExponentOverflowMixedSign() external {
+        uint256 c = uint256(type(int256).max) + 2;
+        vm.expectRevert(stdError.arithmeticError);
+        this.unabsExternal(-1, 1, c, type(int256).max);
+    }
+
     /// a and b are both not negative.
     function testUnabsUnsignedMulOrDivLossyPositive(uint256 a, uint256 b, uint256 c, int256 exponent) external pure {
         a = bound(a, 0, uint256(type(int256).max));

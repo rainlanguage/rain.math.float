@@ -734,6 +734,9 @@ library LibDecimalFloat {
             return pow(a.inv(), b.minus(), tablesDataContract);
         }
 
+        // Uses LibDecimalFloatImplementation directly (rather than the packed
+        // Float API) to avoid repeated pack/unpack overhead in the squaring
+        // loop and to preserve unnormalized intermediates.
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 integerB, int256 fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
 

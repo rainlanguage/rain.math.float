@@ -404,6 +404,64 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloatFail("0.-1", MalformedDecimalPoint.selector, 2);
     }
 
+    /// Exponent overflow when fractional exponent + e-notation exponent wraps.
+    /// (A10-1/p1)
+    function testParseExponentOverflowFracPlusEValue() external pure {
+        // exponent = -1 (from ".1") + int256.min (from e-notation) wraps.
+        // "0.1e-" = 5 chars + 77 digits = 82
+        checkParseDecimalFloatFail(
+            "0.1e-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+            ExponentOverflow.selector,
+            82
+        );
+        // exponent = -1 (from ".1") + int256.max (from e-notation) does NOT
+        // overflow — it's a valid large positive exponent.
+        // "0.1e" = 4 chars + 77 digits = 81
+        checkParseDecimalFloat(
+            "0.1e57896044618658097711785492504343953926634992332820282019728792003956564819967",
+            1,
+            type(int256).max - 1,
+            81
+        );
+    }
+
+    /// ParseDecimalPrecisionLoss from the wrapper when packLossy returns
+    /// lossless=false. The inline parse succeeds but the coefficient exceeds
+    /// int224, so packLossy normalizes it lossily. (A10-8)
+    function testParseDecimalFloatPrecisionLossFromPackLossy() external {
+        // 68 nines exceeds int224.max (~1.35e67) so packLossy must divide
+        // by 10 to fit, returning lossless=false.
+        (bytes4 err,) = this.parseDecimalFloatExternal(
+            "99999999999999999999999999999999999999999999999999999999999999999999"
+        );
+        assertEq(err, ParseDecimalPrecisionLoss.selector);
+    }
+
+    /// Exponent exceeds int32 range — packLossy reverts with ExponentOverflow
+    /// for positive exponents, returns soft error for negative. (A10-8)
+    function testParseDecimalFloatExponentOverflowFromPackLossy() external {
+        // Positive exponent overflow reverts.
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(2147483648)));
+        this.parseDecimalFloatExternal("1e2147483648");
+
+        // Negative exponent overflow returns soft error (rounds toward zero).
+        (bytes4 err,) = this.parseDecimalFloatExternal("1e-2147483649");
+        assertEq(err, ParseDecimalPrecisionLoss.selector);
+    }
+
+    /// ParseDecimalFloatExcessCharacters from the wrapper when trailing
+    /// non-numeric characters remain after a valid parse. (A10-7)
+    function testParseDecimalFloatExcessCharacters() external {
+        (bytes4 err,) = this.parseDecimalFloatExternal("1hello");
+        assertEq(err, ParseDecimalFloatExcessCharacters.selector);
+
+        (bytes4 err2,) = this.parseDecimalFloatExternal("1.2.3");
+        assertEq(err2, ParseDecimalFloatExcessCharacters.selector);
+
+        (bytes4 err3,) = this.parseDecimalFloatExternal("1e2e3");
+        assertEq(err3, ParseDecimalFloatExcessCharacters.selector);
+    }
+
     /// Can't have more than max total precision. Add decimals after the max int.
     function testParseLiteralDecimalFloatPrecisionRevert0() external pure {
         checkParseDecimalFloatFail(
