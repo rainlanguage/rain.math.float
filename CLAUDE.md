@@ -40,6 +40,14 @@ npm test        # TypeScript type check + vitest (tests in test_js/)
 nix develop     # Enter dev shell with all tooling
 ```
 
+### Deployment
+Contracts are deployed deterministically via the Zoltu proxy to the same address on all supported networks (Arbitrum, Base, Base Sepolia, Flare, Polygon). Two deployment suites (log-tables must be deployed first):
+```bash
+DEPLOYMENT_KEY=<key> DEPLOYMENT_SUITE=log-tables forge script script/Deploy.sol:Deploy --broadcast --verify
+DEPLOYMENT_KEY=<key> DEPLOYMENT_SUITE=decimal-float forge script script/Deploy.sol:Deploy --broadcast --verify
+```
+Expected addresses and code hashes are in `src/lib/deploy/LibDecimalFloatDeploy.sol`. Network RPC URLs are configured in `foundry.toml` via `CI_DEPLOY_*_RPC_URL` env vars.
+
 ## Architecture
 
 ### Solidity Layer (`src/`)
@@ -50,6 +58,10 @@ nix develop     # Enter dev shell with all tooling
 - **`lib/table/`** — Log lookup tables (deployed as a data contract at a deterministic address).
 - **`concrete/DecimalFloat.sol`** — Exposes library functions as contract methods (required for Rust/revm interop via ABI).
 - **`error/`** — Custom error definitions (CoefficientOverflow, ExponentOverflow, DivisionByZero, etc.).
+
+### Scripts (`script/`)
+- **`Deploy.sol`** — Production deployment script using Zoltu deterministic proxy. Deploys log tables and DecimalFloat contract to all supported networks.
+- **`BuildPointers.sol`** — Generates `src/generated/LogTables.pointers.sol` (committed to repo; must be regenerated if log table data changes).
 
 ### Rust Layer (`crates/float/`)
 - **`lib.rs`** — `Float` struct wrapping `B256`, implements `Add`/`Sub`/`Mul`/`Div`/`Neg`. Uses `alloy::sol!` macro to generate bindings from Foundry JSON artifacts in `out/`.

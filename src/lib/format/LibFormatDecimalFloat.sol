@@ -75,6 +75,9 @@ library LibFormatDecimalFloat {
             }
         } else {
             if (exponent > 0) {
+                if (exponent > 76) {
+                    revert UnformatableExponent(exponent);
+                }
                 // exponent > 0
                 // forge-lint: disable-next-line(unsafe-typecast)
                 signedCoefficient *= int256(10) ** uint256(exponent);

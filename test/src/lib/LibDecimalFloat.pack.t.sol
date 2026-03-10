@@ -3,6 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
+import {CoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std/Test.sol";
 
 contract LibDecimalFloatPackTest is Test {
@@ -37,6 +38,37 @@ contract LibDecimalFloatPackTest is Test {
         vm.assume(signedCoefficient != 0);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         this.packLossyExternal(signedCoefficient, exponent);
+    }
+
+    function packLosslessExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float) {
+        return LibDecimalFloat.packLossless(signedCoefficient, exponent);
+    }
+
+    /// packLossless reverts with CoefficientOverflow when lossy.
+    function testPackLosslessCoefficientOverflow() external {
+        // int224.max + 1 can't fit losslessly — packLossy would normalize it
+        // but packLossless must revert.
+        int256 signedCoefficient = int256(type(int224).max) + 1;
+        int256 exponent = 0;
+        vm.expectRevert(abi.encodeWithSelector(CoefficientOverflow.selector, signedCoefficient, exponent));
+        this.packLosslessExternal(signedCoefficient, exponent);
+    }
+
+    /// packLossy returns lossless=false but a valid non-zero Float when the
+    /// coefficient exceeds int224 but can be normalized by dividing by 10.
+    function testPackLossyButPackable() external view {
+        // int224.max + 1 doesn't fit in int224, but dividing by 10 does.
+        int256 signedCoefficient = int256(type(int224).max) + 1;
+        int256 exponent = 0;
+        (Float float, bool lossless) = this.packLossyExternal(signedCoefficient, exponent);
+        assertFalse(lossless, "lossless");
+        assertTrue(Float.unwrap(float) != Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "non-zero");
+
+        // The packed value should unpack to a truncated coefficient with
+        // incremented exponent.
+        (int256 unpackedCoefficient, int256 unpackedExponent) = LibDecimalFloat.unpack(float);
+        assertEq(unpackedExponent, 1, "exponent");
+        assertEq(unpackedCoefficient, signedCoefficient / 10, "coefficient");
     }
 
     /// Lossy zero when exponent is negative below type(int32).min except for zero.
