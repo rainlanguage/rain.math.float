@@ -12,12 +12,14 @@ bytes32 constant DEPLOYMENT_SUITE_TABLES = keccak256("log-tables");
 bytes32 constant DEPLOYMENT_SUITE_CONTRACT = keccak256("decimal-float");
 
 contract Deploy is Script {
+    mapping(string => mapping(address => bytes32)) internal sDepCodeHashes;
+
     function run() external {
         uint256 deployerPrivateKey = vm.envUint("DEPLOYMENT_KEY");
 
         bytes32 suite = keccak256(bytes(vm.envOr("DEPLOYMENT_SUITE", string("decimal-float"))));
         if (suite == DEPLOYMENT_SUITE_TABLES) {
-            LibRainDeploy.deployAndBroadcastToSupportedNetworks(
+            LibRainDeploy.deployAndBroadcast(
                 vm,
                 LibRainDeploy.supportedNetworks(),
                 deployerPrivateKey,
@@ -25,12 +27,13 @@ contract Deploy is Script {
                 "",
                 LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS,
                 LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH,
-                new address[](0)
+                new address[](0),
+                sDepCodeHashes
             );
         } else if (suite == DEPLOYMENT_SUITE_CONTRACT) {
             address[] memory decimalFloatDependencies = new address[](1);
             decimalFloatDependencies[0] = LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS;
-            LibRainDeploy.deployAndBroadcastToSupportedNetworks(
+            LibRainDeploy.deployAndBroadcast(
                 vm,
                 LibRainDeploy.supportedNetworks(),
                 deployerPrivateKey,
@@ -38,7 +41,8 @@ contract Deploy is Script {
                 "src/concrete/DecimalFloat.sol:DecimalFloat",
                 LibDecimalFloatDeploy.ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS,
                 LibDecimalFloatDeploy.DECIMAL_FLOAT_CONTRACT_HASH,
-                decimalFloatDependencies
+                decimalFloatDependencies,
+                sDepCodeHashes
             );
         } else {
             revert(

@@ -16,6 +16,7 @@ path = [
     "scripts/**/",
     "test_js/**/",
     "tsconfig.json",
+    "CLAUDE.md",
     "README.md",
     "crates/**/",
     "flake.lock",
