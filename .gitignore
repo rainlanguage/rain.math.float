@@ -6,3 +6,4 @@ temp
 dist
 node_modules
 .env
+.fixes

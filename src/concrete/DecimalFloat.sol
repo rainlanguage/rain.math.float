@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float} from "../lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "../lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "../lib/parse/LibParseDecimalFloat.sol";
+import {ScientificMinNotLessThanMax} from "../error/ErrDecimalFloat.sol";
 
 contract DecimalFloat {
     using LibDecimalFloat for Float;
@@ -76,7 +77,9 @@ contract DecimalFloat {
     /// scientific notation.
     /// @return The string representation of the float.
     function format(Float a, Float scientificMin, Float scientificMax) public pure returns (string memory) {
-        require(scientificMin.lt(scientificMax), "scientificMin must be less than scientificMax");
+        if (!scientificMin.lt(scientificMax)) {
+            revert ScientificMinNotLessThanMax(scientificMin, scientificMax);
+        }
         Float absA = a.abs();
         return LibFormatDecimalFloat.toDecimalString(a, absA.lt(scientificMin) || absA.gt(scientificMax));
     }
@@ -107,8 +110,8 @@ contract DecimalFloat {
     }
 
     /// Exposes `LibDecimalFloat.sub` for offchain use.
-    /// @param a The first float to subtract.
-    /// @param b The second float to subtract.
+    /// @param a The float to subtract from.
+    /// @param b The float to subtract.
     /// @return The difference of the two floats.
     function sub(Float a, Float b) external pure returns (Float) {
         return a.sub(b);
@@ -137,8 +140,8 @@ contract DecimalFloat {
     }
 
     /// Exposes `LibDecimalFloat.div` for offchain use.
-    /// @param a The first float to divide.
-    /// @param b The second float to divide.
+    /// @param a The dividend (numerator).
+    /// @param b The divisor (denominator).
     /// @return The quotient of the two floats.
     function div(Float a, Float b) external pure returns (Float) {
         return a.div(b);
@@ -223,8 +226,8 @@ contract DecimalFloat {
     }
 
     /// Exposes `LibDecimalFloat.pow10` for offchain use.
-    /// @param a The float to raise to the power of 10.
-    /// @return The result of raising the float to the power of 10.
+    /// @param a The exponent to raise 10 to.
+    /// @return The result of 10^a.
     function pow10(Float a) external view returns (Float) {
         return a.pow10(LibDecimalFloat.LOG_TABLES_ADDRESS);
     }

@@ -47,3 +47,8 @@ error PowNegativeBase(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown if writing the data by creating the contract fails somehow.
 error WriteError();
+
+/// @dev Thrown when scientificMin is not less than scientificMax in format.
+/// @param scientificMin The minimum threshold for scientific notation.
+/// @param scientificMax The maximum threshold for scientific notation.
+error ScientificMinNotLessThanMax(Float scientificMin, Float scientificMax);

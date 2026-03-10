@@ -8,7 +8,14 @@ import {LibDecimalFloatDeploy} from "../src/lib/deploy/LibDecimalFloatDeploy.sol
 import {LibRainDeploy} from "rain.deploy/lib/LibRainDeploy.sol";
 import {DecimalFloat} from "../src/concrete/DecimalFloat.sol";
 
+/// @dev Hash of the "log-tables" deployment suite string. When the
+/// `DEPLOYMENT_SUITE` env var is set to "log-tables", the script deploys the
+/// log/antilog lookup tables as a data contract.
 bytes32 constant DEPLOYMENT_SUITE_TABLES = keccak256("log-tables");
+
+/// @dev Hash of the "decimal-float" deployment suite string. When the
+/// `DEPLOYMENT_SUITE` env var is set to "decimal-float" (or omitted, as it is
+/// the default), the script deploys the DecimalFloat contract.
 bytes32 constant DEPLOYMENT_SUITE_CONTRACT = keccak256("decimal-float");
 
 contract Deploy is Script {

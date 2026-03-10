@@ -149,10 +149,10 @@ library LibDecimalFloat {
         return (signedCoefficient, exponent);
     }
 
-    /// Lossless version of `fromFixedDecimalLossyMem`. This will revert if the
+    /// Lossless version of `fromFixedDecimalLossyPacked`. This will revert if the
     /// conversion is lossy.
-    /// @param value As per `fromFixedDecimalLossyMem`.
-    /// @param decimals As per `fromFixedDecimalLossyMem`.
+    /// @param value As per `fromFixedDecimalLossyPacked`.
+    /// @param decimals As per `fromFixedDecimalLossyPacked`.
     /// @return float The Float struct containing the signed coefficient and
     /// exponent.
     function fromFixedDecimalLosslessPacked(uint256 value, uint8 decimals) internal pure returns (Float) {
@@ -288,7 +288,7 @@ library LibDecimalFloat {
         return toFixedDecimalLossless(signedCoefficient, exponent, decimals);
     }
 
-    /// Pack a signed coefficient and exponent into a single `PackedFloat`.
+    /// Pack a signed coefficient and exponent into a single `Float`.
     /// Clearly this involves fitting 64 bytes into 32 bytes, so there will be
     /// data loss.
     /// @param signedCoefficient The signed coefficient of the floating point
@@ -296,6 +296,7 @@ library LibDecimalFloat {
     /// @param exponent The exponent of the floating point representation.
     /// @return float The packed representation of the signed coefficient and
     /// exponent.
+    /// @return lossless True if the conversion was lossless, false otherwise.
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {
             int256 initialSignedCoefficient = signedCoefficient;
@@ -385,6 +386,7 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
+    /// @return The sum of the two floats.
     function add(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -396,12 +398,13 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Subtract float a from float b.
+    /// Subtract float b from float a.
     ///
     /// This is effectively shorthand for adding the two floats with the second
     /// float negated. Therefore, the same caveats apply as for `add`.
     /// @param a The float to subtract from.
     /// @param b The float to subtract.
+    /// @return The difference of the two floats (a - b).
     function sub(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -418,6 +421,7 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
+    /// @return The negated float.
     function minus(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
@@ -437,6 +441,7 @@ library LibDecimalFloat {
     /// > same as using the minus operation on the operand. Otherwise, the result
     /// > is the same as using the plus operation on the operand.
     /// @param float The float to take the absolute value of.
+    /// @return The absolute value of the float.
     function abs(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
 
@@ -471,6 +476,7 @@ library LibDecimalFloat {
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
+    /// @return The product of the two floats.
     function mul(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -481,13 +487,14 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Same as divide, but accepts a Float struct instead of separate values.
+    /// Same as `div`, but accepts a Float struct instead of separate values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
     /// @param a The Float struct containing the signed coefficient and
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
     /// exponent of the second floating point number.
+    /// @return The quotient of the two floats (a / b).
     function div(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -504,11 +511,11 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
+    /// @return The multiplicative inverse (1 / float).
     function inv(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
-        (Float result, bool lossless) = packLossy(signedCoefficient, exponent);
-        (lossless);
+        (Float result,) = packLossy(signedCoefficient, exponent);
         return result;
     }
 
@@ -517,6 +524,7 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param a The first float to compare.
     /// @param b The second float to compare.
+    /// @return True if the two floats are numerically equal.
     function eq(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -528,6 +536,7 @@ library LibDecimalFloat {
     /// For example, 1e2 is less than 1e3, and 1e2 is less than 2e2.
     /// @param a The first float to compare.
     /// @param b The second float to compare.
+    /// @return True if a is less than b.
     function lt(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -542,6 +551,7 @@ library LibDecimalFloat {
     /// other. For example, 1e3 is greater than 1e2, and 2e2 is greater than 1e2.
     /// @param a The first float to compare.
     /// @param b The second float to compare.
+    /// @return True if a is greater than b.
     function gt(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -554,6 +564,9 @@ library LibDecimalFloat {
     /// A float is less than or equal to another if its numeric value is less
     /// than or equal to the other. For example, 1e2 is less than or equal to 1e3
     /// and 1e2 is less than or equal to 1e2.
+    /// @param a The first float to compare.
+    /// @param b The second float to compare.
+    /// @return True if a is less than or equal to b.
     function lte(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -566,6 +579,9 @@ library LibDecimalFloat {
     /// A float is greater than or equal to another if its numeric value is
     /// greater than or equal to the other. For example, 1e3 is greater than or
     /// equal to 1e2 and 1e2 is greater than or equal to 1e2.
+    /// @param a The first float to compare.
+    /// @param b The second float to compare.
+    /// @return True if a is greater than or equal to b.
     function gte(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -600,6 +616,7 @@ library LibDecimalFloat {
 
     /// Smallest integer value less than or equal to the float.
     /// @param float The float to floor.
+    /// @return The floored float.
     function floor(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         // If the exponent is 0 or greater then the float is already an integer.
@@ -618,6 +635,7 @@ library LibDecimalFloat {
 
     /// Smallest integer value greater than or equal to the float.
     /// @param float The float to ceil.
+    /// @return The ceiled float.
     function ceil(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         // If the exponent is 0 or greater then the float is already an integer.
@@ -642,13 +660,14 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Same as power10, but accepts a Float struct instead of separate values.
+    /// Same as `pow10`, but accepts a Float struct instead of separate values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
+    /// @return The result of 10^float.
     function pow10(Float float, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) =
@@ -665,6 +684,7 @@ library LibDecimalFloat {
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
     /// @param a The float to log10.
+    /// @return The base-10 logarithm of a.
     function log10(Float a, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         (signedCoefficient, exponent) =
@@ -687,6 +707,7 @@ library LibDecimalFloat {
     /// @param b The float `b` in `a^b`.
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
+    /// @return The result of a^b.
     function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
 
@@ -713,6 +734,9 @@ library LibDecimalFloat {
             return pow(a.inv(), b.minus(), tablesDataContract);
         }
 
+        // Uses LibDecimalFloatImplementation directly (rather than the packed
+        // Float API) to avoid repeated pack/unpack overhead in the squaring
+        // loop and to preserve unnormalized intermediates.
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 integerB, int256 fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
 
@@ -761,6 +785,7 @@ library LibDecimalFloat {
     /// @param a The float to take the square root of.
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
+    /// @return The square root of a.
     function sqrt(Float a, address tablesDataContract) internal view returns (Float) {
         return pow(a, FLOAT_HALF, tablesDataContract);
     }
@@ -778,6 +803,7 @@ library LibDecimalFloat {
     /// Convenience for `a > b ? a : b`.
     /// @param a The first float to compare.
     /// @param b The second float to compare.
+    /// @return The larger of the two floats.
     function max(Float a, Float b) internal pure returns (Float) {
         return gt(a, b) ? a : b;
     }
@@ -785,6 +811,7 @@ library LibDecimalFloat {
     /// Returns true if the float is zero. Handles the case where the signed
     /// coefficient is zero and exponent is potentially non zero.
     /// @param a The float to check.
+    /// @return result True if the float is zero.
     function isZero(Float a) internal pure returns (bool result) {
         uint256 mask = type(uint224).max;
         assembly ("memory-safe") {

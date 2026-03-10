@@ -11,10 +11,15 @@ import {
     CMASK_DECIMAL_POINT
 } from "rain.string/lib/parse/LibParseCMask.sol";
 import {LibParseDecimal} from "rain.string/lib/parse/LibParseDecimal.sol";
-import {MalformedExponentDigits, ParseDecimalPrecisionLoss, MalformedDecimalPoint} from "../../error/ErrParse.sol";
+import {
+    MalformedExponentDigits,
+    ParseDecimalPrecisionLoss,
+    MalformedDecimalPoint,
+    ParseDecimalFloatExcessCharacters
+} from "../../error/ErrParse.sol";
+import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
 import {ParseEmptyDecimalString} from "rain.string/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
-import {ParseDecimalFloatExcessCharacters} from "../../error/ErrParse.sol";
 
 /// @title LibParseDecimalFloat
 /// @notice Library for parsing decimal floating point numbers from strings.
@@ -105,17 +110,24 @@ library LibParseDecimalFloat {
                     // exponent is non positive here.
                     // forge-lint: disable-next-line(unsafe-typecast)
                     uint256 scale = uint256(-exponent);
+                    // 67 is the maximum number of fractional digits we can
+                    // rescale by without overflowing. The coefficient is at
+                    // most int224 (~6.7e66), and the rescaled product
+                    // (coefficient * 10^scale) must fit in int256 (~5.8e76).
+                    // Beyond 67 digits the multiplication would overflow
+                    // int256 for any non-trivial coefficient.
                     if (scale > 67) {
                         return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
                     }
                     scale = 10 ** scale;
-                    // scale [0, 1e67]
+                    // scale [1, 1e67]
                     // forge-lint: disable-next-line(unsafe-typecast)
                     int256 rescaledIntValue = signedCoefficient * int256(scale);
-                    // scale [0, 1e67]
+                    // Check 1: the multiplication overflowed int256.
                     // forge-lint: disable-next-line(unsafe-typecast)
                     bool mulDidOverflow = rescaledIntValue / int256(scale) != signedCoefficient;
-                    // truncation is intentional as it is part of the check here.
+                    // Check 2: the rescaled value exceeds int224 precision,
+                    // so it cannot be packed losslessly into a Float.
                     // forge-lint: disable-next-line(unsafe-typecast)
                     bool mulDidTruncate = int224(rescaledIntValue) != rescaledIntValue;
                     if (mulDidOverflow || mulDidTruncate) {
@@ -147,7 +159,13 @@ library LibParseDecimalFloat {
                     eValue = eValueTmp;
                 }
 
-                exponent += eValue;
+                {
+                    int256 newExponent = exponent + eValue;
+                    if ((eValue > 0 && newExponent < exponent) || (eValue < 0 && newExponent > exponent)) {
+                        return (ExponentOverflow.selector, cursor, 0, 0);
+                    }
+                    exponent = newExponent;
+                }
             }
 
             if (signedCoefficient == 0) {

@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LogTest, console2} from "../../../abstract/LogTest.sol";
+import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationLog10Test is LogTest {
     function checkLog10(
@@ -60,6 +61,23 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         checkLog10(0.1001e4, -4, -0.9996e76, -76);
 
         checkLog10(0.5e1, -1, -0.301e76, -76);
+    }
+
+    function log10External(int256 signedCoefficient, int256 exponent) external returns (int256, int256) {
+        return LibDecimalFloatImplementation.log10(logTables(), signedCoefficient, exponent);
+    }
+
+    function testLog10ZeroReverts() external {
+        vm.expectRevert(abi.encodeWithSelector(Log10Zero.selector));
+        this.log10External(0, 0);
+    }
+
+    function testLog10NegativeReverts(int256 signedCoefficient, int256 exponent) external {
+        signedCoefficient = bound(signedCoefficient, type(int256).min, -1);
+        // Bound exponent to avoid MaximizeOverflow before reaching the sign check.
+        exponent = bound(exponent, -1e18, 1e18);
+        vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficient, exponent));
+        this.log10External(signedCoefficient, exponent);
     }
 
     function testLog10One() external {

@@ -2,10 +2,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, stdError} from "forge-std/Test.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
+import {UnformatableExponent} from "src/error/ErrFormat.sol";
 
 /// @title LibFormatDecimalFloatToDecimalStringTest
 /// @notice Test contract for verifying the functionality of LibFormatDecimalFloat
@@ -249,5 +250,29 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         // we can't actually fit 200 zeros into the binary representation so
         // even though the threshold is 200 we still use scientific notation.
         checkFormat(1, 200, true, "1e200");
+    }
+
+    function formatExternal(Float float, bool scientific) external pure returns (string memory) {
+        return LibFormatDecimalFloat.toDecimalString(float, scientific);
+    }
+
+    /// Non-scientific format with exponent > 76 should revert with
+    /// UnformatableExponent, not panic with arithmetic overflow.
+    function testFormatNonScientificLargePositiveExponentReverts() external {
+        // coefficient=1, exponent=77, non-scientific => 1 * 10^77 overflows int256
+        Float float = LibDecimalFloat.packLossless(1, 77);
+        vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, int256(77)));
+        this.formatExternal(float, false);
+    }
+
+    /// Non-scientific format with large coefficient and moderate positive
+    /// exponent reverts (overflow in checked multiplication).
+    function testFormatNonScientificCoefficientOverflowReverts() external {
+        // Large coefficient with exponent=10 overflows int256 in multiplication.
+        // Exponent is <= 76 so passes the guard, but checked arithmetic catches
+        // the overflow as a panic.
+        Float float = LibDecimalFloat.packLossless(int256(type(int224).max), 10);
+        vm.expectRevert(stdError.arithmeticError);
+        this.formatExternal(float, false);
     }
 }
