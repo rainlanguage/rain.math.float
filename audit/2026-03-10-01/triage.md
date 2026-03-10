@@ -54,4 +54,4 @@ duplicates in the title.
 | A11-4 | 2 | LOW | Log table tests have zero assertions -- they only call and log | PENDING |
 | A11-5 | 2 | LOW | No test verifies table data integrity against known log10 reference values | PENDING |
 | A11-6 | 2 | LOW | No test for `toBytes` encoding correctness (round-trip or spot-check) | PENDING |
-| A13-2/p3 | 3 | LOW | `Deploy.sol` constants are undocumented and inconsistently named | PENDING |
+| A13-2/p3 | 3 | LOW | `Deploy.sol` constants are undocumented and inconsistently named | FIXED |
