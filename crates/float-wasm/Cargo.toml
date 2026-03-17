@@ -1,0 +1,12 @@
+[package]
+name = "rain-math-float-wasm"
+version = "0.1.0"
+edition = "2021"
+license = "LicenseRef-DCL-1.0"
+homepage = "https://github.com/rainlanguage/rain.math.float"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rain-math-float = { path = "../float" }

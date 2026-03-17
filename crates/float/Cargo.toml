@@ -6,7 +6,7 @@ license = "LicenseRef-DCL-1.0"
 homepage = "https://github.com/rainlanguage/rain.math.float"
 
 [lib]
-crate-type = ["rlib", "cdylib"]
+crate-type = ["rlib"]
 
 [dependencies]
 alloy = { version = "1.0.9", features = ["sol-types", "json-rpc"] }
