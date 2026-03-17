@@ -10,10 +10,10 @@ execSync("npm run build-wasm");
 
 // generate node/web bindgens
 execSync(
-  `wasm-bindgen --target nodejs ./target/wasm32-unknown-unknown/release/rain_math_float.wasm --out-dir ./temp/node --out-name float`
+  `wasm-bindgen --target nodejs ./target/wasm32-unknown-unknown/release/rain_math_float_wasm.wasm --out-dir ./temp/node --out-name float`
 );
 execSync(
-  `wasm-bindgen --target web ./target/wasm32-unknown-unknown/release/rain_math_float.wasm --out-dir ./temp/web --out-name float`
+  `wasm-bindgen --target web ./target/wasm32-unknown-unknown/release/rain_math_float_wasm.wasm --out-dir ./temp/web --out-name float`
 );
 
 // encode wasm as base64 into a json for cjs and esm that can be natively imported
