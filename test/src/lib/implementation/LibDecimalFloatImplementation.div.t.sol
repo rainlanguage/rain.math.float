@@ -126,6 +126,16 @@ contract LibDecimalFloatImplementationDivTest is Test {
         assertEq(exponent, -76);
     }
 
+    /// a / a == 1 for all nonzero in-range inputs.
+    function testDivSelf(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, type(int256).min / 2 + 76, type(int256).max);
+        vm.assume(signedCoefficient != 0);
+
+        (int256 resultCoeff, int256 resultExp) =
+            LibDecimalFloatImplementation.div(signedCoefficient, exponent, signedCoefficient, exponent);
+        assertTrue(LibDecimalFloatImplementation.eq(resultCoeff, resultExp, 1, 0), "a / a should equal 1");
+    }
+
     /// Should be possible to divide every number by 1.
     function testDivBy1(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, type(int256).min + 76, type(int256).max);

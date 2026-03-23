@@ -11,6 +11,7 @@ use alloy::primitives::aliases::I224;
 
 pub mod error;
 mod evm;
+mod fuzz_ops;
 pub mod js_api;
 pub mod tables;
 
@@ -1293,12 +1294,14 @@ mod tests {
     use proptest::prelude::*;
     use serde_json::json;
 
+    /// Float::default() equals parsed "0".
     #[test]
     fn test_default() {
         let zero = Float::parse("0".to_string()).unwrap();
         assert!(zero.eq(Float::default()).unwrap());
     }
 
+    /// Float::zero() is_zero, formats as "0", equals parsed "0" and default.
     #[test]
     fn test_zero() {
         let zero = Float::zero().unwrap();
@@ -1337,6 +1340,7 @@ mod tests {
         }
     }
 
+    /// JSON serialize then deserialize preserves equality and hex representation.
     #[test]
     fn test_serde() {
         let float = Float::parse("1.1341234234625468391".to_string()).unwrap();
@@ -1351,6 +1355,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// JSON round-trip preserves equality and serialized form for all floats.
         fn proptest_serde(float in arb_float()) {
             let serialized = serde_json::to_string(&float).unwrap();
             let deserialized: Float = serde_json::from_str(&serialized).unwrap();
@@ -1360,6 +1365,7 @@ mod tests {
         }
     }
 
+    /// Parsing an empty string returns a DecimalFloatSelector error.
     #[test]
     fn test_parse_empty_string_error() {
         let err = Float::parse("".to_string()).unwrap_err();
@@ -1377,6 +1383,7 @@ mod tests {
         ));
     }
 
+    /// Malformed inputs ("1.2.3", "abc") return specific error selectors.
     #[test]
     fn test_parse_edge_cases() {
         let err = Float::parse("1.2.3".to_string()).unwrap_err();
@@ -1394,6 +1401,8 @@ mod tests {
         ));
     }
 
+    /// Boundary constants are distinct, correctly signed, correctly ordered,
+    /// and bound normal values like 1 and -1.
     #[test]
     fn test_float_constants() {
         // Test that all constant methods return valid floats
@@ -1437,6 +1446,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// format() then parse() round-trips to an equal value.
         fn test_format_parse(float in reasonable_float()) {
             let formatted = float.format().unwrap();
             let parsed = Float::parse(formatted.clone()).unwrap();
@@ -1446,6 +1456,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// as_hex() then from_hex() round-trips to identical hex.
         fn test_as_from_hex(float in arb_float()) {
             let hex = float.as_hex();
             let parsed = Float::from_hex(&hex).unwrap();
@@ -1453,6 +1464,7 @@ mod tests {
         }
     }
 
+    /// Adding two max-exponent floats overflows with ExponentOverflow.
     #[test]
     fn test_add_exponent_overflow_error() {
         let max_coeff_str = "13479973333575319897333507543509815336818572211270286240551805124607";
@@ -1469,6 +1481,7 @@ mod tests {
         ));
     }
 
+    /// Subtracting opposite-sign max-exponent floats overflows.
     #[test]
     fn test_sub_exponent_overflow_error() {
         let max_coeff_str = "13479973333575319897333507543509815336818572211270286240551805124607";
@@ -1488,6 +1501,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// Addition does not panic for reasonable inputs.
         fn test_add(a in reasonable_float(), b in reasonable_float()) {
             (a + b).unwrap();
         }
@@ -1495,6 +1509,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// Subtraction does not panic for reasonable inputs.
         fn test_sub(a in reasonable_float(), b in reasonable_float()) {
             (a - b).unwrap();
         }
@@ -1502,6 +1517,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// (a + b) - b == a: subtraction inverts addition.
         fn test_add_sub(a in reasonable_float(), b in reasonable_float()) {
             let sum = (a + b).unwrap();
             let diff = (sum - b).unwrap();
@@ -1515,6 +1531,7 @@ mod tests {
         }
     }
 
+    /// Manual check: -1 < 0 < 3, with correct lt/eq/gt for each pair.
     #[test]
     fn test_lt_eq_gt() {
         let negone = Float::parse("-1".to_string()).unwrap();
@@ -1536,6 +1553,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// a == a, a-1 < a, a+1 > a for all reasonable floats.
         fn test_lt_eq_gt_with_add(a in reasonable_float()) {
             let b = a;
             let eq = a.eq(b).unwrap();
@@ -1557,6 +1575,7 @@ mod tests {
         }
 
         #[test]
+        /// Trichotomy: exactly one of lt, eq, gt is true for any two floats.
         fn test_exactly_one_lt_eq_gt(a in arb_float(), b in arb_float()) {
             let eq = a.eq(b).unwrap();
             let lt = a.lt(b).unwrap();
@@ -1572,6 +1591,7 @@ mod tests {
         }
     }
 
+    /// abs(-x) == abs(x) == |x| for manual positive, negative, and zero cases.
     #[test]
     fn test_abs() {
         let float = Float::parse("-3613.1324123".to_string()).unwrap();
@@ -1592,11 +1612,13 @@ mod tests {
 
     proptest! {
         #[test]
+        /// Multiplication does not panic for reasonable inputs.
         fn test_mul(a in reasonable_float(), b in reasonable_float()) {
             (a * b).unwrap();
         }
     }
 
+    /// Negating a negative produces positive format; negating zero stays "0".
     #[test]
     fn test_minus_format() {
         let float = Float::parse("-123.1234234625468391".to_string()).unwrap();
@@ -1613,6 +1635,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// Double negation is identity: -(-a) == a.
         fn test_minus_minus(float in arb_float()) {
             let negated = float.neg().unwrap();
             let renegated = negated.neg().unwrap();
@@ -1622,6 +1645,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// a * inv(a) ≈ 1 within ±1e-37 for nonzero a.
         fn test_inv_prod(float in reasonable_float()) {
             let zero = Float::parse("0".to_string()).unwrap();
             prop_assume!(!float.eq(zero).unwrap());
@@ -1653,6 +1677,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// abs() never produces a string starting with "-".
         fn test_abs_no_minus_sign(float in reasonable_float()) {
             let abs = float.abs().unwrap();
             let formatted = abs.format().unwrap();
@@ -1660,6 +1685,7 @@ mod tests {
         }
 
         #[test]
+        /// abs is idempotent: abs(abs(a)) == abs(a).
         fn test_abs_abs(float in arb_float()) {
             let abs = float.abs().unwrap();
             let abs_abs = abs.abs().unwrap();
@@ -1669,6 +1695,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// Division does not panic for nonzero divisor.
         fn test_div(a in reasonable_float(), b in reasonable_float()) {
             let zero = Float::parse("0".to_string()).unwrap();
             prop_assume!(!b.eq(zero).unwrap());
@@ -1685,6 +1712,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// (a * b) / b == a: division inverts multiplication for small integers.
         fn test_mul_div_int(a in small_int_float(), b in small_int_float()) {
             let zero = Float::parse("0".to_string()).unwrap();
             prop_assume!(!b.eq(zero).unwrap());
@@ -1702,6 +1730,7 @@ mod tests {
         }
     }
 
+    /// 6/3 == 2 and 2*3 == 6.
     #[test]
     fn test_mul_div_manual() {
         let two = Float::parse("2".to_string()).unwrap();
@@ -1712,6 +1741,7 @@ mod tests {
         assert!(six.eq((two * three).unwrap()).unwrap());
     }
 
+    /// 1/0 returns DivisionByZero error.
     #[test]
     fn test_divide_by_zero_error() {
         let one = Float::parse("1".to_string()).unwrap();
@@ -1724,6 +1754,7 @@ mod tests {
         ));
     }
 
+    /// Multiplying near-max exponents overflows.
     #[test]
     fn test_mul_exponent_overflow_error() {
         let near_max_exp = Float::parse("1e2147483646".to_string()).unwrap();
@@ -1736,6 +1767,7 @@ mod tests {
         ));
     }
 
+    /// Dividing near-max exponent by small exponent overflows.
     #[test]
     fn test_div_exponent_overflow_error() {
         let near_max_exp = Float::parse("1e2147483646".to_string()).unwrap();
@@ -1748,6 +1780,7 @@ mod tests {
         ));
     }
 
+    /// Multiplying near-min exponents underflows to zero.
     #[test]
     fn test_mul_exponent_underflow_error() {
         let near_min_exp = Float::parse("1e-2147483646".to_string()).unwrap();
@@ -1757,6 +1790,7 @@ mod tests {
         assert!(float.is_zero().unwrap());
     }
 
+    /// from_fixed_decimal for known value/decimals pairs matches parsed strings.
     #[test]
     fn test_from_fixed_decimal() {
         let cases = vec![
@@ -1775,6 +1809,7 @@ mod tests {
         }
     }
 
+    /// U256::MAX with 1 decimal overflows (LossyConversionToFloat).
     #[test]
     fn test_from_fixed_decimal_err() {
         let err = Float::from_fixed_decimal(U256::MAX, 1).unwrap_err();
@@ -1784,6 +1819,7 @@ mod tests {
         ));
     }
 
+    /// to_fixed_decimal for known inputs matches expected U256 values.
     #[test]
     fn test_to_fixed_decimal() {
         let cases = vec![
@@ -1802,6 +1838,7 @@ mod tests {
         }
     }
 
+    /// For integers: floor == self, frac == 0, and floor + frac == self.
     #[test]
     fn test_frac_and_floor_integers() {
         let int_float = Float::parse("12345".to_string()).unwrap();
@@ -1824,6 +1861,7 @@ mod tests {
         assert!(int_float.eq(recombined).unwrap());
     }
 
+    /// floor(12345.6789) == 12345, frac(12345.6789) == 0.6789.
     #[test]
     fn test_frac_and_floor_floats() {
         let float = Float::parse("12345.6789".to_string()).unwrap();
@@ -1837,6 +1875,7 @@ mod tests {
         assert!(frac.eq(expected_frac).unwrap());
     }
 
+    /// integer(12345.6789) == 12345, and integer + frac == original.
     #[test]
     fn test_integer_positive() {
         let float = Float::parse("12345.6789".to_string()).unwrap();
@@ -1849,6 +1888,7 @@ mod tests {
         assert!(float.eq(recombined).unwrap());
     }
 
+    /// integer truncates toward zero: integer(-12345.6789) == -12345.
     #[test]
     fn test_integer_negative() {
         let float = Float::parse("-12345.6789".to_string()).unwrap();
@@ -1867,6 +1907,7 @@ mod tests {
         assert!(float.eq(recombined).unwrap());
     }
 
+    /// integer(42) == 42, frac(42) == 0 for positive and negative whole numbers.
     #[test]
     fn test_integer_whole_numbers() {
         let pos = Float::parse("42".to_string()).unwrap();
@@ -1881,6 +1922,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// from_fixed_decimal then to_fixed_decimal round-trips for any non-negative I224.
         fn test_from_to_fixed_decimal_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
             prop_assume!(coeff >= I224::ZERO);
 
@@ -1898,6 +1940,8 @@ mod tests {
 
     proptest! {
         #[test]
+        /// integer(a) + frac(a) == a, frac has no integer part, integer has
+        /// no fractional part, and |frac| < 1.
         fn test_int_frac_properties(float in arb_float()) {
             let int = float.integer().unwrap();
             let frac = float.frac().unwrap();
@@ -1941,6 +1985,7 @@ mod tests {
         }
     }
 
+    /// min/max for known value pairs, including identical arguments.
     #[test]
     fn test_min_max_manual() {
         let negone = Float::parse("-1".to_string()).unwrap();
@@ -1963,6 +2008,7 @@ mod tests {
         assert!(seven.eq(seven.max(seven).unwrap()).unwrap());
     }
 
+    /// is_zero for "0", "-0", "0.0" (all true) and "1" (false).
     #[test]
     fn test_is_zero_manual() {
         let zero = Float::parse("0".to_string()).unwrap();
@@ -1980,6 +2026,8 @@ mod tests {
 
     proptest! {
         #[test]
+        /// min(a,b) <= both, max(a,b) >= both, each equals one operand,
+        /// and min <= max.
         fn test_min_max_properties(a in reasonable_float(), b in reasonable_float()) {
             let min = a.min(b).unwrap();
             let max = a.max(b).unwrap();
@@ -2039,6 +2087,7 @@ mod tests {
         }
     }
 
+    /// Manual lte/gte checks: -1 <= 0 <= 3, 0 >= -1, 3 >= 0.
     #[test]
     fn test_lte_gte() {
         let negone = Float::parse("-1".to_string()).unwrap();
@@ -2056,6 +2105,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// a-1 lte a, a lte a and gte a, a+1 gte a.
         fn test_lte_gte_fuzz(a in reasonable_float()) {
             let b = a;
             let one = Float::parse("1".to_string()).unwrap();
@@ -2076,6 +2126,7 @@ mod tests {
         }
     }
 
+    /// from_fixed_decimal_lossy: lossless for small values, lossy for U256::MAX.
     #[test]
     fn test_from_fixed_decimal_lossy() {
         // Test lossless conversions (values that fit in Float's precision)
@@ -2106,6 +2157,7 @@ mod tests {
         assert!(!float.is_zero().unwrap(), "result should not be zero");
     }
 
+    /// to_fixed_decimal_lossy: correctly reports lossy/lossless for precision loss.
     #[test]
     fn test_to_fixed_decimal_lossy() {
         // Test lossy conversions (loss of precision)
@@ -2161,6 +2213,8 @@ mod tests {
 
     proptest! {
         #[test]
+        /// Lossy fixed-decimal round-trip: from(decimals+1) then to(decimals) is
+        /// lossy iff the last digit is nonzero.
         fn test_from_to_fixed_decimal_lossy_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
             prop_assume!(coeff >= I224::ZERO);
 
@@ -2189,6 +2243,8 @@ mod tests {
 
     proptest! {
         #[test]
+        /// All reasonable positive floats are bounded by min/max_positive_value,
+        /// all negative by min/max_negative_value.
         fn test_constants_relationships(float in reasonable_float()) {
             let max_pos = Float::max_positive_value().unwrap();
             let min_pos = Float::min_positive_value().unwrap();
@@ -2226,6 +2282,7 @@ mod tests {
 
     proptest! {
         #[test]
+        /// No arbitrary float exceeds max_positive or is below min_negative.
         fn test_constants_edge_cases(float in arb_float()) {
             let max_pos = Float::max_positive_value().unwrap();
             let min_pos = Float::min_positive_value().unwrap();

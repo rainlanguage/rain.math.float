@@ -117,6 +117,36 @@ contract LibDecimalFloatImplementationMulTest is Test {
         (signedCoefficient, exponent);
     }
 
+    /// a * 1 == a for all in-range inputs.
+    function testMulIdentity(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX / 2);
+
+        (int256 resultCoeff, int256 resultExp) = LibDecimalFloatImplementation.mul(signedCoefficient, exponent, 1, 0);
+        assertTrue(
+            LibDecimalFloatImplementation.eq(resultCoeff, resultExp, signedCoefficient, exponent),
+            "a * 1 should equal a"
+        );
+    }
+
+    /// a * b == b * a for all in-range inputs.
+    function testMulCommutative(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external pure {
+        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX / 2);
+        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX / 2);
+
+        (int256 coeffAB, int256 expAB) =
+            LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 coeffBA, int256 expBA) =
+            LibDecimalFloatImplementation.mul(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
+
+        assertEq(coeffAB, coeffBA, "commutative coefficient");
+        assertEq(expAB, expBA, "commutative exponent");
+    }
+
     function testMulNotRevertAnyExpectation(
         int256 signedCoefficientA,
         int256 exponentA,

@@ -25,6 +25,32 @@ contract LibDecimalFloatImplementationMinusTest is Test {
         assertEq(exponentMinus, expectedExponent);
     }
 
+    /// a + (-a) == 0 for all in-range inputs.
+    /// type(int256).min cannot be negated so it is excluded.
+    function testAdditiveInverse(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        vm.assume(signedCoefficient != type(int256).min);
+
+        (int256 negCoeff, int256 negExp) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
+        (int256 sumCoeff,) = LibDecimalFloatImplementation.add(signedCoefficient, exponent, negCoeff, negExp);
+        assertEq(sumCoeff, 0, "a + (-a) should be zero");
+    }
+
+    /// --a == a for all in-range inputs.
+    /// type(int256).min cannot be negated so it is excluded.
+    function testDoubleNegation(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        vm.assume(signedCoefficient != type(int256).min);
+
+        (int256 negCoeff, int256 negExp) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
+        (int256 doubleNegCoeff, int256 doubleNegExp) = LibDecimalFloatImplementation.minus(negCoeff, negExp);
+
+        assertTrue(
+            LibDecimalFloatImplementation.eq(signedCoefficient, exponent, doubleNegCoeff, doubleNegExp),
+            "double negation should be identity"
+        );
+    }
+
     function minusExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
         return LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
     }
