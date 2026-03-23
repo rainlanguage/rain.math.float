@@ -12,6 +12,7 @@ use alloy::primitives::aliases::I224;
 pub mod error;
 mod evm;
 pub mod js_api;
+pub mod tables;
 
 use error::DecimalFloatErrorSelector;
 pub use error::FloatError;
