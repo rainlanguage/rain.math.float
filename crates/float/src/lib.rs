@@ -11,6 +11,7 @@ use alloy::primitives::aliases::I224;
 
 pub mod error;
 mod evm;
+mod fuzz_ops;
 pub mod js_api;
 pub mod tables;
 
