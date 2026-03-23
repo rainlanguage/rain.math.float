@@ -109,6 +109,7 @@ pub fn generate_antilog_table_small() -> [[u8; 10]; 100] {
 }
 
 #[cfg(test)]
+#[allow(clippy::needless_range_loop)]
 mod tests {
     use super::*;
 
@@ -169,7 +170,7 @@ mod tests {
             let main_val = (main_entry & !ALT_TABLE_FLAG) as i32;
             let use_alt = main_entry & ALT_TABLE_FLAG != 0;
             let small_val = if use_alt {
-                solidity_log_table_small_alt()[main_row][d] as i32
+                small_alt[main_row][d] as i32
             } else {
                 small[main_row][d] as i32
             };
