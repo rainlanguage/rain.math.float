@@ -51,8 +51,11 @@ contract DecimalFloatFormatTest is Test {
     function testFormatDefaultDeployed(Float a) external {
         DecimalFloat deployed = new DecimalFloat();
 
-        try this.formatExternal(a, deployed.FORMAT_DEFAULT_SCIENTIFIC_MIN(), deployed.FORMAT_DEFAULT_SCIENTIFIC_MAX())
-        returns (string memory str) {
+        try this.formatExternal(
+            a, deployed.FORMAT_DEFAULT_SCIENTIFIC_MIN(), deployed.FORMAT_DEFAULT_SCIENTIFIC_MAX()
+        ) returns (
+            string memory str
+        ) {
             string memory deployedStr = deployed.format(a);
 
             assertEq(str, deployedStr);
@@ -67,9 +70,7 @@ contract DecimalFloatFormatTest is Test {
 
         DecimalFloat deployed = new DecimalFloat();
 
-        vm.expectRevert(
-            abi.encodeWithSelector(ScientificMinNotLessThanMax.selector, scientificMin, scientificMax)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ScientificMinNotLessThanMax.selector, scientificMin, scientificMax));
         deployed.format(a, scientificMin, scientificMax);
     }
 

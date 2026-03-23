@@ -428,12 +428,11 @@ contract LibParseDecimalFloatTest is Test {
     /// ParseDecimalPrecisionLoss from the wrapper when packLossy returns
     /// lossless=false. The inline parse succeeds but the coefficient exceeds
     /// int224, so packLossy normalizes it lossily. (A10-8)
-    function testParseDecimalFloatPrecisionLossFromPackLossy() external {
+    function testParseDecimalFloatPrecisionLossFromPackLossy() external view {
         // 68 nines exceeds int224.max (~1.35e67) so packLossy must divide
         // by 10 to fit, returning lossless=false.
-        (bytes4 err,) = this.parseDecimalFloatExternal(
-            "99999999999999999999999999999999999999999999999999999999999999999999"
-        );
+        (bytes4 err,) =
+            this.parseDecimalFloatExternal("99999999999999999999999999999999999999999999999999999999999999999999");
         assertEq(err, ParseDecimalPrecisionLoss.selector);
     }
 
@@ -451,7 +450,7 @@ contract LibParseDecimalFloatTest is Test {
 
     /// ParseDecimalFloatExcessCharacters from the wrapper when trailing
     /// non-numeric characters remain after a valid parse. (A10-7)
-    function testParseDecimalFloatExcessCharacters() external {
+    function testParseDecimalFloatExcessCharacters() external view {
         (bytes4 err,) = this.parseDecimalFloatExternal("1hello");
         assertEq(err, ParseDecimalFloatExcessCharacters.selector);
 

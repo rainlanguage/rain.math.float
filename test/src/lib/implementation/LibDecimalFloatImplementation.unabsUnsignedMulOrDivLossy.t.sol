@@ -7,11 +7,7 @@ import {Test, stdError} from "forge-std/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
-    function unabsExternal(int256 a, int256 b, uint256 c, int256 exponent)
-        external
-        pure
-        returns (int256, int256)
-    {
+    function unabsExternal(int256 a, int256 b, uint256 c, int256 exponent) external pure returns (int256, int256) {
         return LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(a, b, c, exponent);
     }
 

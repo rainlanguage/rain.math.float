@@ -32,9 +32,7 @@ contract LibDecimalFloatImplementationMinusTest is Test {
     /// minus reverts with ExponentOverflow when coefficient is type(int256).min
     /// and exponent is type(int256).max, because normalizing requires exponent + 1.
     function testMinusExponentOverflow() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(ExponentOverflow.selector, type(int256).min, type(int256).max)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, type(int256).min, type(int256).max));
         this.minusExternal(type(int256).min, type(int256).max);
     }
 }

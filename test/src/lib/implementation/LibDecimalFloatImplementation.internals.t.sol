@@ -33,8 +33,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     function testAbsMinInt256() external pure {
         // type(int256).min has no positive counterpart in int256, but fits in uint256.
         assertEq(
-            LibDecimalFloatImplementation.absUnsignedSignedCoefficient(type(int256).min),
-            uint256(type(int256).max) + 1
+            LibDecimalFloatImplementation.absUnsignedSignedCoefficient(type(int256).min), uint256(type(int256).max) + 1
         );
     }
 
@@ -84,9 +83,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
 
     function testMulDivOverflowReverts() external {
         // Result would be type(uint256).max^2 which exceeds uint256.
-        vm.expectRevert(
-            abi.encodeWithSelector(MulDivOverflow.selector, type(uint256).max, type(uint256).max, 1)
-        );
+        vm.expectRevert(abi.encodeWithSelector(MulDivOverflow.selector, type(uint256).max, type(uint256).max, 1));
         this.mulDivExternal(type(uint256).max, type(uint256).max, 1);
     }
 
