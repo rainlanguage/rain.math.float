@@ -27,6 +27,12 @@ uint256 constant LOG_TABLE_SIZE_BASE = LOG_MANTISSA_IDX_CARDINALITY / 10;
 /// @dev The size in bytes of the full log table (both large and small).
 uint256 constant LOG_TABLE_SIZE_BYTES = LOG_TABLE_SIZE_BASE * 2;
 
+/// @dev The size in bytes of the alt small log table (uint8[10][10] = 100).
+uint256 constant ALT_SMALL_LOG_TABLE_SIZE_BYTES = 100;
+
+/// @dev The size in bytes of the antilog table (uint16[10][100] = 2000).
+uint256 constant ANTILOG_TABLE_SIZE_BYTES = 2000;
+
 /// @dev As we deterministically deploy the log tables, we can run into
 /// collisions when we actually want distinct addresses.
 bytes32 constant LOG_TABLE_DISAMBIGUATOR = keccak256("LOG_TABLE_DISAMBIGUATOR_1");

@@ -9,12 +9,7 @@ import {
     ANTI_LOG_TABLES,
     ANTI_LOG_TABLES_SMALL
 } from "../../generated/LogTables.pointers.sol";
-import {LibDataContract, DataContractMemoryContainer} from "rain.datacontract/lib/LibDataContract.sol";
-import {LibBytes} from "rain.solmem/lib/LibBytes.sol";
-import {LibMemCpy, Pointer} from "rain.solmem/lib/LibMemCpy.sol";
-import {DecimalFloat} from "../../concrete/DecimalFloat.sol";
 import {LOG_TABLE_DISAMBIGUATOR} from "../table/LibLogTable.sol";
-import {WriteError} from "../../error/ErrDecimalFloat.sol";
 
 library LibDecimalFloatDeploy {
     /// @dev Address of the log tables deployed via Zoltu's deterministic
@@ -29,11 +24,11 @@ library LibDecimalFloatDeploy {
     /// @dev Address of the DecimalFloat contract deployed via Zoltu's
     /// deterministic deployment proxy.
     /// This address is the same across all EVM-compatible networks.
-    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0x12A66eFbE556e38308A17e34cC86f21DcA1CDB73);
+    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0x18e859f1a5d323b0baE73732211ABD979E2D3246);
 
     /// @dev The expected codehash of the DecimalFloat contract deployed via
     /// Zoltu's deterministic deployment proxy.
-    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0x705cdef2ed9538557152f86cd0988c748e0bd647a49df00b3e4f100c3544a583;
+    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0x87ca4d55f93e5db8777b3e723b796e3a039c4b4ae2a486f69129c434edfb110e;
 
     /// Combines all log and anti-log tables into a single bytes array for
     /// deployment. These are using packed encoding to minimize size and remove

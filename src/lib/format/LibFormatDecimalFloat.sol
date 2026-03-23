@@ -3,7 +3,7 @@
 pragma solidity ^0.8.25;
 
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "../../lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
 import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 import {UnformatableExponent} from "../../error/ErrFormat.sol";
 
@@ -11,48 +11,11 @@ import {UnformatableExponent} from "../../error/ErrFormat.sol";
 /// Not particularly efficient as it is intended for offchain use that doesn't
 /// cost gas.
 library LibFormatDecimalFloat {
-    /// Counts the number of significant figures in a decimal float.
-    /// @param signedCoefficient The signed coefficient of the decimal float.
-    /// @param exponent The exponent of the decimal float.
-    /// @return sigFigs The number of significant figures.
-    function countSigFigs(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
-        if (signedCoefficient == 0) {
-            return 1;
-        }
-
-        uint256 sigFigs = 0;
-
-        if (exponent < 0) {
-            while (signedCoefficient % 10 == 0) {
-                signedCoefficient /= 10;
-                exponent++;
-            }
-        }
-
-        while (signedCoefficient != 0) {
-            sigFigs++;
-            signedCoefficient /= 10;
-        }
-
-        // Adjust for exponent
-        if (exponent < 0) {
-            exponent = -exponent;
-            // exponent > 0
-            // forge-lint: disable-next-line(unsafe-typecast)
-            sigFigs = sigFigs > uint256(exponent) ? sigFigs : uint256(exponent);
-        } else if (exponent > 0) {
-            // exponent > 0
-            // forge-lint: disable-next-line(unsafe-typecast)
-            sigFigs += uint256(exponent);
-        }
-
-        return sigFigs;
-    }
-
     /// Format a decimal float as a string.
     /// Not particularly efficient as it is intended for offchain use that
     /// doesn't cost gas.
     /// @param float The decimal float to format.
+    /// @param scientific Whether to format in scientific notation (e.g. 1e10).
     /// @return The string representation of the decimal float.
     //slither-disable-next-line cyclomatic-complexity
     function toDecimalString(Float float, bool scientific) internal pure returns (string memory) {
@@ -75,6 +38,9 @@ library LibFormatDecimalFloat {
             }
         } else {
             if (exponent > 0) {
+                if (exponent > 76) {
+                    revert UnformatableExponent(exponent);
+                }
                 // exponent > 0
                 // forge-lint: disable-next-line(unsafe-typecast)
                 signedCoefficient *= int256(10) ** uint256(exponent);
