@@ -443,7 +443,9 @@ contract LibParseDecimalFloatTest is Test {
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(2147483648)));
         this.parseDecimalFloatExternal("1e2147483648");
 
-        // Negative exponent overflow returns soft error (rounds toward zero).
+        // Negative exponent overflow is a very small number that rounds to
+        // zero in packLossy, so the wrapper returns ParseDecimalPrecisionLoss
+        // rather than reverting.
         (bytes4 err,) = this.parseDecimalFloatExternal("1e-2147483649");
         assertEq(err, ParseDecimalPrecisionLoss.selector);
     }
