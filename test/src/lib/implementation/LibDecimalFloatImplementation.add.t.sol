@@ -307,10 +307,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
         (int256 coeffBA, int256 expBA) =
             LibDecimalFloatImplementation.add(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
 
-        assertTrue(
-            LibDecimalFloatImplementation.eq(coeffAB, expAB, coeffBA, expBA),
-            "add not commutative"
-        );
+        assertTrue(LibDecimalFloatImplementation.eq(coeffAB, expAB, coeffBA, expBA), "add not commutative");
     }
 
     /// Adding any zero to any value returns the non-zero value.

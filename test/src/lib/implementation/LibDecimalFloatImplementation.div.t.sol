@@ -133,10 +133,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
         (int256 resultCoeff, int256 resultExp) =
             LibDecimalFloatImplementation.div(signedCoefficient, exponent, signedCoefficient, exponent);
-        assertTrue(
-            LibDecimalFloatImplementation.eq(resultCoeff, resultExp, 1, 0),
-            "a / a should equal 1"
-        );
+        assertTrue(LibDecimalFloatImplementation.eq(resultCoeff, resultExp, 1, 0), "a / a should equal 1");
     }
 
     /// Should be possible to divide every number by 1.

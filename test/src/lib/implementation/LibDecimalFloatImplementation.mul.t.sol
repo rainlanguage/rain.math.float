@@ -121,8 +121,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
     function testMulIdentity(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX / 2);
 
-        (int256 resultCoeff, int256 resultExp) =
-            LibDecimalFloatImplementation.mul(signedCoefficient, exponent, 1, 0);
+        (int256 resultCoeff, int256 resultExp) = LibDecimalFloatImplementation.mul(signedCoefficient, exponent, 1, 0);
         assertTrue(
             LibDecimalFloatImplementation.eq(resultCoeff, resultExp, signedCoefficient, exponent),
             "a * 1 should equal a"
