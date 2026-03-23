@@ -30,8 +30,11 @@ uint256 constant LOG_TABLE_SIZE_BYTES = LOG_TABLE_SIZE_BASE * 2;
 /// @dev The size in bytes of the alt small log table (uint8[10][10] = 100).
 uint256 constant ALT_SMALL_LOG_TABLE_SIZE_BYTES = 100;
 
-/// @dev The size in bytes of the antilog table (uint16[10][100] = 2000).
+/// @dev The size in bytes of the antilog main table (uint16[10][100] = 2000).
 uint256 constant ANTILOG_TABLE_SIZE_BYTES = 2000;
+
+/// @dev The size in bytes of the antilog small table (uint8[10][100] = 1000).
+uint256 constant ANTILOG_TABLE_SMALL_SIZE_BYTES = 1000;
 
 /// @dev As we deterministically deploy the log tables, we can run into
 /// collisions when we actually want distinct addresses.
@@ -114,9 +117,10 @@ library LibLogTable {
     /// @return encoded The encoded log table.
     function toBytes(uint8[10][100] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
+        uint256 tableSize = ANTILOG_TABLE_SMALL_SIZE_BYTES;
         assembly ("memory-safe") {
             encoded := mload(0x40)
-            mstore(0x40, add(encoded, add(1000, 0x20)))
+            mstore(0x40, add(encoded, add(tableSize, 0x20)))
 
             let cursor := sub(mload(0x40), 0x20)
 
@@ -135,7 +139,7 @@ library LibLogTable {
                 }
             }
 
-            mstore(cursor, 1000)
+            mstore(cursor, tableSize)
         }
         return encoded;
     }
@@ -147,9 +151,10 @@ library LibLogTable {
     /// @return encoded The encoded log table.
     function toBytes(uint8[10][10] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
+        uint256 tableSize = ALT_SMALL_LOG_TABLE_SIZE_BYTES;
         assembly ("memory-safe") {
             encoded := mload(0x40)
-            mstore(0x40, add(encoded, add(100, 0x20)))
+            mstore(0x40, add(encoded, add(tableSize, 0x20)))
 
             let cursor := sub(mload(0x40), 0x20)
 
@@ -168,7 +173,7 @@ library LibLogTable {
                 }
             }
 
-            mstore(cursor, 100)
+            mstore(cursor, tableSize)
         }
         return encoded;
     }
@@ -180,9 +185,10 @@ library LibLogTable {
     /// @return encoded The encoded log table.
     function toBytes(uint16[10][100] memory table) internal pure returns (bytes memory) {
         bytes memory encoded;
+        uint256 tableSize = ANTILOG_TABLE_SIZE_BYTES;
         assembly ("memory-safe") {
             encoded := mload(0x40)
-            mstore(0x40, add(encoded, add(2000, 0x20)))
+            mstore(0x40, add(encoded, add(tableSize, 0x20)))
 
             let cursor := sub(mload(0x40), 0x20)
 
@@ -201,7 +207,7 @@ library LibLogTable {
                 }
             }
 
-            mstore(cursor, 2000)
+            mstore(cursor, tableSize)
         }
         return encoded;
     }
