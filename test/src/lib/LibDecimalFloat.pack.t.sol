@@ -71,6 +71,19 @@ contract LibDecimalFloatPackTest is Test {
         assertEq(unpackedCoefficient, signedCoefficient / 10, "coefficient");
     }
 
+    /// packLossless(x, 0) is a bitwise identity for non-negative integers
+    /// that fit in int224. The packed representation places the coefficient
+    /// in the low 224 bits and the exponent (0) in the high 32 bits,
+    /// producing the same bytes32 as the raw integer.
+    function testPackLosslessZeroExponentIdentity(uint256 value) external pure {
+        // Bound to non-negative values that fit in int224.
+        value = bound(value, 0, uint256(uint224(type(int224).max)));
+        // value fits in int224 so this cast is safe.
+        //forge-lint: disable-next-line(unsafe-typecast)
+        Float float = LibDecimalFloat.packLossless(int256(value), 0);
+        assertEq(Float.unwrap(float), bytes32(value), "packLossless(x, 0) must be bitwise identity");
+    }
+
     /// Lossy zero when exponent is negative below type(int32).min except for zero.
     function testPackNegativeExponentLossyZero(int256 signedCoefficient, int256 exponent) external view {
         exponent = bound(exponent, type(int256).min, int256(type(int32).min) - 77);
