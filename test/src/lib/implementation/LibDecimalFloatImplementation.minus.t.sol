@@ -8,6 +8,7 @@ import {
     EXPONENT_MAX
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std/Test.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationMinusTest is Test {
     /// Minus is the same as `0 - x`.
@@ -22,5 +23,16 @@ contract LibDecimalFloatImplementationMinusTest is Test {
 
         assertEq(signedCoefficientMinus, expectedSignedCoefficient);
         assertEq(exponentMinus, expectedExponent);
+    }
+
+    function minusExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
+        return LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
+    }
+
+    /// minus reverts with ExponentOverflow when coefficient is type(int256).min
+    /// and exponent is type(int256).max, because normalizing requires exponent + 1.
+    function testMinusExponentOverflow() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, type(int256).min, type(int256).max));
+        this.minusExternal(type(int256).min, type(int256).max);
     }
 }

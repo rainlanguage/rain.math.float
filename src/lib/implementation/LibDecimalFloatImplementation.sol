@@ -13,6 +13,8 @@ import {
 import {
     LOG_TABLE_SIZE_BYTES,
     LOG_TABLE_SIZE_BASE,
+    ALT_SMALL_LOG_TABLE_SIZE_BYTES,
+    ANTILOG_TABLE_SIZE_BYTES,
     LOG_MANTISSA_LAST_INDEX,
     ANTILOG_IDX_LAST_INDEX
 } from "../table/LibLogTable.sol";
@@ -268,6 +270,12 @@ library LibDecimalFloatImplementation {
     /// > The result is then rounded to precision digits, if necessary, according
     /// > to the rounding algorithm and taking into account the remainder from
     /// > the division.
+    /// @param signedCoefficientA The signed coefficient of the dividend.
+    /// @param exponentA The exponent of the dividend.
+    /// @param signedCoefficientB The signed coefficient of the divisor.
+    /// @param exponentB The exponent of the divisor.
+    /// @return signedCoefficient The signed coefficient of the quotient.
+    /// @return exponent The exponent of the quotient.
     //slither-disable-next-line cyclomatic-complexity
     function div(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
@@ -733,6 +741,10 @@ library LibDecimalFloatImplementation {
     }
 
     /// Inverts a float. Equivalent to `1 / x`.
+    /// @param signedCoefficient The signed coefficient of the float.
+    /// @param exponent The exponent of the float.
+    /// @return signedCoefficient The signed coefficient of the inverted float.
+    /// @return exponent The exponent of the inverted float.
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         return div(1e76, -76, signedCoefficient, exponent);
     }
@@ -1044,6 +1056,12 @@ library LibDecimalFloatImplementation {
     /// > implement a closed set of comparison operations
     /// > (greater than, equal,etc.) if desired. It need not, in this case,
     /// > expose the compare operation itself.
+    /// @param signedCoefficientA The signed coefficient of the first float.
+    /// @param exponentA The exponent of the first float.
+    /// @param signedCoefficientB The signed coefficient of the second float.
+    /// @param exponentB The exponent of the second float.
+    /// @return rescaledA The rescaled coefficient of the first float.
+    /// @return rescaledB The rescaled coefficient of the second float.
     function compareRescale(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -1233,7 +1251,7 @@ library LibDecimalFloatImplementation {
         // + 1800 for log tables
         // + 900 for small log tables
         // + 100 for alt small log tables
-        uint256 offsetSize = 1 + LOG_TABLE_SIZE_BYTES + LOG_TABLE_SIZE_BASE + 100;
+        uint256 offsetSize = 1 + LOG_TABLE_SIZE_BYTES + LOG_TABLE_SIZE_BASE + ALT_SMALL_LOG_TABLE_SIZE_BYTES;
         assembly ("memory-safe") {
             //slither-disable-next-line divide-before-multiply
             function lookupTableVal(tables, offset, index) -> result {
@@ -1241,8 +1259,7 @@ library LibDecimalFloatImplementation {
                 extcodecopy(tables, 30, add(offset, mul(div(index, 10), 2)), 2)
                 let mainTableVal := mload(0)
 
-                // add size of the alt log table = 2000
-                offset := add(offset, 2000)
+                offset := add(offset, ANTILOG_TABLE_SIZE_BYTES)
                 mstore(0, 0)
                 extcodecopy(tables, 31, add(offset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
                 result := add(mainTableVal, mload(0))
