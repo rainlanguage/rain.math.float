@@ -47,18 +47,24 @@ pub fn generate_log_table(
 /// row gives mean differences averaged across that row's range.
 /// Computed as: round(log10((10+r)*100 + d) * 10000)
 ///            - round(log10((10+r)*100) * 10000)
+/// Round half down: values at exactly 0.5 round towards zero.
+/// This matches the rounding convention in published 4-figure log tables.
+fn round_half_down(x: f64) -> f64 {
+    if x - x.floor() > 0.5 {
+        x.ceil()
+    } else {
+        x.floor()
+    }
+}
+
 pub fn generate_log_table_small() -> [[u8; 10]; 90] {
     let mut table = [[0u8; 10]; 90];
     for row in 0..90 {
         let base_n = (10 + row) * 100;
-        let base_log = (base_n as f64).log10() * 10000.0;
-        let base_rounded = base_log.round();
-        let base_rounded = base_log.round();
+        let base_log = (base_n as f64).log10();
         for col in 0..10 {
-            let n = (base_n + col) as f64;
-            let log_val = n.log10() * 10000.0;
-            let diff = log_val.round() - base_rounded;
-            table[row][col] = diff as u8;
+            let diff = ((base_n + col) as f64).log10() - base_log;
+            table[row][col] = round_half_down(diff * 10000.0) as u8;
         }
     }
     table
@@ -73,12 +79,12 @@ pub fn generate_log_table_small_alt() -> [[u8; 10]; 10] {
     let mut table = [[0u8; 10]; 10];
     for row in 0..10 {
         let base_n = (10 + row) * 100;
-        let base_log = (base_n as f64).log10() * 10000.0;
-        let base_floor = base_log.floor();
+        // Alt table: per-entry floor differences (not proportional).
+        let base_floor = ((base_n as f64).log10() * 10000.0).floor();
         for col in 0..10 {
             let n = (base_n + col) as f64;
-            let log_val = n.log10() * 10000.0;
-            let diff = log_val.floor() - base_floor;
+            let val_floor = (n.log10() * 10000.0).floor();
+            let diff = val_floor - base_floor;
             table[row][col] = diff as u8;
         }
     }
@@ -246,6 +252,72 @@ mod tests {
                 assert_eq!(
                     generated[row][col], solidity[row][col],
                     "antilog table mismatch at [{row}][{col}]: generated={}, solidity={}",
+                    generated[row][col], solidity[row][col]
+                );
+            }
+        }
+    }
+
+    /// Verify the small log table matches exactly.
+    #[test]
+    fn test_log_table_small_exact() {
+        let generated = generate_log_table_small();
+        let solidity = solidity_log_table_small();
+        for row in 0..90 {
+            for col in 0..10 {
+                assert_eq!(
+                    generated[row][col], solidity[row][col],
+                    "log small [{row}][{col}]: generated={}, solidity={}",
+                    generated[row][col], solidity[row][col]
+                );
+            }
+        }
+    }
+
+    /// Verify the small alt log table matches exactly.
+    #[test]
+    fn test_log_table_small_alt_exact() {
+        let generated = generate_log_table_small_alt();
+        let solidity = solidity_log_table_small_alt();
+        for row in 0..10 {
+            for col in 0..10 {
+                assert_eq!(
+                    generated[row][col], solidity[row][col],
+                    "log small alt [{row}][{col}]: generated={}, solidity={}",
+                    generated[row][col], solidity[row][col]
+                );
+            }
+        }
+    }
+
+    /// Verify the small antilog table matches exactly.
+    #[test]
+    fn test_antilog_table_small_exact() {
+        let generated = generate_antilog_table_small();
+        let solidity = solidity_antilog_table_small();
+        for row in 0..100 {
+            for col in 0..10 {
+                assert_eq!(
+                    generated[row][col], solidity[row][col],
+                    "antilog small [{row}][{col}]: generated={}, solidity={}",
+                    generated[row][col], solidity[row][col]
+                );
+            }
+        }
+    }
+
+    /// Verify the main log table (with ALT flags) matches exactly.
+    #[test]
+    fn test_log_table_exact() {
+        let small = generate_log_table_small();
+        let small_alt = generate_log_table_small_alt();
+        let generated = generate_log_table(&small, &small_alt);
+        let solidity = solidity_log_table();
+        for row in 0..90 {
+            for col in 0..10 {
+                assert_eq!(
+                    generated[row][col], solidity[row][col],
+                    "log [{row}][{col}]: generated=0x{:04x}, solidity=0x{:04x}",
                     generated[row][col], solidity[row][col]
                 );
             }
