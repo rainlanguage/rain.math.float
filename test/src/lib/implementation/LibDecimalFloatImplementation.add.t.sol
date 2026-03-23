@@ -291,6 +291,28 @@ contract LibDecimalFloatImplementationAddTest is Test {
         assertEq(exponent, expectedExponent, "exponent mismatch");
     }
 
+    /// a + b == b + a for all in-range inputs (compared via eq, since zero
+    /// can have different exponent representations).
+    function testAddCommutative(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external pure {
+        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+
+        (int256 coeffAB, int256 expAB) =
+            LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 coeffBA, int256 expBA) =
+            LibDecimalFloatImplementation.add(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
+
+        assertTrue(
+            LibDecimalFloatImplementation.eq(coeffAB, expAB, coeffBA, expBA),
+            "add not commutative"
+        );
+    }
+
     /// Adding any zero to any value returns the non-zero value.
     function testAddZeroToAnyNonZero(int256 exponentZero, int256 signedCoefficient, int256 exponent) external pure {
         exponentZero = bound(exponentZero, EXPONENT_MIN / 10, EXPONENT_MAX / 10);

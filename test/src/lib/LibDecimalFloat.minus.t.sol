@@ -18,6 +18,14 @@ contract LibDecimalFloatMinusTest is Test {
         return LibDecimalFloat.minus(float);
     }
 
+    /// a < b iff -a > -b for all non-equal packed floats.
+    function testNegationReversesOrder(Float a, Float b) external pure {
+        vm.assume(!a.eq(b));
+        bool aLtB = a.lt(b);
+        bool negAGtNegB = a.minus().gt(b.minus());
+        assertTrue(aLtB == negAGtNegB, "negation should reverse ordering");
+    }
+
     function testMinusPacked(Float float) external {
         (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
         try this.minusExternal(signedCoefficientFloat, exponentFloat) returns (
