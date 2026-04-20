@@ -65,9 +65,9 @@ GitHub workflow on the PR's branch before merge.
 `gh workflow run manual-sol-artifacts.yaml --ref <branch> -f suite=decimal-float`
 (use `log-tables` only when table bytecode changes, which is rare). The workflow
 runs `script/Deploy.sol` with `--broadcast --verify` across all networks, using
-`PRIVATE_KEY_DEV` for non-main refs and `PRIVATE_KEY` for main. Do NOT wait for
-merge before deploying — there is nothing to gain from waiting, and the CI
-deploy-constant tests need updating anyway based on the deployed address.
+`PRIVATE_KEY` regardless of ref. Do NOT wait for merge before deploying — there
+is nothing to gain from waiting, and the CI deploy-constant tests need updating
+anyway based on the deployed address.
 
 **Two deployment suites** (log-tables must be deployed first if redeploying
 tables):
