@@ -7,6 +7,7 @@ import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {UnformatableExponent} from "src/error/ErrFormat.sol";
+import {Strings} from "openzeppelin-contracts/contracts/utils/Strings.sol";
 
 /// @title LibFormatDecimalFloatToDecimalStringTest
 /// @notice Test contract for verifying the functionality of LibFormatDecimalFloat
@@ -256,23 +257,272 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         return LibFormatDecimalFloat.toDecimalString(float, scientific);
     }
 
-    /// Non-scientific format with exponent > 76 should revert with
-    /// UnformatableExponent, not panic with arithmetic overflow.
-    function testFormatNonScientificLargePositiveExponentReverts() external {
-        // coefficient=1, exponent=77, non-scientific => 1 * 10^77 overflows int256
-        Float float = LibDecimalFloat.packLossless(1, 77);
-        vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, int256(77)));
+    /// Fuzz: every Float round-trips through scientific format → parse → eq
+    /// across the full int224 coefficient domain, with exponent bounded to
+    /// leave headroom for the scientific display exponent.
+    ///
+    /// Scientific format renders `coef × 10^exp` as `d.dddd × 10^displayExp`
+    /// where `displayExp = exp + 75 or 76` (after `maximizeFull` + scale).
+    /// For exponents within ~76 of `int32.max`, the resulting display exponent
+    /// exceeds `int32.max`, and the parser rejects it on re-pack. The
+    /// headroom below avoids that asymmetric range; see separate issue for
+    /// the format/parse exponent-range mismatch.
+    function testFormatParseRoundTripScientificFullDomain(int224 coefficient, int32 exponent) external pure {
+        int256 headroom = 80;
+        // `bound` to a sub-range of int32 that avoids display-exponent overflow.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        exponent = int32(bound(exponent, int256(type(int32).min) + headroom, int256(type(int32).max) - headroom));
+        _checkRoundTrip(coefficient, exponent, true);
+    }
+
+    /// Fuzz: every Float with non-positive exponent round-trips through
+    /// non-scientific format → parse → eq, across the full int224 coefficient
+    /// domain and exponent in `[-MAX_NON_SCIENTIFIC_EXPONENT, 0]`.
+    ///
+    /// Positive exponents are NOT fuzzed here: the non-scientific formatter
+    /// emits `coefficient_digits + exponent` trailing zeros, which can exceed
+    /// the parser's int256 accumulator for modest positive exponents with
+    /// non-trivial coefficients. That format/parse asymmetry is a separate
+    /// concern (see issue for tracking); this fuzz covers the negative-exp
+    /// range where #182-class bugs surface.
+    function testFormatParseRoundTripNonScientificNegExpFullDomain(int224 coefficient, int32 exponent) external pure {
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        // `bound` returns a value in [-cap, 0]; cap fits int32 so the cast back
+        // cannot truncate.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        exponent = int32(bound(exponent, -cap, 0));
+        _checkRoundTrip(coefficient, exponent, false);
+    }
+
+    function _checkRoundTrip(int256 coefficient, int256 exponent, bool scientific) internal pure {
+        Float original = LibDecimalFloat.packLossless(coefficient, exponent);
+        string memory formatted = LibFormatDecimalFloat.toDecimalString(original, scientific);
+        (bytes4 err, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(formatted);
+        assertEq(err, bytes4(0), string.concat("Parse error on: ", formatted));
+        assertTrue(original.eq(parsed), string.concat("Round trip mismatch on: ", formatted));
+        string memory reFormatted = LibFormatDecimalFloat.toDecimalString(parsed, scientific);
+        assertEq(formatted, reFormatted, "Formatting not canonical");
+    }
+
+    /// Fuzz: two representations of the same numeric value format to identical
+    /// strings. Covers the formatter's canonicalization behavior (trailing
+    /// zeros in coefficient vs expressed via exponent) without going through
+    /// the parser. Runs for both scientific and non-scientific modes,
+    /// including the full non-scientific positive-exp range that the
+    /// round-trip fuzz cannot cover (see #184).
+    function testFormatCanonicalAcrossRepresentations(int128 base, uint8 shift, bool scientific) external pure {
+        vm.assume(base != 0);
+        int256 baseInt = int256(base);
+        int256 absBase = baseInt < 0 ? -baseInt : baseInt;
+
+        // Find the largest shift `s` such that `absBase * 10^s` fits int224.
+        uint256 maxShift = 0;
+        int256 scale = 1;
+        while (scale <= type(int224).max / 10 / absBase) {
+            scale *= 10;
+            maxShift++;
+        }
+        if (maxShift == 0) return;
+
+        uint256 s = bound(shift, 1, maxShift);
+        int256 scaled = baseInt * int256(10 ** s);
+
+        // Exponent pair chosen so both representations are well inside int32.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 baseExp = scientific ? int256(0) : -int256(s);
+
+        Float a = LibDecimalFloat.packLossless(baseInt, baseExp);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float b = LibDecimalFloat.packLossless(scaled, baseExp - int256(s));
+        assertTrue(a.eq(b), "precondition: representations should be equal");
+
+        string memory formatA = LibFormatDecimalFloat.toDecimalString(a, scientific);
+        string memory formatB = LibFormatDecimalFloat.toDecimalString(b, scientific);
+        assertEq(formatA, formatB, "Different representations formatted to different strings");
+    }
+
+    /// Non-scientific format succeeds at the exact cap boundary.
+    function testFormatNonScientificExponentAtPositiveCap() external pure {
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        Float float = LibDecimalFloat.packLossless(1, cap);
+        string memory s = LibFormatDecimalFloat.toDecimalString(float, false);
+        // "1" followed by `cap` zeros.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(bytes(s).length, 1 + uint256(cap));
+        assertEq(bytes(s)[0], bytes1("1"));
+    }
+
+    function testFormatNonScientificExponentAtNegativeCap() external pure {
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        Float float = LibDecimalFloat.packLossless(1, -cap);
+        string memory s = LibFormatDecimalFloat.toDecimalString(float, false);
+        // "0." + (cap - 1) leading zeros + "1".
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(bytes(s).length, 2 + uint256(cap - 1) + 1);
+        assertEq(bytes(s)[0], bytes1("0"));
+        assertEq(bytes(s)[1], bytes1("."));
+        assertEq(bytes(s)[bytes(s).length - 1], bytes1("1"));
+    }
+
+    /// Non-scientific format on the int224 signed range boundaries.
+    function testFormatNonScientificInt224MaxCoefficient() external pure {
+        Float float = LibDecimalFloat.packLossless(int256(type(int224).max), 0);
+        string memory s = LibFormatDecimalFloat.toDecimalString(float, false);
+        assertEq(s, Strings.toString(uint256(int256(type(int224).max))));
+    }
+
+    function testFormatNonScientificInt224MinCoefficient() external pure {
+        Float float = LibDecimalFloat.packLossless(int256(type(int224).min), 0);
+        string memory s = LibFormatDecimalFloat.toDecimalString(float, false);
+        // int224.min negated fits uint256 (= 2^223).
+        assertEq(s, string.concat("-", Strings.toString(uint256(-int256(type(int224).min)))));
+    }
+
+    /// `_toNonScientific` branch coverage: effective exponent ends up exactly
+    /// at zero after trailing-zero stripping. Exercises the `effExp >= 0`
+    /// path with `uEffExp = 0`.
+    function testFormatNonScientificEffExpZero() external pure {
+        // (100, -2) has trailingZeros=2, sigK=1, effExp=0 → output "1".
+        checkFormat(100, -2, false, "1");
+        // (12340000, -4) → trailingZeros=4, sigK=4, effExp=0 → "1234".
+        checkFormat(12340000, -4, false, "1234");
+    }
+
+    /// `_toNonScientific` branch coverage: sigK == absEffExp, decimal point
+    /// lands exactly at the start of the significant digits.
+    function testFormatNonScientificDecimalAtStart() external pure {
+        // (123, -3) → sigK=3, absEffExp=3, so output = "0." + 0 leading zeros + "123".
+        checkFormat(123, -3, false, "0.123");
+        // Negative variant.
+        checkFormat(-123, -3, false, "-0.123");
+    }
+
+    /// `_toNonScientific` branch coverage: decimal point in the middle of the
+    /// significant digits.
+    function testFormatNonScientificDecimalInside() external pure {
+        // (12345, -2) → sigK=5, absEffExp=2, splitAt=3. Output "123.45".
+        checkFormat(12345, -2, false, "123.45");
+        checkFormat(-12345, -2, false, "-123.45");
+    }
+
+    /// `_toNonScientific` branch coverage: leading zeros after "0." (sigK <
+    /// absEffExp). This is the #182 shape.
+    function testFormatNonScientificLeadingZeros() external pure {
+        // (5, -5) → sigK=1, absEffExp=5, leadingZeros=4. Output "0.00005".
+        checkFormat(5, -5, false, "0.00005");
+        checkFormat(-5, -5, false, "-0.00005");
+    }
+
+    /// Fuzz: non-scientific format does not revert for any valid Float with
+    /// `|exponent| <= MAX_NON_SCIENTIFIC_EXPONENT`, across the full int224
+    /// coefficient range. Covers the positive-exponent sub-range that the
+    /// parse round-trip fuzz cannot exercise (blocked on #184).
+    function testFormatNonScientificSucceedsAcrossFullRange(int224 coefficient, int32 exponent) external pure {
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        // `bound` to [-cap, cap]; cap fits int32 so the cast is safe.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        exponent = int32(bound(exponent, -cap, cap));
+        Float float = LibDecimalFloat.packLossless(coefficient, exponent);
+        // Should not revert.
+        string memory s = LibFormatDecimalFloat.toDecimalString(float, false);
+        // Non-empty output is a minimum sanity guarantee.
+        assertGt(bytes(s).length, 0);
+    }
+
+    /// Fuzz: output shape properties for non-scientific format.
+    /// - Never ends with "." (formatter always strips trailing zeros from the
+    ///   fractional part; a lone "." would indicate a bug).
+    /// - If the output contains ".", no trailing zeros after it.
+    /// - If negative, leading character is "-" and remainder has same shape
+    ///   as the positive case.
+    function testFormatNonScientificOutputShape(int224 coefficient, int32 exponent) external pure {
+        vm.assume(coefficient != 0);
+        // int224.min negated exceeds int224.max, so skip it for the
+        // negation-symmetry check below.
+        vm.assume(coefficient != type(int224).min);
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        exponent = int32(bound(exponent, -cap, cap));
+        Float float = LibDecimalFloat.packLossless(coefficient, exponent);
+        bytes memory s = bytes(LibFormatDecimalFloat.toDecimalString(float, false));
+        assertGt(s.length, 0);
+
+        // Never ends with ".".
+        assertNotEq(uint8(s[s.length - 1]), uint8(bytes1(".")));
+
+        // If a "." is present, no trailing zero after it.
+        bool hasDot;
+        for (uint256 i = 0; i < s.length; i++) {
+            if (s[i] == ".") {
+                hasDot = true;
+                break;
+            }
+        }
+        if (hasDot) {
+            assertNotEq(uint8(s[s.length - 1]), uint8(bytes1("0")), "trailing zero after decimal point");
+        }
+
+        // Negative outputs start with "-" and have the same shape as the
+        // positive counterpart.
+        if (coefficient < 0) {
+            assertEq(uint8(s[0]), uint8(bytes1("-")));
+            Float positive = LibDecimalFloat.packLossless(-int256(coefficient), exponent);
+            string memory pos = LibFormatDecimalFloat.toDecimalString(positive, false);
+            assertEq(string(s), string.concat("-", pos));
+        }
+    }
+
+    /// Constants format as expected in both modes.
+    function testFormatDecimalFloatConstants() external pure {
+        assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.FLOAT_ZERO, true), "0");
+        assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.FLOAT_ZERO, false), "0");
+        assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.FLOAT_ONE, true), "1");
+        assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.FLOAT_ONE, false), "1");
+        assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.FLOAT_HALF, true), "5e-1");
+        assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.FLOAT_HALF, false), "0.5");
+    }
+
+    /// Non-scientific format of `(1, 77)` produces "1" followed by 77 zeros.
+    /// Historically this reverted because the implementation computed
+    /// `10^exponent` as int256; the rewrite uses direct string placement and
+    /// handles any `|exponent| <= MAX_NON_SCIENTIFIC_EXPONENT`.
+    function testFormatNonScientificLargePositiveExponent() external pure {
+        checkFormat(1, 77, false, "100000000000000000000000000000000000000000000000000000000000000000000000000000");
+    }
+
+    /// Non-scientific format of a large coefficient with moderate positive
+    /// exponent formats without overflow. `int224.max = 2^223 - 1`, which has
+    /// 68 decimal digits; with exponent 10 the output is 78 characters.
+    function testFormatNonScientificLargeCoefficientLargeExponent() external pure {
+        int256 c = int256(type(int224).max);
+        string memory expected = string.concat(Strings.toStringSigned(c), "0000000000");
+        checkFormat(c, 10, false, expected);
+    }
+
+    /// Non-scientific format reverts when `|exponent|` exceeds the policy cap.
+    function testFormatNonScientificExponentAboveCapReverts() external {
+        int256 exp = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT + 1;
+        Float float = LibDecimalFloat.packLossless(1, exp);
+        vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, exp));
         this.formatExternal(float, false);
     }
 
-    /// Non-scientific format with large coefficient and moderate positive
-    /// exponent reverts (overflow in checked multiplication).
-    function testFormatNonScientificCoefficientOverflowReverts() external {
-        // Large coefficient with exponent=10 overflows int256 in multiplication.
-        // Exponent is <= 76 so passes the guard, but checked arithmetic catches
-        // the overflow as a panic.
-        Float float = LibDecimalFloat.packLossless(int256(type(int224).max), 10);
-        vm.expectRevert(stdError.arithmeticError);
+    function testFormatNonScientificExponentBelowCapReverts() external {
+        int256 exp = -LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT - 1;
+        Float float = LibDecimalFloat.packLossless(1, exp);
+        vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, exp));
         this.formatExternal(float, false);
+    }
+
+    /// The exact #182 reproduction: `add` of two near-cancelling values
+    /// produces a Float with exponent -77. The non-scientific formatter must
+    /// render this without reverting.
+    function testFormatNonScientificIssue182Reproduction() external pure {
+        Float net = LibDecimalFloat.packLossless(-9999999910959448, -17);
+        Float fill = LibDecimalFloat.packLossless(99999999, -9);
+        Float result = net.add(fill);
+        // Numeric value is -1.0959448e-10.
+        string memory formatted = result.toDecimalString(false);
+        assertEq(formatted, "-0.00000000010959448");
     }
 }

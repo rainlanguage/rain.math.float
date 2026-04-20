@@ -109,4 +109,67 @@ contract LibDecimalFloatImplementationEqTest is Test {
 
         assertEq(actual, expected);
     }
+
+    /// Equal values with exponent difference exactly 76 (the last diff that
+    /// does NOT take the overflow-guard branch in `compareRescale`). Construct
+    /// the pair as (1, 76) and (10^76, 0): both fit int256 (max ≈ 5.79e76),
+    /// both represent 10^76.
+    function testEqDiff76Boundary() external pure {
+        int256 cSmall = 1;
+        int256 eSmall = 76;
+        int256 cBig = int256(1e76);
+        int256 eBig = 0;
+        assertTrue(LibDecimalFloatImplementation.eq(cSmall, eSmall, cBig, eBig));
+        assertTrue(LibDecimalFloatImplementation.eq(cBig, eBig, cSmall, eSmall));
+    }
+
+    /// Equal-value pairs with exponent difference > 76 are not constructible
+    /// at the int256 interface. The overflow-guard branch in `compareRescale`
+    /// (`sgt(exponentDiff, 76)`) only fires when the values are already
+    /// unequal to at least 10^77x apart. Any attempted equal-value pair with
+    /// diff ≥ 77 requires a coefficient ≥ 10^77, which exceeds int256 max.
+    /// This test exercises diff = 77 with unequal values and asserts eq is
+    /// correctly false — the guard's truncation is sound here.
+    function testEqDiff77OverflowGuardUnequal() external pure {
+        int256 cA = 1;
+        int256 eA = 77;
+        int256 cB = 1;
+        int256 eB = 0;
+        // 10^77 != 10^0. Diff = 77 takes the overflow-guard path.
+        assertFalse(LibDecimalFloatImplementation.eq(cA, eA, cB, eB));
+        assertFalse(LibDecimalFloatImplementation.eq(cB, eB, cA, eA));
+    }
+
+    /// Fuzz: for any `(base, shift)` where `base × 10^shift` fits int256,
+    /// `(base, 0)` and `(base × 10^shift, -shift)` represent the same value
+    /// and must compare equal. Covers the range of constructible equal-value
+    /// pairs.
+    function testEqSameValueDifferentRepresentations(int256 base, uint8 shift) external pure {
+        vm.assume(base != 0);
+        vm.assume(base != type(int256).min);
+        int256 absBase = base < 0 ? -base : base;
+
+        // Largest `shift` such that `absBase * 10^shift` still fits int256.
+        uint256 maxShift = 0;
+        int256 scale = 1;
+        while (scale <= type(int256).max / 10 / absBase) {
+            scale *= 10;
+            maxShift++;
+        }
+        if (maxShift == 0) {
+            return;
+        }
+        uint256 s = bound(shift, 1, maxShift);
+        int256 scaled = base * int256(10 ** s);
+
+        // `s` is bounded to `maxShift` which is at most ~76 (the loop above
+        // stops when `10^s * absBase` would exceed int256 max). The cast to
+        // int256 is safe.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 negS = -int256(s);
+        bool result = LibDecimalFloatImplementation.eq(base, 0, scaled, negS);
+        assertTrue(result, "eq returned false for equivalent representations");
+        bool reversed = LibDecimalFloatImplementation.eq(scaled, negS, base, 0);
+        assertTrue(reversed, "eq returned false for equivalent representations (reversed)");
+    }
 }
