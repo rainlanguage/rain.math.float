@@ -13,6 +13,22 @@ import {
 } from "../error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImplementation.sol";
 
+/// A decimal floating point number packed into 32 bytes. The high 32 bits are
+/// a signed int32 exponent; the low 224 bits are a signed int224 coefficient.
+/// The value represented is `coefficient × 10^exponent`.
+///
+/// Representations are non-canonical by design. Every non-zero value has an
+/// infinite family of `(coefficient, exponent)` pairs that represent it — for
+/// example `(5, 0)`, `(50, -1)`, and `(5000, -3)` all equal the number `5` and
+/// pack to different `bytes32`. Equality between Floats is therefore numeric
+/// (via `eq`, which rescales before comparing), not byte-level. `packLossy`
+/// does not strip trailing decimal zeros from the coefficient; it only
+/// shrinks the coefficient when it does not fit int224. This is deliberate:
+/// canonicalization is not free on the arithmetic hot path, and most
+/// operations do not care. Consumers that need a canonical form (raw-byte
+/// equality, hashing as a map key, downstream range checks) must canonicalize
+/// locally at the point of use. See `LibDecimalFloatImplementation.eq` for
+/// the operative numeric-equality contract.
 type Float is bytes32;
 
 /// @title LibDecimalFloat
@@ -25,6 +41,11 @@ type Float is bytes32;
 /// - There is no concept of rounding modes.
 /// - There is no negative zero.
 /// - This is a decimal floating point library, not binary.
+/// - Representations are non-canonical. Multiple `(coefficient, exponent)`
+///   pairs can encode the same numeric value; equality is numeric, not
+///   byte-level. Canonicalization is deferred to consumers that need it
+///   rather than enforced in packing, to keep the arithmetic hot path cheap.
+///   See the docstring on the `Float` type for detail.
 ///
 /// This means that operations such as divide by 0 will revert, rather than
 /// produce nonsense like NaN or Infinity. This is a deliberate design choice
