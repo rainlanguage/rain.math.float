@@ -38,8 +38,13 @@ library LibFormatDecimalFloat {
             }
         } else {
             if (exponent > 0) {
+                // Truncate trailing coefficient digits to bring the
+                // exponent within the formattable range. This loses
+                // insignificant precision at the 10^77+ scale.
                 if (exponent > 76) {
-                    revert UnformatableExponent(exponent);
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    signedCoefficient /= int256(10) ** uint256(exponent - 76);
+                    exponent = 76;
                 }
                 // exponent > 0
                 // forge-lint: disable-next-line(unsafe-typecast)
@@ -47,8 +52,13 @@ library LibFormatDecimalFloat {
                 exponent = 0;
             }
             if (exponent < 0) {
+                // Truncate trailing coefficient digits to bring the
+                // exponent within the formattable range. This loses
+                // insignificant precision at the 10^-77+ scale.
                 if (exponent < -76) {
-                    revert UnformatableExponent(exponent);
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    signedCoefficient /= int256(10) ** uint256(-exponent - 76);
+                    exponent = -76;
                 }
                 // negating a signed exponent will always fit in uint256.
                 // forge-lint: disable-next-line(unsafe-typecast)

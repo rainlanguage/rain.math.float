@@ -6,7 +6,6 @@ import {Test, stdError} from "forge-std/Test.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
-import {UnformatableExponent} from "src/error/ErrFormat.sol";
 
 /// @title LibFormatDecimalFloatToDecimalStringTest
 /// @notice Test contract for verifying the functionality of LibFormatDecimalFloat
@@ -256,21 +255,44 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         return LibFormatDecimalFloat.toDecimalString(float, scientific);
     }
 
-    /// Non-scientific format with exponent > 76 should revert with
-    /// UnformatableExponent, not panic with arithmetic overflow.
-    function testFormatNonScientificLargePositiveExponentReverts() external {
-        // coefficient=1, exponent=77, non-scientific => 1 * 10^77 overflows int256
-        Float float = LibDecimalFloat.packLossless(1, 77);
-        vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, int256(77)));
-        this.formatExternal(float, false);
+    /// Non-scientific format with exponent > 76 should truncate trailing
+    /// coefficient digits to bring the exponent within range, not revert.
+    function testFormatNonScientificLargePositiveExponentNormalizes() external pure {
+        // coefficient=1, exponent=77 — previously reverted, now truncates
+        // to coefficient=0 (1 / 10^1 = 0), which formats as "0".
+        checkFormat(1, 77, false, "0");
+    }
+
+    /// Non-scientific format with exponent < -76 should truncate trailing
+    /// coefficient digits to bring the exponent within range.
+    function testFormatNonScientificLargeNegativeExponentNormalizes() external pure {
+        // This is the case that caused the crash-loop in st0x.liquidity:
+        // accumulated Float arithmetic produced exponent -77.
+        // coefficient=9999999910959448, exponent=-77
+        // After truncation: divide by 10^1 -> coefficient=999999991095944, exponent=-76
+        checkFormat(
+            9999999910959448,
+            -77,
+            false,
+            "0.0000000000000000000000000000000000000000000000000000000000000999999991095944"
+        );
+
+        // exponent=-78: divide by 10^2 -> coefficient=99999999109594, exponent=-76
+        checkFormat(
+            9999999910959448,
+            -78,
+            false,
+            "0.0000000000000000000000000000000000000000000000000000000000000099999999109594"
+        );
     }
 
     /// Non-scientific format with large coefficient and moderate positive
-    /// exponent reverts (overflow in checked multiplication).
-    function testFormatNonScientificCoefficientOverflowReverts() external {
-        // Large coefficient with exponent=10 overflows int256 in multiplication.
-        // Exponent is <= 76 so passes the guard, but checked arithmetic catches
-        // the overflow as a panic.
+    /// exponent truncates to fit (overflow in checked multiplication was
+    /// previously uncaught).
+    function testFormatNonScientificCoefficientOverflowTruncates() external {
+        // Large coefficient with exponent=10 overflows int256 in
+        // multiplication. Exponent is <= 76 so no truncation happens
+        // from our fix — the checked arithmetic still catches overflow.
         Float float = LibDecimalFloat.packLossless(int256(type(int224).max), 10);
         vm.expectRevert(stdError.arithmeticError);
         this.formatExternal(float, false);
