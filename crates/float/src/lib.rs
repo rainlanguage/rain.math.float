@@ -24,14 +24,14 @@ use evm::execute_test_call;
 sol!(
     #![sol(all_derives)]
     DecimalFloat,
-    "../../out/DecimalFloat.sol/DecimalFloat.json"
+    env!("RAIN_MATH_FLOAT_DECIMAL_FLOAT_ABI")
 );
 
 #[cfg(test)]
 sol!(
     #![sol(all_derives)]
     TestDecimalFloat,
-    "../../out/TestDecimalFloat.sol/TestDecimalFloat.json"
+    env!("RAIN_MATH_FLOAT_TEST_DECIMAL_FLOAT_ABI")
 );
 
 #[derive(Debug, Copy, Clone, Default, Serialize, Deserialize, Hash)]
