@@ -3182,6 +3182,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rain-math-float-wasm"
+version = "0.1.0"
+dependencies = [
+ "rain-math-float",
+]
+
+[[package]]
 name = "rand"
 version = "0.8.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
