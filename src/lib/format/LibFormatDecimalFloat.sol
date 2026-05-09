@@ -89,16 +89,16 @@ library LibFormatDecimalFloat {
                 fractional /= 10;
             }
 
-            fractionalString = string.concat(".", fracLeadingZerosString, Strings.toString(fractional));
+            fractionalString = string.concat(".", fracLeadingZerosString, Strings.toStringSigned(fractional));
         }
 
-        string memory integralString = Strings.toString(integral);
+        string memory integralString = Strings.toStringSigned(integral);
         // scaleExponent is a hardcoded small value (75 or 76); the cast back
         // to int256 cannot truncate.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 displayExponent = exponent + int256(scaleExponent);
         string memory exponentString =
-            displayExponent == 0 ? "" : string.concat("e", Strings.toString(displayExponent));
+            displayExponent == 0 ? "" : string.concat("e", Strings.toStringSigned(displayExponent));
         string memory prefix = isNeg ? "-" : "";
         return string.concat(prefix, integralString, fractionalString, exponentString);
     }
