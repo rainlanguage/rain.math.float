@@ -20,6 +20,14 @@ uint256 constant FORK_BLOCK_NUMBER = 25055000;
 contract LibDecimalFloatDeployTest is LogTest {
     function testDeployAddress() external {
         vm.createSelectFork(vm.envString("CI_FORK_ETH_RPC_URL"), FORK_BLOCK_NUMBER);
+
+        // The DecimalFloat constructor reverts if the log tables aren't
+        // already deployed at the expected Zoltu address. ETH L1 is the
+        // fork target, where the log tables aren't pre-deployed, so deploy
+        // them via Zoltu first to satisfy the guard.
+        bytes memory logTables = LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
+        LibRainDeploy.deployZoltu(logTables);
+
         address deployedAddress = LibRainDeploy.deployZoltu(type(DecimalFloat).creationCode);
 
         assertEq(deployedAddress, LibDecimalFloatDeploy.ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS);
