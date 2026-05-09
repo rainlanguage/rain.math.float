@@ -35,7 +35,7 @@ jobs:
           gc-max-store-size-linux: 1G
       - run: nix develop -c rainix-sol-prelude
       - run: nix develop -c forge selectors up --all
-      - run: nix develop -c forge script script/Deploy.sol:Deploy -vvvvv --slow --broadcast --verify
+      - run: nix develop -c forge script script/Deploy.sol:Deploy -vvvvv --slow --broadcast --verify --skip-simulation
         env:
           DEPLOYMENT_SUITE: ${{ inputs.suite }}
           DEPLOYMENT_KEY: ${{ secrets.PRIVATE_KEY }}
