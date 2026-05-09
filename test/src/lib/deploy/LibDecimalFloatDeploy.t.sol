@@ -10,10 +10,12 @@ import {LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
 
 /// @dev Pinned ETH L1 fork block. Forking at "latest" races RPC state
 /// propagation: the node can advertise a freshly-finalized head before its
-/// state is queryable, causing flakes. Any post-Zoltu-proxy archive-served
-/// block works for these deploys; this constant pins a stable historical
-/// block.
-uint256 constant FORK_BLOCK_NUMBER = 22000000;
+/// state is queryable, causing flakes. The CI `CI_FORK_ETH_RPC_URL` is a
+/// non-archive node that prunes state past a recent retention window, so
+/// the pin must stay near the head — older blocks fail with "state at
+/// block #N is pruned". This block is the head as of pinning; bump
+/// periodically as state ages out.
+uint256 constant FORK_BLOCK_NUMBER = 25000000;
 
 contract LibDecimalFloatDeployTest is Test {
     function testDeployAddress() external {
