@@ -21,6 +21,10 @@ contract DecimalFloat {
     Float public constant FORMAT_DEFAULT_SCIENTIFIC_MAX =
         Float.wrap(0x0000000900000000000000000000000000000000000000000000000000000001);
 
+    constructor() {
+        LibDecimalFloatDeploy.checkLogTablesDeployed();
+    }
+
     /// Exposes `LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE` for offchain use.
     /// @return The maximum positive value of a Float.
     function maxPositiveValue() external pure returns (Float) {

@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std/Test.sol";
+import {LogTest} from "test/abstract/LogTest.sol";
 import {LibRainDeploy} from "rain.deploy/lib/LibRainDeploy.sol";
 import {LibDecimalFloatDeploy} from "src/lib/deploy/LibDecimalFloatDeploy.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
@@ -17,7 +17,7 @@ import {LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
 /// periodically as state ages out.
 uint256 constant FORK_BLOCK_NUMBER = 25055000;
 
-contract LibDecimalFloatDeployTest is Test {
+contract LibDecimalFloatDeployTest is LogTest {
     function testDeployAddress() external {
         vm.createSelectFork(vm.envString("CI_FORK_ETH_RPC_URL"), FORK_BLOCK_NUMBER);
         address deployedAddress = LibRainDeploy.deployZoltu(type(DecimalFloat).creationCode);

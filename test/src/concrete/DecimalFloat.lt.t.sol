@@ -3,10 +3,10 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {Test} from "forge-std/Test.sol";
+import {LogTest} from "test/abstract/LogTest.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 
-contract DecimalFloatLtTest is Test {
+contract DecimalFloatLtTest is LogTest {
     using LibDecimalFloat for Float;
 
     function ltExternal(Float a, Float b) external pure returns (bool) {

@@ -3,12 +3,12 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {Test} from "forge-std/Test.sol";
+import {LogTest} from "test/abstract/LogTest.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {ScientificMinNotLessThanMax} from "src/error/ErrDecimalFloat.sol";
 
-contract DecimalFloatFormatTest is Test {
+contract DecimalFloatFormatTest is LogTest {
     using LibDecimalFloat for Float;
 
     function formatExternal(Float a, Float scientificMin, Float scientificMax) external pure returns (string memory) {

@@ -2,11 +2,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std/Test.sol";
+import {LogTest} from "test/abstract/LogTest.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
-contract DecimalFloatToFixedDecimalLosslessTest is Test {
+contract DecimalFloatToFixedDecimalLosslessTest is LogTest {
     using LibDecimalFloat for Float;
 
     function toFixedDecimalLosslessExternal(Float packed, uint8 decimals) external pure returns (uint256) {

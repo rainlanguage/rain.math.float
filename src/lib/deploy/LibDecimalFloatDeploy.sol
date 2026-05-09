@@ -10,6 +10,7 @@ import {
     ANTI_LOG_TABLES_SMALL
 } from "../../generated/LogTables.pointers.sol";
 import {LOG_TABLE_DISAMBIGUATOR} from "../table/LibLogTable.sol";
+import {LogTablesNotDeployed} from "../../error/ErrDecimalFloat.sol";
 
 library LibDecimalFloatDeploy {
     /// @dev Address of the log tables deployed via Zoltu's deterministic
@@ -43,5 +44,21 @@ library LibDecimalFloatDeploy {
             ANTI_LOG_TABLES_SMALL,
             LOG_TABLE_DISAMBIGUATOR
         );
+    }
+
+    /// Revert if the log tables data contract is not deployed at the
+    /// Zoltu-deterministic address with the expected codehash. Call this
+    /// from the constructor of any contract that integrates with the
+    /// production `DecimalFloat` (or otherwise reads from
+    /// `ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS`) so deployment fails loudly on
+    /// chains where Zoltu has not dropped the tables, instead of silent
+    /// `extcodecopy`-from-empty corruption at the first transcendental call.
+    function checkLogTablesDeployed() internal view {
+        bytes32 actualCodehash = ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.codehash;
+        if (actualCodehash != LOG_TABLES_DATA_CONTRACT_HASH) {
+            revert LogTablesNotDeployed(
+                ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS, LOG_TABLES_DATA_CONTRACT_HASH, actualCodehash
+            );
+        }
     }
 }
