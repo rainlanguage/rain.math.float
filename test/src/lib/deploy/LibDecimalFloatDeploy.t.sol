@@ -2,29 +2,24 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LogTest} from "test/abstract/LogTest.sol";
+import {Test} from "forge-std/Test.sol";
 import {LibRainDeploy} from "rain.deploy/lib/LibRainDeploy.sol";
 import {LibDecimalFloatDeploy} from "src/lib/deploy/LibDecimalFloatDeploy.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 import {LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
 
-/// @dev Pinned ETH L1 fork block. Forking at "latest" races RPC state
-/// propagation: the node can advertise a freshly-finalized head before its
-/// state is queryable, causing flakes. The CI `CI_FORK_ETH_RPC_URL` is a
-/// non-archive node that prunes state past a recent retention window, so
-/// the pin must stay near the head — older blocks fail with "state at
-/// block #N is pruned". This block is the head as of pinning; bump
-/// periodically as state ages out.
-uint256 constant FORK_BLOCK_NUMBER = 25055000;
+/// Determinism tests for the Zoltu deployment of `DecimalFloat` and the log
+/// tables. These do not fork a real chain — `etchZoltuFactory` puts the
+/// Zoltu factory bytecode at its canonical address locally, so the tests
+/// exercise the actual deploy path without an external RPC dependency.
+contract LibDecimalFloatDeployTest is Test {
+    function setUp() public {
+        LibRainDeploy.etchZoltuFactory(vm);
+    }
 
-contract LibDecimalFloatDeployTest is LogTest {
     function testDeployAddress() external {
-        vm.createSelectFork(vm.envString("CI_FORK_ETH_RPC_URL"), FORK_BLOCK_NUMBER);
-
-        // The DecimalFloat constructor reverts if the log tables aren't
-        // already deployed at the expected Zoltu address. ETH L1 is the
-        // fork target, where the log tables aren't pre-deployed, so deploy
-        // them via Zoltu first to satisfy the guard.
+        // The `DecimalFloat` constructor checks the log tables are at the
+        // expected address with the expected codehash. Deploy them first.
         bytes memory logTables = LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
         LibRainDeploy.deployZoltu(logTables);
 
@@ -37,13 +32,17 @@ contract LibDecimalFloatDeployTest is LogTest {
     }
 
     function testExpectedCodeHashDecimalFloat() external {
+        // `new DecimalFloat()` triggers the constructor's log-tables guard;
+        // deploy them via Zoltu first.
+        bytes memory logTables = LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
+        LibRainDeploy.deployZoltu(logTables);
+
         DecimalFloat decimalFloat = new DecimalFloat();
 
         assertEq(address(decimalFloat).codehash, LibDecimalFloatDeploy.DECIMAL_FLOAT_CONTRACT_HASH);
     }
 
     function testDeployAddressLogTables() external {
-        vm.createSelectFork(vm.envString("CI_FORK_ETH_RPC_URL"), FORK_BLOCK_NUMBER);
         bytes memory logTables = LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
         address deployedAddress = LibRainDeploy.deployZoltu(logTables);
 
