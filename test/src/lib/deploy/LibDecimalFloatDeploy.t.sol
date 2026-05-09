@@ -15,7 +15,7 @@ import {LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
 /// the pin must stay near the head — older blocks fail with "state at
 /// block #N is pruned". This block is the head as of pinning; bump
 /// periodically as state ages out.
-uint256 constant FORK_BLOCK_NUMBER = 25000000;
+uint256 constant FORK_BLOCK_NUMBER = 25055000;
 
 contract LibDecimalFloatDeployTest is Test {
     function testDeployAddress() external {
