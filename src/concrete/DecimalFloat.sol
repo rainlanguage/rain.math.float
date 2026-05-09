@@ -3,6 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "../lib/LibDecimalFloat.sol";
+import {LibDecimalFloatDeploy} from "../lib/deploy/LibDecimalFloatDeploy.sol";
 import {LibFormatDecimalFloat} from "../lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "../lib/parse/LibParseDecimalFloat.sol";
 import {ScientificMinNotLessThanMax} from "../error/ErrDecimalFloat.sol";
@@ -229,14 +230,14 @@ contract DecimalFloat {
     /// @param a The exponent to raise 10 to.
     /// @return The result of 10^a.
     function pow10(Float a) external view returns (Float) {
-        return a.pow10(LibDecimalFloat.LOG_TABLES_ADDRESS);
+        return a.pow10(LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS);
     }
 
     /// Exposes `LibDecimalFloat.log10` for offchain use.
     /// @param a The float to take the logarithm of.
     /// @return The logarithm of the float.
     function log10(Float a) external view returns (Float) {
-        return a.log10(LibDecimalFloat.LOG_TABLES_ADDRESS);
+        return a.log10(LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS);
     }
 
     /// Exposes `LibDecimalFloat.pow` for offchain use.
@@ -244,14 +245,14 @@ contract DecimalFloat {
     /// @param b The exponent float.
     /// @return The result of raising the base float to the power of the exponent
     function pow(Float a, Float b) external view returns (Float) {
-        return a.pow(b, LibDecimalFloat.LOG_TABLES_ADDRESS);
+        return a.pow(b, LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS);
     }
 
     /// Exposes `LibDecimalFloat.sqrt` for offchain use.
     /// @param a The float to take the square root of.
     /// @return The square root of the float.
     function sqrt(Float a) external view returns (Float) {
-        return a.sqrt(LibDecimalFloat.LOG_TABLES_ADDRESS);
+        return a.sqrt(LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS);
     }
 
     /// Exposes `LibDecimalFloat.min` for offchain use.
