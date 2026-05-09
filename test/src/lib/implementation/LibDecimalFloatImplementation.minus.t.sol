@@ -7,7 +7,7 @@ import {
     EXPONENT_MIN,
     EXPONENT_MAX
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Test} from "forge-std/Test.sol";
+import {Test} from "forge-std-1.16.1/src/Test.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationMinusTest is Test {

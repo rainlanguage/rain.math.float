@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
 import {CoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
-import {Test} from "forge-std/Test.sol";
+import {Test} from "forge-std-1.16.1/src/Test.sol";
 
 contract LibDecimalFloatPackTest is Test {
     function packLossyExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float, bool) {

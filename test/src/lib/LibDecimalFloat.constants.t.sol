@@ -7,7 +7,7 @@ import {
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Test} from "forge-std/Test.sol";
+import {Test} from "forge-std-1.16.1/src/Test.sol";
 
 contract LibDecimalFloatConstantsTest is Test {
     using LibDecimalFloat for Float;

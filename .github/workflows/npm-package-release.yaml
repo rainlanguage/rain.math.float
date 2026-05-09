@@ -3,7 +3,6 @@ on:
   push:
     branches:
       - main
-
 jobs:
   release:
     if: ${{ github.ref == 'refs/heads/main' && !startsWith(github.event.head_commit.message, 'NPM Package Release') }}
@@ -17,37 +16,29 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ssh-key: ${{ secrets.PUBLISH_PRIVATE_KEY }}
-          submodules: recursive
           fetch-depth: 0
-
       - uses: DeterminateSystems/nix-installer-action@main
         with:
           determinate: true
       - uses: DeterminateSystems/flakehub-cache-action@main
-
       - name: Install NodeJS v22
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: "npm"
-
-      - run: nix develop -c rainix-sol-prelude
-
+      - run: nix develop -c forge soldeer install
       - name: Test JS/TS Binding
         run: nix develop -c test-js-bindings
-
       - name: Git Config
         run: |
           git config --global user.email "${{ secrets.CI_GIT_EMAIL }}"
           git config --global user.name "${{ secrets.CI_GIT_USER }}"
-
       # get hash of latest published pkgs from npm and concat them
       - name: Get Old Hash
         run: |
           OLD_HASH=$(npm view @rainlanguage/float@latest dist.shasum 2>/dev/null || echo "none")
           echo "OLD_HASH=$OLD_HASH" >> $GITHUB_ENV
           echo "old hash: $OLD_HASH"
-
       # calc hash of current workspace pkgs by packing them and concat them
       - name: Get New Hash
         run: |
@@ -55,7 +46,6 @@ jobs:
           echo "NEW_HASH=$NEW_HASH" >> $GITHUB_ENV
           echo "new hash: $NEW_HASH"
           rm -f *.tgz
-
       # from here on, we'll skip if OLD_HASH and NEW_HASH are the same (ie no publish)
       # this means we need to skip every step by using an if statement.
       # set npm version
@@ -64,7 +54,6 @@ jobs:
         run: |
           NEW_VERSION=$(npm version prerelease --preid alpha --no-git-tag-version)
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
-
       # Commit changes and tag
       - name: Commit And Tag
         if: ${{ env.OLD_HASH != env.NEW_HASH }}
@@ -73,7 +62,6 @@ jobs:
           git add "package-lock.json"
           git commit -m "NPM Package Release v${{ env.NEW_VERSION }}"
           git tag npm-v${{ env.NEW_VERSION }}
-
       # Push the commit to remote
       - name: Push Changes To Remote
         if: ${{ env.OLD_HASH != env.NEW_HASH }}
@@ -82,16 +70,13 @@ jobs:
           git push -u origin npm-v${{ env.NEW_VERSION }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       # Create float npm package tarball
       - name: Create float NPM Package Tarball
         if: ${{ env.OLD_HASH != env.NEW_HASH }}
         run: echo "NPM_PACKAGE=$(npm pack --silent)" >> $GITHUB_ENV
-
       - name: Rename float NPM Package Tarball
         if: ${{ env.OLD_HASH != env.NEW_HASH }}
         run: mv ${{ env.NPM_PACKAGE }} float_npm_package_${{ env.NEW_VERSION }}.tgz
-
       # publish float pkg to npm
       - name: Publish float pkg To NPM
         if: ${{ env.OLD_HASH != env.NEW_HASH }}
@@ -100,7 +85,6 @@ jobs:
           token: ${{ secrets.NPM_TOKEN }}
           access: public
           package: float_npm_package_${{ env.NEW_VERSION }}.tgz
-
       # Create gitHub release with tarballs
       - name: Create GitHub Release with float pkg
         if: ${{ env.OLD_HASH != env.NEW_HASH }}
