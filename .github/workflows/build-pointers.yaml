@@ -1,0 +1,5 @@
+name: build-pointers
+on: [push]
+jobs:
+  build-pointers:
+    uses: rainlanguage/rainix/.github/workflows/rainix-build-pointers.yaml@main

@@ -8,7 +8,7 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, macos-latest]
-        task: [rainix-rs-test]
+        task: ["cargo test"]
         include:
           # We don't need to do build for wasm32 on multiple platforms
           - os: ubuntu-latest
