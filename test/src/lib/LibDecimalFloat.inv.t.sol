@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.16.1/src/Test.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatInvTest is Test {
@@ -11,13 +11,20 @@ contract LibDecimalFloatInvTest is Test {
 
     function invExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float) {
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
-        (Float float, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-        (lossless);
+        Float float = LibDecimalFloat.packArithmeticResult(signedCoefficient, exponent);
         return float;
     }
 
     function invExternal(Float float) external pure returns (Float) {
         return LibDecimalFloat.inv(float);
+    }
+
+    /// `inv` of a Float whose representable inverse magnitude falls below
+    /// `int32.min` reverts instead of silently producing `FLOAT_ZERO`.
+    function testInvRevertsOnExponentUnderflow() external {
+        Float float = Float.wrap(0x7fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff);
+        vm.expectPartialRevert(ExponentUnderflow.selector);
+        this.invExternal(float);
     }
 
     function testInvMem(Float float) external {

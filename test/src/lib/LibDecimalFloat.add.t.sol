@@ -17,8 +17,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
     {
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (Float c, bool lossless) = LibDecimalFloat.packLossy(signedCoefficientC, exponentC);
-        (lossless);
+        Float c = LibDecimalFloat.packArithmeticResult(signedCoefficientC, exponentC);
         return c;
     }
 
