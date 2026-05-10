@@ -23,6 +23,8 @@ evm_version = "cancun"
 bytecode_hash = "none"
 cbor_metadata = false
 
+ffi = true
+
 fs_permissions = [
   { access = "read-write", path = "./src/generated" },
   { access = "read", path = "./out" },

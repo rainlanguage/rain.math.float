@@ -3,25 +3,25 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.16.1/src/Test.sol";
+import {LibCopyArtifacts} from "script/lib/LibCopyArtifacts.sol";
 
 contract CopyArtifactsTest is Test {
-    function _assertCommittedMatches(string memory contractName) internal view {
-        string memory live = vm.readFile(string.concat("out/", contractName, ".sol/", contractName, ".json"));
-        string memory committed = vm.readFile(string.concat("crates/float/abi/", contractName, ".json"));
+    function _assertCommittedMatches(string memory contractName) internal {
+        bytes memory liveAbi = LibCopyArtifacts.extractStable(vm, contractName);
+        bytes memory committed = bytes(vm.readFile(LibCopyArtifacts.committedPath(contractName)));
         assertEq(
-            keccak256(bytes(live)),
-            keccak256(bytes(committed)),
+            keccak256(liveAbi),
+            keccak256(committed),
             string.concat(
                 contractName, ": run `forge script script/CopyArtifacts.sol` to update the committed artifact"
             )
         );
     }
 
-    function testDecimalFloatArtifactCommitted() external view {
-        _assertCommittedMatches("DecimalFloat");
-    }
-
-    function testTestDecimalFloatArtifactCommitted() external view {
-        _assertCommittedMatches("TestDecimalFloat");
+    function testArtifactsCommitted() external {
+        string[] memory names = LibCopyArtifacts.contracts();
+        for (uint256 i = 0; i < names.length; i++) {
+            _assertCommittedMatches(names[i]);
+        }
     }
 }

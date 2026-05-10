@@ -3,22 +3,24 @@
 pragma solidity =0.8.25;
 
 import {Script} from "forge-std-1.16.1/src/Script.sol";
+import {LibCopyArtifacts} from "./lib/LibCopyArtifacts.sol";
 
 contract CopyArtifacts is Script {
     function run() external {
-        _copyArtifact("DecimalFloat");
-        _copyArtifact("TestDecimalFloat");
+        string[] memory names = LibCopyArtifacts.contracts();
+        for (uint256 i = 0; i < names.length; i++) {
+            _copyAbi(names[i]);
+        }
     }
 
-    function _copyArtifact(string memory contractName) internal {
-        string memory src = string.concat("out/", contractName, ".sol/", contractName, ".json");
-        string memory dst = string.concat("crates/float/abi/", contractName, ".json");
-        string memory contents = vm.readFile(src);
+    function _copyAbi(string memory contractName) internal {
+        bytes memory artifact = LibCopyArtifacts.extractStable(vm, contractName);
+        string memory dst = LibCopyArtifacts.committedPath(contractName);
         if (vm.exists(dst)) {
             //forge-lint: disable-next-line(unsafe-cheatcode)
             vm.removeFile(dst);
         }
         //forge-lint: disable-next-line(unsafe-cheatcode)
-        vm.writeFile(dst, contents);
+        vm.writeFile(dst, string(artifact));
     }
 }
