@@ -29,9 +29,7 @@ contract DecimalFloatToFixedDecimalLossyTest is LogTest {
     function testToFixedDecimalLossyPositiveExponentMulOverflow() external {
         Float coefficientOverflowsScale = LibDecimalFloat.packLossless(type(int224).max, 50);
         vm.expectRevert(
-            abi.encodeWithSelector(
-                FixedDecimalOverflow.selector, int256(type(int224).max), int256(50), uint8(0)
-            )
+            abi.encodeWithSelector(FixedDecimalOverflow.selector, int256(type(int224).max), int256(50), uint8(0))
         );
         this.toFixedDecimalLossyExternal(coefficientOverflowsScale, 0);
     }
