@@ -19,6 +19,11 @@ contract LibDecimalFloatDeployTest is Test {
     }
 
     function testDeployAddress() external {
+        // The `DecimalFloat` constructor checks the log tables are at the
+        // expected address with the expected codehash. Deploy them first.
+        bytes memory logTables = LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
+        LibRainDeploy.deployZoltu(logTables);
+
         address deployedAddress = LibRainDeploy.deployZoltu(type(DecimalFloat).creationCode);
 
         assertEq(deployedAddress, LibDecimalFloatDeploy.ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS);
@@ -28,6 +33,11 @@ contract LibDecimalFloatDeployTest is Test {
     }
 
     function testExpectedCodeHashDecimalFloat() external {
+        // `new DecimalFloat()` triggers the constructor's log-tables guard;
+        // deploy them via Zoltu first.
+        bytes memory logTables = LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
+        LibRainDeploy.deployZoltu(logTables);
+
         DecimalFloat decimalFloat = new DecimalFloat();
 
         assertEq(address(decimalFloat).codehash, LibDecimalFloatDeploy.DECIMAL_FLOAT_CONTRACT_HASH);

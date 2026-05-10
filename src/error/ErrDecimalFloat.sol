@@ -52,3 +52,16 @@ error WriteError();
 /// @param scientificMin The minimum threshold for scientific notation.
 /// @param scientificMax The maximum threshold for scientific notation.
 error ScientificMinNotLessThanMax(Float scientificMin, Float scientificMax);
+
+/// @dev Thrown when constructing a `DecimalFloat` on a chain where the
+/// log tables data contract is not deployed at the expected address with
+/// the expected codehash. Without this check, transcendental functions
+/// (`pow10`/`log10`/`pow`/`sqrt`) would silently `extcodecopy` zero bytes
+/// and return garbage.
+/// @param tablesAddress The address `DecimalFloat` was compiled to read
+/// log tables from.
+/// @param expectedCodehash The codehash the deployed table contract is
+/// expected to have.
+/// @param actualCodehash The codehash currently at `tablesAddress` (zero
+/// if no contract is deployed there).
+error LogTablesNotDeployed(address tablesAddress, bytes32 expectedCodehash, bytes32 actualCodehash);
