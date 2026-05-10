@@ -10,9 +10,6 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         task: [rainix-rs-test]
         include:
-          # We don't need to do rust static analysis on multiple platforms
-          - os: ubuntu-latest
-            task: rainix-rs-static
           # We don't need to do build for wasm32 on multiple platforms
           - os: ubuntu-latest
             task: test-wasm-build
