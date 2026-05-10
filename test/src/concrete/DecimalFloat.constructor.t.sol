@@ -74,6 +74,7 @@ contract DecimalFloatConstructorTest is Test {
         assembly ("memory-safe") {
             temp := create(0, add(creationCode, 0x20), mload(creationCode))
         }
+        require(temp != address(0), "log tables deploy failed in mutation setup");
         vm.etch(LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS, temp.code);
         new DecimalFloat();
 
@@ -81,7 +82,15 @@ contract DecimalFloatConstructorTest is Test {
         // bytes. The codehash now mismatches LOG_TABLES_DATA_CONTRACT_HASH.
         bytes memory zeros = new bytes(temp.code.length);
         vm.etch(LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS, zeros);
-        vm.expectRevert();
+        bytes32 zeroBytesCodehash = keccak256(zeros);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                LogTablesNotDeployed.selector,
+                LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS,
+                LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH,
+                zeroBytesCodehash
+            )
+        );
         new DecimalFloat();
     }
 }
