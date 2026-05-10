@@ -24,4 +24,8 @@ jobs:
       - name: Copy forge artifacts into committed location
         run: nix develop github:rainlanguage/rainix#sol-shell -c forge script ./script/CopyArtifacts.sol
       - name: Assert committed artifacts match freshly built
-        run: git diff --exit-code
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::Committed artifacts in crates/float/abi/ are stale. Run 'forge script script/CopyArtifacts.sol' and commit the updated files."
+            exit 1
+          fi
