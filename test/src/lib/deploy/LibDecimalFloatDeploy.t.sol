@@ -8,21 +8,17 @@ import {LibDecimalFloatDeploy} from "src/lib/deploy/LibDecimalFloatDeploy.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 import {LibDataContract} from "rain-datacontract-0.1.0/src/lib/LibDataContract.sol";
 
-/// @dev Pinned Arbitrum fork block. Forking at "latest" races RPC state
-/// propagation: the node can advertise a freshly-finalized head before its
-/// state is queryable, causing flakes. CI's `ARBITRUM_RPC_URL` is a
-/// non-archive node that prunes state past a recent retention window, so
-/// the pin must stay near the head — older blocks fail with "state at
-/// block #N is pruned". This block is the head as of pinning; bump
-/// periodically as state ages out. Arbitrum is the chosen fork because
-/// the Zoltu factory is deployed at the same address on every supported
-/// chain and Arbitrum's RPC is available in the rainix reusable workflow
-/// without needing a bespoke env var.
-uint256 constant FORK_BLOCK_NUMBER = 460_000_000;
-
 contract LibDecimalFloatDeployTest is Test {
+    /// `LibRainDeploy.etchZoltuFactory` puts the factory bytecode at the
+    /// deterministic factory address using `vm.etch`. No fork required —
+    /// the test runs entirely in-memory, which avoids RPC-flake and the
+    /// "address already has code" collision when a deploy target is
+    /// already populated on the chosen prod chain.
+    function setUp() public {
+        LibRainDeploy.etchZoltuFactory(vm);
+    }
+
     function testDeployAddress() external {
-        vm.createSelectFork(vm.envString("ARBITRUM_RPC_URL"), FORK_BLOCK_NUMBER);
         address deployedAddress = LibRainDeploy.deployZoltu(type(DecimalFloat).creationCode);
 
         assertEq(deployedAddress, LibDecimalFloatDeploy.ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS);
@@ -38,7 +34,6 @@ contract LibDecimalFloatDeployTest is Test {
     }
 
     function testDeployAddressLogTables() external {
-        vm.createSelectFork(vm.envString("ARBITRUM_RPC_URL"), FORK_BLOCK_NUMBER);
         bytes memory logTables = LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
         address deployedAddress = LibRainDeploy.deployZoltu(logTables);
 
