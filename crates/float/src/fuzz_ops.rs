@@ -26,9 +26,9 @@ mod tests {
         v.to_string().parse::<f64>().unwrap_or(f64::INFINITY)
     }
 
-    /// Generate floats in a range where f64 can represent them without
-    /// overflow/underflow. Coefficients up to ~1e15 and exponents -15..15
-    /// keep values in f64's comfortable range.
+    // Generate floats in a range where f64 can represent them without
+    // overflow/underflow. Coefficients up to ~1e15 and exponents -15..15
+    // keep values in f64's comfortable range.
     prop_compose! {
         fn f64_compatible_float()(
             coefficient in -10i64.pow(15)..10i64.pow(15),
