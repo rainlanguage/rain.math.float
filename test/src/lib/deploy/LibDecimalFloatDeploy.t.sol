@@ -2,17 +2,18 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std/Test.sol";
-import {LibRainDeploy} from "rain.deploy/lib/LibRainDeploy.sol";
+import {Test} from "forge-std-1.16.1/src/Test.sol";
+import {LibRainDeploy} from "rain-deploy-0.1.2/src/lib/LibRainDeploy.sol";
 import {LibDecimalFloatDeploy} from "src/lib/deploy/LibDecimalFloatDeploy.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
-import {LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
+import {LibDataContract} from "rain-datacontract-0.1.0/src/lib/LibDataContract.sol";
 
-/// Determinism tests for the Zoltu deployment of `DecimalFloat` and the log
-/// tables. These do not fork a real chain — `etchZoltuFactory` puts the
-/// Zoltu factory bytecode at its canonical address locally, so the tests
-/// exercise the actual deploy path without an external RPC dependency.
 contract LibDecimalFloatDeployTest is Test {
+    /// `LibRainDeploy.etchZoltuFactory` puts the factory bytecode at the
+    /// deterministic factory address using `vm.etch`. No fork required —
+    /// the test runs entirely in-memory, which avoids RPC-flake and the
+    /// "address already has code" collision when a deploy target is
+    /// already populated on the chosen prod chain.
     function setUp() public {
         LibRainDeploy.etchZoltuFactory(vm);
     }

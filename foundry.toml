@@ -1,7 +1,7 @@
 [profile.default]
 src = 'src'
 out = 'out'
-libs = ['lib']
+libs = ['dependencies']
 
 # See more config options https://github.com/foundry-rs/foundry/tree/master/config
 
@@ -23,25 +23,29 @@ evm_version = "cancun"
 bytecode_hash = "none"
 cbor_metadata = false
 
-fs_permissions = [
-    { access = "read-write", path = "./src/generated" }
-]
-
-remappings = [
-    "rain.solmem/=lib/rain.datacontract/lib/rain.solmem/src/",
-    "openzeppelin-contracts/=lib/rain.math.fixedpoint/lib/openzeppelin-contracts/",
-    "rain.deploy/=lib/rain.deploy/src/"
-]
+fs_permissions = [{ access = "read-write", path = "./src/generated" }]
 
 [fuzz]
 runs = 5096
 
+[dependencies]
+forge-std = "1.16.1"
+"@openzeppelin-contracts" = "5.6.1"
+"rain-solmem" = "0.1.3"
+"rain-string" = "0.2.0"
+"rain-datacontract" = "0.1.0"
+"rain-deploy" = "0.1.2"
+"rain-sol-codegen" = "0.1.0"
+
+[soldeer]
+recursive_deps = false
+
 [rpc_endpoints]
-arbitrum = "${CI_DEPLOY_ARBITRUM_RPC_URL}"
-base = "${CI_DEPLOY_BASE_RPC_URL}"
-base_sepolia = "${CI_DEPLOY_BASE_SEPOLIA_RPC_URL}"
-flare = "${CI_DEPLOY_FLARE_RPC_URL}"
-polygon = "${CI_DEPLOY_POLYGON_RPC_URL}"
+arbitrum = "${ARBITRUM_RPC_URL}"
+base = "${BASE_RPC_URL}"
+base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
+flare = "${FLARE_RPC_URL}"
+polygon = "${POLYGON_RPC_URL}"
 
 [etherscan]
 arbitrum = { key = "${CI_DEPLOY_ARBITRUM_ETHERSCAN_API_KEY}" }

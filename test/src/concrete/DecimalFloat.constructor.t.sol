@@ -2,10 +2,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std/Test.sol";
+import {Test} from "forge-std-1.16.1/src/Test.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 import {LibDecimalFloatDeploy} from "src/lib/deploy/LibDecimalFloatDeploy.sol";
-import {LibDataContract} from "rain.datacontract/lib/LibDataContract.sol";
+import {LibDataContract} from "rain-datacontract-0.1.0/src/lib/LibDataContract.sol";
 import {LogTablesNotDeployed} from "src/error/ErrDecimalFloat.sol";
 
 /// Direct tests for the `DecimalFloat` constructor's log-tables guard. These
