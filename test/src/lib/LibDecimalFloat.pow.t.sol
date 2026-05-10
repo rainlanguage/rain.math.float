@@ -6,7 +6,7 @@ import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {ZeroNegativePower, PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
-import {console2} from "forge-std/Test.sol";
+import {console2} from "forge-std-1.16.1/src/Test.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;

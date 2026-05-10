@@ -8,7 +8,7 @@ import {
     LossyConversionToFloat,
     Float
 } from "../../../src/lib/LibDecimalFloat.sol";
-import {Test} from "forge-std/Test.sol";
+import {Test} from "forge-std-1.16.1/src/Test.sol";
 
 contract LibDecimalFloatDecimalLosslessTest is Test {
     using LibDecimalFloat for Float;
