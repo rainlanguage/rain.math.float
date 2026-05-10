@@ -11,7 +11,9 @@ contract CopyArtifactsTest is Test {
         assertEq(
             keccak256(bytes(live)),
             keccak256(bytes(committed)),
-            string.concat(contractName, ": run `forge script script/CopyArtifacts.sol` to update the committed artifact")
+            string.concat(
+                contractName, ": run `forge script script/CopyArtifacts.sol` to update the committed artifact"
+            )
         );
     }
 
