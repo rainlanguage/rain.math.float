@@ -23,7 +23,11 @@ evm_version = "cancun"
 bytecode_hash = "none"
 cbor_metadata = false
 
-fs_permissions = [{ access = "read-write", path = "./src/generated" }]
+fs_permissions = [
+  { access = "read-write", path = "./src/generated" },
+  { access = "read", path = "./out" },
+  { access = "read-write", path = "./crates/float/abi" },
+]
 
 [fuzz]
 runs = 5096
