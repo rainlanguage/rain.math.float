@@ -37,9 +37,7 @@ contract LibDecimalFloatPow10Test is LogTest {
                 // Predict whether packArithmeticResult will revert on underflow.
                 (Float predicted, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
                 if (!lossless && Float.unwrap(predicted) == bytes32(0)) {
-                    vm.expectRevert(
-                        abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent)
-                    );
+                    vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
                     this.pow10External(float);
                 } else {
                     Float floatPower10 = this.pow10External(float);
