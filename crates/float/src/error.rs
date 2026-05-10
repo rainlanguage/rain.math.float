@@ -43,6 +43,7 @@ pub enum DecimalFloatErrorSelector {
     CoefficientOverflow,
     ExponentOverflow,
     ExponentUnderflow,
+    FixedDecimalOverflow,
     Log10Negative,
     Log10Zero,
     LossyConversionFromFloat,
@@ -61,6 +62,9 @@ impl TryFrom<FixedBytes<4>> for DecimalFloatErrorSelector {
             }
             <DecimalFloat::ExponentOverflow as SolError>::SELECTOR => Ok(Self::ExponentOverflow),
             <DecimalFloat::ExponentUnderflow as SolError>::SELECTOR => Ok(Self::ExponentUnderflow),
+            <DecimalFloat::FixedDecimalOverflow as SolError>::SELECTOR => {
+                Ok(Self::FixedDecimalOverflow)
+            }
             <DecimalFloat::Log10Negative as SolError>::SELECTOR => Ok(Self::Log10Negative),
             <DecimalFloat::Log10Zero as SolError>::SELECTOR => Ok(Self::Log10Zero),
             <DecimalFloat::LossyConversionFromFloat as SolError>::SELECTOR => {

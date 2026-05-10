@@ -3,7 +3,8 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, NegativeFixedDecimalConversion, Float} from "src/lib/LibDecimalFloat.sol";
-import {Test, stdError} from "forge-std-1.16.1/src/Test.sol";
+import {FixedDecimalOverflow} from "src/error/ErrDecimalFloat.sol";
+import {Test} from "forge-std-1.16.1/src/Test.sol";
 
 contract LibDecimalFloatDecimalTest is Test {
     using LibDecimalFloat for Float;
@@ -305,7 +306,7 @@ contract LibDecimalFloatDecimalTest is Test {
             uint256 c = scale * unsignedCoefficient;
             vm.assume(c / scale != unsignedCoefficient);
         }
-        vm.expectRevert(stdError.arithmeticError);
+        vm.expectRevert(abi.encodeWithSelector(FixedDecimalOverflow.selector, signedCoefficient, exponent, decimals));
         (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
         (value, lossless);
     }

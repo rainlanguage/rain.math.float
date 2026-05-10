@@ -6,6 +6,7 @@ import {
     ExponentOverflow,
     ExponentUnderflow,
     CoefficientOverflow,
+    FixedDecimalOverflow,
     NegativeFixedDecimalConversion,
     LossyConversionFromFloat,
     LossyConversionToFloat,
@@ -242,14 +243,26 @@ library LibDecimalFloat {
                     return (fixedDecimal, fixedDecimal * scale == unsignedCoefficient);
                 }
             } else if (finalExponent > 0) {
-                // finalExponent is positive here.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                scale = 10 ** uint256(finalExponent);
-                fixedDecimal = unsignedCoefficient * scale;
                 unchecked {
-                    // This is always lossless because we're scaling up.
-                    // If the value is too large to fit in a uint256, we'll
-                    // revert above due to overflow.
+                    // The smallest non-zero coefficient times 10^78 already
+                    // exceeds uint256.max, so any finalExponent > 77 cannot
+                    // be represented as a uint256.
+                    if (finalExponent > 77) {
+                        revert FixedDecimalOverflow(signedCoefficient, exponent, decimals);
+                    }
+
+                    // finalExponent in [1, 77] keeps 10 ** finalExponent
+                    // within uint256.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    scale = 10 ** uint256(finalExponent);
+
+                    // Pre-check the multiplication; the alternative is a
+                    // bare Panic(0x11) from checked-math, which carries no
+                    // structured information about which inputs overflowed.
+                    if (unsignedCoefficient > type(uint256).max / scale) {
+                        revert FixedDecimalOverflow(signedCoefficient, exponent, decimals);
+                    }
+                    fixedDecimal = unsignedCoefficient * scale;
                     return (fixedDecimal, true);
                 }
             } else {

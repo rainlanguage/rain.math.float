@@ -21,6 +21,13 @@ error ExponentUnderflow(int256 signedCoefficient, int256 exponent);
 /// fixed-point number.
 error NegativeFixedDecimalConversion(int256 signedCoefficient, int256 exponent);
 
+/// @dev Thrown when converting a Float to a fixed-decimal uint256 and the
+/// scaled value exceeds `uint256.max`. Returning a silent zero with
+/// `lossless=false` would decapitate the high bits of the value;
+/// reverting surfaces the overflow with the original inputs so callers can
+/// rescale or reject.
+error FixedDecimalOverflow(int256 signedCoefficient, int256 exponent, uint8 decimals);
+
 /// @dev Thrown when attempting to calculate the log of 0.
 error Log10Zero();
 
