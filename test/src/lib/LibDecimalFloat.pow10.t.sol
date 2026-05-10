@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LogTest} from "../../abstract/LogTest.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
@@ -17,6 +17,14 @@ contract LibDecimalFloatPow10Test is LogTest {
         return LibDecimalFloat.pow10(float, logTables());
     }
 
+    /// `pow10` of an input whose effective result exponent falls below
+    /// `int32.min` reverts instead of silently producing `FLOAT_ZERO`.
+    function testPow10RevertsOnExponentUnderflow() external {
+        Float float = Float.wrap(0xffffffffffffffffffffff0000000000000000000000000000000000000000ff);
+        vm.expectPartialRevert(ExponentUnderflow.selector);
+        this.pow10External(float);
+    }
+
     function testPow10Packed(Float float) external {
         (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
         try this.pow10External(signedCoefficientFloat, exponentFloat) returns (
@@ -26,16 +34,18 @@ contract LibDecimalFloatPow10Test is LogTest {
                 vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
                 this.pow10External(float);
             } else {
-                Float floatPower10 = this.pow10External(float);
-                (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = floatPower10.unpack();
-
-                // Compensate for the implied pack and unpack.
-                (Float resultPacked, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-                (lossless);
-                (signedCoefficient, exponent) = resultPacked.unpack();
-
-                assertEq(signedCoefficient, signedCoefficientUnpacked);
-                assertEq(exponent, exponentUnpacked);
+                // Predict whether packArithmeticResult will revert on underflow.
+                (Float predicted, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+                if (!lossless && Float.unwrap(predicted) == bytes32(0)) {
+                    vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
+                    this.pow10External(float);
+                } else {
+                    Float floatPower10 = this.pow10External(float);
+                    (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = floatPower10.unpack();
+                    (signedCoefficient, exponent) = predicted.unpack();
+                    assertEq(signedCoefficient, signedCoefficientUnpacked);
+                    assertEq(exponent, exponentUnpacked);
+                }
             }
         } catch (bytes memory err) {
             vm.expectRevert(err);

@@ -4,6 +4,7 @@ pragma solidity ^0.8.25;
 
 import {
     ExponentOverflow,
+    ExponentUnderflow,
     CoefficientOverflow,
     NegativeFixedDecimalConversion,
     LossyConversionFromFloat,
@@ -380,6 +381,23 @@ library LibDecimalFloat {
         return c;
     }
 
+    /// Variant of `packLossy` used as the finaliser of every arithmetic
+    /// operation. Tolerates coefficient truncation (which preserves the order
+    /// of magnitude) but reverts on exponent underflow (which silently
+    /// replaces the value by `FLOAT_ZERO`, losing the magnitude entirely).
+    /// Distinguishes the two `lossless = false` modes from `packLossy` by the
+    /// returned float: `packLossy` only returns `FLOAT_ZERO` for the underflow
+    /// case when `lossless` is false (the coefficient-truncation path
+    /// successively divides by ten and never reaches zero from a non-zero
+    /// input).
+    function packArithmeticResult(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
+        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
+        if (!lossless && Float.unwrap(c) == bytes32(0)) {
+            revert ExponentUnderflow(signedCoefficient, exponent);
+        }
+        return c;
+    }
+
     /// Unpack a packed bytes32 into a signed coefficient and exponent. This is
     /// the inverse of `pack`.
     /// @param float The packed representation of the signed coefficient and
@@ -410,7 +428,7 @@ library LibDecimalFloat {
             LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         // Addition can be lossy.
 
-        (Float c,) = packLossy(signedCoefficient, exponent);
+        Float c = packArithmeticResult(signedCoefficient, exponent);
         return c;
     }
 
@@ -428,7 +446,7 @@ library LibDecimalFloat {
             LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         // Subtraction can be lossy.
 
-        (Float c,) = packLossy(signedCoefficientC, exponentC);
+        Float c = packArithmeticResult(signedCoefficientC, exponentC);
         return c;
     }
 
@@ -443,7 +461,7 @@ library LibDecimalFloat {
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
         // Minus is a lossy operation due to the asymmetry of signed integers.
 
-        (Float result,) = packLossy(signedCoefficient, exponent);
+        Float result = packArithmeticResult(signedCoefficient, exponent);
         return result;
     }
 
@@ -467,7 +485,7 @@ library LibDecimalFloat {
 
         // At the limit of signed values there is the potential for a lossy
         // conversion when negating.
-        (Float result,) = packLossy(signedCoefficient, exponent);
+        Float result = packArithmeticResult(signedCoefficient, exponent);
         return result;
     }
 
@@ -499,7 +517,7 @@ library LibDecimalFloat {
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         // Multiplication is typically lossless, but can be lossy in edge cases.
-        (Float c,) = packLossy(signedCoefficient, exponent);
+        Float c = packArithmeticResult(signedCoefficient, exponent);
         return c;
     }
 
@@ -518,7 +536,7 @@ library LibDecimalFloat {
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         // Division is often lossy because it is very easy to end up with
         // infinite decimal representations.
-        (Float c,) = packLossy(signedCoefficient, exponent);
+        Float c = packArithmeticResult(signedCoefficient, exponent);
         return c;
     }
 
@@ -531,7 +549,7 @@ library LibDecimalFloat {
     function inv(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
-        (Float result,) = packLossy(signedCoefficient, exponent);
+        Float result = packArithmeticResult(signedCoefficient, exponent);
         return result;
     }
 
@@ -615,7 +633,7 @@ library LibDecimalFloat {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         //slither-disable-next-line unused-return
         (int256 i,) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
-        (Float result,) = packLossy(i, exponent);
+        Float result = packArithmeticResult(i, exponent);
         return result;
     }
 
@@ -626,7 +644,7 @@ library LibDecimalFloat {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         //slither-disable-next-line unused-return
         (, int256 fraction) = LibDecimalFloatImplementation.intFrac(signedCoefficient, exponent);
-        (Float result,) = packLossy(fraction, exponent);
+        Float result = packArithmeticResult(fraction, exponent);
         return result;
     }
 
@@ -645,7 +663,7 @@ library LibDecimalFloat {
             // subtract 1 from the characteristic to floor it.
             (i, exponent) = LibDecimalFloatImplementation.sub(i, exponent, 1e76, -76);
         }
-        (Float result,) = packLossy(i, exponent);
+        Float result = packArithmeticResult(i, exponent);
         return result;
     }
 
@@ -672,7 +690,7 @@ library LibDecimalFloat {
             (i, exponent) = LibDecimalFloatImplementation.add(i, exponent, 1e76, -76);
         }
 
-        (Float result,) = packLossy(i, exponent);
+        Float result = packArithmeticResult(i, exponent);
         return result;
     }
 
@@ -690,7 +708,7 @@ library LibDecimalFloat {
             LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficient, exponent);
         // We don't care if power10 is lossy because it's an approximation
         // anyway.
-        (Float result,) = packLossy(signedCoefficient, exponent);
+        Float result = packArithmeticResult(signedCoefficient, exponent);
         return result;
     }
 
@@ -706,7 +724,7 @@ library LibDecimalFloat {
         (signedCoefficient, exponent) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficient, exponent);
         // We don't care if log10 is lossy because it's an approximation anyway.
-        (Float result,) = packLossy(signedCoefficient, exponent);
+        Float result = packArithmeticResult(signedCoefficient, exponent);
         return result;
     }
 
@@ -785,7 +803,7 @@ library LibDecimalFloat {
         (signedCoefficientC, exponentC) =
             LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientResult, exponentResult);
         // We don't care if power is lossy because it's an approximation anyway.
-        (Float c,) = packLossy(signedCoefficientC, exponentC);
+        Float c = packArithmeticResult(signedCoefficientC, exponentC);
         return c;
     }
 

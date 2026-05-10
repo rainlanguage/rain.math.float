@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.16.1/src/Test.sol";
@@ -17,13 +17,22 @@ contract LibDecimalFloatDivTest is Test {
     {
         (int256 signedCoefficientC, int256 exponentC) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (Float c, bool lossless) = LibDecimalFloat.packLossy(signedCoefficientC, exponentC);
-        (lossless);
+        Float c = LibDecimalFloat.packArithmeticResult(signedCoefficientC, exponentC);
         return c;
     }
 
     function divExternal(Float floatA, Float floatB) external pure returns (Float) {
         return LibDecimalFloat.div(floatA, floatB);
+    }
+
+    /// `div` whose result exponent (`expA - expB`) falls below `int32.min`
+    /// reverts instead of silently producing `FLOAT_ZERO`. Constructed by
+    /// numerator at the minimum exponent and denominator at the maximum.
+    function testDivRevertsOnExponentUnderflow() external {
+        Float a = LibDecimalFloat.packLossless(1, type(int32).min);
+        Float b = LibDecimalFloat.packLossless(1, type(int32).max);
+        vm.expectPartialRevert(ExponentUnderflow.selector);
+        this.divExternal(a, b);
     }
 
     function testDivPacked(Float a, Float b) external {

@@ -1780,14 +1780,19 @@ mod tests {
         ));
     }
 
-    /// Multiplying near-min exponents underflows to zero.
+    /// Multiplying near-min exponents underflows; the public arithmetic
+    /// surface reverts with `ExponentUnderflow` rather than silently
+    /// producing zero.
     #[test]
     fn test_mul_exponent_underflow_error() {
         let near_min_exp = Float::parse("1e-2147483646".to_string()).unwrap();
         let one_e_neg_three = Float::parse("1e-3".to_string()).unwrap();
 
-        let float = (near_min_exp * one_e_neg_three).unwrap();
-        assert!(float.is_zero().unwrap());
+        let err = (near_min_exp * one_e_neg_three).unwrap_err();
+        assert!(matches!(
+            err,
+            FloatError::DecimalFloat(DecimalFloatErrors::ExponentUnderflow(_))
+        ));
     }
 
     /// from_fixed_decimal for known value/decimals pairs matches parsed strings.

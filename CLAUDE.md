@@ -134,11 +134,19 @@ rain.deploy, rain.sol.codegen.
 ## Key Design Details
 
 - 512-bit intermediate values in multiply/divide to preserve precision.
-- Exponent underflow silently rounds toward zero; exponent overflow reverts.
+- Exponent overflow and underflow both revert from the public arithmetic surface
+  (`ExponentOverflow` / `ExponentUnderflow`). Coefficient truncation on values
+  too large for int224 is silently tolerated because it preserves the order of
+  magnitude.
 - Log/power use lookup table approximations with linear interpolation (table
   deployed as a data contract).
-- Two packing modes: lossless (reverts on precision loss) and lossy (returns
-  bool flag).
+- Three packing modes:
+  - `packLossless`: reverts on any precision loss.
+  - `packLossy`: surfaces the `lossless` flag, returns `FLOAT_ZERO` on exponent
+    underflow. Used by parsing where underflow → "value rounds to zero" is a
+    legitimate parse result reported via `ParseDecimalPrecisionLoss`.
+  - `packArithmeticResult`: tolerates coefficient truncation, reverts on
+    exponent underflow. Used by every public arithmetic operation.
 - Solidity compiler: 0.8.25, EVM target: Cancun, optimizer: 1,000,000 runs.
 
 ## License

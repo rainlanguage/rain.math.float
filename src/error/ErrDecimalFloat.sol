@@ -10,6 +10,13 @@ error CoefficientOverflow(int256 signedCoefficient, int256 exponent);
 /// @dev Thrown when an exponent overflows.
 error ExponentOverflow(int256 signedCoefficient, int256 exponent);
 
+/// @dev Thrown when an exponent underflows. Exponent underflow means the
+/// magnitude is smaller than any representable Float. Without this revert,
+/// arithmetic ops that compose to underflow (e.g. `mul` with two operands
+/// whose exponents sum below `int32.min`) would silently return `FLOAT_ZERO`,
+/// breaking downstream code that branches on `result == 0`.
+error ExponentUnderflow(int256 signedCoefficient, int256 exponent);
+
 /// @dev Thrown when attempting to convert a negative number to an unsigned
 /// fixed-point number.
 error NegativeFixedDecimalConversion(int256 signedCoefficient, int256 exponent);
