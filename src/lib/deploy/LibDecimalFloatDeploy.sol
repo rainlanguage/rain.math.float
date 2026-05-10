@@ -10,6 +10,7 @@ import {
     ANTI_LOG_TABLES_SMALL
 } from "../../generated/LogTables.pointers.sol";
 import {LOG_TABLE_DISAMBIGUATOR} from "../table/LibLogTable.sol";
+import {LogTablesNotDeployed} from "../../error/ErrDecimalFloat.sol";
 
 library LibDecimalFloatDeploy {
     /// @dev Address of the log tables deployed via Zoltu's deterministic
@@ -24,11 +25,11 @@ library LibDecimalFloatDeploy {
     /// @dev Address of the DecimalFloat contract deployed via Zoltu's
     /// deterministic deployment proxy.
     /// This address is the same across all EVM-compatible networks.
-    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0xf8206b5dF01D68a3625Ce48Ce593C6D89B7E8144);
+    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0xc08C2137eD976fCFF68cBFa847e73017EDB8fB47);
 
     /// @dev The expected codehash of the DecimalFloat contract deployed via
     /// Zoltu's deterministic deployment proxy.
-    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0x624040915402064e37887b92f6da7e8a46d5364afbfa4258402c1c24d99b33e2;
+    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0x694f5f6992725624d7081268ab6e0cec5a7fe02a1a75deb621a65898eb1d7437;
 
     /// Combines all log and anti-log tables into a single bytes array for
     /// deployment. These are using packed encoding to minimize size and remove
@@ -43,5 +44,21 @@ library LibDecimalFloatDeploy {
             ANTI_LOG_TABLES_SMALL,
             LOG_TABLE_DISAMBIGUATOR
         );
+    }
+
+    /// Revert if the log tables data contract is not deployed at the
+    /// Zoltu-deterministic address with the expected codehash. Call this
+    /// from the constructor of any contract that integrates with the
+    /// production `DecimalFloat` (or otherwise reads from
+    /// `ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS`) so deployment fails loudly on
+    /// chains where Zoltu has not dropped the tables, instead of silent
+    /// `extcodecopy`-from-empty corruption at the first transcendental call.
+    function checkLogTablesDeployed() internal view {
+        bytes32 actualCodehash = ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.codehash;
+        if (actualCodehash != LOG_TABLES_DATA_CONTRACT_HASH) {
+            revert LogTablesNotDeployed(
+                ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS, LOG_TABLES_DATA_CONTRACT_HASH, actualCodehash
+            );
+        }
     }
 }

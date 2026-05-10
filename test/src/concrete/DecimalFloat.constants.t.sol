@@ -3,10 +3,10 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {Test} from "forge-std-1.16.1/src/Test.sol";
+import {LogTest} from "test/abstract/LogTest.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 
-contract DecimalFloatConstantsTest is Test {
+contract DecimalFloatConstantsTest is LogTest {
     using LibDecimalFloat for Float;
 
     function maxPositiveValueExternal() external pure returns (Float) {

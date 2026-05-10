@@ -3,6 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatDeploy} from "src/lib/deploy/LibDecimalFloatDeploy.sol";
 import {LogTest} from "test/abstract/LogTest.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 
@@ -10,7 +11,7 @@ contract DecimalFloatSqrtTest is LogTest {
     using LibDecimalFloat for Float;
 
     function sqrtExternal(Float a) external view returns (Float) {
-        return a.sqrt(LibDecimalFloat.LOG_TABLES_ADDRESS);
+        return a.sqrt(LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS);
     }
 
     function testSqrtDeployed(Float a) external {

@@ -2,11 +2,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std-1.16.1/src/Test.sol";
+import {LogTest} from "test/abstract/LogTest.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
-contract DecimalFloatMulTest is Test {
+contract DecimalFloatMulTest is LogTest {
     using LibDecimalFloat for Float;
 
     function mulExternal(Float a, Float b) external pure returns (Float) {

@@ -3,6 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatDeploy} from "src/lib/deploy/LibDecimalFloatDeploy.sol";
 import {LogTest} from "test/abstract/LogTest.sol";
 import {DecimalFloat} from "src/concrete/DecimalFloat.sol";
 
@@ -10,7 +11,7 @@ contract DecimalFloatLog10Test is LogTest {
     using LibDecimalFloat for Float;
 
     function log10External(Float a) external view returns (Float) {
-        return a.log10(LibDecimalFloat.LOG_TABLES_ADDRESS);
+        return a.log10(LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS);
     }
 
     function testLog10Deployed(Float a) external {

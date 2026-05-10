@@ -65,11 +65,6 @@ type Float is bytes32;
 library LibDecimalFloat {
     using LibDecimalFloat for Float;
 
-    /// Address of the log tables data contract. Only valid if deployed using
-    /// the standard Rain deployment scripts that use Zoltu deterministic
-    /// deployment.
-    address constant LOG_TABLES_ADDRESS = 0x6421E8a23cdEe2E6E579b2cDebc8C2A514843593;
-
     /// A zero valued float.
     Float constant FLOAT_ZERO = Float.wrap(0);
 
