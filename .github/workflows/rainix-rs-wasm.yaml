@@ -1,0 +1,5 @@
+name: rainix-rs-wasm
+on: [push]
+jobs:
+  rs-wasm:
+    uses: rainlanguage/rainix/.github/workflows/rainix-rs-wasm.yaml@main
