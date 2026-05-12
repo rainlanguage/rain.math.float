@@ -65,27 +65,24 @@ jobs:
           echo "old=$OLD" >> $GITHUB_OUTPUT
           echo "new=$NEW" >> $GITHUB_OUTPUT
           if [ "$OLD" = "$NEW" ]; then echo "changed=false" >> $GITHUB_OUTPUT; else echo "changed=true" >> $GITHUB_OUTPUT; fi
-      # NPM version bump + tag (no push yet — batch with cargo)
+      # Cargo first — cargo-release refuses to run if the working tree is
+      # dirty, and it makes its own commit.
+      - name: Bump Cargo version
+        if: ${{ steps.cargo.outputs.changed == 'true' }}
+        run: |
+          nix develop -c cargo release --no-confirm --execute --no-tag --no-push -p rain-math-float alpha
+          echo "CARGO_VERSION=v$(cargo pkgid -p rain-math-float | cut -d@ -f2)" >> $GITHUB_ENV
+      # NPM second — npm version edits files but doesn't commit.
       - name: Bump NPM version
         if: ${{ steps.npm.outputs.changed == 'true' }}
         run: |
           NEW=$(npm version prerelease --preid alpha --no-git-tag-version)
           echo "NPM_VERSION=$NEW" >> $GITHUB_ENV
           git add package.json package-lock.json
-      # Cargo version bump + tag (no push yet — batch with npm)
-      - name: Bump Cargo version
-        if: ${{ steps.cargo.outputs.changed == 'true' }}
-        run: |
-          nix develop -c cargo release --no-confirm --execute --no-tag --no-push -p rain-math-float alpha
-          echo "CARGO_VERSION=v$(cargo pkgid -p rain-math-float | cut -d@ -f2)" >> $GITHUB_ENV
-      # Single push of both bump commits (cargo-release made its own commit;
-      # the npm bump is staged into a separate commit here).
-      - name: Commit and push version bumps
+          git commit -m "Package Release npm-${NEW}"
+      - name: Tag and push
         if: ${{ steps.npm.outputs.changed == 'true' || steps.cargo.outputs.changed == 'true' }}
         run: |
-          if [ "${{ steps.npm.outputs.changed }}" = "true" ]; then
-            git commit -m "Package Release npm-${{ env.NPM_VERSION }}"
-          fi
           if [ -n "${{ env.NPM_VERSION }}" ]; then git tag npm-${{ env.NPM_VERSION }}; fi
           if [ -n "${{ env.CARGO_VERSION }}" ]; then git tag crate-${{ env.CARGO_VERSION }}; fi
           git push origin main
