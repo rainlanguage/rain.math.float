@@ -7,6 +7,7 @@ import {LibDataContract} from "rain-datacontract-0.1.0/src/lib/LibDataContract.s
 import {LibDecimalFloatDeploy} from "../src/lib/deploy/LibDecimalFloatDeploy.sol";
 import {LibRainDeploy} from "rain-deploy-0.1.2/src/lib/LibRainDeploy.sol";
 import {DecimalFloat} from "../src/concrete/DecimalFloat.sol";
+import {LibEtchLogTables} from "./lib/LibEtchLogTables.sol";
 
 /// @dev Hash of the "log-tables" deployment suite string. When the
 /// `DEPLOYMENT_SUITE` env var is set to "log-tables", the script deploys the
@@ -38,6 +39,17 @@ contract Deploy is Script {
                 sDepCodeHashes
             );
         } else if (suite == DEPLOYMENT_SUITE_CONTRACT) {
+            // DecimalFloat's constructor calls
+            // LibDecimalFloatDeploy.checkLogTablesDeployed(), which reads
+            // extcodesize/codehash at ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.
+            // The simulation pass runs before the broadcast pass, so if
+            // log-tables hasn't actually been deployed yet on this chain
+            // the simulation reverts. Plant the runtime bytecode locally
+            // so simulation matches the post-broadcast on-chain state.
+            if (LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.code.length == 0) {
+                LibEtchLogTables.etchLogTables(vm);
+            }
+
             address[] memory decimalFloatDependencies = new address[](1);
             decimalFloatDependencies[0] = LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS;
             LibRainDeploy.deployAndBroadcast(
