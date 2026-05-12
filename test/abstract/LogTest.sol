@@ -7,6 +7,7 @@ pragma solidity =0.8.25;
 import {Test, console2} from "forge-std-1.16.1/src/Test.sol";
 import {DataContractMemoryContainer, LibDataContract} from "rain-datacontract-0.1.0/src/lib/LibDataContract.sol";
 import {LibDecimalFloatDeploy} from "src/lib/deploy/LibDecimalFloatDeploy.sol";
+import {LibEtchLogTables} from "script/lib/LibEtchLogTables.sol";
 
 abstract contract LogTest is Test {
     using LibDataContract for DataContractMemoryContainer;
@@ -15,19 +16,10 @@ abstract contract LogTest is Test {
 
     /// Etch the log tables runtime at the Zoltu-deterministic deployment
     /// address used by the production `DecimalFloat` contract. Without this,
-    /// the `*Deployed` tests below would `extcodecopy` from an empty address,
-    /// have both the external helper and the deployed contract agree on
-    /// garbage, and pass without verifying anything (the H01-class failure
-    /// mode this PR fixes in production).
+    /// the deployed tests below would `extcodecopy` from an empty address
+    /// while the external helper does the same, both agreeing on garbage.
     function setUp() public virtual {
-        bytes memory tables = LibDecimalFloatDeploy.combinedTables();
-        bytes memory creationCode = LibDataContract.contractCreationCode(tables);
-        address temp;
-        assembly ("memory-safe") {
-            temp := create(0, add(creationCode, 0x20), mload(creationCode))
-        }
-        require(temp != address(0), "log tables deploy failed in LogTest.setUp");
-        vm.etch(LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS, temp.code);
+        LibEtchLogTables.etchLogTables(vm);
         assertEq(
             LibDecimalFloatDeploy.ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS.codehash,
             LibDecimalFloatDeploy.LOG_TABLES_DATA_CONTRACT_HASH,
