@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.package]
 edition = "2024"
 version = "0.1.0"
-license = "CAL-1.0"
+license = "LicenseRef-DCL-1.0"
 homepage = "https://github.com/rainlanguage/rain.math.float"
 repository = "https://github.com/rainlanguage/rain.math.float"
 
