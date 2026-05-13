@@ -1,11 +1,13 @@
 .DS_Store
 .coderabbitai.yaml
+.envrc
 .gas-snapshot
 .git
 .github
 .gitignore
 .gitmodules
 .pre-commit-config.yaml
+.prettierignore
 .soldeerignore
 .vscode
 CLAUDE.md
