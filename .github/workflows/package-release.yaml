@@ -70,7 +70,7 @@ jobs:
       - name: Bump Cargo version
         if: ${{ steps.cargo.outputs.changed == 'true' }}
         run: |
-          nix develop -c cargo release --no-confirm --execute --no-tag --no-push -p rain-math-float alpha
+          nix develop -c cargo release --no-confirm --execute --no-tag --no-push --no-publish -p rain-math-float alpha
           echo "CARGO_VERSION=v$(cargo pkgid -p rain-math-float | cut -d@ -f2)" >> $GITHUB_ENV
       # NPM second — npm version edits files but doesn't commit.
       - name: Bump NPM version
