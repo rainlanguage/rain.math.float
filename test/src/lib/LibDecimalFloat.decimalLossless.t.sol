@@ -33,6 +33,18 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         return float.toFixedDecimalLossless(decimals);
     }
 
+    /// `fromFixedDecimalLosslessPacked(value, 0)` is the bitwise identity
+    /// `bytes32(value)` for every `value` that fits in `int224`. Pinned
+    /// here so the float library owns the invariant — callers (e.g. the
+    /// Rainlang EVM opcodes for `block.number`, `block.timestamp`,
+    /// `chainid`) can write the raw integer to the stack as a documented
+    /// optimization without re-discovering or re-asserting it.
+    function testFromFixedDecimalLosslessPackedZeroDecimalsIsIdentity(uint256 value) external pure {
+        value = bound(value, 0, uint256(int256(type(int224).max)));
+        Float result = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, 0);
+        assertEq(Float.unwrap(result), bytes32(value));
+    }
+
     function testFromFixedDecimalLosslessMem(uint256 value, uint8 decimals) external {
         value = bound(value, 0, uint256(int256(type(int224).max)));
         (,, bool losslessPreflight) = LibDecimalFloat.fromFixedDecimalLossy(value, decimals);
