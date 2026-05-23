@@ -97,7 +97,7 @@ jobs:
         if: ${{ steps.npm.outputs.changed == 'true' }}
         uses: JS-DevTools/npm-publish@v3
         with:
-          token: ${{ secrets.NPM_TOKEN }}
+          token: ${{ secrets.NPM_PUBLISH_PRIVATE_TOKEN }}
           access: public
           package: float_npm_package_${{ env.NPM_VERSION }}.tgz
       # Cargo publish
