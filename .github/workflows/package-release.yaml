@@ -26,15 +26,12 @@ jobs:
           primary-key: nix-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock') }}
           restore-prefixes-first-match: nix-${{ runner.os }}-
           gc-max-store-size-linux: 1G
-      - name: Install NodeJS v22
-        uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: "npm"
       - name: Install soldeer dependencies
         run: nix develop github:rainlanguage/rainix#sol-shell -c forge soldeer install
       - name: Test JS/TS bindings
-        run: nix develop -c test-js-bindings
+        run: |
+          nix develop github:rainlanguage/rainix#rust-node-shell -c bash -c \
+            "npm install --no-check && npm run build && npm test"
       - name: Cargo test
         run: nix develop github:rainlanguage/rainix#rust-shell -c cargo test -p rain-math-float
       - name: Git Config
@@ -44,12 +41,14 @@ jobs:
       - name: NPM hashes
         id: npm
         run: |
-          OLD=$(npm view @rainlanguage/float@latest dist.shasum 2>/dev/null || echo "none")
-          NEW=$(npm pack --silent | xargs shasum | cut -c1-40)
-          rm -f *.tgz
-          echo "old=$OLD" >> $GITHUB_OUTPUT
-          echo "new=$NEW" >> $GITHUB_OUTPUT
-          if [ "$OLD" = "$NEW" ]; then echo "changed=false" >> $GITHUB_OUTPUT; else echo "changed=true" >> $GITHUB_OUTPUT; fi
+          nix develop github:rainlanguage/rainix#rust-node-shell -c bash -c '
+            OLD=$(npm view @rainlanguage/float@latest dist.shasum 2>/dev/null || echo "none")
+            NEW=$(npm pack --silent | xargs shasum | cut -c1-40)
+            rm -f *.tgz
+            echo "old=$OLD" >> $GITHUB_OUTPUT
+            echo "new=$NEW" >> $GITHUB_OUTPUT
+            if [ "$OLD" = "$NEW" ]; then echo "changed=false" >> $GITHUB_OUTPUT; else echo "changed=true" >> $GITHUB_OUTPUT; fi
+          '
       - name: Cargo hashes
         id: cargo
         run: |
@@ -72,7 +71,7 @@ jobs:
       - name: Bump NPM version
         if: ${{ steps.npm.outputs.changed == 'true' }}
         run: |
-          NEW=$(npm version patch --no-git-tag-version)
+          NEW=$(nix develop github:rainlanguage/rainix#rust-node-shell -c npm version patch --no-git-tag-version)
           echo "NPM_VERSION=$NEW" >> $GITHUB_ENV
           git add package.json package-lock.json
           git commit -m "Package Release npm-${NEW}"
@@ -86,7 +85,7 @@ jobs:
       - name: NPM pack
         if: ${{ steps.npm.outputs.changed == 'true' }}
         run: |
-          TARBALL=$(npm pack --silent)
+          TARBALL=$(nix develop github:rainlanguage/rainix#rust-node-shell -c npm pack --silent)
           mv "$TARBALL" float_npm_package_${{ env.NPM_VERSION }}.tgz
       - name: Publish to crates.io
         if: ${{ steps.cargo.outputs.changed == 'true' }}
