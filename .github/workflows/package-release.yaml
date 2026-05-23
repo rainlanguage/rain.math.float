@@ -34,9 +34,7 @@ jobs:
       - name: Install soldeer dependencies
         run: nix develop github:rainlanguage/rainix#sol-shell -c forge soldeer install
       - name: Test JS/TS bindings
-        run: |
-          nix develop github:rainlanguage/rainix#rust-shell -c bash -c \
-            "npm install --no-check && npm run build && npm test"
+        run: nix develop -c test-js-bindings
       - name: Cargo test
         run: nix develop github:rainlanguage/rainix#rust-shell -c cargo test -p rain-math-float
       - name: Git Config
