@@ -9,8 +9,9 @@ finance for a few reasons.
 
 - The decimal representations of amounts and prices of things don't have exact
   representations in the underlying binary
-- Mathematical nonsense like dividing by 0 gives "special" values like `Infinity`
-  and `NaN` which then propagate throughout business logic rather than erroring
+- Mathematical nonsense like dividing by 0 gives "special" values like
+  `Infinity` and `NaN` which then propagate throughout business logic rather
+  than erroring
 - There are more "special" values like `-0` that works just like `0` except when
   it doesn't.
 
@@ -24,8 +25,8 @@ represented.
 This doesn't mean the floating point math is perfect, for example 1/3 will still
 be some imprecise rounded 0.3333... value as we don't have infinite precision.
 
-It does mean that `0.2+0.7` is `0.9` rather than `0.8999999999999999` because the
-fractional values use decimal exponents rather than binary exponents.
+It does mean that `0.2+0.7` is `0.9` rather than `0.8999999999999999` because
+the fractional values use decimal exponents rather than binary exponents.
 Specifically it means that anything you can read and write as a decimal number
 has an exact and distinct value onchain.
 
@@ -47,8 +48,8 @@ The following situations are handled correctly in rain floats:
 
 ## Rounding vs. erroring vs. approximating
 
-Simply having an exact representation for every number we can write does not mean
-we have exact representations for all the outputs. E.g. 1/3.
+Simply having an exact representation for every number we can write does not
+mean we have exact representations for all the outputs. E.g. 1/3.
 
 ### Rounding
 
@@ -57,22 +58,26 @@ we have exact representations for all the outputs. E.g. 1/3.
 The library would be non functional if we errored every time that a calculation
 resulted in an imprecise answer, so instead we round as necessary.
 
-Internal calculations all necessarily use EVM logic and so inherit all the
-EVM behaviour such as rounding directions.
+Internal calculations all necessarily use EVM logic and so inherit all the EVM
+behaviour such as rounding directions.
 
- For example [Solidity division docs](https://docs.soliditylang.org/en/latest/types.html#division)
+For example
+[Solidity division docs](https://docs.soliditylang.org/en/latest/types.html#division)
+
 > Since the type of the result of an operation is always the type of one of the
 > operands, division on integers always results in an integer. In Solidity,
-> division rounds towards zero.
-> This means that `int256(-5) / int256(2) == int256(-2)`.
+> division rounds towards zero. This means that
+> `int256(-5) / int256(2) == int256(-2)`.
 
 #### Approach to preserving precision
 
-For basic mul/div/add/sub behaviour the library aligns exponents and uses 512 bit
-logic for intermediate calculations as much as possible to ensure the final
-values are as precise as possible, despite potentially inevitable precision loss.
+For basic mul/div/add/sub behaviour the library aligns exponents and uses 512
+bit logic for intermediate calculations as much as possible to ensure the final
+values are as precise as possible, despite potentially inevitable precision
+loss.
 
-For example, 1/3 yields `0.3333333333333333333333333333333333333333333333333333333333333333333333333333`
+For example, 1/3 yields
+`0.3333333333333333333333333333333333333333333333333333333333333333333333333333`
 because internally first `1` is represented as `1e152` in 512 bits and 3 becomes
 `3e76` so when we divide back into 256 bits we retain the full 76 digits
 representable in signed 256 bit values.
@@ -111,8 +116,8 @@ aware of how/when to use the unpacked form of floats.
 The external interface provides a single 32 byte `Float` type that encodes the
 exponent and signed coefficient together into a single value.
 
-Necessarily there will be cases where packing 2 values into a single value of the
-same size results in loss of information.
+Necessarily there will be cases where packing 2 values into a single value of
+the same size results in loss of information.
 
 The information loss follows the rules explained here, truncation is allowed and
 rounds towards zero, exponents may underflow and exponent overflows will error.
@@ -130,11 +135,12 @@ additional judgement calls re: when precision loss is acceptable.
 There are some convenience methods in the lib for converting to/from fixed
 decimal schemes, as these are by far the dominant convention in defi. Most
 typical will be converting to/from an 18 decimal fixed point value, and/or
-to/from token and oracle amounts that define their own decimal fixed point scale.
+to/from token and oracle amounts that define their own decimal fixed point
+scale.
 
 The summary is that these conversions work like packing does, we preserve all
-information if possible, and then may truncate/error if that is not possible
-due to fundamental constraints on the information we can store.
+information if possible, and then may truncate/error if that is not possible due
+to fundamental constraints on the information we can store.
 
 ### Erroring
 
@@ -157,8 +163,9 @@ this, better to error than start talking infinities when money is being handled.
 
 Other values than the exponent can also overflow in more niche/situational
 scenarios, such as the intermediate calculations moving between 512 and 256 bits
-for multiplication and division. These will also error rather than truncate/round
-because information loss from overflow doesn't converge to a predictable value.
+for multiplication and division. These will also error rather than
+truncate/round because information loss from overflow doesn't converge to a
+predictable value.
 
 #### Uncalculable values (no NaN)
 
@@ -191,8 +198,8 @@ as this often results in complex numbers rather than real numbers.
 
 All parsing/formatting issues that introduce ambiguity or precision loss are
 treated as an error. This is because parsing and formatting is expected to be a
-"compile time" operation, and more importantly, all potentially ambiguous aspects
-are in full control of the user.
+"compile time" operation, and more importantly, all potentially ambiguous
+aspects are in full control of the user.
 
 There should be no situation where there is a disconnect between the value being
 parsed/formatted and the provenance of the value, such that an error cannot

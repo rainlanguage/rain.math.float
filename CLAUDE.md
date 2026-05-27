@@ -126,10 +126,12 @@ they're regenerated and committed. Network RPC URLs are configured in
 - **`test_js/`** — Vitest tests for the WASM bindings.
 - **`dist/`** — Generated output (CJS + ESM with embedded WASM).
 
-### Dependencies (`lib/`)
+### Dependencies (`dependencies/`)
 
-Git submodules: forge-std, rain.string, rain.datacontract, rain.math.fixedpoint,
-rain.deploy, rain.sol.codegen.
+Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
+`libs = ['dependencies']`), not git submodules: forge-std,
+`@openzeppelin-contracts`, rain-solmem, rain-string, rain-datacontract,
+rain-deploy, rain-sol-codegen. Run `forge soldeer install` to fetch them.
 
 ## Key Design Details
 

@@ -13,11 +13,6 @@
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true
   },
-  "include": [
-    "./dist/**/*.d.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "test_js"
-  ]
+  "include": ["./dist/**/*.d.ts"],
+  "exclude": ["node_modules", "test_js"]
 }
