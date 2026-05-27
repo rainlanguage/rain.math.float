@@ -14,7 +14,11 @@ crate-type = ["rlib"]
 alloy = { version = "1.0.9", features = ["sol-types", "json-rpc"] }
 thiserror = "2.0.12"
 serde = "1.0.219"
-wasm-bindgen-utils = "0.0.11"
+# wasm-bindgen must be a direct dependency: the #[wasm_bindgen] macro emits
+# `::wasm_bindgen` paths, and without a direct dep on the crate they fail to
+# resolve and the macro recurses without bound on opaque-class structs (Float).
+wasm-bindgen = "0.2.122"
+wasm-bindgen-utils = "0.1.2"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
 revm = { version = "25.0.0", default-features = false, features = [
