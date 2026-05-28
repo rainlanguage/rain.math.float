@@ -1,6 +1,6 @@
 [package]
 name = "rain-math-float"
-version = "0.1.5"
+version = "0.1.6"
 edition = "2021"
 license = "LicenseRef-DCL-1.0"
 description = "Decimal floating-point arithmetic for Rainlang / DeFi smart contracts. Packs a 224-bit signed coefficient and 32-bit signed exponent into a single bytes32, with exact decimal semantics (no NaN, Infinity, or negative zero — operations error on nonsense). Rust bindings delegate to the Solidity reference via an in-memory EVM so on-chain and off-chain results match exactly."
