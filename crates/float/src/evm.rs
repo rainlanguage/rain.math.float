@@ -70,7 +70,7 @@ where
 {
     let result = LOCAL_EVM.try_with(|evm| {
         let evm = &mut *evm.borrow_mut();
-        let result_and_state = evm.transact_system_call_finalize(address, calldata)?;
+        let result_and_state = evm.system_call(address, calldata)?;
 
         Ok::<_, FloatError>(result_and_state.result)
     })??;
