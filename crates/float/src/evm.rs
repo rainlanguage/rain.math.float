@@ -1,13 +1,10 @@
 use alloy::primitives::{Address, Bytes};
 use alloy::sol_types::SolInterface;
 use revm::context::result::{ExecutionResult, Output, SuccessReason};
-use revm::context::{BlockEnv, CfgEnv, Evm, TxEnv};
+use revm::context::{BlockEnv, CfgEnv, TxEnv};
 use revm::database::InMemoryDB;
-use revm::handler::instructions::EthInstructions;
-use revm::handler::EthPrecompiles;
-use revm::interpreter::interpreter::EthInterpreter;
 use revm::primitives::address;
-use revm::{Context, MainBuilder, MainContext, SystemCallEvm};
+use revm::{Context, MainBuilder, MainContext, MainnetEvm, SystemCallEvm};
 use std::cell::RefCell;
 
 use crate::{DecimalFloat, FloatError};
@@ -24,7 +21,7 @@ pub(crate) const FLOAT_ADDRESS: Address = address!("0000000000000000000000000000
 pub(crate) const TEST_FLOAT_ADDRESS: Address = address!("00000000000000000000000000000000000f10a3");
 
 type EvmContext = Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>;
-type LocalEvm = Evm<EvmContext, (), EthInstructions<EthInterpreter, EvmContext>, EthPrecompiles>;
+type LocalEvm = MainnetEvm<EvmContext>;
 
 thread_local! {
     pub(crate) static LOCAL_EVM: RefCell<LocalEvm> = {

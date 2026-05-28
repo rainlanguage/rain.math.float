@@ -11,7 +11,7 @@ repository = "https://github.com/rainlanguage/rain.math.float"
 
 [workspace.dependencies]
 alloy = { version = "1.0.9", features = ["sol-types", "json-rpc"] }
-revm = { version = "25.0.0", default-features = false, features = [
+revm = { version = "36", default-features = false, features = [
   "portable",
   "std",
   "tracer",
