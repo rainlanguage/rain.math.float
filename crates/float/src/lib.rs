@@ -1379,7 +1379,7 @@ mod tests {
         let err = Float::parse("1e3000000000".to_string()).unwrap_err();
         assert!(matches!(
             err,
-            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
+            FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
         ));
     }
 
@@ -1477,7 +1477,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
+            FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
         ));
     }
 
@@ -1495,7 +1495,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
+            FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
         ));
     }
 
@@ -1750,7 +1750,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            FloatError::DecimalFloat(DecimalFloatErrors::DivisionByZero(_))
+            FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::DivisionByZero(_))
         ));
     }
 
@@ -1763,7 +1763,7 @@ mod tests {
         let err = (near_max_exp * one_e_two).unwrap_err();
         assert!(matches!(
             err,
-            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
+            FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
         ));
     }
 
@@ -1776,7 +1776,7 @@ mod tests {
         let err = (near_max_exp / one_e_neg_hundred).unwrap_err();
         assert!(matches!(
             err,
-            FloatError::DecimalFloat(DecimalFloatErrors::ExponentOverflow(_))
+            FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
         ));
     }
 
@@ -1791,7 +1791,7 @@ mod tests {
         let err = (near_min_exp * one_e_neg_three).unwrap_err();
         assert!(matches!(
             err,
-            FloatError::DecimalFloat(DecimalFloatErrors::ExponentUnderflow(_))
+            FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentUnderflow(_))
         ));
     }
 
@@ -1820,7 +1820,7 @@ mod tests {
         let err = Float::from_fixed_decimal(U256::MAX, 1).unwrap_err();
         assert!(matches!(
             err,
-            FloatError::DecimalFloat(DecimalFloatErrors::LossyConversionToFloat(_))
+            FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::LossyConversionToFloat(_))
         ));
     }
 

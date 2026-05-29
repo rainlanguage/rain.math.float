@@ -21,7 +21,7 @@ pub enum FloatError {
     #[error(transparent)]
     AlloySolTypes(#[from] alloy::sol_types::Error),
     #[error("Decimal Float error: {0:?}")]
-    DecimalFloat(DecimalFloat::DecimalFloatErrors),
+    DecimalFloat(Box<DecimalFloat::DecimalFloatErrors>),
     #[error("Decimal Float error selector: {0:?}")]
     DecimalFloatSelector(Result<DecimalFloatErrorSelector, FixedBytes<4>>),
     #[error(transparent)]
