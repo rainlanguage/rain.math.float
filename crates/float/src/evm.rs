@@ -86,7 +86,7 @@ where
         }
         ExecutionResult::Revert { output, .. } => {
             if let Ok(error) = DecimalFloat::DecimalFloatErrors::abi_decode(output.as_ref()) {
-                return Err(FloatError::DecimalFloat(error));
+                return Err(FloatError::DecimalFloat(Box::new(error)));
             }
 
             Err(FloatError::Revert(output))
