@@ -9,4 +9,5 @@ jobs:
     with:
       crate: rain-math-float
       npm-package: "@rainlanguage/float"
+      soldeer-package: rain-math-float
     secrets: inherit
