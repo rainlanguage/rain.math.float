@@ -6,6 +6,7 @@ import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {ZeroNegativePower, PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
+import {WithTargetExponentOverflow} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {console2} from "forge-std-1.16.1/src/Test.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
@@ -164,6 +165,35 @@ contract LibDecimalFloatPowTest is LogTest {
 
     function powExternal(Float a, Float b) external returns (Float) {
         return a.pow(b, logTables());
+    }
+
+    /// Pins the concrete counterexample surfaced by `testRoundTripFuzzPow`
+    /// where the first leg `a.pow(b)` succeeds but the round-trip leg
+    /// `c.pow(b.inv())` reverts with `WithTargetExponentOverflow`. A tiny
+    /// coefficient combined with the large inverted exponent produces an
+    /// unrepresentable rescale target during the round-trip. The fuzz test
+    /// absorbs this in a try/catch as "can't round-trip this input"; this named
+    /// test pins exactly which leg reverts and with which error, so a
+    /// regression that shifts the revert boundary surfaces here instead of
+    /// being silently swallowed by the fuzz catch.
+    function testRoundTripSecondLegRevert() external {
+        Float a = Float.wrap(bytes32(uint256(1)));
+        Float b = Float.wrap(bytes32(0xea5a58dfdcc79c60ac38b8284569e4519fda5eaaffec2a3d22027a4af1969e13));
+
+        // First leg succeeds.
+        Float c = this.powExternal(a, b);
+
+        // Round-trip leg reverts with the exact rescale-overflow error.
+        Float inv = b.inv();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                WithTargetExponentOverflow.selector,
+                int256(2696051936649033486196409040598252262955326698850935392994226984449),
+                int256(363177628),
+                int256(0)
+            )
+        );
+        this.powExternal(c, inv);
     }
 
     function testRoundTripFuzzPow(Float a, Float b) external {
