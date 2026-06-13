@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ZeroNegativePower, PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
+import {ZeroNegativePower, PowNegativeBase, ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {console2} from "forge-std-1.16.1/src/Test.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
@@ -166,6 +166,34 @@ contract LibDecimalFloatPowTest is LogTest {
         return a.pow(b, logTables());
     }
 
+    /// `pow` raises to an integer exponent via exponentiation by squaring,
+    /// which squares the base in place. The base exponent therefore grows by
+    /// roughly a factor of two per bit of the integer exponent, so a large
+    /// enough integer exponent overflows `ExponentOverflow` before the result
+    /// can be produced. This is the squaring-loop limitation that previously
+    /// forced `testRoundTripFuzzPow` to `vm.assume(exponentInv <= 8e8)`: the
+    /// inverse leg of a round trip can land an integer exponent above that
+    /// ceiling. Pin the boundary so the fuzz test can instead just catch the
+    /// revert and keep exercising the full input range.
+    function testPowIntegerExponentSquaringOverflow() external {
+        // 2 ^ 1e9 is right at the edge of what the squaring loop can represent
+        // and does not overflow.
+        Float a = LibDecimalFloat.packLossless(2, 0);
+        this.powExternal(a, LibDecimalFloat.packLossless(1, 9));
+
+        // 2 ^ 1e10 pushes the squared base exponent past EXPONENT_MAX and
+        // reverts with ExponentOverflow. A round trip catches this rather than
+        // treating it as a math regression.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector,
+                43632686345562428988582910876713633851545835514376216610528325287869870302082,
+                3010299880
+            )
+        );
+        this.powExternal(a, LibDecimalFloat.packLossless(1, 10));
+    }
+
     function testRoundTripFuzzPow(Float a, Float b) external {
         try this.powExternal(a, b) returns (Float c) {
             // If C is 1 then either a == 1 or b == 0 (or b rounds to 0).
@@ -175,10 +203,6 @@ contract LibDecimalFloatPowTest is LogTest {
                     assertTrue(c.eq(LibDecimalFloat.FLOAT_ONE), "b is 0 so c should be 1");
                 } else if (!(c.isZero() && b.lt(LibDecimalFloat.FLOAT_ZERO))) {
                     Float inv = b.inv();
-                    {
-                        (, int256 exponentInv) = inv.unpack();
-                        vm.assume(exponentInv <= 8e8);
-                    }
                     // The round-trip pow can still error on intermediate
                     // overflow even when both legs of the original input
                     // were well-formed (e.g. a tiny coefficient combined
