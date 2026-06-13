@@ -125,6 +125,78 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
         assertEq(scale, 1);
     }
 
+    /// Exponent exactly -4: the coefficient is already the first 4 mantissa
+    /// digits, so it is returned verbatim with no interpolation and unit scale,
+    /// for any coefficient.
+    function testMantissa4FuzzExponentMinus4(int256 signedCoefficient) external pure {
+        (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(signedCoefficient, -4);
+        assertEq(idx, signedCoefficient);
+        assertFalse(interpolate);
+        assertEq(scale, 1);
+    }
+
+    /// Exponent in [-3, -1]: the coefficient is scaled UP to 4 digits by
+    /// multiplying by 10^(4 + exponent). Never interpolates, unit scale.
+    /// The coefficient is bounded so the scaled value stays in int256 range,
+    /// matching the realistic fractional-part domain (its magnitude is always
+    /// strictly less than 10^(-exponent)).
+    function testMantissa4FuzzExponentMinus3ToMinus1(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, -3, -1);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 factor = int256(10 ** uint256(4 + exponent));
+        // Keep signedCoefficient * factor within int256 to avoid overflow that
+        // the production code tolerates via `unchecked`.
+        signedCoefficient = bound(signedCoefficient, type(int256).min / factor, type(int256).max / factor);
+
+        (int256 idx, bool interpolate, int256 scale) =
+            LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
+        assertEq(idx, signedCoefficient * factor);
+        assertFalse(interpolate);
+        assertEq(scale, 1);
+    }
+
+    /// Exponent >= 0: there is no fractional mantissa to look up, so the index
+    /// is always 0 with no interpolation and unit scale, for any coefficient.
+    function testMantissa4FuzzExponentNonNegative(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, 0, type(int256).max);
+        (int256 idx, bool interpolate, int256 scale) =
+            LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
+        assertEq(idx, 0);
+        assertFalse(interpolate);
+        assertEq(scale, 1);
+    }
+
+    /// Exponent in [-80, -5]: the coefficient is scaled DOWN to its first 4
+    /// digits by truncating division against scale = 10^(-(exponent + 4)).
+    /// Interpolation is required exactly when that division was lossy, i.e.
+    /// rescaled * scale != signedCoefficient.
+    function testMantissa4FuzzExponentMinus80ToMinus5(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, -80, -5);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 scale = int256(10 ** uint256(-(exponent + 4)));
+        int256 expectedRescaled = signedCoefficient / scale;
+        bool expectedInterpolate = expectedRescaled * scale != signedCoefficient;
+
+        (int256 idx, bool interpolate, int256 resultScale) =
+            LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
+        assertEq(idx, expectedRescaled);
+        assertEq(interpolate, expectedInterpolate);
+        assertEq(resultScale, scale);
+    }
+
+    /// Exponent < -80: the value is below the resolution of the 4-digit
+    /// mantissa, so the index collapses to 0 with unit scale. Interpolation is
+    /// flagged for any non-zero coefficient (there is some lost magnitude) and
+    /// not for zero.
+    function testMantissa4FuzzExponentBelowMinus80(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, type(int256).min, -81);
+        (int256 idx, bool interpolate, int256 scale) =
+            LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
+        assertEq(idx, 0);
+        assertEq(interpolate, signedCoefficient != 0);
+        assertEq(scale, 1);
+    }
+
     // -- unitLinearInterpolation --
 
     function testUnitLinearInterpolationExact() external pure {
