@@ -224,7 +224,8 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// Each row below places `9 * 10^j / 3 * 10^j` (an exact `3`) with the
     /// divisor pinned to `type(int256).min` so that `3 * 10^j` lands strictly
     /// inside one sub-range of the binary search. The quotient mantissa is
-    /// therefore always `3e76` and the round trip must hold.
+    /// therefore always the maximized `3` (i.e. `3e75`) and the round trip must
+    /// hold regardless of which sub-range was selected.
     function testDivAdjustExponentLeaves() external pure {
         int256 min = type(int256).min;
         // [div by, lands in sub-range)
