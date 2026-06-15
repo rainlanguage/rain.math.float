@@ -85,10 +85,42 @@ contract LibDecimalFloatPackTest is Test {
     }
 
     /// Lossy zero when exponent is negative below type(int32).min except for zero.
-    function testPackNegativeExponentLossyZero(int256 signedCoefficient, int256 exponent) external view {
-        exponent = bound(exponent, type(int256).min, int256(type(int32).min) - 77);
-        vm.assume(signedCoefficient != 0);
-        (Float float, bool lossless) = this.packLossyExternal(signedCoefficient, exponent);
+    function testPackNegativeExponentLossyZero(int256 signedCoefficient, int256 exponent) external pure {
+        signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
+        exponent = bound(exponent, int256(type(int32).min) - 77, int256(type(int32).min) - 77);
+        (Float float, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+        assertFalse(lossless, "lossless");
+        assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "float");
+    }
+
+    /// A coefficient that does not fit in int224 is normalised by dividing by
+    /// powers of ten, which raises the exponent. For exponents in the narrow
+    /// window just below int32.min this rescaling can lift the final exponent
+    /// back to exactly int32.min, so the pack is lossy (the coefficient was
+    /// truncated) but the float is non-zero rather than the underflow zero.
+    /// `int224.max + 1` raises the exponent by exactly one, so an input
+    /// exponent of int32.min - 1 lands the final exponent at int32.min.
+    function testPackNegativeExponentLossyNonZeroWindow() external pure {
+        int256 signedCoefficient = int256(type(int224).max) + 1;
+        int256 exponent = int256(type(int32).min) - 1;
+        (Float float, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+        assertFalse(lossless, "lossless");
+        assertTrue(Float.unwrap(float) != Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "non-zero");
+
+        // The rescaled coefficient is truncated by one decimal digit and the
+        // exponent is lifted by one to exactly the int32 floor.
+        (int256 unpackedCoefficient, int256 unpackedExponent) = LibDecimalFloat.unpack(float);
+        assertEq(unpackedExponent, int256(type(int32).min), "exponent");
+        assertEq(unpackedCoefficient, signedCoefficient / 10, "coefficient");
+    }
+
+    /// One step further below int32.min, the same coefficient's rescaling is no
+    /// longer enough to clear the int32 floor, so the pack underflows to the
+    /// lossy zero float.
+    function testPackNegativeExponentLossyZeroWindow() external pure {
+        int256 signedCoefficient = int256(type(int224).max) + 1;
+        int256 exponent = int256(type(int32).min) - 2;
+        (Float float, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         assertFalse(lossless, "lossless");
         assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "float");
     }
