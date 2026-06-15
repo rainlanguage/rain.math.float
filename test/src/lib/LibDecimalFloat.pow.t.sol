@@ -5,7 +5,14 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ZeroNegativePower, PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
+import {
+    ZeroNegativePower,
+    PowNegativeBase,
+    ExponentOverflow,
+    ExponentUnderflow,
+    MaximizeOverflow,
+    MulDivOverflow
+} from "src/error/ErrDecimalFloat.sol";
 import {WithTargetExponentOverflow} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {console2} from "forge-std-1.16.1/src/Test.sol";
 
@@ -167,6 +174,67 @@ contract LibDecimalFloatPowTest is LogTest {
         return a.pow(b, logTables());
     }
 
+    /// `pow` raises to an integer exponent via exponentiation by squaring,
+    /// which squares the base in place. The base exponent therefore grows by
+    /// roughly a factor of two per bit of the integer exponent, so a large
+    /// enough integer exponent overflows `ExponentOverflow` before the result
+    /// can be produced. This is the squaring-loop limitation that previously
+    /// forced `testRoundTripFuzzPow` to `vm.assume(exponentInv <= 8e8)`: the
+    /// inverse leg of a round trip can land an integer exponent above that
+    /// ceiling. Pin the boundary so the fuzz test can instead just catch the
+    /// revert and keep exercising the full input range.
+    function testPowIntegerExponentSquaringOverflow() external {
+        // 2 ^ 1e9 is right at the edge of what the squaring loop can represent
+        // and does not overflow.
+        Float a = LibDecimalFloat.packLossless(2, 0);
+        this.powExternal(a, LibDecimalFloat.packLossless(1, 9));
+
+        // 2 ^ 1e10 pushes the squared base exponent past EXPONENT_MAX and
+        // reverts with ExponentOverflow. A round trip catches this rather than
+        // treating it as a math regression.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector,
+                43632686345562428988582910876713633851545835514376216610528325287869870302082,
+                3010299880
+            )
+        );
+        this.powExternal(a, LibDecimalFloat.packLossless(1, 10));
+    }
+
+    /// The complete set of custom errors `pow` is designed to throw, derived by
+    /// reading the implementation. Each leg of the round trip is the same `pow`
+    /// call, so both legs share this set.
+    ///   - `ZeroNegativePower`: 0 raised to a negative power.
+    ///   - `PowNegativeBase`: negative base (unsupported).
+    ///   - `ExponentOverflow`: the result (or a `log10`/`pow10`/squaring
+    ///     intermediate) exceeds `int32` / `add` exponent range. This is the
+    ///     squaring-loop overflow pinned by `testPowIntegerExponentSquaringOverflow`.
+    ///   - `ExponentUnderflow`: an intermediate rescale produces a magnitude
+    ///     smaller than any representable Float (`packArithmeticResult`).
+    ///   - `WithTargetExponentOverflow`: `pow10` cannot rescale the
+    ///     characteristic to exponent 0 without overflowing the coefficient.
+    ///   - `MaximizeOverflow`: `maximizeFull` (inside `log10`/`div`) cannot
+    ///     maximize an intermediate coefficient.
+    ///   - `MulDivOverflow`: the 512-bit `mulDiv` inside `mul`/`div` overflows.
+    /// `DivisionByZero`, `Log10Zero` and `Log10Negative` are intentionally
+    /// excluded: `pow` only ever inverts/logs a strictly positive base, so they
+    /// are unreachable. A low-level `Panic` (e.g. `0x11` arithmetic overflow) is
+    /// also excluded by construction, so an unexpected revert is no longer
+    /// silently swallowed.
+    function assertExpectedPowError(bytes memory reason) internal {
+        bytes4 selector = bytes4(reason);
+        bool expected = selector == ZeroNegativePower.selector || selector == PowNegativeBase.selector
+            || selector == ExponentOverflow.selector || selector == ExponentUnderflow.selector
+            || selector == WithTargetExponentOverflow.selector || selector == MaximizeOverflow.selector
+            || selector == MulDivOverflow.selector;
+        if (!expected) {
+            console2.log("unexpected pow revert selector:");
+            console2.logBytes4(selector);
+            assertTrue(false, "unexpected pow revert");
+        }
+    }
+
     /// Pins the concrete counterexample surfaced by `testRoundTripFuzzPow`
     /// where the first leg `a.pow(b)` succeeds but the round-trip leg
     /// `c.pow(b.inv())` reverts with `WithTargetExponentOverflow`. A tiny
@@ -205,10 +273,6 @@ contract LibDecimalFloatPowTest is LogTest {
                     assertTrue(c.eq(LibDecimalFloat.FLOAT_ONE), "b is 0 so c should be 1");
                 } else if (!(c.isZero() && b.lt(LibDecimalFloat.FLOAT_ZERO))) {
                     Float inv = b.inv();
-                    {
-                        (, int256 exponentInv) = inv.unpack();
-                        vm.assume(exponentInv <= 8e8);
-                    }
                     // The round-trip pow can still error on intermediate
                     // overflow even when both legs of the original input
                     // were well-formed (e.g. a tiny coefficient combined
@@ -221,13 +285,21 @@ contract LibDecimalFloatPowTest is LogTest {
                             Float diff = a.div(roundTrip).sub(LibDecimalFloat.FLOAT_ONE).abs();
                             assertTrue(!diff.gt(diffLimit()), "diff");
                         }
-                    } catch (bytes memory) {
-                        // Can't round trip something that errors.
+                    } catch (bytes memory reason) {
+                        // Can't round trip something that errors, but only if it
+                        // errors with an error `pow` is designed to throw. An
+                        // unexpected revert (e.g. a low-level `Panic`) fails the
+                        // test rather than being silently swallowed.
+                        assertExpectedPowError(reason);
                     }
                 }
             }
-        } catch (bytes memory) {
-            // Can't round trip something that errors.
+        } catch (bytes memory reason) {
+            // Can't round trip something that errors, but only if it errors with
+            // an error `pow` is designed to throw. An unexpected revert (e.g. a
+            // low-level `Panic`) fails the test rather than being silently
+            // swallowed.
+            assertExpectedPowError(reason);
         }
     }
 }
