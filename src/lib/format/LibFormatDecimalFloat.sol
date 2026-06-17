@@ -119,6 +119,7 @@ library LibFormatDecimalFloat {
     /// `10^exponent` as an integer, so the output is valid for any
     /// `|exponent| <= MAX_NON_SCIENTIFIC_EXPONENT` — including exponents below
     /// `-76` that arise from near-cancellation add/sub.
+    //slither-disable-next-line cyclomatic-complexity
     function _toNonScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
         if (exponent > MAX_NON_SCIENTIFIC_EXPONENT || exponent < -MAX_NON_SCIENTIFIC_EXPONENT) {
             revert UnformatableExponent(exponent);
