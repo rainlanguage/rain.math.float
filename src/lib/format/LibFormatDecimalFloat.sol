@@ -127,6 +127,27 @@ library LibFormatDecimalFloat {
             absCoef = uint256(signedCoefficient);
         }
 
+        // When exponent > 0 the formatted integer is absCoef × 10^exponent,
+        // which must fit in int224 for the parser to reconstruct the value
+        // losslessly. For exponent ≥ 68, 10^68 > int224.max (≈1.34e67) so
+        // even coefficient 1 overflows. Otherwise divide int224.max by
+        // 10^exponent and check that absCoef doesn't exceed the quotient.
+        if (exponent > 0) {
+            // exponent > 0, so the cast to uint256 is safe.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 uExp = uint256(exponent);
+            if (uExp >= 68) {
+                revert UnformatableExponent(exponent);
+            }
+            uint256 limit = uint256(int256(type(int224).max));
+            for (uint256 i = 0; i < uExp; i++) {
+                limit /= 10;
+            }
+            if (absCoef > limit) {
+                revert UnformatableExponent(exponent);
+            }
+        }
+
         bytes memory digits = bytes(Strings.toString(absCoef));
         uint256 k = digits.length;
 
