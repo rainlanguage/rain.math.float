@@ -97,6 +97,9 @@ library LibFormatDecimalFloat {
         // to int256 cannot truncate.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 displayExponent = exponent + int256(scaleExponent);
+        if (displayExponent > type(int32).max || displayExponent < type(int32).min) {
+            revert UnformatableExponent(exponent);
+        }
         string memory exponentString =
             displayExponent == 0 ? "" : string.concat("e", Strings.toStringSigned(displayExponent));
         string memory prefix = isNeg ? "-" : "";

@@ -257,16 +257,34 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         return LibFormatDecimalFloat.toDecimalString(float, scientific);
     }
 
+    /// Scientific formatter reverts when `displayExponent` would exceed int32 range.
+    /// Reproduction of issue #185: (10, int32.max) → after maximizeFull coefficient
+    /// becomes 1e76 (exponent drops by 75) → displayExponent = (int32.max−75) + 76
+    /// = int32.max + 1 > int32.max.
+    function testFormatScientificDisplayExponentOverflowReverts() external {
+        int256 postMaximizeExponent = int256(type(int32).max) - 75;
+        Float float = LibDecimalFloat.packLossless(10, int256(type(int32).max));
+        vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, postMaximizeExponent));
+        this.formatExternal(float, true);
+    }
+
+    /// Boundary: (1, int32.max) does NOT overflow — coefficient→1e76 drops exponent
+    /// by 76, so displayExponent = int32.max exactly, which is in range.
+    function testFormatScientificExponentAtMaxBoundarySucceeds() external pure {
+        Float float = LibDecimalFloat.packLossless(1, int256(type(int32).max));
+        string memory s = LibFormatDecimalFloat.toDecimalString(float, true);
+        assertEq(s, string.concat("1e", Strings.toStringSigned(int256(type(int32).max))));
+    }
+
     /// Fuzz: every Float round-trips through scientific format → parse → eq
     /// across the full int224 coefficient domain, with exponent bounded to
     /// leave headroom for the scientific display exponent.
     ///
     /// Scientific format renders `coef × 10^exp` as `d.dddd × 10^displayExp`
     /// where `displayExp = exp + 75 or 76` (after `maximizeFull` + scale).
-    /// For exponents within ~76 of `int32.max`, the resulting display exponent
-    /// exceeds `int32.max`, and the parser rejects it on re-pack. The
-    /// headroom below avoids that asymmetric range; see separate issue for
-    /// the format/parse exponent-range mismatch.
+    /// For exponents within ~76 of `int32.max`, the formatter now reverts with
+    /// `UnformatableExponent`; the headroom below keeps the fuzz in the
+    /// round-trip-valid range only.
     function testFormatParseRoundTripScientificFullDomain(int224 coefficient, int32 exponent) external pure {
         int256 headroom = 80;
         // `bound` to a sub-range of int32 that avoids display-exponent overflow.
