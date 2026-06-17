@@ -40,6 +40,7 @@ library LibFormatDecimalFloat {
     /// division to place the decimal point; the divisor is always `1e75` or
     /// `1e76` which both fit in int256.
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
+        int256 originalExponent = exponent;
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
 
         uint256 scale;
@@ -97,6 +98,16 @@ library LibFormatDecimalFloat {
         // to int256 cannot truncate.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 displayExponent = exponent + int256(scaleExponent);
+        // The parser reconstructs this float by calling packLossless with the
+        // display exponent cast to int32. Guard here so the formatter reverts
+        // cleanly rather than silently producing a string whose exponent cannot
+        // be represented in int32. Both sides are checked: maximizeFull reduces
+        // the stored exponent by the digit-count delta (up to ~10 for an
+        // int224 coefficient), so displayExponent can be up to ~76 above the
+        // original exponent.
+        if (displayExponent > type(int32).max || displayExponent < type(int32).min) {
+            revert UnformatableExponent(originalExponent);
+        }
         string memory exponentString =
             displayExponent == 0 ? "" : string.concat("e", Strings.toStringSigned(displayExponent));
         string memory prefix = isNeg ? "-" : "";

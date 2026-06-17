@@ -259,20 +259,46 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
 
     /// Fuzz: every Float round-trips through scientific format → parse → eq
     /// across the full int224 coefficient domain, with exponent bounded to
-    /// leave headroom for the scientific display exponent.
+    /// avoid the display-exponent overflow guard added by #185.
     ///
     /// Scientific format renders `coef × 10^exp` as `d.dddd × 10^displayExp`
     /// where `displayExp = exp + 75 or 76` (after `maximizeFull` + scale).
-    /// For exponents within ~76 of `int32.max`, the resulting display exponent
-    /// exceeds `int32.max`, and the parser rejects it on re-pack. The
-    /// headroom below avoids that asymmetric range; see separate issue for
-    /// the format/parse exponent-range mismatch.
+    /// The formatter now reverts `UnformatableExponent` when `displayExp`
+    /// falls outside `[int32.min, int32.max]`. The headroom below keeps the
+    /// fuzz in the round-trip-safe zone.
     function testFormatParseRoundTripScientificFullDomain(int224 coefficient, int32 exponent) external pure {
         int256 headroom = 80;
-        // `bound` to a sub-range of int32 that avoids display-exponent overflow.
+        // `bound` to a sub-range of int32 that avoids triggering the int32
+        // display-exponent overflow guard.
         // forge-lint: disable-next-line(unsafe-typecast)
         exponent = int32(bound(exponent, int256(type(int32).min) + headroom, int256(type(int32).max) - headroom));
         _checkRoundTrip(coefficient, exponent, true);
+    }
+
+    /// Scientific format reverts when the display exponent would overflow
+    /// int32 (positive side). With coefficient = int224.max (~68 digits),
+    /// maximizeFull extends it to ~78 digits, reducing the stored exponent
+    /// by ~10. displayExponent = storedExp + scaleExponent = (exp - 10) + 76
+    /// = exp + 66. For exp = int32.max - 50, displayExp = int32.max + 16,
+    /// which overflows int32.
+    function testFormatScientificRevertsNearPositiveInt32Limit() external {
+        int256 exp = int256(type(int32).max) - 50;
+        Float float = LibDecimalFloat.packLossless(int256(type(int224).max), exp);
+        vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, exp));
+        this.formatExternal(float, true);
+    }
+
+    /// Scientific format reverts when the display exponent would overflow
+    /// int32 (negative side). With coefficient = 1 (1 digit), maximizeFull
+    /// extends to ~77 digits, reducing stored exponent by ~76. displayExponent
+    /// = (exp - 76) + 76 = exp. For exp = int32.min, displayExp = int32.min,
+    /// which fits in int32 — so this boundary does NOT trigger for k=1. Use a
+    /// large negative coefficient so k > 1 and verify we remain safe.
+    function testFormatScientificNegativeBoundaryDoesNotRevert() external pure {
+        // (int224.max, int32.min + 80): headroom=80 ensures we stay in-range.
+        Float float = LibDecimalFloat.packLossless(int256(type(int224).max), int256(type(int32).min) + 80);
+        string memory s = LibFormatDecimalFloat.toDecimalString(float, true);
+        assertGt(bytes(s).length, 0);
     }
 
     /// Fuzz: every Float with non-positive exponent round-trips through
