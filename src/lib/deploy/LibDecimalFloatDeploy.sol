@@ -25,11 +25,11 @@ library LibDecimalFloatDeploy {
     /// @dev Address of the DecimalFloat contract deployed via Zoltu's
     /// deterministic deployment proxy.
     /// This address is the same across all EVM-compatible networks.
-    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0xBee0eEFaffD046c9602109eB30A858Be301CC926);
+    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0x55423262442190568Ad89669CE87bD74Af502A7A);
 
     /// @dev The expected codehash of the DecimalFloat contract deployed via
     /// Zoltu's deterministic deployment proxy.
-    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0x7a93d0311f7782b44157ba40e94ec936085ebe001c7893bdd74911c8351d3def;
+    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0xa6b0706f04f5e2a83834d7b1557536be33d431814a634e044e90dbe9b45cf45e;
 
     /// Combines all log and anti-log tables into a single bytes array for
     /// deployment. These are using packed encoding to minimize size and remove
