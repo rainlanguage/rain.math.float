@@ -18,7 +18,8 @@
 lib="src/lib/deploy/LibDecimalFloatDeploy.sol"
 
 versions=$(
-  curl -fsS "https://api.soldeer.xyz/api/v1/revision?project_name=rain-math-float" 2>/dev/null \
+  curl -fsS --connect-timeout 5 --max-time 20 --retry 2 --retry-delay 1 \
+    "https://api.soldeer.xyz/api/v1/revision?project_name=rain-math-float" 2>/dev/null \
     | grep -oE '"version":"[0-9][0-9.]*"' | cut -d'"' -f4 | sort -u
 )
 
