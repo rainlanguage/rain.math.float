@@ -40,6 +40,7 @@ library LibFormatDecimalFloat {
     /// division to place the decimal point; the divisor is always `1e75` or
     /// `1e76` which both fit in int256.
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
+        int256 originalExponent = exponent;
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
 
         uint256 scale;
@@ -97,6 +98,16 @@ library LibFormatDecimalFloat {
         // to int256 cannot truncate.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 displayExponent = exponent + int256(scaleExponent);
+        // The parser reconstructs this float by calling packLossless with the
+        // display exponent cast to int32. Guard here so the formatter reverts
+        // cleanly rather than silently producing a string whose exponent cannot
+        // be represented in int32. Both sides are checked: maximizeFull reduces
+        // the stored exponent by the digit-count delta (up to ~10 for an
+        // int224 coefficient), so displayExponent can be up to ~76 above the
+        // original exponent.
+        if (displayExponent > type(int32).max || displayExponent < type(int32).min) {
+            revert UnformatableExponent(originalExponent);
+        }
         string memory exponentString =
             displayExponent == 0 ? "" : string.concat("e", Strings.toStringSigned(displayExponent));
         string memory prefix = isNeg ? "-" : "";
@@ -108,6 +119,7 @@ library LibFormatDecimalFloat {
     /// `10^exponent` as an integer, so the output is valid for any
     /// `|exponent| <= MAX_NON_SCIENTIFIC_EXPONENT` — including exponents below
     /// `-76` that arise from near-cancellation add/sub.
+    //slither-disable-next-line cyclomatic-complexity
     function _toNonScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
         if (exponent > MAX_NON_SCIENTIFIC_EXPONENT || exponent < -MAX_NON_SCIENTIFIC_EXPONENT) {
             revert UnformatableExponent(exponent);
@@ -125,6 +137,27 @@ library LibFormatDecimalFloat {
             // uint256.
             // forge-lint: disable-next-line(unsafe-typecast)
             absCoef = uint256(signedCoefficient);
+        }
+
+        // When exponent > 0 the formatted integer is absCoef × 10^exponent,
+        // which must fit in int224 for the parser to reconstruct the value
+        // losslessly. For exponent ≥ 68, 10^68 > int224.max (≈1.34e67) so
+        // even coefficient 1 overflows. Otherwise divide int224.max by
+        // 10^exponent and check that absCoef doesn't exceed the quotient.
+        if (exponent > 0) {
+            // exponent > 0, so the cast to uint256 is safe.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 uExp = uint256(exponent);
+            if (uExp >= 68) {
+                revert UnformatableExponent(exponent);
+            }
+            uint256 limit = uint256(int256(type(int224).max));
+            for (uint256 i = 0; i < uExp; i++) {
+                limit /= 10;
+            }
+            if (absCoef > limit) {
+                revert UnformatableExponent(exponent);
+            }
         }
 
         bytes memory digits = bytes(Strings.toString(absCoef));
