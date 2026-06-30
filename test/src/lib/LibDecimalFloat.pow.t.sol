@@ -202,6 +202,21 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(a, LibDecimalFloat.packLossless(1, 10));
     }
 
+    /// Negative-exponent `pow` recurses to `pow(a.inv(), -b)`, whose squaring
+    /// loop doubles a large negative exponent until it wraps int256. Previously
+    /// this surfaced as a raw Panic(0x11); now it surfaces as ExponentOverflow.
+    function testPowNegativeExponentSquaringNoRawPanic() external {
+        // pow(1e1700000000, -8e69): a.inv() has a large negative exponent that
+        // the squaring loop doubles ~230 times until it wraps int256.
+        Float a = LibDecimalFloat.packLossless(1, 1700000000);
+        Float b = LibDecimalFloat.packLossless(-8, 69);
+        try this.powExternal(a, b) {
+            assertTrue(false, "expected revert");
+        } catch (bytes memory reason) {
+            assertExpectedPowError(reason);
+        }
+    }
+
     /// The complete set of custom errors `pow` is designed to throw, derived by
     /// reading the implementation. Each leg of the round trip is the same `pow`
     /// call, so both legs share this set.

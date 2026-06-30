@@ -174,7 +174,19 @@ library LibDecimalFloatImplementation {
             signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
             exponent = MAXIMIZED_ZERO_EXPONENT;
         } else {
-            exponent = exponentA + exponentB;
+            unchecked {
+                exponent = exponentA + exponentB;
+            }
+            // Detect signed int256 wrap (same-sign inputs, opposite-sign result)
+            // or exponent above EXPONENT_MAX. Surfaces as ExponentOverflow rather
+            // than Panic(0x11), and bounding against EXPONENT_MAX prevents the
+            // adjustExponent += below from overflowing.
+            if (
+                (exponentB > 0 && exponent < exponentA) || (exponentB < 0 && exponent > exponentA)
+                    || exponent > EXPONENT_MAX
+            ) {
+                revert ExponentOverflow(signedCoefficientA, exponentA);
+            }
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
