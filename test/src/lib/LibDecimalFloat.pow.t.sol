@@ -202,6 +202,24 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(a, LibDecimalFloat.packLossless(1, 10));
     }
 
+    /// Pins the negative-exponent squaring-loop panic repro from issue #239.
+    /// pow(1e1700000000, -8e69) previously reverted with raw Panic(0x11) because
+    /// repeated self-squaring of the inverted base drove exponentBase below
+    /// EXPONENT_MIN, causing a checked int256 addition to overflow.
+    /// After the fix the checked add is guarded and surfaces ExponentOverflow.
+    function testPowNegativeExponentSquaringPanic() external {
+        Float a = LibDecimalFloat.packLossless(1, 1700000000);
+        Float b = LibDecimalFloat.packLossless(-8, 69);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector,
+                int256(10000000000000000000000000000000000000000000000000000000000000000000000000000),
+                int256(-45831909334156087650933925647933372145183145518318973217876137423667200000076)
+            )
+        );
+        this.powExternal(a, b);
+    }
+
     /// The complete set of custom errors `pow` is designed to throw, derived by
     /// reading the implementation. Each leg of the round trip is the same `pow`
     /// call, so both legs share this set.

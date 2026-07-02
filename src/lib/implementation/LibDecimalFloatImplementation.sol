@@ -174,6 +174,13 @@ library LibDecimalFloatImplementation {
             signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
             exponent = MAXIMIZED_ZERO_EXPONENT;
         } else {
+            // Opposite-sign exponents can never overflow; only same-sign pairs can.
+            if (exponentA > 0 && exponentB > 0 && exponentA > type(int256).max - exponentB) {
+                revert ExponentOverflow(signedCoefficientA, exponentA);
+            }
+            if (exponentA < 0 && exponentB < 0 && exponentA < type(int256).min - exponentB) {
+                revert ExponentOverflow(signedCoefficientA, exponentA);
+            }
             exponent = exponentA + exponentB;
 
             // mulDiv only works with unsigned integers, so get the absolute
