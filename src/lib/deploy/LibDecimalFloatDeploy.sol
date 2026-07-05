@@ -25,11 +25,11 @@ library LibDecimalFloatDeploy {
     /// @dev Address of the DecimalFloat contract deployed via Zoltu's
     /// deterministic deployment proxy.
     /// This address is the same across all EVM-compatible networks.
-    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0x799632d282178e770C7465cad54aDA1021A913D6);
+    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0x9b0eF7FbDF04b3A58989860Dea0534C978d64464);
 
     /// @dev The expected codehash of the DecimalFloat contract deployed via
     /// Zoltu's deterministic deployment proxy.
-    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0xdc468883c345d41c0abd98ef2fd933c370bd1682522d37e6f6b729793301f55e;
+    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0x369ac78d686dfdf1d41771dc7bf321dcd339b0a454dc9cf6c37eff579c3a0c3a;
 
     /// @dev Deploy constants pinned to each version published to the soldeer
     /// registry. These are frozen literals — not aliases of the "current"
