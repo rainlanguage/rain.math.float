@@ -10,7 +10,11 @@ homepage = "https://github.com/rainlanguage/rain.math.float"
 repository = "https://github.com/rainlanguage/rain.math.float"
 
 [workspace.dependencies]
-alloy = { version = "1.0.9", features = ["sol-types", "json-rpc"] }
+alloy = { version = "1.0.9", default-features = false, features = [
+  "sol-types",
+  "json",
+  "json-abi",
+] }
 revm = { version = "36", default-features = false, features = [
   "portable",
   "std",
