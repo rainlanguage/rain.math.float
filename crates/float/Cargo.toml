@@ -25,7 +25,7 @@ wasm-bindgen.workspace = true
 wasm-bindgen-utils = "0.1.2"
 
 [target.'cfg(not(target_family = "wasm"))'.dependencies]
-revm = { version = "36", default-features = false, features = [
+revm = { version = "41", default-features = false, features = [
   "c-kzg",
   "portable",
   "std",
@@ -33,10 +33,10 @@ revm = { version = "36", default-features = false, features = [
 ] }
 
 [target.'cfg(target_family = "wasm")'.dependencies]
-# revm 36 dropped the pure-Rust kzg-rs backend; the C-based c-kzg can't target
+# REVM dropped the pure-Rust kzg-rs backend; the C-based c-kzg can't target
 # wasm. DecimalFloat doesn't use the KZG point-evaluation precompile, so no KZG
 # backend is enabled for wasm.
-revm = { version = "36", default-features = false, features = [
+revm = { version = "41", default-features = false, features = [
   "portable",
   "std",
   "tracer",

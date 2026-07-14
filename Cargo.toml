@@ -16,7 +16,7 @@ alloy = { version = "1.0.9", default-features = false, features = [
   "json-abi",
 ] }
 alloy-primitives = "1.0.9"
-revm = { version = "36", default-features = false, features = [
+revm = { version = "41", default-features = false, features = [
   "portable",
   "std",
   "tracer",
