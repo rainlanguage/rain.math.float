@@ -72,7 +72,7 @@ export default __wbg_init;`,
   `import { Buffer } from 'buffer';
 import wasmB64 from './float_wbg.json';
 const bytes = Buffer.from(wasmB64.wasm, 'base64');
-initSync(bytes);`,
+initSync({ module: bytes });`,
 );
 esm = "/* this file is auto-generated, do not modify */\n" + esm;
 fs.writeFileSync(`./dist/esm/index.js`, esm);

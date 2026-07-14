@@ -41,6 +41,7 @@
         devShells.default = pkgs.mkShell {
           inherit (rainix.devShells.${system}.default) shellHook;
           packages = [
+            pkgs.wasm-bindgen-cli_0_2_100
             packages.test-wasm-build
             packages.test-js-bindings
           ];
