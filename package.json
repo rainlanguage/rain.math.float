@@ -32,7 +32,7 @@
     "rm-dist": "rimraf ./dist",
     "rm-temp": "rimraf ./temp",
     "test": "npm run check && vitest run --dir test_js",
-    "check": "tsc ./dist/**/*.{ts,js} --noEmit --allowJs --lib ES2022"
+    "check": "tsc ./dist/**/*.{ts,js} --noEmit --allowJs --lib ESNext"
   },
   "devDependencies": {
     "rimraf": "^6.1.3",
