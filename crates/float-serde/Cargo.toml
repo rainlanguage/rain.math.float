@@ -1,0 +1,16 @@
+[package]
+name = "rain-math-float-serde"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+description = "Serde helpers and decimal debug formatting for rain-math-float"
+
+[dependencies]
+rain-math-float.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
+
+[dev-dependencies]
+alloy.workspace = true

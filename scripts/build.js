@@ -50,13 +50,17 @@ fs.writeFileSync(`./dist/esm/index.d.ts`, dts);
 let cjs = fs.readFileSync(`./temp/node/float.js`, {
   encoding: "utf-8",
 });
+const cjsWasmLoader = "const wasmPath = `${__dirname}/float_bg.wasm`;\n" +
+  "const wasmBytes = require('fs').readFileSync(wasmPath);";
+if (!cjs.includes(cjsWasmLoader)) {
+  throw new Error("unexpected wasm-bindgen CommonJS loader");
+}
 cjs = cjs.replace(
-  `const path = require('path').join(__dirname, 'float_bg.wasm');
-const bytes = require('fs').readFileSync(path);`,
+  cjsWasmLoader,
   `
 const { Buffer } = require('buffer');
 const wasmB64 = require('./float_wbg.json');
-const bytes = Buffer.from(wasmB64.wasm, 'base64');`,
+const wasmBytes = Buffer.from(wasmB64.wasm, 'base64');`,
 );
 cjs = cjs.replace("const { TextEncoder, TextDecoder } = require(`util`);", "");
 cjs = "/* this file is auto-generated, do not modify */\n" + cjs;
@@ -66,13 +70,16 @@ fs.writeFileSync(`./dist/cjs/index.js`, cjs);
 let esm = fs.readFileSync(`./temp/web/float.js`, {
   encoding: "utf-8",
 });
+const esmExports = `export { initSync, __wbg_init as default };`;
+if (!esm.includes(esmExports)) {
+  throw new Error("unexpected wasm-bindgen ESM exports");
+}
 esm = esm.replace(
-  `export { initSync };
-export default __wbg_init;`,
+  esmExports,
   `import { Buffer } from 'buffer';
 import wasmB64 from './float_wbg.json';
 const bytes = Buffer.from(wasmB64.wasm, 'base64');
-initSync(bytes);`,
+initSync({ module: bytes });`,
 );
 esm = "/* this file is auto-generated, do not modify */\n" + esm;
 fs.writeFileSync(`./dist/esm/index.js`, esm);
