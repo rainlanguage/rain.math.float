@@ -9,50 +9,42 @@ import {
     ANTI_LOG_TABLES,
     ANTI_LOG_TABLES_SMALL
 } from "../../generated/LogTables.pointers.sol";
+import {
+    LOG_TABLES_DEPLOYED_ADDRESS,
+    LOG_TABLES_DEPLOYED_CODEHASH,
+    DECIMAL_FLOAT_DEPLOYED_ADDRESS,
+    DECIMAL_FLOAT_DEPLOYED_CODEHASH
+} from "../../generated/DecimalFloatDeploy.pointers.sol";
 import {LOG_TABLE_DISAMBIGUATOR} from "../table/LibLogTable.sol";
 import {LogTablesNotDeployed} from "../../error/ErrDecimalFloat.sol";
 
+/// @dev The deployment record for each release lives in its own frozen snapshot
+/// under `src/generated/<tag>/DecimalFloatDeploy.pointers.sol` (tag =
+/// `[package].version` with dots as underscores), written by
+/// `script/BuildPointers.sol`. The constants below alias the CURRENT release's
+/// generated record; a consumer that needs an older release's addresses reads
+/// that release's snapshot. Both deployables are placed by Zoltu's deterministic
+/// proxy, so every address is a pure function of its creation code and the whole
+/// record is reproducible offline — `LibDecimalFloatDeployTaggedConstantsTest`
+/// regenerates it and asserts it matches, with no network and no skips.
 library LibDecimalFloatDeploy {
     /// @dev Address of the log tables deployed via Zoltu's deterministic
     /// deployment proxy. This address is the same across all EVM-compatible
     /// networks.
-    address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS = address(0xc51a14251b0dcF0ae24A96b7153991378938f5F5);
+    address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS = LOG_TABLES_DEPLOYED_ADDRESS;
 
     /// @dev The expected codehash of the log tables deployed via Zoltu's
     /// deterministic deployment proxy.
-    bytes32 constant LOG_TABLES_DATA_CONTRACT_HASH = 0x2573004ac3a9ee7fc8d73654d76386f1b6b99e34cdf86a689c4691e47143420f;
+    bytes32 constant LOG_TABLES_DATA_CONTRACT_HASH = LOG_TABLES_DEPLOYED_CODEHASH;
 
     /// @dev Address of the DecimalFloat contract deployed via Zoltu's
     /// deterministic deployment proxy.
     /// This address is the same across all EVM-compatible networks.
-    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0x799632d282178e770C7465cad54aDA1021A913D6);
+    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = DECIMAL_FLOAT_DEPLOYED_ADDRESS;
 
     /// @dev The expected codehash of the DecimalFloat contract deployed via
     /// Zoltu's deterministic deployment proxy.
-    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0xdc468883c345d41c0abd98ef2fd933c370bd1682522d37e6f6b729793301f55e;
-
-    /// @dev Deploy constants pinned to each version published to the soldeer
-    /// registry. These are frozen literals — not aliases of the "current"
-    /// constants above — so each keeps referencing its own release's deployment
-    /// after the current constants advance to a newer version.
-    /// `script/check-published-deploy-constants.sh` (run by
-    /// `LibDecimalFloatDeployTaggedConstantsTest`) queries the registry and
-    /// fails if any published version is missing its suite, so publishing a new
-    /// tag forces pinning that tag's deploy constants here.
-
-    /// @dev Log tables address at the published `0.1.1` soldeer tag.
-    address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS_0_1_1 = address(0xc51a14251b0dcF0ae24A96b7153991378938f5F5);
-
-    /// @dev Log tables codehash at the published `0.1.1` soldeer tag.
-    bytes32 constant LOG_TABLES_DATA_CONTRACT_HASH_0_1_1 =
-        0x2573004ac3a9ee7fc8d73654d76386f1b6b99e34cdf86a689c4691e47143420f;
-
-    /// @dev DecimalFloat address at the published `0.1.1` soldeer tag.
-    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS_0_1_1 = address(0xBee0eEFaffD046c9602109eB30A858Be301CC926);
-
-    /// @dev DecimalFloat codehash at the published `0.1.1` soldeer tag.
-    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH_0_1_1 =
-        0x7a93d0311f7782b44157ba40e94ec936085ebe001c7893bdd74911c8351d3def;
+    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = DECIMAL_FLOAT_DEPLOYED_CODEHASH;
 
     /// Combines all log and anti-log tables into a single bytes array for
     /// deployment. These are using packed encoding to minimize size and remove
