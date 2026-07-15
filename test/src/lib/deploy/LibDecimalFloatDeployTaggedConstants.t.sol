@@ -11,25 +11,25 @@ import {
     BYTECODE_HASH as LOG_TABLES_CODEHASH_0_1_1,
     CREATION_CODE as LOG_TABLES_CREATION_CODE_0_1_1,
     RUNTIME_CODE as LOG_TABLES_RUNTIME_CODE_0_1_1
-} from "src/generated/0_1_1/LogTablesDeploy.pointers.sol";
+} from "src/generated/0_1_1/LogTablesDeploy.sol";
 import {
     DEPLOYED_ADDRESS as DECIMAL_FLOAT_ADDRESS_0_1_1,
     BYTECODE_HASH as DECIMAL_FLOAT_CODEHASH_0_1_1,
     CREATION_CODE as DECIMAL_FLOAT_CREATION_CODE_0_1_1,
     RUNTIME_CODE as DECIMAL_FLOAT_RUNTIME_CODE_0_1_1
-} from "src/generated/0_1_1/DecimalFloatDeploy.pointers.sol";
+} from "src/generated/0_1_1/DecimalFloatDeploy.sol";
 import {
     DEPLOYED_ADDRESS as LOG_TABLES_ADDRESS_0_1_7,
     BYTECODE_HASH as LOG_TABLES_CODEHASH_0_1_7,
     CREATION_CODE as LOG_TABLES_CREATION_CODE_0_1_7,
     RUNTIME_CODE as LOG_TABLES_RUNTIME_CODE_0_1_7
-} from "src/generated/0_1_7/LogTablesDeploy.pointers.sol";
+} from "src/generated/0_1_7/LogTablesDeploy.sol";
 import {
     DEPLOYED_ADDRESS as DECIMAL_FLOAT_ADDRESS_0_1_7,
     BYTECODE_HASH as DECIMAL_FLOAT_CODEHASH_0_1_7,
     CREATION_CODE as DECIMAL_FLOAT_CREATION_CODE_0_1_7,
     RUNTIME_CODE as DECIMAL_FLOAT_RUNTIME_CODE_0_1_7
-} from "src/generated/0_1_7/DecimalFloatDeploy.pointers.sol";
+} from "src/generated/0_1_7/DecimalFloatDeploy.sol";
 
 /// @title LibDecimalFloatDeployTaggedConstantsTest
 /// @notice Every release freezes its deployment record under

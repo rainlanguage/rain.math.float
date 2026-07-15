@@ -8,22 +8,22 @@ import {
     LOG_TABLES_SMALL_ALT,
     ANTI_LOG_TABLES,
     ANTI_LOG_TABLES_SMALL
-} from "../../generated/LogTables.pointers.sol";
+} from "../../generated/LogTables.sol";
 import {
     DEPLOYED_ADDRESS as LOG_TABLES_DEPLOYED_ADDRESS,
     BYTECODE_HASH as LOG_TABLES_DEPLOYED_CODEHASH
-} from "../../generated/LogTablesDeploy.pointers.sol";
+} from "../../generated/LogTablesDeploy.sol";
 import {
     DEPLOYED_ADDRESS as DECIMAL_FLOAT_DEPLOYED_ADDRESS,
     BYTECODE_HASH as DECIMAL_FLOAT_DEPLOYED_CODEHASH
-} from "../../generated/DecimalFloatDeploy.pointers.sol";
+} from "../../generated/DecimalFloatDeploy.sol";
 import {LOG_TABLE_DISAMBIGUATOR} from "../table/LibLogTable.sol";
 import {LogTablesNotDeployed} from "../../error/ErrDecimalFloat.sol";
 
 /// @dev The deployment record for each release lives in its own frozen snapshot
-/// under `src/generated/<tag>/DecimalFloatDeploy.pointers.sol` (tag =
+/// under `src/generated/<tag>/DecimalFloatDeploy.sol` (tag =
 /// `[package].version` with dots as underscores), written by
-/// `script/BuildPointers.sol`. The constants below alias the CURRENT release's
+/// `script/Build.sol`. The constants below alias the CURRENT release's
 /// generated record; a consumer that needs an older release's addresses reads
 /// that release's snapshot. Both deployables are placed by Zoltu's deterministic
 /// proxy, so every address is a pure function of its creation code and the whole

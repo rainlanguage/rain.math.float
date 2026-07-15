@@ -10,11 +10,11 @@ import {
     LOG_TABLES_SMALL_ALT,
     ANTI_LOG_TABLES,
     ANTI_LOG_TABLES_SMALL
-} from "src/generated/LogTables.pointers.sol";
+} from "src/generated/LogTables.sol";
 
 /// @title LibLogTableBytesTest
 /// @notice Verifies that toBytes encoding of each table matches the
-/// AOT-compiled constants in LogTables.pointers.sol.
+/// AOT-compiled constants in LogTables.sol.
 contract LibLogTableBytesTest is Test {
     /// toBytes(logTableDec()) matches the generated LOG_TABLES constant.
     function testToBytesLogTableDec() external pure {
