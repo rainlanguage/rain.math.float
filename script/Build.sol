@@ -62,7 +62,7 @@ contract Build is Script {
     ///
     /// One file PER contract: `BYTECODE_HASH` identifies a single instance, so
     /// combining two deployables into one file would leave it meaningless.
-    function buildDeployPointersFor(string memory contractName, bytes memory creationCode, address deployed) internal {
+    function buildDeployRecordFor(string memory contractName, bytes memory creationCode, address deployed) internal {
         LibFs.buildFileForContract(
             vm,
             deployed,
@@ -86,20 +86,18 @@ contract Build is Script {
     }
 
     /// @notice This release's deployment record: both deployables, each in its
-    /// own pointers file. Every address is a pure function of its creation code
+    /// own generated file. Every address is a pure function of its creation code
     /// (Zoltu CREATE2), so the whole record is computed offline through a locally
     /// etched factory. Frozen per release by `LibSnapshot`.
-    function buildDeployPointers() internal {
+    function buildDeployRecords() internal {
         // The log tables must land first: DecimalFloat's constructor calls
         // `checkLogTablesDeployed()`, which reads the codehash at their address.
         bytes memory logTablesCreationCode =
             LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
-        buildDeployPointersFor(
-            "LogTablesDeploy", logTablesCreationCode, LibRainDeploy.deployZoltu(logTablesCreationCode)
-        );
+        buildDeployRecordFor("LogTablesDeploy", logTablesCreationCode, LibRainDeploy.deployZoltu(logTablesCreationCode));
 
         bytes memory decimalFloatCreationCode = type(DecimalFloat).creationCode;
-        buildDeployPointersFor(
+        buildDeployRecordFor(
             "DecimalFloatDeploy", decimalFloatCreationCode, LibRainDeploy.deployZoltu(decimalFloatCreationCode)
         );
     }
@@ -117,7 +115,7 @@ contract Build is Script {
         LibRainDeploy.etchZoltuFactory(vm);
 
         buildLogTablesData();
-        buildDeployPointers();
+        buildDeployRecords();
 
         // Freeze this release's record into `src/generated/<tag>/`. The tag, the
         // freeze and the guard that refuses to rewrite a frozen record without a
