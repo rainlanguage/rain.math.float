@@ -3,9 +3,9 @@
 pragma solidity =0.8.25;
 
 import {Script} from "forge-std-1.16.1/src/Script.sol";
-import {LibCodeGen} from "rain-sol-codegen-0.1.1/src/lib/LibCodeGen.sol";
-import {LibFs} from "rain-sol-codegen-0.1.1/src/lib/LibFs.sol";
-import {LibSnapshot} from "rain-sol-codegen-0.1.1/src/lib/LibSnapshot.sol";
+import {LibCodeGen} from "rain-sol-codegen-0.1.2/src/lib/LibCodeGen.sol";
+import {LibFs} from "rain-sol-codegen-0.1.2/src/lib/LibFs.sol";
+import {LibSnapshot} from "rain-sol-codegen-0.1.2/src/lib/LibSnapshot.sol";
 import {LibDataContract} from "rain-datacontract-0.1.0/src/lib/LibDataContract.sol";
 import {LibRainDeploy} from "rain-deploy-0.1.3/src/lib/LibRainDeploy.sol";
 import {LibLogTable} from "../src/lib/table/LibLogTable.sol";
@@ -13,14 +13,6 @@ import {LibDecimalFloatDeploy} from "../src/lib/deploy/LibDecimalFloatDeploy.sol
 import {DecimalFloat} from "../src/concrete/DecimalFloat.sol";
 
 contract BuildPointers is Script {
-    function addressConstantString(string memory comment, string memory name, address addr)
-        internal
-        pure
-        returns (string memory)
-    {
-        return string.concat("\n", comment, "\n", "address constant ", name, " = address(", vm.toString(addr), ");\n");
-    }
-
     /// @notice The log/antilog lookup table data consumed by
     /// `LibDecimalFloatDeploy.combinedTables()`. This is source data, not a
     /// deployment record, so it is not part of the per-release snapshot.
@@ -76,7 +68,8 @@ contract BuildPointers is Script {
             deployed,
             contractName,
             string.concat(
-                addressConstantString(
+                LibCodeGen.addressConstantString(
+                    vm,
                     "/// @dev Address of the contract deployed via Zoltu's deterministic\n"
                     "/// deployment proxy. Identical across all EVM-compatible networks.",
                     "DEPLOYED_ADDRESS",
