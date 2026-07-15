@@ -3,8 +3,9 @@
 pragma solidity =0.8.25;
 
 import {Script} from "forge-std-1.16.1/src/Script.sol";
-import {LibCodeGen} from "rain-sol-codegen-0.1.0/src/lib/LibCodeGen.sol";
-import {LibFs} from "rain-sol-codegen-0.1.0/src/lib/LibFs.sol";
+import {LibCodeGen} from "rain-sol-codegen-0.1.1/src/lib/LibCodeGen.sol";
+import {LibFs} from "rain-sol-codegen-0.1.1/src/lib/LibFs.sol";
+import {LibSnapshot} from "rain-sol-codegen-0.1.1/src/lib/LibSnapshot.sol";
 import {LibDataContract} from "rain-datacontract-0.1.0/src/lib/LibDataContract.sol";
 import {LibRainDeploy} from "rain-deploy-0.1.3/src/lib/LibRainDeploy.sol";
 import {LibLogTable} from "../src/lib/table/LibLogTable.sol";
@@ -115,40 +116,12 @@ contract BuildPointers is Script {
         );
     }
 
-    /// @notice The canonical release tag: `foundry.toml` `[package].version` with
-    /// dots converted to underscores (`0.1.7` -> `0_1_7`) for the Solidity dir
-    /// form — the single source of truth for the frozen-snapshot dir name.
-    function deployTag() internal view returns (string memory) {
-        string memory version = vm.parseTomlString(vm.readFile("foundry.toml"), ".package.version");
-        bytes memory b = bytes(version);
-        bytes memory out = new bytes(b.length);
-        for (uint256 i = 0; i < b.length; i++) {
-            out[i] = b[i] == "." ? bytes1("_") : b[i];
-        }
-        return string(out);
-    }
-
-    /// @notice Freeze the just-generated deploy pointers into a per-release
-    /// snapshot dir `src/generated/<tag>/` so each published release keeps its
-    /// own immutable deployment record. Only the CURRENT `deployTag()` dir is
-    /// ever written — older tags are never touched. An existing `<tag>/`
-    /// snapshot is treated as immutable: rewriting it with IDENTICAL content is
-    /// a harmless no-op, but a DIFFERENT payload reverts. That only happens when
-    /// the deployment changed without a `[package].version` bump — the change
-    /// must bump the version so a NEW `<tag>/` dir is written beside the frozen
-    /// ones, rather than corrupting the history consumers pin against.
-    function freezeSnapshot() internal {
-        string memory tag = deployTag();
-        vm.createDir(string.concat("src/generated/", tag), true);
-        string memory frozenPath = string.concat("src/generated/", tag, "/DecimalFloatDeploy.pointers.sol");
-        string memory content = vm.readFile("src/generated/DecimalFloatDeploy.pointers.sol");
-        if (vm.exists(frozenPath)) {
-            require(
-                keccak256(bytes(vm.readFile(frozenPath))) == keccak256(bytes(content)),
-                "BuildPointers: frozen snapshot would change; bump [package].version for a new release"
-            );
-        }
-        vm.writeFile(frozenPath, content);
+    /// @notice The generated files that make up this release's deployment
+    /// record, frozen per release tag by `LibSnapshot`. The log-tables DATA is
+    /// deliberately absent: it is source input, not a deployment record.
+    function snapshotContractNames() internal pure returns (string[] memory names) {
+        names = new string[](1);
+        names[0] = "DecimalFloatDeploy";
     }
 
     function run() external {
@@ -157,6 +130,10 @@ contract BuildPointers is Script {
         buildLogTablesData();
         buildDeployPointers();
 
-        freezeSnapshot();
+        // Freeze this release's record into `src/generated/<tag>/`. The tag, the
+        // freeze and the guard that refuses to rewrite a frozen record without a
+        // `[package].version` bump all live in the shared `LibSnapshot` — this
+        // repo does not carry its own copy.
+        LibSnapshot.freezeSnapshot(vm, snapshotContractNames());
     }
 }
