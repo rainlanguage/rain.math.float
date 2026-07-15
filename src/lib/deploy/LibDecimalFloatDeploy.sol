@@ -10,10 +10,12 @@ import {
     ANTI_LOG_TABLES_SMALL
 } from "../../generated/LogTables.pointers.sol";
 import {
-    LOG_TABLES_DEPLOYED_ADDRESS,
-    LOG_TABLES_DEPLOYED_CODEHASH,
-    DECIMAL_FLOAT_DEPLOYED_ADDRESS,
-    DECIMAL_FLOAT_DEPLOYED_CODEHASH
+    DEPLOYED_ADDRESS as LOG_TABLES_DEPLOYED_ADDRESS,
+    BYTECODE_HASH as LOG_TABLES_DEPLOYED_CODEHASH
+} from "../../generated/LogTablesDeploy.pointers.sol";
+import {
+    DEPLOYED_ADDRESS as DECIMAL_FLOAT_DEPLOYED_ADDRESS,
+    BYTECODE_HASH as DECIMAL_FLOAT_DEPLOYED_CODEHASH
 } from "../../generated/DecimalFloatDeploy.pointers.sol";
 import {LOG_TABLE_DISAMBIGUATOR} from "../table/LibLogTable.sol";
 import {LogTablesNotDeployed} from "../../error/ErrDecimalFloat.sol";

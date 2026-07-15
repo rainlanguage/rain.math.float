@@ -21,14 +21,6 @@ contract BuildPointers is Script {
         return string.concat("\n", comment, "\n", "address constant ", name, " = address(", vm.toString(addr), ");\n");
     }
 
-    function bytes32ConstantString(string memory comment, string memory name, bytes32 value)
-        internal
-        pure
-        returns (string memory)
-    {
-        return string.concat("\n", comment, "\n", "bytes32 constant ", name, " = ", vm.toString(value), ";\n");
-    }
-
     /// @notice The log/antilog lookup table data consumed by
     /// `LibDecimalFloatDeploy.combinedTables()`. This is source data, not a
     /// deployment record, so it is not part of the per-release snapshot.
@@ -69,50 +61,53 @@ contract BuildPointers is Script {
         );
     }
 
-    /// @notice The deployment record for this release: the Zoltu-deterministic
-    /// address and runtime codehash of BOTH deployables — the log-tables data
-    /// contract and the `DecimalFloat` contract. Both addresses are a pure
-    /// function of their creation code, so this is computed offline by deploying
-    /// through a locally etched Zoltu factory. Frozen per release by
-    /// `freezeSnapshot()`.
-    function buildDeployPointers() internal {
-        // The log tables must exist at their deterministic address before
-        // DecimalFloat is deployed: its constructor calls
-        // `checkLogTablesDeployed()`, which reads the codehash there.
-        bytes memory logTablesCreationCode =
-            LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
-        address logTables = LibRainDeploy.deployZoltu(logTablesCreationCode);
-
-        address decimalFloat = LibRainDeploy.deployZoltu(type(DecimalFloat).creationCode);
-
+    /// @notice The deployment record for one deployable: its Zoltu-deterministic
+    /// address, the creation bytecode it is deployed FROM, and the runtime
+    /// bytecode it is verified AGAINST on-chain. `LibFs` prepends `BYTECODE_HASH`
+    /// derived from the passed instance, so the record is complete — address +
+    /// codehash + creation + runtime. A pin carrying only address + codehash
+    /// cannot reproduce or independently verify a past release.
+    ///
+    /// One file PER contract: `BYTECODE_HASH` identifies a single instance, so
+    /// combining two deployables into one file would leave it meaningless.
+    function buildDeployPointersFor(string memory contractName, bytes memory creationCode, address deployed) internal {
         LibFs.buildFileForContract(
             vm,
-            address(0),
-            "DecimalFloatDeploy",
+            deployed,
+            contractName,
             string.concat(
                 addressConstantString(
-                    "/// @dev Address of the log tables data contract deployed via Zoltu's\n"
-                    "/// deterministic deployment proxy. Identical across all EVM networks.",
-                    "LOG_TABLES_DEPLOYED_ADDRESS",
-                    logTables
+                    "/// @dev Address of the contract deployed via Zoltu's deterministic\n"
+                    "/// deployment proxy. Identical across all EVM-compatible networks.",
+                    "DEPLOYED_ADDRESS",
+                    deployed
                 ),
-                bytes32ConstantString(
-                    "/// @dev Runtime codehash of the deployed log tables data contract.",
-                    "LOG_TABLES_DEPLOYED_CODEHASH",
-                    logTables.codehash
+                LibCodeGen.bytesConstantString(
+                    vm, "/// @dev The creation bytecode of the contract.", "CREATION_CODE", creationCode
                 ),
-                addressConstantString(
-                    "/// @dev Address of the DecimalFloat contract deployed via Zoltu's\n"
-                    "/// deterministic deployment proxy. Identical across all EVM networks.",
-                    "DECIMAL_FLOAT_DEPLOYED_ADDRESS",
-                    decimalFloat
-                ),
-                bytes32ConstantString(
-                    "/// @dev Runtime codehash of the deployed DecimalFloat contract.",
-                    "DECIMAL_FLOAT_DEPLOYED_CODEHASH",
-                    decimalFloat.codehash
+                LibCodeGen.bytesConstantString(
+                    vm, "/// @dev The runtime bytecode of the contract.", "RUNTIME_CODE", deployed.code
                 )
             )
+        );
+    }
+
+    /// @notice This release's deployment record: both deployables, each in its
+    /// own pointers file. Every address is a pure function of its creation code
+    /// (Zoltu CREATE2), so the whole record is computed offline through a locally
+    /// etched factory. Frozen per release by `LibSnapshot`.
+    function buildDeployPointers() internal {
+        // The log tables must land first: DecimalFloat's constructor calls
+        // `checkLogTablesDeployed()`, which reads the codehash at their address.
+        bytes memory logTablesCreationCode =
+            LibDataContract.contractCreationCode(LibDecimalFloatDeploy.combinedTables());
+        buildDeployPointersFor(
+            "LogTablesDeploy", logTablesCreationCode, LibRainDeploy.deployZoltu(logTablesCreationCode)
+        );
+
+        bytes memory decimalFloatCreationCode = type(DecimalFloat).creationCode;
+        buildDeployPointersFor(
+            "DecimalFloatDeploy", decimalFloatCreationCode, LibRainDeploy.deployZoltu(decimalFloatCreationCode)
         );
     }
 
@@ -120,8 +115,9 @@ contract BuildPointers is Script {
     /// record, frozen per release tag by `LibSnapshot`. The log-tables DATA is
     /// deliberately absent: it is source input, not a deployment record.
     function snapshotContractNames() internal pure returns (string[] memory names) {
-        names = new string[](1);
-        names[0] = "DecimalFloatDeploy";
+        names = new string[](2);
+        names[0] = "LogTablesDeploy";
+        names[1] = "DecimalFloatDeploy";
     }
 
     function run() external {
