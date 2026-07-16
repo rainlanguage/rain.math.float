@@ -27,34 +27,59 @@ contract LibDecimalFloatImplementationEqTest is Test {
         LibDecimalFloatImplementation.eq(1, type(int256).max, 1, type(int256).min);
     }
 
-    /// if xeX == yeY, then x / y == 10^(X - Y) || y / x == 10^(Y - X)
-    function testEqXEqY(int256 x, int256 exponentX, int256 y, int256 exponentY) external pure {
+    /// if xeX == yeY with x != y, both coefficients are nonzero with the same
+    /// sign and the side with the SMALLER exponent carries the scaled-up
+    /// coefficient: exponentX > exponentY implies y == x * 10^(X - Y), and
+    /// exponentY > exponentX implies x == y * 10^(Y - X). This holds for
+    /// negative coefficients too because the exact-multiple relation is
+    /// signed; only exponent order (never signed coefficient order) selects
+    /// which side is scaled up.
+    function checkEqXEqY(int256 x, int256 exponentX, int256 y, int256 exponentY) internal pure {
         bool eq = LibDecimalFloatImplementation.eq(x, exponentX, y, exponentY);
 
         if (eq) {
             if (x == y) {
                 assertTrue(exponentX == exponentY || x == 0);
-            } else if (y > x) {
-                assertTrue(exponentY < exponentX, "y > x but exponentY >= exponentX");
-                assertTrue(exponentX - exponentY < 77, "y > x but exponentX - exponentY >= 77");
-                // we assert that exponentY < exponentX and the diff is < 77.
+            } else if (exponentX > exponentY) {
+                assertTrue(exponentX - exponentY < 77, "exponentX > exponentY but exponentX - exponentY >= 77");
+                // The exponent diff is in [1, 76] so the power fits int256 and
+                // the cast is safe.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                assertEq(x / y, int256(10 ** uint256(exponentX - exponentY)), "y > x but x / y != 10^(X - Y)");
-                assertEq(x % y, 0, "y > x but x % y != 0");
+                assertEq(
+                    y / x, int256(10 ** uint256(exponentX - exponentY)), "exponentX > exponentY but y / x != 10^(X - Y)"
+                );
+                assertEq(y % x, 0, "exponentX > exponentY but y % x != 0");
             } else {
-                assertTrue(exponentX < exponentY, "x < y but exponentX >= exponentY");
-                assertTrue(exponentY - exponentX < 77, "x < y but exponentY - exponentX >= 77");
-                // x < y and they are eq so exponentY - exponentX will always be
-                // positive.
+                assertTrue(exponentY > exponentX, "x != y but exponentX == exponentY");
+                assertTrue(exponentY - exponentX < 77, "exponentY > exponentX but exponentY - exponentX >= 77");
+                // The exponent diff is in [1, 76] so the power fits int256 and
+                // the cast is safe.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                assertEq(y / x, int256(10 ** uint256(exponentY - exponentX)), "x < y but y / x != 10^(Y - X)");
-                assertEq(y % x, 0, "x < y but y % x != 0");
+                assertEq(
+                    x / y, int256(10 ** uint256(exponentY - exponentX)), "exponentY > exponentX but x / y != 10^(Y - X)"
+                );
+                assertEq(x % y, 0, "exponentY > exponentX but x % y != 0");
             }
         } else {
             if (x == y) {
                 assertTrue(exponentX != exponentY);
             }
         }
+    }
+
+    /// if xeX == yeY, the coefficient at the smaller exponent is the other
+    /// coefficient scaled up by 10^(exponent diff).
+    function testEqXEqY(int256 x, int256 exponentX, int256 y, int256 exponentY) external pure {
+        checkEqXEqY(x, exponentX, y, exponentY);
+    }
+
+    /// A concrete equal-value pair with negative coefficients and distinct
+    /// representations: -1000e-10 == -10000000000e-17. Signed coefficient
+    /// order inverts relative to magnitude for negatives, so this pins the
+    /// exponent-order branching of the property above.
+    function testEqXEqYNegativeCoefficients() external pure {
+        assertTrue(LibDecimalFloatImplementation.eq(-1000, -10, -10000000000, -17), "equal negative pair must be eq");
+        checkEqXEqY(-1000, -10, -10000000000, -17);
     }
 
     /// xeX != yeY if x != y (assuming maximized representation)
