@@ -752,6 +752,31 @@ impl Float {
         self.abs()
     }
 
+    /// Returns the canonical representative of the float's numeric value.
+    ///
+    /// Floats are non-canonical by design: multiple representations encode the
+    /// same number. `canonicalize` returns the single representative whose
+    /// magnitude is maximised within the type bounds, so two Floats are
+    /// numerically equal iff their canonical forms are byte-equal. Intended for
+    /// raw-byte equality use cases (map keys, hashing, set membership).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The canonical form.
+    /// * `Err(FloatError)` - If the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```typescript
+    /// const a = Float.parse("5").value!;
+    /// const b = Float.parse("5.0").value!;
+    /// assert(a.canonicalize().value.asHex() === b.canonicalize().value.asHex());
+    /// ```
+    #[wasm_export(js_name = "canonicalize", preserve_js_class)]
+    pub fn canonicalize_js(&self) -> Result<Float, FloatError> {
+        self.canonicalize()
+    }
+
     /// Adds two floats.
     ///
     /// # Returns

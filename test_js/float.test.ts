@@ -151,6 +151,18 @@ describe("Test Float Bindings", () => {
       expect(a.add(b)?.value!.format()?.value!).toBe("0");
     });
 
+    it("should test canonicalize", () => {
+      // Two different representations of the same value canonicalize to
+      // byte-equal Floats, and the canonical form is numerically equal to the
+      // input.
+      const a = Float.parse("5")?.value!;
+      const b = Float.parse("5.0")?.value!;
+      const canonicalA = a.canonicalize()?.value!;
+      const canonicalB = b.canonicalize()?.value!;
+      expect(canonicalA.asHex()).toBe(canonicalB.asHex());
+      expect(a.eq(canonicalA)?.value!).toBe(true);
+    });
+
     it("should test zero constant", () => {
       // Test the zero function
       const zeroResult = Float.zero();

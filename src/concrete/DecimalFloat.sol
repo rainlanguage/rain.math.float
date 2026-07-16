@@ -282,6 +282,13 @@ contract DecimalFloat {
         return a.isZero();
     }
 
+    /// Exposes `LibDecimalFloat.canonicalize` for offchain use.
+    /// @param a The float to canonicalize.
+    /// @return The canonical representative of the float's numeric value.
+    function canonicalize(Float a) external pure returns (Float) {
+        return a.canonicalize();
+    }
+
     /// Exposes `LibDecimalFloat.fromFixedDecimalLosslessPacked` for offchain
     /// use.
     /// @param value The fixed point decimal value to convert.

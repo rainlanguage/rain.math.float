@@ -848,6 +848,41 @@ impl Float {
         })
     }
 
+    /// Returns the canonical representative of the float's numeric value.
+    ///
+    /// Floats are non-canonical by design: multiple `(coefficient, exponent)`
+    /// pairs encode the same number. `canonicalize` returns the single
+    /// representative whose magnitude is maximised within the type bounds, so
+    /// two Floats are numerically equal iff their canonical forms are
+    /// byte-equal. Intended for raw-byte equality use cases (map keys, hashing,
+    /// set membership, content-addressed storage).
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Float)` - The canonical form.
+    /// * `Err(FloatError)` - If the operation fails.
+    ///
+    /// # Example
+    ///
+    /// ```
+    /// use rain_math_float::Float;
+    ///
+    /// let a = Float::parse("5".to_string())?;
+    /// let b = Float::parse("5.0".to_string())?;
+    /// assert_eq!(a.canonicalize()?.as_hex(), b.canonicalize()?.as_hex());
+    ///
+    /// anyhow::Ok(())
+    /// ```
+    pub fn canonicalize(self) -> Result<Float, FloatError> {
+        let Float(a) = self;
+        let calldata = DecimalFloat::canonicalizeCall { a }.abi_encode();
+
+        execute_call(Bytes::from(calldata), |output| {
+            let decoded = DecimalFloat::canonicalizeCall::abi_decode_returns(output.as_ref())?;
+            Ok(Float(decoded))
+        })
+    }
+
     /// Returns `true` if `self` is less than or equal to `b`.
     ///
     /// # Arguments

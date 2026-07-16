@@ -426,6 +426,46 @@ library LibDecimalFloat {
         }
     }
 
+    /// Canonicalize a Float to a unique byte representation per numeric value.
+    /// Floats are non-canonical by design (see the docstring on the `Float`
+    /// type): multiple `(coefficient, exponent)` pairs encode the same number
+    /// and equality is numeric (`eq`) rather than byte-level. This function
+    /// returns the single representative whose magnitude-maximised packing is
+    /// stable, so two Floats are numerically equal iff their canonical forms
+    /// are byte-equal (`Float.unwrap(a.canonicalize()) == Float.unwrap(b.canonicalize())`).
+    /// Intended for consumers that need raw-byte equality: `mapping(Float => X)`
+    /// keys, hashing, set membership, content-addressed storage.
+    ///
+    /// The chosen representative has the largest `|coefficient|` that fits
+    /// int224 subject to the exponent staying `>= type(int32).min`, reached by
+    /// scaling the coefficient up by ten directly within those bounds. This
+    /// never reverts for any valid input Float: scaling simply stops at the
+    /// limit. `canonicalize` is idempotent and value-preserving (the result is
+    /// `eq` to the input).
+    /// @param float The float to canonicalize.
+    /// @return The canonical representative of the float's numeric value.
+    function canonicalize(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        if (signedCoefficient == 0) {
+            return FLOAT_ZERO;
+        }
+        unchecked {
+            while (exponent > type(int32).min) {
+                int256 trySignedCoefficient = signedCoefficient * 10;
+                // int224 overflow is the termination condition for the scaling
+                // loop, not a bug. The cast back is compared against the
+                // pre-cast value to detect that overflow.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                if (int224(trySignedCoefficient) != trySignedCoefficient) {
+                    break;
+                }
+                signedCoefficient = trySignedCoefficient;
+                exponent -= 1;
+            }
+        }
+        return packLossless(signedCoefficient, exponent);
+    }
+
     /// Same as add, but accepts a Float struct instead of separate values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
