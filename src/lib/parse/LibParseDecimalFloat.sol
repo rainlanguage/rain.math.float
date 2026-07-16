@@ -6,6 +6,7 @@ import {LibParseChar} from "rain-string-0.2.0/src/lib/parse/LibParseChar.sol";
 import {
     CMASK_NUMERIC_0_9,
     CMASK_NEGATIVE_SIGN,
+    CMASK_PLUS_SIGN,
     CMASK_E_NOTATION,
     CMASK_ZERO,
     CMASK_DECIMAL_POINT
@@ -142,6 +143,12 @@ library LibParseDecimalFloat {
                 cursor++;
                 uint256 eStart = cursor;
                 cursor = LibParseChar.skipMask(cursor, end, CMASK_NEGATIVE_SIGN);
+                // Skip an optional explicit positive sign (e.g. 1e+2). Advance
+                // eStart past it so the int parser only sees the digit string.
+                if (LibParseChar.isMask(cursor, end, CMASK_PLUS_SIGN) == 1) {
+                    cursor++;
+                    eStart = cursor;
+                }
                 {
                     uint256 digitsStart = cursor;
                     cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);

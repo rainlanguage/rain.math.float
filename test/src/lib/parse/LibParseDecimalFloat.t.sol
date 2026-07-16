@@ -394,6 +394,25 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloatFail("e.", ParseEmptyDecimalString.selector, 0);
     }
 
+    /// Explicit positive exponent sign is accepted and equivalent to no sign.
+    function testParseLiteralDecimalFloatPositiveExponentSign() external pure {
+        checkParseDecimalFloat("1e+2", 1, 2, 4);
+        checkParseDecimalFloat("1.0e+2", 1, 2, 6);
+        checkParseDecimalFloat("1E+2", 1, 2, 4);
+        checkParseDecimalFloat("0e+0", 0, 0, 4);
+        checkParseDecimalFloat("0e+1", 0, 0, 4);
+        checkParseDecimalFloat("1e+0", 1, 0, 4);
+        checkParseDecimalFloat("1e+260", 1, 260, 6);
+        checkParseDecimalFloat("-1e+2", -1, 2, 5);
+        checkParseDecimalFloat("1.1e+1", 11, 0, 6);
+    }
+
+    /// Positive sign with no digits is still an error.
+    function testParseLiteralDecimalFloatPositiveENoDigits() external pure {
+        checkParseDecimalFloatFail("1e+", MalformedExponentDigits.selector, 3);
+        checkParseDecimalFloatFail("0.0e+", MalformedExponentDigits.selector, 5);
+    }
+
     /// Negative e with no digits is an error.
     function testParseLiteralDecimalFloatNegativeE() external pure {
         checkParseDecimalFloatFail("0.0e-", MalformedExponentDigits.selector, 5);
