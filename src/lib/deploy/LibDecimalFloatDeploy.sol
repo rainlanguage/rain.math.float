@@ -25,11 +25,11 @@ library LibDecimalFloatDeploy {
     /// @dev Address of the DecimalFloat contract deployed via Zoltu's
     /// deterministic deployment proxy.
     /// This address is the same across all EVM-compatible networks.
-    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0xAEBcD4963d328b83f28c5BFDD6C3e6B1692F01fC);
+    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS = address(0xA051048f1Bc0bc59a0CAA21C642fc51BF9ae145C);
 
     /// @dev The expected codehash of the DecimalFloat contract deployed via
     /// Zoltu's deterministic deployment proxy.
-    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0x73f226457d40a7eada41cb774ac4d7736f00bd0e7cb902a6be0ff6c092ca4426;
+    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH = 0xf6f19aa7c49f7dce0214f2dfdbfb1f8a943d4d91636f43a290c3f7e54ab89c53;
 
     /// @dev Deploy constants pinned to each version published to the soldeer
     /// registry. These are frozen literals — not aliases of the "current"
@@ -53,6 +53,20 @@ library LibDecimalFloatDeploy {
     /// @dev DecimalFloat codehash at the published `0.1.1` soldeer tag.
     bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH_0_1_1 =
         0x7a93d0311f7782b44157ba40e94ec936085ebe001c7893bdd74911c8351d3def;
+
+    /// @dev Log tables address at the published `0.1.7` soldeer tag.
+    address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS_0_1_7 = address(0xc51a14251b0dcF0ae24A96b7153991378938f5F5);
+
+    /// @dev Log tables codehash at the published `0.1.7` soldeer tag.
+    bytes32 constant LOG_TABLES_DATA_CONTRACT_HASH_0_1_7 =
+        0x2573004ac3a9ee7fc8d73654d76386f1b6b99e34cdf86a689c4691e47143420f;
+
+    /// @dev DecimalFloat address at the published `0.1.7` soldeer tag.
+    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS_0_1_7 = address(0x799632d282178e770C7465cad54aDA1021A913D6);
+
+    /// @dev DecimalFloat codehash at the published `0.1.7` soldeer tag.
+    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH_0_1_7 =
+        0xdc468883c345d41c0abd98ef2fd933c370bd1682522d37e6f6b729793301f55e;
 
     /// Combines all log and anti-log tables into a single bytes array for
     /// deployment. These are using packed encoding to minimize size and remove

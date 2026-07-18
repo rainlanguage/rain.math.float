@@ -8,6 +8,7 @@ import {
     EXPONENT_MAX,
     EXPONENT_MIN
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationSubTest is Test {
     /// Sub is the same as add, but with the second coefficient negated.
@@ -71,5 +72,23 @@ contract LibDecimalFloatImplementationSubTest is Test {
             LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientA, exponentA);
         (exponent);
         assertEq(signedCoefficient, 0, "LibDecimalFloatImplementation.sub self coefficient");
+    }
+
+    function subExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (int256, int256)
+    {
+        return LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    /// Sub inherits the arithmetic exponent domain from add: in-domain
+    /// operands whose maximized result sits below EXPONENT_MIN revert
+    /// ExponentOverflow rather than returning an out-of-domain exponent.
+    function testSubResultBelowDomainReverts() external {
+        // minus(-1, EXPONENT_MIN) == (1, EXPONENT_MIN), then
+        // maximizeFull(1, EXPONENT_MIN) == (1e76, EXPONENT_MIN - 76).
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2e76), EXPONENT_MIN - 76));
+        this.subExternal(1, EXPONENT_MIN, -1, EXPONENT_MIN);
     }
 }

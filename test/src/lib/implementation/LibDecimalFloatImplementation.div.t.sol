@@ -7,9 +7,9 @@ import {
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
     EXPONENT_MAX,
-    DivisionByZero,
-    MaximizeOverflow
+    DivisionByZero
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
 
 contract LibDecimalFloatImplementationDivTest is Test {
@@ -42,12 +42,18 @@ contract LibDecimalFloatImplementationDivTest is Test {
     }
 
     function testDivMaxPositiveValueDenominatorNotRevert(int256 signedCoefficient, int256 exponent) external pure {
+        // The numerator exponent stays far enough inside the domain that the
+        // result exponent cannot leave it.
+        exponent = bound(exponent, EXPONENT_MIN / 2, EXPONENT_MAX);
         LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
     }
 
+    /// A divisor exponent at `type(int256).min` is out of the arithmetic
+    /// domain and is rejected before maximization can revert on it.
     function testDivMinPositiveValueDenominatorRevert(int256 signedCoefficient, int256 exponent) external {
         vm.assume(signedCoefficient != 0);
-        vm.expectRevert(abi.encodeWithSelector(MaximizeOverflow.selector, 1, type(int256).min));
+        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1, type(int256).min));
         this.divExternal(signedCoefficient, exponent, 1, type(int256).min);
     }
 
@@ -126,9 +132,9 @@ contract LibDecimalFloatImplementationDivTest is Test {
         assertEq(exponent, -76);
     }
 
-    /// a / a == 1 for all nonzero in-range inputs.
+    /// a / a == 1 for all nonzero in-domain inputs.
     function testDivSelf(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, type(int256).min / 2 + 76, type(int256).max);
+        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         vm.assume(signedCoefficient != 0);
 
         (int256 resultCoeff, int256 resultExp) =
@@ -136,9 +142,11 @@ contract LibDecimalFloatImplementationDivTest is Test {
         assertTrue(LibDecimalFloatImplementation.eq(resultCoeff, resultExp, 1, 0), "a / a should equal 1");
     }
 
-    /// Should be possible to divide every number by 1.
+    /// Should be possible to divide every number by 1, as long as the
+    /// maximized form of the number (which is the result) stays in the
+    /// exponent domain.
     function testDivBy1(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, type(int256).min + 76, type(int256).max);
+        exponent = bound(exponent, EXPONENT_MIN + 77, EXPONENT_MAX);
         (int256 expectedCoefficient, int256 expectedExponent) =
             LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
 
@@ -153,7 +161,9 @@ contract LibDecimalFloatImplementationDivTest is Test {
     }
 
     function testDivByNegativeOneFloat(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, type(int256).min + 76, type(int256).max - 1);
+        // EXPONENT_MAX itself is excluded: negating a maximized
+        // type(int256).min coefficient there would need EXPONENT_MAX + 1.
+        exponent = bound(exponent, EXPONENT_MIN + 77, EXPONENT_MAX - 1);
         (int256 expectedCoefficient, int256 expectedExponent) =
             LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
         (expectedCoefficient, expectedExponent) =
@@ -171,8 +181,8 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     /// forge-config: default.fuzz.runs = 100
     function testUnnormalizedThreesDiv0(int256 exponentA, int256 exponentB) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 2, EXPONENT_MAX / 2);
-        exponentB = bound(exponentB, EXPONENT_MIN / 2, EXPONENT_MAX / 2);
+        exponentA = bound(exponentA, EXPONENT_MIN / 2 + 100, EXPONENT_MAX / 2 - 100);
+        exponentB = bound(exponentB, EXPONENT_MIN / 2 + 100, EXPONENT_MAX / 2 - 100);
 
         int256 d = 3;
         int256 di = 0;
@@ -219,14 +229,10 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// binary search over the order of magnitude of the (maximized) divisor
     /// coefficient. The smaller-than-`1e75` leaves of that search are only
     /// reachable when the divisor cannot be maximized because its exponent sits
-    /// at `type(int256).min`, leaving the coefficient at its given magnitude.
-    ///
-    /// Each row below places `9 * 10^j / 3 * 10^j` (an exact `3`) with the
-    /// divisor pinned to `type(int256).min` so that `3 * 10^j` lands strictly
-    /// inside one sub-range of the binary search. The quotient mantissa is
-    /// therefore always the maximized `3` (i.e. `3e75`) and the round trip must
-    /// hold regardless of which sub-range was selected.
-    function testDivAdjustExponentLeaves() external pure {
+    /// at `type(int256).min` — but such an exponent is outside the arithmetic
+    /// domain, so `div` rejects the divisor operand with `ExponentOverflow`
+    /// before the search runs. Each leaf divisor below pins that rejection.
+    function testDivAdjustExponentLeaves() external {
         int256 min = type(int256).min;
         // [div by, lands in sub-range)
         int256[16] memory divisors = [
@@ -249,70 +255,76 @@ contract LibDecimalFloatImplementationDivTest is Test {
         ];
         for (uint256 i = 0; i < divisors.length; i++) {
             int256 numerator = 3 * divisors[i];
-            (int256 q, int256 qe) = LibDecimalFloatImplementation.div(numerator, 0, divisors[i], min);
-            // A single significant figure "3" maximizes to 76 digits, i.e. 3e75.
-            assertEq(q, 3e75, "quotient mantissa");
-            // The exponent is enormous (close to -type(int256).min) so it is
-            // pinned by the round trip rather than a literal here.
-            (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, divisors[i], min);
-            assertTrue(LibDecimalFloatImplementation.eq(back, backE, numerator, 0), "round trip");
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, divisors[i], min));
+            this.divExternal(numerator, 0, divisors[i], min);
         }
     }
 
-    /// Each binary search boundary is `< scale` (strict), so a divisor sitting
-    /// exactly on a power-of-ten boundary falls into the higher sub-range. This
-    /// exercises the boundary comparisons themselves rather than the interiors.
-    function testDivAdjustExponentBoundaries() external pure {
+    /// A divisor sitting exactly on a power-of-ten boundary of the binary
+    /// search is still an out-of-domain operand at `type(int256).min` and is
+    /// rejected before the search runs.
+    function testDivAdjustExponentBoundaries() external {
         int256 min = type(int256).min;
         int256[14] memory boundaries =
             [int256(1e5), 1e10, 1e14, 1e19, 1e23, 1e28, 1e33, 1e38, 1e43, 1e48, 1e53, 1e58, 1e63, 1e68];
         for (uint256 i = 0; i < boundaries.length; i++) {
-            // A divisor of exactly 10^k divides any 10^m numerator exactly.
-            checkDivInverse(boundaries[i], 0, boundaries[i], min);
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, boundaries[i], min));
+            this.divExternal(boundaries[i], 0, boundaries[i], min);
         }
     }
 
     /// When the maximized divisor coefficient is full (>= 1e75) but still less
     /// than 1e76, `div` takes the dedicated `scale = 1e75` / `adjustExponent = 75`
-    /// branch rather than the binary search.
+    /// branch rather than the binary search. A coefficient in
+    /// `[int256.max / 10, 1e76)` cannot grow another order of magnitude, so
+    /// maximization leaves it below 1e76 even with an in-domain exponent.
     function testDivAdjustExponentFullDivisor() external pure {
-        int256 min = type(int256).min;
-        // 3e75 has 76 digits, so 3e75 / 1e75 == 3 != 0 => "full", but 3e75 < 1e76.
-        (int256 q, int256 qe) = LibDecimalFloatImplementation.div(9e75, 0, 3e75, min);
-        assertEq(q, 3e75, "full divisor quotient mantissa");
-        (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, 3e75, min);
-        assertTrue(LibDecimalFloatImplementation.eq(back, backE, 9e75, 0), "full divisor round trip");
+        // maximize(6e75) stops at 6e75 because 6e76 would overflow int256, so
+        // fullB holds with 6e75 < 1e76. 1.2e76 / 6e75 == 2 exactly.
+        (int256 q, int256 qe) = LibDecimalFloatImplementation.div(1.2e76, 0, 6e75, 0);
+        assertEq(q, 2e75, "full divisor quotient mantissa");
+        assertEq(qe, -75, "full divisor quotient exponent");
+        (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, 6e75, 0);
+        assertTrue(LibDecimalFloatImplementation.eq(back, backE, 1.2e76, 0), "full divisor round trip");
     }
 
     /// When the maximized divisor coefficient is already >= 1e76 the whole
     /// scaling block is skipped and the starting `adjustExponent = 76` is used.
     function testDivAdjustExponentLargeDivisor() external pure {
-        int256 min = type(int256).min;
         // 3e76 >= 1e76 so the `if (signedCoefficientBAbs < scale)` block is skipped.
-        checkDivInverse(3e76, 0, 3e76, min);
+        checkDivInverse(3e76, 0, 3e76, 0);
     }
 
-    /// The exponent adjustment is first applied to `exponentA`. When `exponentA`
-    /// is already at `type(int256).min` the leftover adjustment spills over onto
-    /// `exponentB` instead.
-    function testDivAdjustExponentSpillsToExponentB() external pure {
+    /// The exponent-adjustment spill from `exponentA` onto `exponentB` only
+    /// engages when `exponentA` sits at `type(int256).min` — an out-of-domain
+    /// operand, rejected before the spill machinery runs.
+    function testDivAdjustExponentSpillsToExponentB() external {
         int256 min = type(int256).min;
-        // 1e76 is full at any exponent, so fullA holds even at min, avoiding the
-        // MaximizeOverflow revert while forcing the spill-to-exponentB path.
-        // 1e76 * 10^min / (3e75 * 10^min) == 10/3.
-        checkDiv(1e76, min, 3e75, min, THREES, -75);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e76, min));
+        this.divExternal(1e76, min, 3e75, min);
     }
 
-    /// When the adjustment cannot be applied to `exponentA` (already at the
-    /// minimum) and applying the remainder to `exponentB` would overflow it past
-    /// `type(int256).max`, `div` returns maximized zero.
-    function testDivAdjustExponentSpillOverflowReturnsZero() external pure {
-        checkDiv(1e76, type(int256).min, 3e75, type(int256).max, 0, 0);
+    /// The spill-overflow-to-zero path likewise requires operands at the
+    /// int256 extremes, which are out-of-domain and rejected up front.
+    function testDivAdjustExponentSpillOverflowReturnsZero() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e76, type(int256).min));
+        this.divExternal(1e76, type(int256).min, 3e75, type(int256).max);
     }
 
-    /// A division whose true exponent underflows below what a single result can
-    /// represent returns maximized zero.
-    function testDivUnderflowReturnsZero() external pure {
-        checkDiv(1e76, type(int256).min, 3, type(int256).max, 0, 0);
+    /// A division whose operands sit at the int256 exponent extremes is
+    /// rejected as out-of-domain rather than underflowing to zero.
+    function testDivUnderflowReturnsZero() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e76, type(int256).min));
+        this.divExternal(1e76, type(int256).min, 3, type(int256).max);
+    }
+
+    /// A division whose true result exponent lands below `EXPONENT_MIN` from
+    /// in-domain operands reverts `ExponentOverflow` on the result instead of
+    /// returning a truncated value at an out-of-domain exponent.
+    function testDivInDomainOperandsResultBelowDomainReverts() external {
+        // 1e(EXPONENT_MIN) / 1e(EXPONENT_MAX): both operands are in-domain but
+        // the true result exponent is ~2 * EXPONENT_MIN, far below the domain.
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 100, type(int256).min));
+        this.divExternal(1, EXPONENT_MIN, 1, EXPONENT_MAX);
     }
 }

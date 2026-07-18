@@ -61,4 +61,20 @@ contract LibDecimalFloatImplementationMinusTest is Test {
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, type(int256).min, type(int256).max));
         this.minusExternal(type(int256).min, type(int256).max);
     }
+
+    /// The type(int256).min normalization increments the exponent, so it must
+    /// revert already at EXPONENT_MAX rather than escaping the arithmetic
+    /// domain by one.
+    function testMinusExponentOverflowAtDomainMax() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, type(int256).min, EXPONENT_MAX));
+        this.minusExternal(type(int256).min, EXPONENT_MAX);
+    }
+
+    /// One below EXPONENT_MAX the normalization lands exactly on the domain
+    /// bound and must NOT revert.
+    function testMinusExponentAtDomainMaxMinusOneNoRevert() external {
+        (int256 signedCoefficient, int256 exponent) = this.minusExternal(type(int256).min, EXPONENT_MAX - 1);
+        assertEq(signedCoefficient, -(type(int256).min / 10), "coefficient");
+        assertEq(exponent, EXPONENT_MAX, "exponent");
+    }
 }
