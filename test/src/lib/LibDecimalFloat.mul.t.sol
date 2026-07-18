@@ -161,9 +161,7 @@ contract LibDecimalFloatMulTest is Test {
     /// the guard surfaces ExponentOverflow with the pre-adjustment sum instead
     /// of a raw Panic(0x11).
     function testMulRenormalizationOverflowGuard() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(ExponentOverflow.selector, int256(1e75), type(int256).max - 1)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e75), type(int256).max - 1));
         this.mulImplExternal(1e75, EXPONENT_MAX, 1e75, EXPONENT_MAX);
     }
 

@@ -7,7 +7,7 @@ import {LibCodeGen} from "rain-sol-codegen-0.1.0/src/lib/LibCodeGen.sol";
 import {LibFs} from "rain-sol-codegen-0.1.0/src/lib/LibFs.sol";
 import {LibLogTable} from "../src/lib/table/LibLogTable.sol";
 
-contract BuildPointers is Script {
+contract Build is Script {
     function run() external {
         LibFs.buildFileForContract(
             vm,

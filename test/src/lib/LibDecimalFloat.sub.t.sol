@@ -37,9 +37,7 @@ contract LibDecimalFloatSubTest is Test {
                     // packLossy collapses exponent underflow to FLOAT_ZERO, but
                     // the packed sub goes through packArithmeticResult, which
                     // reverts ExponentUnderflow for the same result.
-                    vm.expectRevert(
-                        abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent)
-                    );
+                    vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
                     this.subExternal(a, b);
                 } else {
                     Float floatImplementation = this.subExternal(a, b);
