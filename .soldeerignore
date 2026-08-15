@@ -1,11 +1,10 @@
 .DS_Store
-.coderabbitai.yaml
+.coderabbit.yaml
 .envrc
 .gas-snapshot
 .git
 .github
 .gitignore
-.gitmodules
 .pre-commit-config.yaml
 .prettierignore
 .soldeerignore
@@ -19,9 +18,7 @@ CLAUDE.md
 /docs
 /flake.lock
 /flake.nix
-/foundry.lock
 /foundry.toml
-/lib
 /node_modules
 /out
 /package.json
