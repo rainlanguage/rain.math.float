@@ -11,7 +11,9 @@ import {Test} from "forge-std-1.16.1/src/Test.sol";
 /// each published version. `script/check-published-deploy-constants.sh` queries
 /// the live registry (via FFI) and lists any missing constants, so publishing a
 /// new tag without pinning its constants fails this test. An unreachable
-/// registry is a vacuous pass rather than a failure on network flakiness.
+/// registry is reported as a SKIP rather than failing on network flakiness —
+/// skipped, not passed, so a run where the gate never actually ran cannot be
+/// read as a run where it held.
 contract LibDecimalFloatDeployTaggedConstantsTest is Test {
     function testAllPublishedSoldeerTagsHaveAFullConstantSuite() external {
         string[] memory cmd = new string[](2);
@@ -19,8 +21,10 @@ contract LibDecimalFloatDeployTaggedConstantsTest is Test {
         cmd[1] = "script/check-published-deploy-constants.sh";
         bytes memory out = vm.ffi(cmd);
 
-        // The registry could not be reached; there is nothing to verify.
+        // The registry could not be reached; there is nothing to verify, and
+        // reporting that as a pass would hide a gate that never ran.
         if (_startsWith(out, bytes("SKIP"))) {
+            vm.skip(true);
             return;
         }
 

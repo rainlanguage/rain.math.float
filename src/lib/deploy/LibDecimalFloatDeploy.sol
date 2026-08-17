@@ -39,6 +39,12 @@ library LibDecimalFloatDeploy {
     /// `LibDecimalFloatDeployTaggedConstantsTest`) queries the registry and
     /// fails if any published version is missing its suite, so publishing a new
     /// tag forces pinning that tag's deploy constants here.
+    ///
+    /// Each suite is DERIVED from its own tag's bytecode — the Zoltu address is
+    /// a function of bytecode + salt — so pinning a published tag never waits on
+    /// a broadcast. Publishing and deploying are decoupled: a suite records what
+    /// that release's bytecode deterministically deploys to, whenever it is
+    /// deployed.
 
     /// @dev Log tables address at the published `0.1.1` soldeer tag.
     address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS_0_1_1 = address(0xc51a14251b0dcF0ae24A96b7153991378938f5F5);
