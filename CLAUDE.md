@@ -60,14 +60,19 @@ deterministic address is a function of bytecode + salt only — not the branch o
 deployer — so a successful deploy from any branch lands at the same address a
 main-branch deploy would.
 
-**Typical flow for a source-changing PR**: trigger the `Manual sol artifacts`
-GitHub workflow on the PR's branch before merge.
+**The deploy is decoupled from the merge.** A source-changing PR regenerates its
+deployment record and merges on that record alone; nothing about landing it
+waits on an on-chain deploy. The deploy itself is a separate manual dispatch,
+run when someone decides to publish:
 `gh workflow run manual-sol-artifacts.yaml --ref <branch> -f suite=decimal-float`
 (use `log-tables` only when table bytecode changes, which is rare). The workflow
 runs `script/Deploy.sol` with `--broadcast --verify` across all networks, using
-`PRIVATE_KEY` regardless of ref. Do NOT wait for merge before deploying — there
-is nothing to gain from waiting, and the CI deploy-constant tests need updating
-anyway based on the deployed address.
+`PRIVATE_KEY` regardless of ref.
+
+`test/src/lib/deploy/LibDecimalFloatDeployProd.t.sol` forks all five networks
+and asserts the current record's addresses already carry the expected code, so
+it goes red between a bytecode change and the deploy that publishes it. That is
+a statement about the state of the chains, not about the branch under test.
 
 **Two deployment suites** (log-tables must be deployed first if redeploying
 tables):
@@ -77,12 +82,17 @@ DEPLOYMENT_KEY=<key> DEPLOYMENT_SUITE=log-tables forge script script/Deploy.sol:
 DEPLOYMENT_KEY=<key> DEPLOYMENT_SUITE=decimal-float forge script script/Deploy.sol:Deploy --broadcast --verify
 ```
 
-Expected addresses and code hashes are in
-`src/lib/deploy/LibDecimalFloatDeploy.sol`. Any source change to
-`LibDecimalFloat` or `LibFormatDecimalFloat` invalidates these constants; CI's
-`testDeployAddress` and `testExpectedCodeHashDecimalFloat` will fail until
-they're regenerated and committed. Network RPC URLs are configured in
-`foundry.toml` via `CI_DEPLOY_*_RPC_URL` env vars.
+Expected addresses and code hashes are generated, never hand-written. Each
+release freezes its own record under `src/generated/<tag>/` (tag =
+`[package].version` from `foundry.toml`, dots as underscores) and the current
+build's record sits in `src/generated/`;
+`src/lib/deploy/LibDecimalFloatDeploy.sol` only aliases the current release's.
+Any source change to `LibDecimalFloat` or `LibFormatDecimalFloat` changes the
+deployed bytecode, so `script/Build.sol` must be re-run and its output
+committed. `LibDecimalFloatDeployTaggedConstantsTest` re-derives every frozen
+record from its own bytecode offline — no network, no skips — and fails if the
+library constants drift from the current release's snapshot. Network RPC URLs
+are configured in `foundry.toml` via `CI_DEPLOY_*_RPC_URL` env vars.
 
 ## Architecture
 
