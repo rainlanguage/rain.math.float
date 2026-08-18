@@ -30,6 +30,7 @@ cbor_metadata = false
 ffi = true
 
 fs_permissions = [
+  { access = "read", path = "foundry.toml" },
   { access = "read-write", path = "./src/generated" },
   { access = "read", path = "./out" },
   { access = "read-write", path = "./crates/float/abi" },
@@ -45,7 +46,7 @@ forge-std = "1.16.1"
 "rain-string" = "0.2.0"
 "rain-datacontract" = "0.1.0"
 "rain-deploy" = "0.1.3"
-"rain-sol-codegen" = "0.1.0"
+rain-sol-codegen = "0.1.4"
 
 [soldeer]
 recursive_deps = false
