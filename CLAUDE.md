@@ -23,8 +23,8 @@ creation code, so a deploy from any branch lands where a main deploy would.
 
 `test/src/lib/deploy/LibDecimalFloatDeployProd.t.sol` forks the five supported
 networks and asserts the current record's addresses already carry the expected
-code, so it goes red between a bytecode change and the deploy that publishes
-it. That is a statement about the state of the chains, not about the branch.
+code, so it goes red between a bytecode change and the deploy that publishes it.
+That is a statement about the state of the chains, not about the branch.
 
 Addresses and code hashes are generated, never hand-written. `script/Build.sol`
 writes the current record to `src/generated/` and freezes it per release under
@@ -42,8 +42,8 @@ re-derives every frozen record offline and fails when the two drift.
   too large for `int224` is silently tolerated: it preserves the magnitude.
 - Three packing modes, and choosing the wrong one is a behaviour change.
   `packLossless` reverts on any precision loss. `packLossy` surfaces a
-  `lossless` flag and returns `FLOAT_ZERO` on exponent underflow — parsing
-  wants this, where underflow is a legitimate result reported as
+  `lossless` flag and returns `FLOAT_ZERO` on exponent underflow — parsing wants
+  this, where underflow is a legitimate result reported as
   `ParseDecimalPrecisionLoss`. `packArithmeticResult` tolerates coefficient
   truncation and reverts on exponent underflow; every public arithmetic
   operation uses it.
