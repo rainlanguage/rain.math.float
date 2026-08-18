@@ -25,14 +25,20 @@ error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int2
 /// @dev The maximum difference in exponents when adding to rescale.
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
 
-/// @dev The maximum exponent that can be maximized.
-/// This is crazy large, so should never be a problem for any real use case.
-/// We need it to guard against overflow when maximizing.
+/// @dev The maximum exponent in the domain of the arithmetic operations
+/// `mul`/`div`/`add`/`sub`/`inv`. Operands with a nonzero coefficient and an
+/// exponent above this revert `ExponentOverflow`, and no operation returns an
+/// exponent above this. The half-int256 headroom guarantees that summing two
+/// in-domain exponents, and the internal adjustments of up to a few hundred
+/// either side (maximization, decimal renormalization), can never overflow
+/// int256. This is crazy large, so the domain covers every real use case.
 int256 constant EXPONENT_MAX = type(int256).max / 2;
 
-/// @dev The minimum exponent that can be maximized.
-/// This is crazy small, so should never be a problem for any real use case.
-/// We need it to guard against overflow when maximized.
+/// @dev The minimum exponent in the domain of the arithmetic operations
+/// `mul`/`div`/`add`/`sub`/`inv`. Operands with a nonzero coefficient and an
+/// exponent below this revert `ExponentOverflow`, and no operation returns a
+/// nonzero coefficient with an exponent below this. This is crazy small, so
+/// the domain covers every real use case.
 int256 constant EXPONENT_MIN = -EXPONENT_MAX;
 
 /// @dev The signed coefficient of maximized zero.
@@ -52,6 +58,18 @@ int256 constant LOG10_Y_EXPONENT = -76;
 /// abstractions for some more gas and less range of the operations due to
 /// packing and unpacking having fundamental bit size limitations.
 library LibDecimalFloatImplementation {
+    /// Enforces the arithmetic exponent domain `[EXPONENT_MIN, EXPONENT_MAX]`
+    /// on an operand or result. Reverts `ExponentOverflow` outside the domain.
+    /// Zero coefficients are exempt because zero is zero at any exponent and
+    /// every operation normalizes zero to a zero exponent.
+    /// @param signedCoefficient The signed coefficient.
+    /// @param exponent The exponent.
+    function enforceExponentDomain(int256 signedCoefficient, int256 exponent) internal pure {
+        if ((exponent > EXPONENT_MAX || exponent < EXPONENT_MIN) && signedCoefficient != 0) {
+            revert ExponentOverflow(signedCoefficient, exponent);
+        }
+    }
+
     /// Negates a float.
     /// Equivalent to `0 - x`.
     ///
@@ -72,9 +90,10 @@ library LibDecimalFloatImplementation {
     /// @return exponent The exponent of the result.
     function minus(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
-            // This is the only edge case that can't be simply negated.
+            // This is the only edge case that can't be simply negated. The
+            // exponent increment must not escape the arithmetic domain.
             if (signedCoefficient == type(int256).min) {
-                if (exponent == type(int256).max) {
+                if (exponent >= EXPONENT_MAX) {
                     revert ExponentOverflow(signedCoefficient, exponent);
                 }
                 signedCoefficient /= 10;
@@ -174,6 +193,11 @@ library LibDecimalFloatImplementation {
             signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
             exponent = MAXIMIZED_ZERO_EXPONENT;
         } else {
+            // Operands must be in the exponent domain. In-domain exponents sum
+            // to at most one bit past the domain bound, which cannot overflow
+            // int256, so the addition below is panic-free.
+            enforceExponentDomain(signedCoefficientA, exponentA);
+            enforceExponentDomain(signedCoefficientB, exponentB);
             exponent = exponentA + exponentB;
 
             // mulDiv only works with unsigned integers, so get the absolute
@@ -207,6 +231,14 @@ library LibDecimalFloatImplementation {
                 }
             }
 
+            // The decimal renormalization must not push the result past the
+            // domain maximum. Guarding before the addition also keeps the
+            // checked add below panic-free at the int256 bound.
+            // adjustExponent [0, 76]
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (exponent > EXPONENT_MAX - int256(adjustExponent)) {
+                revert ExponentOverflow(signedCoefficientA, exponent);
+            }
             // adjustExponent [0, 76]
             // forge-lint: disable-next-line(unsafe-typecast)
             exponent += int256(adjustExponent);
@@ -217,6 +249,12 @@ library LibDecimalFloatImplementation {
                 mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
                 exponent
             );
+
+            // The result must be in the exponent domain: the coefficient
+            // rounding in unabsUnsignedMulOrDivLossy can add one more to the
+            // exponent, and in-domain operands can still sum below the domain
+            // minimum.
+            enforceExponentDomain(signedCoefficient, exponent);
         }
     }
 
@@ -287,6 +325,13 @@ library LibDecimalFloatImplementation {
         } else if (signedCoefficientA == 0) {
             return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
         } else {
+            // Operands must be in the exponent domain. The domain's headroom
+            // means the unchecked internal exponent arithmetic below can only
+            // ever wrap far outside the domain, where the result check catches
+            // it.
+            enforceExponentDomain(signedCoefficientA, exponentA);
+            enforceExponentDomain(signedCoefficientB, exponentB);
+
             int256 signedCoefficient;
             int256 exponent;
             bool fullA;
@@ -463,6 +508,10 @@ library LibDecimalFloatImplementation {
                         exponent = MAXIMIZED_ZERO_EXPONENT;
                     }
                 }
+                // Nonzero results must be in the exponent domain. This also
+                // catches any wrap of the unchecked exponent arithmetic above,
+                // which can only land far outside the domain.
+                enforceExponentDomain(signedCoefficient, exponent);
                 return (signedCoefficient, exponent);
             }
         }
@@ -634,6 +683,12 @@ library LibDecimalFloatImplementation {
             }
         }
 
+        // Operands must be in the exponent domain. Maximization below only
+        // ever lowers exponents, by at most 76, so in-domain operands keep the
+        // result exponent panic-free everywhere in this function.
+        enforceExponentDomain(signedCoefficientA, exponentA);
+        enforceExponentDomain(signedCoefficientB, exponentB);
+
         // Maximizing A and B gives us similar coefficients, which simplifies
         // detecting when their exponents are too far apart to add without
         // simply ignoring one of them.
@@ -664,7 +719,11 @@ library LibDecimalFloatImplementation {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 alignmentExponentDiff = uint256(exponentA - exponentB);
             // The early return here allows us to do unchecked pow on the
-            // scaler and means we never revert due to overflow here.
+            // scaler and means we never revert due to overflow here. The
+            // returned maximized form is always in the exponent domain: both
+            // operands entered in-domain and maximization lowers exponents by
+            // at most 76, so two maximized exponents more than 76 apart cannot
+            // both sit below EXPONENT_MIN.
             if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
                 return (signedCoefficientA, exponentA);
             }
@@ -683,9 +742,10 @@ library LibDecimalFloatImplementation {
                 let sameSignAC := iszero(shr(0xff, xor(signedCoefficientA, c)))
                 didOverflow := and(sameSignAB, iszero(sameSignAC))
             }
-            // Be careful to handle overflow.
+            // Be careful to handle overflow. The exponent increment must not
+            // escape the arithmetic domain.
             if (didOverflow) {
-                if (type(int256).max == exponentA) {
+                if (exponentA >= EXPONENT_MAX) {
                     revert ExponentOverflow(signedCoefficientA, exponentA);
                 }
 
@@ -697,6 +757,9 @@ library LibDecimalFloatImplementation {
                 signedCoefficientA = c;
             }
         }
+        // Nonzero results must be in the exponent domain: maximization can
+        // push both operands' exponents below the domain minimum.
+        enforceExponentDomain(signedCoefficientA, exponentA);
         return (signedCoefficientA, exponentA);
     }
 

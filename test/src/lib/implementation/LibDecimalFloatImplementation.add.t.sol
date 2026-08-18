@@ -140,6 +140,53 @@ contract LibDecimalFloatImplementationAddTest is Test {
         this.addExternal(type(int256).max, type(int256).max, 1, type(int256).max);
     }
 
+    /// An operand exponent outside the arithmetic domain reverts
+    /// ExponentOverflow with that operand's payload, first operand first.
+    function testAddOutOfDomainOperandAReverts() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), EXPONENT_MAX + 1));
+        this.addExternal(1, EXPONENT_MAX + 1, 1, 0);
+    }
+
+    /// An out-of-domain second operand reverts with the second operand's
+    /// payload.
+    function testAddOutOfDomainOperandBReverts() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), EXPONENT_MIN - 1));
+        this.addExternal(1, 0, 1, EXPONENT_MIN - 1);
+    }
+
+    /// The coefficient-overflow rescale increments the exponent, so it must
+    /// revert already at EXPONENT_MAX rather than escaping the domain by one.
+    function testAddCoefficientOverflowAtDomainMaxReverts() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(5e76), EXPONENT_MAX));
+        this.addExternal(5e76, EXPONENT_MAX, 5e76, EXPONENT_MAX);
+    }
+
+    /// One below EXPONENT_MAX the same coefficient-overflow rescale lands
+    /// exactly on the domain bound and must NOT revert.
+    function testAddCoefficientOverflowToDomainMaxNoRevert() external {
+        (int256 signedCoefficient, int256 exponent) = this.addExternal(5e76, EXPONENT_MAX - 1, 5e76, EXPONENT_MAX - 1);
+        assertEq(signedCoefficient, 1e76, "coefficient");
+        assertEq(exponent, EXPONENT_MAX, "exponent");
+    }
+
+    /// In-domain operands whose maximized sum sits below EXPONENT_MIN revert
+    /// ExponentOverflow on the result rather than returning an out-of-domain
+    /// exponent.
+    function testAddResultBelowDomainReverts() external {
+        // maximizeFull(1, EXPONENT_MIN) == (1e76, EXPONENT_MIN - 76).
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2e76), EXPONENT_MIN - 76));
+        this.addExternal(1, EXPONENT_MIN, 1, EXPONENT_MIN);
+    }
+
+    /// A zero result is exempt from the exponent-domain check: exact
+    /// cancellation at the bottom of the domain returns zero at the maximized
+    /// exponent instead of reverting, because zero is zero at any exponent.
+    function testAddCancellationBelowDomainReturnsZero() external {
+        (int256 signedCoefficient, int256 exponent) = this.addExternal(1, EXPONENT_MIN, -1, EXPONENT_MIN);
+        assertEq(signedCoefficient, 0, "coefficient");
+        assertEq(exponent, EXPONENT_MIN - 76, "exponent");
+    }
+
     /// Provided our exponents are in range we should never revert.
     function testAddNeverRevert(
         int256 signedCoefficientA,

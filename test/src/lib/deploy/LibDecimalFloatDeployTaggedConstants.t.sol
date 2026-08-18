@@ -10,8 +10,8 @@ import {Test} from "forge-std-1.16.1/src/Test.sol";
 /// a log-tables address + codehash and a DecimalFloat address + codehash for
 /// each published version. `script/check-published-deploy-constants.sh` queries
 /// the live registry (via FFI) and lists any missing constants, so publishing a
-/// new tag without pinning its constants fails this test. Skips if the registry
-/// is unreachable rather than failing on network flakiness.
+/// new tag without pinning its constants fails this test. An unreachable
+/// registry is a vacuous pass rather than a failure on network flakiness.
 contract LibDecimalFloatDeployTaggedConstantsTest is Test {
     function testAllPublishedSoldeerTagsHaveAFullConstantSuite() external {
         string[] memory cmd = new string[](2);
@@ -21,7 +21,6 @@ contract LibDecimalFloatDeployTaggedConstantsTest is Test {
 
         // The registry could not be reached; there is nothing to verify.
         if (_startsWith(out, bytes("SKIP"))) {
-            vm.skip(true);
             return;
         }
 

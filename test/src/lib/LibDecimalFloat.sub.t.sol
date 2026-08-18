@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.16.1/src/Test.sol";
@@ -33,9 +33,16 @@ contract LibDecimalFloatSubTest is Test {
             int256 signedCoefficient, int256 exponent
         ) {
             try this.packLossyExternal(signedCoefficient, exponent) returns (Float float, bool lossless) {
-                (lossless);
-                Float floatImplementation = this.subExternal(a, b);
-                assertTrue(float.eq(floatImplementation));
+                if (!lossless && Float.unwrap(float) == bytes32(0)) {
+                    // packLossy collapses exponent underflow to FLOAT_ZERO, but
+                    // the packed sub goes through packArithmeticResult, which
+                    // reverts ExponentUnderflow for the same result.
+                    vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
+                    this.subExternal(a, b);
+                } else {
+                    Float floatImplementation = this.subExternal(a, b);
+                    assertTrue(float.eq(floatImplementation));
+                }
             } catch (bytes memory err) {
                 vm.expectRevert(err);
                 this.packLossyExternal(signedCoefficient, exponent);

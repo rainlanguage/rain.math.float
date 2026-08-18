@@ -60,14 +60,13 @@ deterministic address is a function of bytecode + salt only — not the branch o
 deployer — so a successful deploy from any branch lands at the same address a
 main-branch deploy would.
 
-**Typical flow for a source-changing PR**: trigger the `Manual sol artifacts`
-GitHub workflow on the PR's branch before merge.
-`gh workflow run manual-sol-artifacts.yaml --ref <branch> -f suite=decimal-float`
-(use `log-tables` only when table bytecode changes, which is rare). The workflow
-runs `script/Deploy.sol` with `--broadcast --verify` across all networks, using
-`PRIVATE_KEY` regardless of ref. Do NOT wait for merge before deploying — there
-is nothing to gain from waiting, and the CI deploy-constant tests need updating
-anyway based on the deployed address.
+Deploying is a **decoupled manual dispatch**: it is never a step in a PR's flow
+and never gates a merge. Run the `Manual sol artifacts` workflow when the
+bytecode is to go on chain:
+`gh workflow run manual-sol-artifacts.yaml --ref <ref> -f suite=decimal-float`
+(use `log-tables` only when table bytecode changes, which is rare). It runs
+`script/Deploy.sol` with `--broadcast --verify` across all networks, using
+`PRIVATE_KEY` regardless of ref.
 
 **Two deployment suites** (log-tables must be deployed first if redeploying
 tables):
@@ -105,7 +104,7 @@ they're regenerated and committed. Network RPC URLs are configured in
 
 - **`Deploy.sol`** — Production deployment script using Zoltu deterministic
   proxy. Deploys log tables and DecimalFloat contract to all supported networks.
-- **`BuildPointers.sol`** — Generates `src/generated/LogTables.pointers.sol`
+- **`Build.sol`** — Generates `src/generated/LogTables.pointers.sol`
   (committed to repo; must be regenerated if log table data changes).
 
 ### Rust Layer (`crates/float/`)
