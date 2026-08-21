@@ -105,8 +105,8 @@ they're regenerated and committed. Network RPC URLs are configured in
 
 - **`Deploy.sol`** — Production deployment script using Zoltu deterministic
   proxy. Deploys log tables and DecimalFloat contract to all supported networks.
-- **`BuildPointers.sol`** — Generates `src/generated/LogTables.pointers.sol`
-  (committed to repo; must be regenerated if log table data changes).
+- **`Build.sol`** — Generates `src/generated/LogTables.pointers.sol` (committed
+  to repo; must be regenerated if log table data changes).
 
 ### Rust Layer (`crates/float/`)
 
