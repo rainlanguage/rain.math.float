@@ -223,10 +223,10 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
         }
     }
 
-    /// The `exponent < -80` vs `>= -80` split is load-bearing: at -80 the scale
-    /// is 10^76 (the largest power of ten that still fits in int256), at -81 it
-    /// would be 10^77 which overflows int256 to a NEGATIVE number and corrupts
-    /// the division. Pin both sides with concrete values so a mutant moving the
+    /// The `exponent < -80` vs `>= -80` split is where int256 runs out: at -80
+    /// the scale is 10^76 (the largest power of ten that still fits in
+    /// int256), at -81 it would be 10^77 which overflows int256 to a NEGATIVE
+    /// number and corrupts the division. Pin both sides with concrete values so a mutant moving the
     /// bound (`< -80` -> `< -81`, `<= -80`, etc.) is killed deterministically
     /// rather than only probabilistically by the fuzzers.
     function testMantissa4ExponentMinus80IsScaleBranch() external pure {
