@@ -54,6 +54,20 @@ library LibDecimalFloatDeploy {
     bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH_0_1_1 =
         0x7a93d0311f7782b44157ba40e94ec936085ebe001c7893bdd74911c8351d3def;
 
+    /// @dev Log tables address at the published `0.1.7` soldeer tag.
+    address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS_0_1_7 = address(0xc51a14251b0dcF0ae24A96b7153991378938f5F5);
+
+    /// @dev Log tables codehash at the published `0.1.7` soldeer tag.
+    bytes32 constant LOG_TABLES_DATA_CONTRACT_HASH_0_1_7 =
+        0x2573004ac3a9ee7fc8d73654d76386f1b6b99e34cdf86a689c4691e47143420f;
+
+    /// @dev DecimalFloat address at the published `0.1.7` soldeer tag.
+    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS_0_1_7 = address(0x799632d282178e770C7465cad54aDA1021A913D6);
+
+    /// @dev DecimalFloat codehash at the published `0.1.7` soldeer tag.
+    bytes32 constant DECIMAL_FLOAT_CONTRACT_HASH_0_1_7 =
+        0xdc468883c345d41c0abd98ef2fd933c370bd1682522d37e6f6b729793301f55e;
+
     /// Combines all log and anti-log tables into a single bytes array for
     /// deployment. These are using packed encoding to minimize size and remove
     /// the complexity of full ABI encoding.
