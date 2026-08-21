@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: LicenseRef-DCL-1.0
+# SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
+#
+# Fixture for LibDecimalFloatDeployTaggedConstantsTest. Stands in for
+# LibDecimalFloatDeploy.sol and deliberately pins version 9.9.9 only HALFWAY:
+# the two address constants are present, the two codehash constants are not.
+# The structural half of script/check-published-deploy-constants.sh must report
+# both absent codehashes for it.
+#
+# Deliberately NOT a .sol file: forge compiles everything under test/, and this
+# is grep fodder rather than Solidity. The script only ever matches
+# `constant <NAME> =`, so the surrounding prose is inert.
+
+    address constant ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS_9_9_9 = address(0xc51a14251b0dcF0ae24A96b7153991378938f5F5);
+
+    address constant ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS_9_9_9 = address(0xBee0eEFaffD046c9602109eB30A858Be301CC926);
