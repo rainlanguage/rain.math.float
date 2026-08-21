@@ -17,9 +17,24 @@ import {console2} from "forge-std-1.16.1/src/console2.sol";
 /// pinned — needs api.soldeer.xyz). The structural half is asserted
 /// unconditionally here, so a run that cannot reach the registry still verifies
 /// something real rather than verifying nothing.
+///
+/// The registry half is asserted unconditionally too, by handing the script a
+/// fixture in place of a fetched response. That keeps three things off the
+/// network: that a published version with no pinned suite is reported, that the
+/// version scan reads a response whatever whitespace it carries, and that a
+/// response no version can be read out of is a failure rather than the skip an
+/// unreachable registry earns.
 contract LibDecimalFloatDeployTaggedConstantsTest is Test {
     string constant SCRIPT = "script/check-published-deploy-constants.sh";
     string constant HALF_PINNED_FIXTURE = "test/fixtures/half-pinned-deploy-constants.txt";
+    string constant UNPINNED_VERSION_RESPONSE_FIXTURE = "test/fixtures/registry-response-unpinned-version.txt";
+    string constant PRETTY_PRINTED_RESPONSE_FIXTURE = "test/fixtures/registry-response-pretty-printed.txt";
+    string constant UNREADABLE_RESPONSE_FIXTURE = "test/fixtures/registry-response-unreadable.txt";
+
+    /// Every readable fixture response publishes 9.9.9, a version
+    /// `LibDecimalFloatDeploy` pins nothing for, so the whole suite is absent.
+    string constant UNPINNED_9_9_9 =
+        "MISSING: DECIMAL_FLOAT_CONTRACT_HASH_9_9_9 LOG_TABLES_DATA_CONTRACT_HASH_9_9_9 ZOLTU_DEPLOYED_DECIMAL_FLOAT_ADDRESS_9_9_9 ZOLTU_DEPLOYED_LOG_TABLES_ADDRESS_9_9_9";
 
     /// Structural half against the committed lib. No network, so this asserts
     /// on every run: a version pinned halfway fails here.
@@ -71,6 +86,54 @@ contract LibDecimalFloatDeployTaggedConstantsTest is Test {
 
         // On failure the actual value lists the missing `*_<version>` constants.
         assertEq(string(out), "OK", "a published soldeer tag is missing pinned deploy constants");
+    }
+
+    /// A version published to the registry with none of its deploy constants
+    /// pinned must be reported by name. That is the registry half's whole
+    /// point, and it is the assertion that only ran when api.soldeer.xyz
+    /// answered until this test drove it from a fixture.
+    function testRegistryCheckReportsAPublishedVersionWithNoPinnedConstants() external {
+        assertEq(
+            _checkAgainstRegistryResponse(UNPINNED_VERSION_RESPONSE_FIXTURE),
+            UNPINNED_9_9_9,
+            "the registry check failed to report a published version with no pinned constants"
+        );
+    }
+
+    /// Whitespace inside the response carries no meaning, so a pretty-printed
+    /// answer must read exactly like a compact one. A scan that only matched
+    /// the compact spelling would read no versions out of a perfectly good
+    /// response and condemn it as unreadable.
+    function testRegistryCheckReadsAPrettyPrintedResponse() external {
+        assertEq(
+            _checkAgainstRegistryResponse(PRETTY_PRINTED_RESPONSE_FIXTURE),
+            UNPINNED_9_9_9,
+            "the registry check could not read a pretty-printed response"
+        );
+    }
+
+    /// A response that arrives and carries no readable version is a failure,
+    /// not a skip. Calling it a skip retires the registry half the moment the
+    /// response shape changes, and every run stays green while that half checks
+    /// nothing.
+    function testRegistryCheckFailsOnAResponseWithNoReadableVersion() external {
+        assertEq(
+            _checkAgainstRegistryResponse(UNREADABLE_RESPONSE_FIXTURE),
+            "UNREADABLE: the soldeer registry answered but no version could be read from the response; the registry half did not run",
+            "an unreadable registry response was not reported as a failure"
+        );
+    }
+
+    /// Both halves against the committed lib, with `fixture` standing in for a
+    /// fetched registry response so the registry half never touches the
+    /// network.
+    function _checkAgainstRegistryResponse(string memory fixture) private returns (string memory) {
+        string[] memory cmd = new string[](4);
+        cmd[0] = "bash";
+        cmd[1] = SCRIPT;
+        cmd[2] = "--registry-response";
+        cmd[3] = fixture;
+        return string(vm.ffi(cmd));
     }
 
     function _startsWith(bytes memory s, bytes memory prefix) private pure returns (bool) {

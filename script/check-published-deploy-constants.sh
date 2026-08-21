@@ -18,18 +18,29 @@
 #
 # Usage:
 #   check-published-deploy-constants.sh [--lib <path>] [--offline]
+#                                       [--registry-response <path>]
 #
 #   --lib <path>  file to inspect (default src/lib/deploy/LibDecimalFloatDeploy.sol)
 #   --offline     run the structural half only, and never touch the network.
 #                 Lets a test assert the structural half deterministically
 #                 instead of depending on whether the registry answered.
+#   --registry-response <path>
+#                 use the contents of <path> as the registry response instead
+#                 of fetching one, so a test can drive the registry half
+#                 deterministically. Stands in for a fetch that SUCCEEDED;
+#                 there is no stand-in for one that failed, because that path
+#                 is what every offline CI run already takes.
 #
 # Consumed by LibDecimalFloatDeployTaggedConstants.t.sol via FFI. Output is one
 # of:
-#   OK                   - every half that ran, passed
-#   MISSING: <names...>  - one or more expected constants are absent
-#   SKIP: <reason>       - default mode only: the structural half passed but the
-#                          registry was unreachable, so that half did not run
+#   OK                     - every half that ran, passed
+#   MISSING: <names...>    - one or more expected constants are absent
+#   SKIP: <reason>         - default mode only: the structural half passed but
+#                            the registry could not be fetched, so that half
+#                            did not run
+#   UNREADABLE: <reason>   - the registry answered and no version could be read
+#                            out of the answer. A failure, not a skip: see the
+#                            registry half below for why.
 #
 # Always exits 0 so the test sees the message rather than an ffi failure.
 
@@ -37,6 +48,7 @@ set -uo pipefail
 
 lib="src/lib/deploy/LibDecimalFloatDeploy.sol"
 offline=0
+registry_response=""
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -52,6 +64,18 @@ while [ "$#" -gt 0 ]; do
       offline=1
       shift
       ;;
+    --registry-response)
+      registry_response="${2:-}"
+      if [ -z "$registry_response" ]; then
+        printf 'MISSING: --registry-response requires a path'
+        exit 0
+      fi
+      if [ ! -f "$registry_response" ]; then
+        printf 'MISSING: no such registry response file %s' "$registry_response"
+        exit 0
+      fi
+      shift 2
+      ;;
     *)
       printf 'MISSING: unknown argument %s' "$1"
       exit 0
@@ -61,6 +85,11 @@ done
 
 if [ ! -f "$lib" ]; then
   printf 'MISSING: no such file %s' "$lib"
+  exit 0
+fi
+
+if [ "$offline" -eq 1 ] && [ -n "$registry_response" ]; then
+  printf 'MISSING: --offline and --registry-response are mutually exclusive'
   exit 0
 fi
 
@@ -94,13 +123,46 @@ pinned_suffixes=$(
 check_suffixes "$pinned_suffixes"
 
 # 2. Registry half.
+#
+# Fetching and reading are kept apart on purpose. Collapsing them makes an
+# answer nobody can read look exactly like no answer at all, and "no answer" is
+# the branch that reports SKIP — so a change in the registry's response shape
+# would silently disable this half forever while every run stayed green.
+#
+# A fetch that fails is a SKIP: the endpoint 404s for a project with no
+# published revisions, and a network that is simply down is not a finding.
+# `rain-math-float` does have published revisions, so a failed fetch here means
+# the registry or the network was unreachable, not that nothing is published.
+#
+# A fetch that SUCCEEDS and yields no version is UNREADABLE, and that is a
+# failure. This endpoint only answers 2xx for a project that exists, and a
+# project exists on the registry because it has revisions; so a readable 2xx
+# always carries at least one `"version"`. Zero of them means the response no
+# longer looks the way this script reads it.
 versions=""
+registry_answered=0
 if [ "$offline" -eq 0 ]; then
-  versions=$(
+  if [ -n "$registry_response" ]; then
+    payload=$(cat "$registry_response")
+    registry_answered=1
+  elif payload=$(
     curl -fsS --connect-timeout 5 --max-time 20 --retry 2 --retry-delay 1 \
-      "https://api.soldeer.xyz/api/v1/revision?project_name=rain-math-float" 2>/dev/null \
-      | grep -oE '"version":"[0-9][0-9.]*"' | cut -d'"' -f4 | sort -u
-  )
+      "https://api.soldeer.xyz/api/v1/revision?project_name=rain-math-float" 2>/dev/null
+  ); then
+    registry_answered=1
+  fi
+
+  if [ "$registry_answered" -eq 1 ]; then
+    # Tolerant of whitespace around the colon so that a pretty-printed response
+    # reads as a response rather than as an unreadable one.
+    versions=$(
+      printf '%s' "$payload" \
+        | grep -oE '"version"[[:space:]]*:[[:space:]]*"[0-9][0-9.]*"' \
+        | sed -E 's/.*"([0-9][0-9.]*)"$/\1/' \
+        | sort -u
+    )
+  fi
+
   if [ -n "$versions" ]; then
     check_suffixes "$(printf '%s' "$versions" | tr . _)"
   fi
@@ -113,7 +175,9 @@ if [ -n "$missing" ]; then
   printf '%s' "$missing" | tr ' ' '\n' | grep -v '^$' | sort -u | while IFS= read -r n; do
     printf ' %s' "$n"
   done
-elif [ "$offline" -eq 0 ] && [ -z "$versions" ]; then
+elif [ "$offline" -eq 0 ] && [ "$registry_answered" -eq 1 ] && [ -z "$versions" ]; then
+  printf 'UNREADABLE: the soldeer registry answered but no version could be read from the response; the registry half did not run'
+elif [ "$offline" -eq 0 ] && [ "$registry_answered" -eq 0 ]; then
   printf 'SKIP: could not fetch published soldeer versions; pinned constant suites are structurally complete'
 else
   printf 'OK'
