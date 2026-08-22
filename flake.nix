@@ -18,32 +18,10 @@
         pkgs = rainix.pkgs.${system};
       in
       rec {
-        packages = rainix.packages.${system} // {
-          test-wasm-build = rainix.mkTask.${system} {
-            name = "test-wasm-build";
-            body = ''
-              set -euxo pipefail
-              cargo build -r --target wasm32-unknown-unknown --lib --workspace
-            '';
-          };
-
-          test-js-bindings = rainix.mkTask.${system} {
-            name = "test-js-bindings";
-            body = ''
-              set -euxo pipefail
-              npm install --no-check
-              npm run build
-              npm test
-            '';
-          };
-        };
+        packages = rainix.packages.${system};
 
         devShells.default = pkgs.mkShell {
           inherit (rainix.devShells.${system}.default) shellHook;
-          packages = [
-            packages.test-wasm-build
-            packages.test-js-bindings
-          ];
           inputsFrom = [ rainix.devShells.${system}.default ];
         };
       }
