@@ -9,8 +9,4 @@ node_modules
 .env
 .fixes
 .pre-commit-config.yaml
-# Personal agent state stays local; shared path-scoped rules are repo policy
-# and are tracked. `.claude/*` rather than `.claude` so git descends far enough
-# to see the negation.
-.claude/*
-!.claude/rules/
+.claude
