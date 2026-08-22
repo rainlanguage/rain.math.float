@@ -3,9 +3,9 @@
 ## Deploying is irreversible
 
 Contracts land at the same address on every supported network via the Zoltu
-deterministic proxy: the address is a function of bytecode + salt, not of the
-branch or the deployer. A deploy from any branch therefore lands exactly where
-a `main` deploy would.
+deterministic proxy: the address is a function of init code + salt, not of the
+branch or the deployer. Deploying identical bytecode from any branch therefore
+lands exactly where a `main` deploy would.
 
 ```bash
 gh workflow run manual-sol-artifacts.yaml --ref <branch> -f suite=decimal-float
