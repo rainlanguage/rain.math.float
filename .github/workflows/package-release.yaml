@@ -7,7 +7,5 @@ jobs:
   release:
     uses: rainlanguage/rainix/.github/workflows/rainix-autopublish.yaml@main
     with:
-      crate: rain-math-float
-      npm-package: "@rainlanguage/float"
       soldeer-package: rain-math-float
     secrets: inherit
