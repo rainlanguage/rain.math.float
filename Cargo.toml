@@ -1,0 +1,8 @@
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+edition = "2024"
+license = "LicenseRef-DCL-1.0"
+homepage = "https://github.com/rainlanguage/rain.math.float"
