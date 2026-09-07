@@ -8,3 +8,4 @@ temp
 .pre-commit-config.yaml
 .claude
 target
+proptest-regressions
