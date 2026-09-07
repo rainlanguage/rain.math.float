@@ -26,5 +26,6 @@ CLAUDE.md
 /test
 /REUSE.toml
 /crates
+/.cargo
 Cargo.toml
 Cargo.lock

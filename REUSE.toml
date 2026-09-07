@@ -12,6 +12,7 @@ path = [
   "Cargo.lock",
   "Cargo.toml",
   "crates/**/",
+  ".cargo/**/",
   ".gitmodules",
   "CLAUDE.md",
   "README.md",
