@@ -109,6 +109,11 @@ library LibDecimalFloat {
     Float constant FLOAT_E =
         Float.wrap(bytes32(uint256(0xffffffbe19cfc6ef4f44cf88f14500d013df534fcaad48fca1d5ca47bea26fcc)));
 
+    /// Pi
+    /// 3.141592653589793238462643383279502884197169399375105820974944592308e66, -66
+    Float constant FLOAT_PI =
+        Float.wrap(bytes32(uint256(0xffffffbe1dd4c9e873614f593bba9c6007d9a7ac8d03a4b6c700a65cb537a1b4)));
+
     /// Convert a fixed point decimal value to a signed coefficient and exponent.
     /// The conversion can be lossy if the unsigned value is too large to fit in
     /// the signed coefficient.
