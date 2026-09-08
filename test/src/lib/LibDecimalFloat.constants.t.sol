@@ -70,6 +70,14 @@ contract LibDecimalFloatConstantsTest is Test {
         assertEq(Float.unwrap(e), Float.unwrap(expected));
     }
 
+    function testFloatPi() external pure {
+        Float pi = LibDecimalFloat.FLOAT_PI;
+        Float expected = LibDecimalFloat.packLossless(
+            int224(3.141592653589793238462643383279502884197169399375105820974944592308e66), -66
+        );
+        assertEq(Float.unwrap(pi), Float.unwrap(expected));
+    }
+
     function testFloatZero() external pure {
         Float zero = LibDecimalFloat.FLOAT_ZERO;
         Float expected = LibDecimalFloat.packLossless(MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);

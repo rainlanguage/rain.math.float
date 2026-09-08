@@ -7,3 +7,4 @@ temp
 .fixes
 .pre-commit-config.yaml
 .claude
+target

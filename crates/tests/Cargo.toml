@@ -1,0 +1,19 @@
+[package]
+name = "rain-math-float-tests"
+version = "0.0.0"
+publish = false
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+description = "Tests of the library through the rain-math-float bindings, over concretes compiled from this source."
+
+[dev-dependencies]
+alloy = { version = "1.0.9", default-features = false, features = [
+  "sol-types",
+  "arbitrary",
+] }
+alloy-primitives = { version = "1.0.9", default-features = false }
+proptest = "1.7.0"
+rain-math-float = { git = "https://github.com/rainlanguage/rain.math.float.deploy", rev = "643aa1726741fb113874b9152814ade10449e7c2", features = [
+  "test-harness",
+] }

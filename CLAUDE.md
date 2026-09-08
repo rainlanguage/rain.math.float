@@ -14,7 +14,12 @@ rather than producing special values.
 This repository is the library half of the rain.math.float split. It publishes
 only the `rain-math-float` Soldeer package. The deployed concrete contract, the
 on-chain deploy pins/snapshot, the deploy scripts/tests, and the Rust/WASM/npm
-bindings live in `rain.math.float.deploy` and publish from there.
+bindings live in `rain.math.float.deploy` and publish from there. The one Rust
+crate here, `crates/tests`, is test-only and never published. It runs the
+bindings' library tests over `test/concrete/TestDecimalFloat.sol` compiled from
+this source (`.cargo/config.toml` points the bindings at the artifacts and runs
+their constructors) and cross-references the packed constants against values
+derived in integer arithmetic.
 
 ## Build Commands
 
