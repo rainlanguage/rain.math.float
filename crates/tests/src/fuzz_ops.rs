@@ -42,8 +42,7 @@ prop_compose! {
 }
 
 /// Check that two f64 values are approximately equal, allowing for
-/// f64 rounding errors. Returns true if they're within a relative
-/// tolerance of 1e-10 or both are effectively zero.
+/// f64 rounding errors: equal, or within a relative tolerance of 1e-10.
 fn approx_eq(a: f64, b: f64) -> bool {
     if a == b {
         return true;
@@ -52,9 +51,6 @@ fn approx_eq(a: f64, b: f64) -> bool {
         return false;
     }
     let max_abs = a.abs().max(b.abs());
-    if max_abs < 1e-30 {
-        return true;
-    }
     ((a - b).abs() / max_abs) < 1e-10
 }
 
@@ -264,13 +260,16 @@ proptest! {
         prop_assume!(float.is_ok());
         let float = float.unwrap();
         let (back, lossless) = float.to_fixed_decimal_lossy(decimals).unwrap();
-        if lossless {
-            prop_assert!(
-                back == value,
-                "round-trip failed: {} with {} decimals, got {}",
-                coefficient, decimals, back
-            );
-        }
+        prop_assert!(
+            lossless,
+            "round-trip lost precision: {} with {} decimals",
+            coefficient, decimals
+        );
+        prop_assert!(
+            back == value,
+            "round-trip failed: {} with {} decimals, got {}",
+            coefficient, decimals, back
+        );
     }
 
     #[test]

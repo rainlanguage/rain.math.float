@@ -9,9 +9,7 @@ fn main() {
     for watched in ["foundry.toml", "soldeer.lock", "src", "test"] {
         println!("cargo:rerun-if-changed={}", root.join(watched).display());
     }
-    if !root.join("dependencies").is_dir() {
-        forge(&root, &["soldeer", "install"]);
-    }
+    forge(&root, &["soldeer", "install"]);
     forge(&root, &["build"]);
 }
 

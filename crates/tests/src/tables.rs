@@ -294,9 +294,10 @@ fn test_antilog_table_small_generation() {
     }
 }
 
-/// Verify the main log table — the base values (without ALT flag)
-/// match exactly. ALT flags depend on the small table generation
-/// so they get +1 tolerance via the ALT flag being set or not.
+/// Verify the main log table: the base values (without ALT flag) match
+/// exactly. The flags are transcribed from the published table, whose
+/// split between the two mean-difference sets varies by row; the lookup
+/// test exercises them by following them.
 #[test]
 fn test_log_table_generation() {
     let small = generate_log_table_small();
