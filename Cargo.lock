@@ -2424,8 +2424,9 @@ checksum = "dc33ff2d4973d518d823d61aa239014831e521c75da58e3df4840d3f47749d09"
 
 [[package]]
 name = "rain-math-float"
-version = "0.1.11"
-source = "git+https://github.com/rainlanguage/rain.math.float.deploy?rev=643aa1726741fb113874b9152814ade10449e7c2#643aa1726741fb113874b9152814ade10449e7c2"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b1162fc9a80928bf6ef0ae5831fca4442a681e93e254c37c8dac8745036ccf4"
 dependencies = [
  "alloy",
  "getrandom 0.2.17",
