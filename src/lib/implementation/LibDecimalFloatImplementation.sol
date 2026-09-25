@@ -1136,7 +1136,8 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// The magnitude of an unpacked value, as an unpacked value.
+    /// The magnitude of an unpacked coefficient. The exponent is untouched by
+    /// taking a magnitude, so there is nothing to return alongside it.
     ///
     /// The packed `LibDecimalFloat.abs` cannot serve callers working below the
     /// public arithmetic surface. It has to fit the magnitude back into an
@@ -1144,17 +1145,6 @@ library LibDecimalFloatImplementation {
     /// and reverts `ExponentOverflow` when the exponent is already at its
     /// maximum. Here the coefficient is already widened to an int256, so
     /// negating an int224 is exact and cannot overflow.
-    /// @param signedCoefficient The coefficient, within int224.
-    /// @param exponent The exponent, unchanged by taking a magnitude.
-    /// @return The non-negative coefficient.
-    /// @return The exponent.
-    function abs(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        return (absCoefficient(signedCoefficient), exponent);
-    }
-
-    /// The magnitude of an unpacked coefficient. The exponent is untouched by
-    /// taking a magnitude, so callers that already hold it can skip carrying
-    /// it through.
     /// @param signedCoefficient The coefficient, within int224.
     /// @return The non-negative coefficient.
     function absCoefficient(int256 signedCoefficient) internal pure returns (int256) {
