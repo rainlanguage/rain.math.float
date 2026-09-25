@@ -42,6 +42,8 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         if (fits) {
             if (signedCoefficient == 0) {
                 // Zero is always the lossless zero, exponent ignored.
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
                 return (0, 0, true, true, false);
             }
         } else {
@@ -55,11 +57,17 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         // Classify by whether the (possibly bumped) exponent fits int32.
         if (exponent > INT32_MAX || exponent < INT32_MIN) {
             if (exponent < 0) {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
                 return (0, 0, true, false, false);
             }
+            // The literal is the bool this function returns, not a condition operand.
+            //forge-lint: disable-next-line(boolean-cst)
             return (0, 0, false, false, true);
         }
 
+        // The literal is the bool this function returns, not a condition operand.
+        //forge-lint: disable-next-line(boolean-cst)
         return (signedCoefficient, exponent, signedCoefficient == 0, expLossless, false);
     }
 
@@ -108,6 +116,9 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         // (1..1e6 OOM range), both signs.
         coeffOffset = bound(coeffOffset, 1, 1_000_000);
         int256 signedCoefficient = (INT224_MAX + 1) * coeffOffset;
+        // Casting to `uint256` is safe because parity survives the two's complement
+        // reinterpretation, and parity is all this reads.
+        //forge-lint: disable-next-line(unsafe-typecast)
         if (uint256(exponent) % 2 == 0) {
             signedCoefficient = -signedCoefficient;
         }
