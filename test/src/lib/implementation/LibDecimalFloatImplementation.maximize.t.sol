@@ -249,6 +249,8 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     function maximizeOracle(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, bool) {
         unchecked {
             if (signedCoefficient == 0) {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
                 return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT, true);
             }
             // Greedy single-OOM steps. Bounded by 76 iterations because anything

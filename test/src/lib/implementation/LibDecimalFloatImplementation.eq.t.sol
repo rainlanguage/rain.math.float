@@ -160,6 +160,9 @@ contract LibDecimalFloatImplementationEqTest is Test {
             return;
         }
         uint256 s = bound(shift, 1, maxShift);
+        // Casting to `int256` is safe because `s` is bounded far below the exponent
+        // at which `10 ** s` leaves int256.
+        //forge-lint: disable-next-line(unsafe-typecast)
         int256 scaled = base * int256(10 ** s);
 
         // `s` is bounded to `maxShift` which is at most ~76 (the loop above

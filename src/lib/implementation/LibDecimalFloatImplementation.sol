@@ -969,6 +969,8 @@ library LibDecimalFloatImplementation {
     function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, bool) {
         unchecked {
             if (signedCoefficient == 0) {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
                 return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT, true);
             }
 
@@ -1215,6 +1217,8 @@ library LibDecimalFloatImplementation {
     function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256, bool, int256) {
         unchecked {
             if (exponent == -4) {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
                 return (signedCoefficient, false, 1);
             } else if (exponent < -4) {
                 if (exponent < -80) {
@@ -1225,10 +1229,13 @@ library LibDecimalFloatImplementation {
                 int256 rescaled = signedCoefficient / scale;
                 return (rescaled, rescaled * scale != signedCoefficient, scale);
             } else if (exponent >= 0) {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
                 return (0, false, 1);
             } else {
                 // exponent is [-3, -1]
-                // forge-lint: disable-next-line(unsafe-typecast)
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(unsafe-typecast, boolean-cst)
                 return (signedCoefficient * int256(10 ** uint256(4 + exponent)), false, 1);
             }
         }
