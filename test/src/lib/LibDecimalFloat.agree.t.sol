@@ -115,6 +115,82 @@ contract LibDecimalFloatAgreeTest is Test {
         assertTrue(LibDecimalFloat.agree(f(0, 0), f(100, -4), f(990, -1), f(1000, -1)));
     }
 
+    /// The anchor is whichever end is further from zero, so for values
+    /// straddling zero it is not simply the highest.
+    function testAgreeStraddlingZero() external pure {
+        // Spread 101, anchor 100, so 1.01 reaches it and 1 does not.
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(101, -2), f(-1, 0), f(100, 0)));
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, 0), f(100, 0)));
+        // Reflected: the negative end is now the larger magnitude.
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(101, -2), f(-100, 0), f(1, 0)));
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-100, 0), f(1, 0)));
+    }
+
+    /// A zero anchor collapses the proportional term whatever its size, so
+    /// only the absolute term can accept a spread there.
+    function testAgreeZeroAnchor() external pure {
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, -2), f(0, 0), f(0, 0)));
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1000, 0), f(0, 0), f(0, 0)));
+        // The anchor is the larger magnitude, so with a highest of 1 it is 1,
+        // not 0.
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(0, 0), f(1, 0)));
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(99, -2), f(0, 0), f(1, 0)));
+    }
+
+    /// The proportional term scales with the values and the absolute term
+    /// does not, which is the whole reason for taking both.
+    function testAgreeScaling() external pure {
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, -2), f(1000, 0), f(1001, 0)));
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(1, -2), f(10, 0), f(11, 0)));
+        assertTrue(LibDecimalFloat.agree(f(1, 0), f(0, 0), f(1000, 0), f(1001, 0)));
+        assertTrue(LibDecimalFloat.agree(f(1, 0), f(0, 0), f(10, 0), f(11, 0)));
+    }
+
+    /// AN INDEPENDENT ORACLE, composed in plain integer arithmetic sharing
+    /// nothing with this library.
+    ///
+    /// Everything else here is a hand-derived assertion, so a misread of the
+    /// formula would be written into both the code and the expectations. This
+    /// computes the predicate as exact integers at a fixed scale, so the two
+    /// can disagree.
+    ///
+    /// THE DOMAIN IS RESTRICTED ON PURPOSE. Values and tolerances are integers
+    /// at exponent 0 within a range where the products fit an int256 exactly,
+    /// so both paths are lossless and must agree exactly. Widening it would
+    /// surface rounding differences rather than formula differences.
+    function testAgreeAgainstIntegerOracle(
+        int256 lowestSeed,
+        int256 highestSeed,
+        uint256 absoluteSeed,
+        uint256 proportionalSeed
+    ) external pure {
+        int256 lowestValue = bound(lowestSeed, -1e12, 1e12);
+        int256 highestValue = bound(highestSeed, -1e12, 1e12);
+        if (highestValue < lowestValue) {
+            (lowestValue, highestValue) = (highestValue, lowestValue);
+        }
+        // Absolute is an integer; proportional is hundredths, so the product
+        // with an anchor up to 1e12 stays exact.
+        int256 absoluteValue = int256(bound(absoluteSeed, 0, 1e12));
+        int256 proportionalHundredths = int256(bound(proportionalSeed, 0, 100000));
+
+        int256 spread = highestValue - lowestValue;
+        int256 anchor = highestValue < 0
+            ? -lowestValue
+            : (lowestValue < 0 && -lowestValue > highestValue ? -lowestValue : highestValue);
+        // Clear the denominator: spread*100 <= max(absolute*100, proportional*anchor).
+        int256 proportionalTerm = proportionalHundredths * anchor;
+        int256 absoluteTerm = absoluteValue * 100;
+        bool expected = spread * 100 <= (absoluteTerm > proportionalTerm ? absoluteTerm : proportionalTerm);
+
+        assertEq(
+            LibDecimalFloat.agree(
+                f(absoluteValue, 0), f(proportionalHundredths, -2), f(lowestValue, 0), f(highestValue, 0)
+            ),
+            expected
+        );
+    }
+
     /// A tolerance at the top of the range accepts rather than reverting: the
     /// multiplication scales the coefficient down and raises the exponent
     /// instead of overflowing, and nothing is packed back.
