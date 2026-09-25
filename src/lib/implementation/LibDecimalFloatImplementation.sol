@@ -1136,6 +1136,71 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    /// The magnitude of an unpacked value, as an unpacked value.
+    ///
+    /// The packed `LibDecimalFloat.abs` cannot serve callers working below the
+    /// public arithmetic surface. It has to fit the magnitude back into an
+    /// int224, so for the most negative coefficient it raises the exponent,
+    /// and reverts `ExponentOverflow` when the exponent is already at its
+    /// maximum. Here the coefficient is already widened to an int256, so
+    /// negating an int224 is exact and cannot overflow.
+    /// @param signedCoefficient The coefficient, within int224.
+    /// @param exponent The exponent, unchanged by taking a magnitude.
+    /// @return The non-negative coefficient.
+    /// @return The exponent.
+    function abs(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        return (absCoefficient(signedCoefficient), exponent);
+    }
+
+    /// The magnitude of an unpacked coefficient. The exponent is untouched by
+    /// taking a magnitude, so callers that already hold it can skip carrying
+    /// it through.
+    /// @param signedCoefficient The coefficient, within int224.
+    /// @return The non-negative coefficient.
+    function absCoefficient(int256 signedCoefficient) internal pure returns (int256) {
+        return signedCoefficient < 0 ? -signedCoefficient : signedCoefficient;
+    }
+
+    /// Whether A is less than or equal to B, without packing either.
+    ///
+    /// `eq` is the only comparison this library offered on unpacked values, so
+    /// callers staying below the public surface had to reach for
+    /// `compareRescale` and compare its results by hand.
+    /// @param signedCoefficientA The first coefficient.
+    /// @param exponentA The first exponent.
+    /// @param signedCoefficientB The second coefficient.
+    /// @param exponentB The second exponent.
+    /// @return Whether A <= B.
+    function lte(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        (int256 rescaledA, int256 rescaledB) =
+            compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return rescaledA <= rescaledB;
+    }
+
+    /// The larger of two unpacked values, without packing either.
+    ///
+    /// Ties return B, so that `max(x, x)` is stable whichever representation
+    /// of a numerically equal pair is passed second.
+    /// @param signedCoefficientA The first coefficient.
+    /// @param exponentA The first exponent.
+    /// @param signedCoefficientB The second coefficient.
+    /// @param exponentB The second exponent.
+    /// @return The larger value's coefficient.
+    /// @return The larger value's exponent.
+    function max(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (int256, int256)
+    {
+        return lte(signedCoefficientA, exponentA, signedCoefficientB, exponentB)
+            ? (signedCoefficientB, exponentB)
+            : (signedCoefficientA, exponentA);
+    }
+
     /// Sets the coefficient so that exponent is the target exponent. Truncates
     /// the coefficient if shrinking, will error on overflow when growing.
     /// @param signedCoefficient The signed coefficient.

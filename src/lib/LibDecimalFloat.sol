@@ -860,6 +860,112 @@ library LibDecimalFloat {
         return gt(a, b) ? a : b;
     }
 
+    /// Whether the two extremes of a set of values are close enough to each
+    /// other, given an absolute and a proportional tolerance.
+    ///
+    /// `highest - lowest <= max(absolute, proportional * max(abs(lowest), abs(highest)))`
+    ///
+    /// BOTH TOLERANCES ARE TAKEN, and the LARGER of the two terms is the
+    /// limit. A proportional tolerance alone collapses as the values approach
+    /// zero, because the quantity it is a proportion of shrinks with them: a
+    /// pair like `-0.001` and `0.001` reads as 200% apart while agreeing by
+    /// any practical measure. An absolute tolerance alone does not scale. The
+    /// absolute term therefore carries the region near zero and the
+    /// proportional term carries the rest.
+    ///
+    /// Taking the larger rather than the sum is the form `math.isclose`
+    /// (PEP 485) and Julia's `isapprox` use. `numpy.isclose` sums them, which
+    /// PEP 485 rejects because two tolerances of similar size then allow about
+    /// twice the intended difference. The sum is also the more permissive of
+    /// the two, since `max(a, b) <= a + b` for non-negative terms.
+    ///
+    /// THE PROPORTION IS OF THE LARGER MAGNITUDE of the two extremes. Every
+    /// other value in a set lies between them, so no value in the set has a
+    /// magnitude exceeding both, which makes this the largest magnitude in the
+    /// whole set. Holding one anchor for the set is what makes a single
+    /// highest-to-lowest check equivalent to checking every pair: the spread
+    /// is the largest pairwise difference, so bounding it bounds all of them.
+    ///
+    /// NOTHING IS PACKED BACK INTO A `Float` before the comparison, which is
+    /// the reason this cannot be composed from the public surface. That
+    /// surface reverts `ExponentOverflow` rather than truncating an exponent,
+    /// and both `abs` and `sub` do so on the extremes of the range: a set
+    /// spanning the most negative to the most positive representable value has
+    /// a spread that no packed value can hold. A closeness test asked about
+    /// representable values should answer, not revert.
+    ///
+    /// The caller is responsible for the tolerances being sensible. A negative
+    /// tolerance is simply dominated by the other term, and two zero
+    /// tolerances make this an exact equality test.
+    /// @param absolute The absolute tolerance, in the same units as the values.
+    /// @param proportional The proportional tolerance, as a fraction.
+    /// @param lowest The lowest value in the set.
+    /// @param highest The highest value in the set.
+    /// @return Whether the spread is within the limit.
+    function agree(Float absolute, Float proportional, Float lowest, Float highest) internal pure returns (bool) {
+        (int256 spreadCoefficient, int256 spreadExponent) = agreeSpread(lowest, highest);
+        (int256 limitCoefficient, int256 limitExponent) = agreeLimit(absolute, proportional, lowest, highest);
+        return LibDecimalFloatImplementation.lte(spreadCoefficient, spreadExponent, limitCoefficient, limitExponent);
+    }
+
+    /// The distance between the two extremes, unpacked.
+    ///
+    /// Split out of `agree` because holding the four unpacked values and the
+    /// intermediates in one frame exceeds the stack.
+    /// @param lowest The lowest value.
+    /// @param highest The highest value.
+    /// @return The spread's coefficient.
+    /// @return The spread's exponent.
+    function agreeSpread(Float lowest, Float highest) private pure returns (int256, int256) {
+        (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
+        (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
+        return LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
+    }
+
+    /// The quantity the proportional tolerance is taken of: the larger
+    /// magnitude of the two extremes.
+    /// @param lowest The lowest value.
+    /// @param highest The highest value.
+    /// @return The anchor's coefficient, non-negative.
+    /// @return The anchor's exponent.
+    function agreeAnchor(Float lowest, Float highest) private pure returns (int256, int256) {
+        (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
+        (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
+        return LibDecimalFloatImplementation.max(
+            LibDecimalFloatImplementation.absCoefficient(lowestCoefficient),
+            lowestExponent,
+            LibDecimalFloatImplementation.absCoefficient(highestCoefficient),
+            highestExponent
+        );
+    }
+
+    /// The limit the spread is checked against: the larger of the absolute
+    /// tolerance and the proportional tolerance of the anchor.
+    /// @param absolute The absolute tolerance.
+    /// @param proportional The proportional tolerance.
+    /// @param lowest The lowest value.
+    /// @param highest The highest value.
+    /// @return The limit's coefficient.
+    /// @return The limit's exponent.
+    function agreeLimit(Float absolute, Float proportional, Float lowest, Float highest)
+        private
+        pure
+        returns (int256, int256)
+    {
+        int256 scaledCoefficient;
+        int256 scaledExponent;
+        {
+            (int256 anchorCoefficient, int256 anchorExponent) = agreeAnchor(lowest, highest);
+            (int256 proportionalCoefficient, int256 proportionalExponent) = proportional.unpack();
+            (scaledCoefficient, scaledExponent) = LibDecimalFloatImplementation.mul(
+                proportionalCoefficient, proportionalExponent, anchorCoefficient, anchorExponent
+            );
+        }
+        (int256 absoluteCoefficient, int256 absoluteExponent) = absolute.unpack();
+        return
+            LibDecimalFloatImplementation.max(absoluteCoefficient, absoluteExponent, scaledCoefficient, scaledExponent);
+    }
+
     /// Returns true if the float is zero. Handles the case where the signed
     /// coefficient is zero and exponent is potentially non zero.
     /// @param a The float to check.
