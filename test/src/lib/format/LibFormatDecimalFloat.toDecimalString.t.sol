@@ -349,6 +349,9 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         if (maxShift == 0) return;
 
         uint256 s = bound(shift, 1, maxShift);
+        // Casting to `int256` is safe because `s` is bounded far below the exponent
+        // at which `10 ** s` leaves int256.
+        //forge-lint: disable-next-line(unsafe-typecast)
         int256 scaled = baseInt * int256(10 ** s);
 
         // Exponent pair chosen so both representations are well inside int32.
@@ -382,8 +385,14 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         // "0." + (cap - 1) leading zeros + "1".
         // forge-lint: disable-next-line(unsafe-typecast)
         assertEq(bytes(s).length, 2 + uint256(cap - 1) + 1);
+        // Casting a one character string literal to `bytes1` is exact.
+        //forge-lint: disable-next-line(unsafe-typecast)
         assertEq(bytes(s)[0], bytes1("0"));
+        // Casting a one character string literal to `bytes1` is exact.
+        //forge-lint: disable-next-line(unsafe-typecast)
         assertEq(bytes(s)[1], bytes1("."));
+        // Casting a one character string literal to `bytes1` is exact.
+        //forge-lint: disable-next-line(unsafe-typecast)
         assertEq(bytes(s)[bytes(s).length - 1], bytes1("1"));
     }
 
@@ -474,6 +483,8 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         Float float = LibDecimalFloat.packLossless(1, 67);
         string memory s = LibFormatDecimalFloat.toDecimalString(float, false);
         assertEq(bytes(s).length, 68, "output length");
+        // Casting a one character string literal to `bytes1` is exact.
+        //forge-lint: disable-next-line(unsafe-typecast)
         assertEq(bytes(s)[0], bytes1("1"), "leading digit");
         (bytes4 err, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(s);
         assertEq(err, bytes4(0), "parse error");
@@ -496,6 +507,9 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         for (uint256 i = 0; i < uExp; i++) {
             limit /= 10;
         }
+        // Casting to `uint256` is safe because the sign test on the same line makes
+        // the operand non-negative before it is cast.
+        //forge-lint: disable-next-line(unsafe-typecast)
         uint256 absCoef = coefficient < 0 ? uint256(-int256(coefficient)) : uint256(int256(coefficient));
         vm.assume(absCoef <= limit);
         Float float = LibDecimalFloat.packLossless(coefficient, exponent);
@@ -527,6 +541,8 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         assertGt(s.length, 0);
 
         // Never ends with ".".
+        // Casting a single byte to `uint8` is exact.
+        //forge-lint: disable-next-line(unsafe-typecast)
         assertNotEq(uint8(s[s.length - 1]), uint8(bytes1(".")));
 
         // If a "." is present, no trailing zero after it.
@@ -538,12 +554,16 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
             }
         }
         if (hasDot) {
+            // Casting a single byte to `uint8` is exact.
+            //forge-lint: disable-next-line(unsafe-typecast)
             assertNotEq(uint8(s[s.length - 1]), uint8(bytes1("0")), "trailing zero after decimal point");
         }
 
         // Negative outputs start with "-" and have the same shape as the
         // positive counterpart.
         if (coefficient < 0) {
+            // Casting a single byte to `uint8` is exact.
+            //forge-lint: disable-next-line(unsafe-typecast)
             assertEq(uint8(s[0]), uint8(bytes1("-")));
             Float positive = LibDecimalFloat.packLossless(-int256(coefficient), exponent);
             string memory pos = LibFormatDecimalFloat.toDecimalString(positive, false);

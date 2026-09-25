@@ -136,7 +136,8 @@ library LibDecimalFloat {
                 return (int256(value / 10), exponent + 1, value % 10 == 0);
             } else {
                 // case that would truncate is handled above.
-                // forge-lint: disable-next-line(unsafe-typecast)
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(unsafe-typecast, boolean-cst)
                 return (int256(value), exponent, true);
             }
         }
@@ -207,6 +208,8 @@ library LibDecimalFloat {
         }
         // Zero is always 0 and neither exponent nor decimals matter.
         else if (signedCoefficient == 0) {
+            // The literal is the bool this function returns, not a condition operand.
+            //forge-lint: disable-next-line(boolean-cst)
             return (0, true);
         } else {
             // Safe to do this conversion because we revert above on negative.
@@ -231,6 +234,8 @@ library LibDecimalFloat {
                     // than -77. This is always lossless as we know the value is
                     // is not zero in real.
                     if (finalExponent < -77) {
+                        // The literal is the bool this function returns, not a condition operand.
+                        //forge-lint: disable-next-line(boolean-cst)
                         return (0, false);
                     }
 
@@ -268,9 +273,13 @@ library LibDecimalFloat {
                         revert FixedDecimalOverflow(signedCoefficient, exponent, decimals);
                     }
                     fixedDecimal = unsignedCoefficient * scale;
+                    // The literal is the bool this function returns, not a condition operand.
+                    //forge-lint: disable-next-line(boolean-cst)
                     return (fixedDecimal, true);
                 }
             } else {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
                 return (unsignedCoefficient, true);
             }
         }
@@ -361,6 +370,8 @@ library LibDecimalFloat {
                 }
             } else {
                 if (signedCoefficient == 0) {
+                    // The literal is the bool this function returns, not a condition operand.
+                    //forge-lint: disable-next-line(boolean-cst)
                     return (FLOAT_ZERO, true);
                 }
             }
@@ -372,6 +383,8 @@ library LibDecimalFloat {
                 // If the exponent is negative then this is a number too small
                 // to pack. We return zero but it is not a lossless conversion.
                 if (exponent < 0) {
+                    // The literal is the bool this function returns, not a condition operand.
+                    //forge-lint: disable-next-line(boolean-cst)
                     return (FLOAT_ZERO, false);
                 }
                 revert ExponentOverflow(initialSignedCoefficient, initialExponent);
