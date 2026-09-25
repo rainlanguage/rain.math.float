@@ -919,7 +919,11 @@ library LibDecimalFloat {
     function agreeSpread(Float lowest, Float highest) private pure returns (int256, int256) {
         (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
         (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
-        return LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
+        // Destructured rather than returned directly because slither reads
+        // `return f(...)` on a tuple-returning call as an ignored return.
+        (int256 spreadCoefficient, int256 spreadExponent) =
+            LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
+        return (spreadCoefficient, spreadExponent);
     }
 
     /// The quantity the proportional tolerance is taken of: the larger
@@ -931,12 +935,13 @@ library LibDecimalFloat {
     function agreeAnchor(Float lowest, Float highest) private pure returns (int256, int256) {
         (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
         (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
-        return LibDecimalFloatImplementation.max(
+        (int256 anchorCoefficient, int256 anchorExponent) = LibDecimalFloatImplementation.max(
             LibDecimalFloatImplementation.absCoefficient(lowestCoefficient),
             lowestExponent,
             LibDecimalFloatImplementation.absCoefficient(highestCoefficient),
             highestExponent
         );
+        return (anchorCoefficient, anchorExponent);
     }
 
     /// The limit the spread is checked against: the larger of the absolute
@@ -962,8 +967,9 @@ library LibDecimalFloat {
             );
         }
         (int256 absoluteCoefficient, int256 absoluteExponent) = absolute.unpack();
-        return
+        (int256 limitCoefficient, int256 limitExponent) =
             LibDecimalFloatImplementation.max(absoluteCoefficient, absoluteExponent, scaledCoefficient, scaledExponent);
+        return (limitCoefficient, limitExponent);
     }
 
     /// Returns true if the float is zero. Handles the case where the signed
