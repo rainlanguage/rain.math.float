@@ -4,6 +4,20 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.16.1/src/Test.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {
+    LibDecimalFloatImplementation,
+    ADD_MAX_EXPONENT_DIFF
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+
+// The exponent gap at which the spread subtraction stops seeing the smaller
+// operand at all, so the spread reads as exactly the larger one. `add` aligns
+// without loss up to `ADD_MAX_EXPONENT_DIFF` and drops the smaller operand one
+// past it.
+//
+// `ADD_MAX_EXPONENT_DIFF` is a `uint256` of 76 and the exponent walk works in
+// `int256`, so the cast is exact and cannot truncate.
+//forge-lint: disable-next-line(unsafe-typecast)
+int256 constant BOUNDARY_CLIFF_GAP = int256(ADD_MAX_EXPONENT_DIFF) + 1;
 
 contract LibDecimalFloatAgreeTest is Test {
     using LibDecimalFloat for Float;
@@ -198,5 +212,168 @@ contract LibDecimalFloatAgreeTest is Test {
         assertTrue(LibDecimalFloat.agree(f(0, 0), maxPositive(), f(1, 0), f(2, 0)));
         assertTrue(LibDecimalFloat.agree(maxPositive(), f(0, 0), f(1, 0), f(2, 0)));
         assertTrue(LibDecimalFloat.agree(f(0, 0), maxPositive(), minNegative(), maxPositive()));
+    }
+
+    /// The comparison is exact only to representable precision, and this pins
+    /// that so the natspec claim cannot drift silently.
+    ///
+    /// The real spread of `-1e-100` and `1` is `1 + 1e-100`, which needs 101
+    /// significant digits against the coefficient's 76. The subtraction
+    /// discards the small term, the spread reads as exactly `1`, and a limit of
+    /// `1` is therefore met. An exact comparison would refuse all three of
+    /// these.
+    function testAgreeBoundaryExactOnlyToRepresentablePrecision() external pure {
+        // A proportional tolerance of 1 against an anchor of 1 is a limit of 1.
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, -100), f(1, 0)));
+        // The same limit reached by the absolute term instead.
+        assertTrue(LibDecimalFloat.agree(f(1, 0), f(0, 0), f(-1, -100), f(1, 0)));
+        // And both terms at once, so neither branch of the `max` escapes it.
+        assertTrue(LibDecimalFloat.agree(f(1, 0), f(1, 0), f(-1, -100), f(1, 0)));
+    }
+
+    /// The mechanism behind the boundary, asserted directly rather than
+    /// inferred: `sub` itself reports the spread as exactly `1`, so `agree` is
+    /// agreeing with the library's own arithmetic rather than departing from
+    /// it.
+    function testAgreeBoundarySpreadIsExactlyOne() external pure {
+        (int256 lowestCoefficient, int256 lowestExponent) = f(-1, -100).unpack();
+        (int256 highestCoefficient, int256 highestExponent) = f(1, 0).unpack();
+        (int256 spreadCoefficient, int256 spreadExponent) =
+            LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
+        (int256 oneCoefficient, int256 oneExponent) = f(1, 0).unpack();
+        assertTrue(
+            LibDecimalFloatImplementation.eq(spreadCoefficient, spreadExponent, oneCoefficient, oneExponent),
+            "spread is not exactly one"
+        );
+    }
+
+    /// Just inside the coefficient's reach the small term survives, the spread
+    /// exceeds the limit, and the check refuses. This is what shows the
+    /// boundary is a precision limit rather than `agree` ignoring small terms
+    /// in general.
+    function testAgreeSmallTermRefusedWhenRepresentable() external pure {
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, -60), f(1, 0)));
+        assertFalse(LibDecimalFloat.agree(f(1, 0), f(0, 0), f(-1, -60), f(1, 0)));
+    }
+
+    /// Walks the exponent gap to LOCATE the precision cliff rather than
+    /// sampling a point either side of it. Below the cliff the small term
+    /// survives and the spread exceeds the limit; at and past it the term is
+    /// discarded and the spread reads as exactly the limit.
+    ///
+    /// Also asserts the transition happens exactly once. A scatter of accepts
+    /// and refusals would mean something other than a precision limit is
+    /// deciding, which sampling two points could never distinguish.
+    function testAgreeBoundaryCliffLocated() external pure {
+        bool seenAccepted = false;
+        int256 firstAccepted = 0;
+        for (int256 n = 1; n <= 120; n++) {
+            bool accepted = LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, -n), f(1, 0));
+            if (accepted) {
+                if (!seenAccepted) {
+                    seenAccepted = true;
+                    firstAccepted = n;
+                }
+            } else {
+                // A term that has already vanished cannot reappear as the gap
+                // widens further.
+                assertFalse(seenAccepted, "acceptance is not monotone in the exponent gap");
+            }
+        }
+        assertTrue(seenAccepted, "never accepted anywhere in the walk");
+        // Both operands are maximized to the same order of magnitude before
+        // alignment, so the gap the alignment sees is the exponent difference,
+        // and it gives up one past ADD_MAX_EXPONENT_DIFF.
+        assertEq(firstAccepted, BOUNDARY_CLIFF_GAP, "the cliff moved");
+    }
+
+    /// The cliff is a RELATIVE precision limit, so scaling the whole problem by
+    /// a power of ten moves it not at all. Anchoring on an absolute exponent
+    /// instead would shift the cliff with the scale.
+    function testAgreeBoundaryCliffIsScaleInvariant() external pure {
+        int256 cliff = BOUNDARY_CLIFF_GAP;
+        for (int256 k = -30; k <= 30; k += 10) {
+            // One below the cliff: the small term survives, so it is refused.
+            assertFalse(
+                LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, k - cliff + 1), f(1, k)), "refused side moved with scale"
+            );
+            // At the cliff: the term is discarded and the spread reads exactly
+            // as the limit.
+            assertTrue(
+                LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, k - cliff), f(1, k)), "accepted side moved with scale"
+            );
+        }
+    }
+
+    /// The same spread reached with the operands placed the other way about
+    /// zero behaves identically. `-1e-100` against `1` and `-1` against
+    /// `1e-100` are both a real spread of `1 + 1e-100` with an anchor of `1`,
+    /// so neither the sign of the larger operand nor which side carries the
+    /// tiny magnitude changes the outcome.
+    function testAgreeBoundaryMirroredAboutZero() external pure {
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, -100), f(1, 0)));
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, 0), f(1, -100)));
+        // And one below the cliff both ways round.
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, -60), f(1, 0)));
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, 0), f(1, -60)));
+    }
+
+    /// The loss is ONE DIRECTIONAL. When the discarded term would have made the
+    /// spread SMALLER, the truncated answer and the exact answer agree, so the
+    /// imprecision cannot cause a refusal.
+    ///
+    /// Here both extremes are positive, so the spread `1 - 1e-100` is slightly
+    /// under the limit of `1`, and it reads as exactly `1`. Both the truncated
+    /// and the exact comparison accept, unlike the opposite-sign case where
+    /// they differ.
+    function testAgreeBoundaryLossIsOneDirectional() external pure {
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(1, -100), f(1, 0)));
+        // Well inside precision the same shape is still accepted, because the
+        // spread is genuinely below the limit rather than rounded to it.
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(1, -60), f(1, 0)));
+    }
+
+    /// A refusal is always sound. Truncation only ever reduces the spread's
+    /// magnitude, so if the computed spread already exceeds the limit then the
+    /// exact spread does too. Fuzzed across gaps that straddle the cliff, a
+    /// refusal must be backed by `sub` reporting a spread above the limit.
+    function testAgreeRefusalIsAlwaysBackedByTheSpread(int256 gap, int256 anchorExponent) external pure {
+        gap = bound(gap, 1, 120);
+        anchorExponent = bound(anchorExponent, -40, 40);
+
+        Float lowest = f(-1, anchorExponent - gap);
+        Float highest = f(1, anchorExponent);
+
+        if (LibDecimalFloat.agree(f(0, 0), f(1, 0), lowest, highest)) {
+            return;
+        }
+
+        (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
+        (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
+        (int256 spreadCoefficient, int256 spreadExponent) =
+            LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
+        (int256 limitCoefficient, int256 limitExponent) = highest.unpack();
+        assertTrue(
+            LibDecimalFloatImplementation.gt(spreadCoefficient, spreadExponent, limitCoefficient, limitExponent),
+            "refused without the spread exceeding the limit"
+        );
+    }
+
+    /// Away from the cliff the check is exactly the integer comparison, for
+    /// every gap the coefficient can hold. This bounds the imprecision to the
+    /// cliff rather than leaving it as a property that might apply anywhere.
+    function testAgreeMatchesIntegerComparisonInsidePrecision(int256 spreadUnits, int256 limitUnits) external pure {
+        spreadUnits = bound(spreadUnits, 0, 1e18);
+        limitUnits = bound(limitUnits, 1, 1e18);
+
+        // lowest = 0, highest = spreadUnits, so the spread is exact and the
+        // anchor is the highest. An absolute tolerance keeps the limit exact
+        // too, so the whole comparison is representable.
+        bool expected = spreadUnits <= limitUnits;
+        assertEq(
+            LibDecimalFloat.agree(f(limitUnits, 0), f(0, 0), f(0, 0), f(spreadUnits, 0)),
+            expected,
+            "diverged from the integer comparison inside precision"
+        );
     }
 }

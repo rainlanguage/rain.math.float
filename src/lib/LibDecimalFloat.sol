@@ -895,6 +895,23 @@ library LibDecimalFloat {
     /// a spread that no packed value can hold. A closeness test asked about
     /// representable values should answer, not revert.
     ///
+    /// THE COMPARISON IS EXACT ONLY TO REPRESENTABLE PRECISION. The spread is a
+    /// subtraction, and a subtraction aligns exponents by discarding the
+    /// smaller operand's low digits; past a gap of `ADD_MAX_EXPONENT_DIFF` the
+    /// smaller operand is dropped whole. When those discarded digits would have
+    /// carried the spread above the limit, and the spread as computed lands
+    /// exactly on the limit, this returns true where an exact comparison would
+    /// return false. `agree(0, 1, -1e-100, 1)` is such a case: the real spread
+    /// is `1 + 1e-100`, needing 101 significant digits against the
+    /// coefficient's 76, so `sub` returns exactly `1` and `1 <= 1` holds.
+    ///
+    /// That is the rounding every other operation here performs, and `sub`
+    /// reports the same spread as exactly `1` when asked directly. Resolving
+    /// the boundary the other way would put this function at odds with the
+    /// library's own arithmetic. The excess it admits is bounded by one unit in
+    /// the last place of the aligned coefficient, so a spread accepted at the
+    /// boundary exceeds the limit by less than `1e-76` of its own magnitude.
+    ///
     /// The caller is responsible for the tolerances being sensible. A negative
     /// tolerance is simply dominated by the other term, and two zero
     /// tolerances make this an exact equality test.
