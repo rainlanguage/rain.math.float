@@ -1153,11 +1153,23 @@ library LibDecimalFloatImplementation {
         return signedCoefficient < 0 ? -signedCoefficient : signedCoefficient;
     }
 
+    /// Whether A is less than B, without packing either.
+    /// @param signedCoefficientA The first coefficient.
+    /// @param exponentA The first exponent.
+    /// @param signedCoefficientB The second coefficient.
+    /// @param exponentB The second exponent.
+    /// @return Whether A < B.
+    function lt(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        (int256 rescaledA, int256 rescaledB) =
+            compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return rescaledA < rescaledB;
+    }
+
     /// Whether A is less than or equal to B, without packing either.
-    ///
-    /// `eq` is the only comparison this library offered on unpacked values, so
-    /// callers staying below the public surface had to reach for
-    /// `compareRescale` and compare its results by hand.
     /// @param signedCoefficientA The first coefficient.
     /// @param exponentA The first exponent.
     /// @param signedCoefficientB The second coefficient.
@@ -1171,6 +1183,58 @@ library LibDecimalFloatImplementation {
         (int256 rescaledA, int256 rescaledB) =
             compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         return rescaledA <= rescaledB;
+    }
+
+    /// Whether A is greater than B, without packing either.
+    /// @param signedCoefficientA The first coefficient.
+    /// @param exponentA The first exponent.
+    /// @param signedCoefficientB The second coefficient.
+    /// @param exponentB The second exponent.
+    /// @return Whether A > B.
+    function gt(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        (int256 rescaledA, int256 rescaledB) =
+            compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return rescaledA > rescaledB;
+    }
+
+    /// Whether A is greater than or equal to B, without packing either.
+    /// @param signedCoefficientA The first coefficient.
+    /// @param exponentA The first exponent.
+    /// @param signedCoefficientB The second coefficient.
+    /// @param exponentB The second exponent.
+    /// @return Whether A >= B.
+    function gte(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (bool)
+    {
+        (int256 rescaledA, int256 rescaledB) =
+            compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        return rescaledA >= rescaledB;
+    }
+
+    /// The smaller of two unpacked values, without packing either.
+    ///
+    /// Ties return B, so that `min(x, x)` is stable whichever representation
+    /// of a numerically equal pair is passed second.
+    /// @param signedCoefficientA The first coefficient.
+    /// @param exponentA The first exponent.
+    /// @param signedCoefficientB The second coefficient.
+    /// @param exponentB The second exponent.
+    /// @return The smaller value's coefficient.
+    /// @return The smaller value's exponent.
+    function min(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+        pure
+        returns (int256, int256)
+    {
+        return gte(signedCoefficientA, exponentA, signedCoefficientB, exponentB)
+            ? (signedCoefficientB, exponentB)
+            : (signedCoefficientA, exponentA);
     }
 
     /// The larger of two unpacked values, without packing either.

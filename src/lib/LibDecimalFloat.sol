@@ -605,10 +605,7 @@ library LibDecimalFloat {
     function lt(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (signedCoefficientA, signedCoefficientB) =
-            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-
-        return signedCoefficientA < signedCoefficientB;
+        return LibDecimalFloatImplementation.lt(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Numeric greater than for floats.
@@ -620,9 +617,7 @@ library LibDecimalFloat {
     function gt(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (signedCoefficientA, signedCoefficientB) =
-            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return signedCoefficientA > signedCoefficientB;
+        return LibDecimalFloatImplementation.gt(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Numeric less than or equal to for floats.
@@ -635,9 +630,7 @@ library LibDecimalFloat {
     function lte(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (signedCoefficientA, signedCoefficientB) =
-            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return signedCoefficientA <= signedCoefficientB;
+        return LibDecimalFloatImplementation.lte(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Numeric greater than or equal to for floats.
@@ -650,9 +643,7 @@ library LibDecimalFloat {
     function gte(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (signedCoefficientA, signedCoefficientB) =
-            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return signedCoefficientA >= signedCoefficientB;
+        return LibDecimalFloatImplementation.gte(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Integer component of a float.
