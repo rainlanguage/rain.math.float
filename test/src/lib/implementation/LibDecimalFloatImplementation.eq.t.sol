@@ -27,34 +27,79 @@ contract LibDecimalFloatImplementationEqTest is Test {
         LibDecimalFloatImplementation.eq(1, type(int256).max, 1, type(int256).min);
     }
 
-    /// if xeX == yeY, then x / y == 10^(X - Y) || y / x == 10^(Y - X)
+    /// If `xeX == yeY` with different coefficients, then the coefficient of
+    /// LARGER MAGNITUDE carries the smaller exponent, and dividing the larger
+    /// magnitude by the smaller gives exactly the power of ten between their
+    /// exponents.
+    ///
+    /// MAGNITUDE, not signed order. For negative coefficients the signed-larger
+    /// value is the smaller magnitude: `-30e-4` and `-3e-3` are both `-0.003`,
+    /// and `-3 > -30` while `-3` is the smaller magnitude and carries the larger
+    /// exponent. Keying the branch on `y > x` therefore asserted the exponent
+    /// relation backwards for negatives, and divided the wrong way round for
+    /// both signs.
     function testEqXEqY(int256 x, int256 exponentX, int256 y, int256 exponentY) external pure {
+        assertEqXEqYInvariant(x, exponentX, y, exponentY);
+    }
+
+    /// The invariant itself, so the fuzz form and the concrete cases below
+    /// assert the same thing rather than two similar things that can drift.
+    function assertEqXEqYInvariant(int256 x, int256 exponentX, int256 y, int256 exponentY) internal pure {
         bool eq = LibDecimalFloatImplementation.eq(x, exponentX, y, exponentY);
 
         if (eq) {
             if (x == y) {
                 assertTrue(exponentX == exponentY || x == 0);
-            } else if (y > x) {
-                assertTrue(exponentY < exponentX, "y > x but exponentY >= exponentX");
-                assertTrue(exponentX - exponentY < 77, "y > x but exponentX - exponentY >= 77");
-                // we assert that exponentY < exponentX and the diff is < 77.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                assertEq(x / y, int256(10 ** uint256(exponentX - exponentY)), "y > x but x / y != 10^(X - Y)");
-                assertEq(x % y, 0, "y > x but x % y != 0");
             } else {
-                assertTrue(exponentX < exponentY, "x < y but exponentX >= exponentY");
-                assertTrue(exponentY - exponentX < 77, "x < y but exponentY - exponentX >= 77");
-                // x < y and they are eq so exponentY - exponentX will always be
-                // positive.
+                // Equal and different coefficients means both are non-zero and
+                // share a sign, so the division below is exact and positive.
+                int256 large;
+                int256 largeExponent;
+                int256 small;
+                int256 smallExponent;
+                if (
+                    LibDecimalFloatImplementation.absUnsignedSignedCoefficient(x)
+                        > LibDecimalFloatImplementation.absUnsignedSignedCoefficient(y)
+                ) {
+                    (large, largeExponent, small, smallExponent) = (x, exponentX, y, exponentY);
+                } else {
+                    (large, largeExponent, small, smallExponent) = (y, exponentY, x, exponentX);
+                }
+
+                assertTrue(largeExponent < smallExponent, "the larger magnitude does not carry the smaller exponent");
+                assertTrue(smallExponent - largeExponent < 77, "the exponent gap is >= 77");
+                // Hoisted to its own statement so the suppression cannot be
+                // detached from the cast by a reflow: the gap is asserted to be
+                // in [1, 76] on the lines above, so this is exact.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                assertEq(y / x, int256(10 ** uint256(exponentY - exponentX)), "x < y but y / x != 10^(Y - X)");
-                assertEq(y % x, 0, "x < y but y % x != 0");
+                int256 expectedRatio = int256(10 ** uint256(smallExponent - largeExponent));
+                assertEq(large / small, expectedRatio, "large / small != 10^(gap)");
+                assertEq(large % small, 0, "large % small != 0");
             }
         } else {
             if (x == y) {
                 assertTrue(exponentX != exponentY);
             }
         }
+    }
+
+    /// The concrete pairs the fuzz form was wrong about, asserted directly so
+    /// the invariant no longer depends on the fuzzer generating an exact
+    /// power-of-ten ratio between two equal values — which is why the defect
+    /// survived: random `int256` pairs are almost never equal-but-differently-
+    /// represented, so the broken branches were almost never reached.
+    ///
+    /// `-30e-4` and `-3e-3` are both `-0.003`. `30e-4` and `3e-3` are both
+    /// `0.003`. Both directions of argument order, so neither relies on the
+    /// larger magnitude arriving first.
+    function testEqXEqYKnownUnequalCoefficients() external pure {
+        assertEqXEqYInvariant(-30, -4, -3, -3);
+        assertEqXEqYInvariant(-3, -3, -30, -4);
+        assertEqXEqYInvariant(30, -4, 3, -3);
+        assertEqXEqYInvariant(3, -3, 30, -4);
+        // A wider gap, to exercise more than a single power of ten.
+        assertEqXEqYInvariant(-3000, -6, -3, -3);
+        assertEqXEqYInvariant(3000, -6, 3, -3);
     }
 
     /// xeX != yeY if x != y (assuming maximized representation)
