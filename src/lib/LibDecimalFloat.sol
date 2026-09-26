@@ -886,11 +886,8 @@ library LibDecimalFloat {
     /// absolute term therefore carries the region near zero and the
     /// proportional term carries the rest.
     ///
-    /// Taking the larger rather than the sum is the form `math.isclose`
-    /// (PEP 485) and Julia's `isapprox` use. `numpy.isclose` sums them, which
-    /// PEP 485 rejects because two tolerances of similar size then allow about
-    /// twice the intended difference. The sum is also the more permissive of
-    /// the two, since `max(a, b) <= a + b` for non-negative terms.
+    /// The same form as `math.isclose` (PEP 485) and Julia's `isapprox`.
+    /// `numpy.isclose` sums the two terms instead.
     ///
     /// THE PROPORTION IS OF THE LARGER MAGNITUDE of the two extremes. Every
     /// other value in a set lies between them, so no value in the set has a
