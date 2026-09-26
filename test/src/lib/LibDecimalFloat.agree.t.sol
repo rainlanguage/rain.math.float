@@ -376,4 +376,37 @@ contract LibDecimalFloatAgreeTest is Test {
             "diverged from the integer comparison inside precision"
         );
     }
+
+    /// `agree` promises an ANSWER rather than a revert for representable values,
+    /// and that promise is the reason it works unpacked. Fuzzed over arbitrary
+    /// bit patterns in all four operands, including tolerances, so nothing about
+    /// the packing is assumed sane.
+    ///
+    /// `sub` reverting `ExponentUnderflow` is a live bug in this library
+    /// (`testSubPacked`), but it lives in the PACKED wrapper, which packs the
+    /// result. `agree` never packs back, so it cannot inherit it — this asserts
+    /// that rather than relying on it.
+    /// forge-config: default.fuzz.runs = 20000
+    function testAgreeNeverReverts(bytes32 absolute, bytes32 proportional, bytes32 lowest, bytes32 highest)
+        external
+        pure
+    {
+        bool result = LibDecimalFloat.agree(
+            Float.wrap(absolute), Float.wrap(proportional), Float.wrap(lowest), Float.wrap(highest)
+        );
+        // Only that it returned. The value is whatever the operands imply.
+        assertTrue(result || !result);
+    }
+
+    /// The exact counterexample `testSubPacked` fails on, driven through
+    /// `agree`. Pinned as a case in its own right so a future change to the
+    /// packing path cannot quietly make `agree` revert.
+    function testAgreeSurvivesTheSubUnderflowCounterexample() external pure {
+        Float a = Float.wrap(0x8000000000000000000000000000000000000000000000000000000000000009);
+        Float b = Float.wrap(0x8000000000000000000000000000000000000000000000000000000000000003);
+        bool forward = LibDecimalFloat.agree(f(0, 0), f(1, -2), a, b);
+        bool backward = LibDecimalFloat.agree(f(0, 0), f(1, -2), b, a);
+        assertTrue(forward || !forward);
+        assertTrue(backward || !backward);
+    }
 }
