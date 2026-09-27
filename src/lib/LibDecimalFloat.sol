@@ -926,7 +926,7 @@ library LibDecimalFloat {
     /// @param highest The highest value in the set.
     /// @return Whether the spread is within the limit.
     function agree(Float absolute, Float proportional, Float lowest, Float highest) internal pure returns (bool) {
-        agreeValidateTolerances(absolute, proportional);
+        validateAgreeTolerances(absolute, proportional);
         (int256 spreadCoefficient, int256 spreadExponent) = agreeSpread(lowest, highest);
         (int256 limitCoefficient, int256 limitExponent) = agreeLimit(absolute, proportional, lowest, highest);
         return LibDecimalFloatImplementation.lte(spreadCoefficient, spreadExponent, limitCoefficient, limitExponent);
@@ -955,7 +955,7 @@ library LibDecimalFloat {
     /// the negative check is ever changed.
     /// @param absolute The absolute tolerance.
     /// @param proportional The proportional tolerance.
-    function agreeValidateTolerances(Float absolute, Float proportional) private pure {
+    function validateAgreeTolerances(Float absolute, Float proportional) private pure {
         Float zero = packLossless(0, 0);
         if (lt(absolute, zero) || lt(proportional, zero)) {
             revert AgreeToleranceNegative(absolute, proportional);
