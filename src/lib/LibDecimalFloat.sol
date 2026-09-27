@@ -11,7 +11,9 @@ import {
     LossyConversionFromFloat,
     LossyConversionToFloat,
     ZeroNegativePower,
-    PowNegativeBase
+    PowNegativeBase,
+    AgreeToleranceNegative,
+    AgreeNoPositiveTolerance
 } from "../error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImplementation.sol";
 
@@ -912,18 +914,55 @@ library LibDecimalFloat {
     /// the last place of the aligned coefficient, so a spread accepted at the
     /// boundary exceeds the limit by less than `1e-76` of its own magnitude.
     ///
-    /// The caller is responsible for the tolerances being sensible. A negative
-    /// tolerance is simply dominated by the other term, and two zero
-    /// tolerances make this an exact equality test.
+    /// NEITHER TOLERANCE MAY BE NEGATIVE, and AT LEAST ONE MUST BE POSITIVE.
+    /// Both are rejected here rather than given a meaning, and rejected here
+    /// rather than left to callers, because a guard a caller can skip is not a
+    /// guard. See `AgreeToleranceNegative` and `AgreeNoPositiveTolerance` for
+    /// what each would otherwise silently do. Either tolerance ALONE may be
+    /// zero, which is how a caller asks for only the other one.
     /// @param absolute The absolute tolerance, in the same units as the values.
     /// @param proportional The proportional tolerance, as a fraction.
     /// @param lowest The lowest value in the set.
     /// @param highest The highest value in the set.
     /// @return Whether the spread is within the limit.
     function agree(Float absolute, Float proportional, Float lowest, Float highest) internal pure returns (bool) {
+        agreeValidateTolerances(absolute, proportional);
         (int256 spreadCoefficient, int256 spreadExponent) = agreeSpread(lowest, highest);
         (int256 limitCoefficient, int256 limitExponent) = agreeLimit(absolute, proportional, lowest, highest);
         return LibDecimalFloatImplementation.lte(spreadCoefficient, spreadExponent, limitCoefficient, limitExponent);
+    }
+
+    /// Rejects tolerances that do not describe a tolerance.
+    ///
+    /// A NEGATIVE tolerance cannot mean anything. The spread is a distance, so
+    /// it is non-negative, which makes `spread <= negative` unsatisfiable on its
+    /// own and makes the negative term inert under the `max` — it cannot cancel
+    /// the other term, only fail to be it. It is representable solely because
+    /// floats are signed.
+    ///
+    /// NEITHER POSITIVE is a tolerance of nothing: the limit is zero and this
+    /// degenerates into exact equality, which `eq` answers directly. A caller
+    /// reaching for a closeness test and getting exact equality has been
+    /// misunderstood rather than served.
+    ///
+    /// Rejected here rather than in each caller, because a guard a caller can
+    /// skip is not a guard.
+    ///
+    /// Both tests compare against a zero `Float` rather than unpacking, so every
+    /// representation of zero is treated alike. The positive test is stated as
+    /// `neither is greater than zero` rather than `both are zero`, so it names
+    /// the invariant rather than one case that violates it, and stays correct if
+    /// the negative check is ever changed.
+    /// @param absolute The absolute tolerance.
+    /// @param proportional The proportional tolerance.
+    function agreeValidateTolerances(Float absolute, Float proportional) private pure {
+        Float zero = packLossless(0, 0);
+        if (lt(absolute, zero) || lt(proportional, zero)) {
+            revert AgreeToleranceNegative(absolute, proportional);
+        }
+        if (!gt(absolute, zero) && !gt(proportional, zero)) {
+            revert AgreeNoPositiveTolerance(absolute, proportional);
+        }
     }
 
     /// The distance between the two extremes, unpacked.
