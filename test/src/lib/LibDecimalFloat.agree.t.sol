@@ -8,6 +8,7 @@ import {
     LibDecimalFloatImplementation,
     ADD_MAX_EXPONENT_DIFF
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {AgreeToleranceNegative, AgreeNoPositiveTolerance} from "src/error/ErrDecimalFloat.sol";
 
 // The exponent gap at which the spread subtraction stops seeing the smaller
 // operand at all, so the spread reads as exactly the larger one. `add` aligns
@@ -32,6 +33,18 @@ contract LibDecimalFloatAgreeTest is Test {
 
     function maxPositive() internal pure returns (Float) {
         return LibDecimalFloat.packLossless(type(int224).max, type(int32).max);
+    }
+
+    /// `agree` is an internal library call, so it inlines and its reverts land
+    /// at the test's own call depth where `vm.expectRevert` cannot see them.
+    /// The revert tests go through here, matching how the rest of this suite
+    /// asserts library reverts.
+    function agreeExternal(Float absolute, Float proportional, Float lowest, Float highest)
+        external
+        pure
+        returns (bool)
+    {
+        return LibDecimalFloat.agree(absolute, proportional, lowest, highest);
     }
 
     /// The proportional tolerance is of the LARGER MAGNITUDE of the two
@@ -113,11 +126,14 @@ contract LibDecimalFloatAgreeTest is Test {
         assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, -2), maxPositive(), maxPositive()));
     }
 
-    /// Identical values agree under any non negative tolerance, and a zero
-    /// spread is the only thing two zero tolerances accept.
+    /// Identical values agree under any valid tolerance, however small.
     function testAgreeZeroSpread() external pure {
-        assertTrue(LibDecimalFloat.agree(f(0, 0), f(0, 0), f(100, 0), f(100, 0)));
-        assertFalse(LibDecimalFloat.agree(f(0, 0), f(0, 0), f(100, 0), f(101, 0)));
+        // The smallest positive tolerance still accepts a zero spread, and
+        // still refuses a spread of 1.
+        assertTrue(LibDecimalFloat.agree(f(1, -20), f(0, 0), f(100, 0), f(100, 0)));
+        assertFalse(LibDecimalFloat.agree(f(1, -20), f(0, 0), f(100, 0), f(101, 0)));
+        // And via the proportional term alone.
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, -20), f(100, 0), f(100, 0)));
     }
 
     /// The comparison is numerical, so the representation of the tolerances
@@ -187,6 +203,11 @@ contract LibDecimalFloatAgreeTest is Test {
         // with an anchor up to 1e12 stays exact.
         int256 absoluteValue = int256(bound(absoluteSeed, 0, 1e12));
         int256 proportionalHundredths = int256(bound(proportionalSeed, 0, 100000));
+        // `agree` rejects a pair with no positive tolerance, so nudge rather
+        // than discard the run: bounding spends every run on a valid call.
+        if (absoluteValue == 0 && proportionalHundredths == 0) {
+            absoluteValue = 1;
+        }
 
         int256 spread = highestValue - lowestValue;
         int256 anchor = highestValue < 0
@@ -387,15 +408,60 @@ contract LibDecimalFloatAgreeTest is Test {
     /// result. `agree` never packs back, so it cannot inherit it — this asserts
     /// that rather than relying on it.
     /// forge-config: default.fuzz.runs = 20000
-    function testAgreeNeverReverts(bytes32 absolute, bytes32 proportional, bytes32 lowest, bytes32 highest)
-        external
-        pure
-    {
-        bool result = LibDecimalFloat.agree(
-            Float.wrap(absolute), Float.wrap(proportional), Float.wrap(lowest), Float.wrap(highest)
-        );
+    function testAgreeNeverRevertsOnValues(bytes32 lowest, bytes32 highest, uint256 toleranceSeed) external pure {
+        // A valid tolerance, so the only thing under test is the VALUES. The
+        // tolerance guard has its own tests; this one asserts that no pair of
+        // representable values can make the arithmetic revert.
+        Float absolute = f(int256(bound(toleranceSeed, 1, 1e12)), -3);
+        bool result = LibDecimalFloat.agree(absolute, f(0, 0), Float.wrap(lowest), Float.wrap(highest));
         // Only that it returned. The value is whatever the operands imply.
         assertTrue(result || !result);
+    }
+
+    /// A NEGATIVE TOLERANCE IS REJECTED, either side.
+    ///
+    /// It cannot mean anything: the spread is a distance and so non-negative,
+    /// which makes `spread <= negative` unsatisfiable, and under the `max` the
+    /// negative term is inert — it cannot cancel the other term, only fail to
+    /// be it. Left unrejected it would be silently dominated and the check
+    /// would pass on a malformed tolerance.
+    function testAgreeRejectsNegativeTolerance() external {
+        vm.expectRevert(abi.encodeWithSelector(AgreeToleranceNegative.selector, f(-1, 0), f(1, -2)));
+        this.agreeExternal(f(-1, 0), f(1, -2), f(99, 0), f(100, 0));
+
+        vm.expectRevert(abi.encodeWithSelector(AgreeToleranceNegative.selector, f(1, 0), f(-1, -2)));
+        this.agreeExternal(f(1, 0), f(-1, -2), f(99, 0), f(100, 0));
+
+        // Rejected even where the other term would have accepted the spread on
+        // its own, which is the case that would otherwise pass silently.
+        vm.expectRevert(abi.encodeWithSelector(AgreeToleranceNegative.selector, f(-1, 0), f(1, 0)));
+        this.agreeExternal(f(-1, 0), f(1, 0), f(99, 0), f(100, 0));
+
+        // And where both are negative.
+        vm.expectRevert(abi.encodeWithSelector(AgreeToleranceNegative.selector, f(-1, 0), f(-1, 0)));
+        this.agreeExternal(f(-1, 0), f(-1, 0), f(100, 0), f(100, 0));
+    }
+
+    /// NEITHER TOLERANCE POSITIVE IS REJECTED. The limit would be zero and
+    /// `agree` would degenerate into exact equality, which `eq` answers
+    /// directly, so a caller that meant to set a tolerance and set none is
+    /// misunderstood rather than served.
+    function testAgreeRejectsNoPositiveTolerance() external {
+        vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, f(0, 0), f(0, 0)));
+        this.agreeExternal(f(0, 0), f(0, 0), f(100, 0), f(100, 0));
+
+        // Every representation of zero is treated alike, so a zero with a
+        // non-zero exponent is rejected the same way.
+        vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, f(0, 5), f(0, -5)));
+        this.agreeExternal(f(0, 5), f(0, -5), f(100, 0), f(100, 0));
+    }
+
+    /// Either tolerance ALONE may be zero. This is the boundary between the two
+    /// guards: one positive term is enough, and it is what makes the rejection
+    /// above about having no tolerance rather than about zero appearing at all.
+    function testAgreeAcceptsOneZeroTolerance() external pure {
+        assertTrue(LibDecimalFloat.agree(f(1, 0), f(0, 0), f(100, 0), f(100, 0)));
+        assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, -2), f(100, 0), f(100, 0)));
     }
 
     /// The exact counterexample `testSubPacked` fails on, driven through
