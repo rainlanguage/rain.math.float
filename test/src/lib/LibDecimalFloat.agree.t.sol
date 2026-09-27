@@ -449,11 +449,51 @@ contract LibDecimalFloatAgreeTest is Test {
     function testAgreeRejectsNoPositiveTolerance() external {
         vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, f(0, 0), f(0, 0)));
         this.agreeExternal(f(0, 0), f(0, 0), f(100, 0), f(100, 0));
+    }
 
-        // Every representation of zero is treated alike, so a zero with a
-        // non-zero exponent is rejected the same way.
-        vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, f(0, 5), f(0, -5)));
-        this.agreeExternal(f(0, 5), f(0, -5), f(100, 0), f(100, 0));
+    /// A packed zero with a NON-ZERO EXPONENT is rejected the same way, which is
+    /// what makes the guard numeric rather than bytewise.
+    ///
+    /// `packLossless` cannot construct one — it canonicalises every zero to
+    /// `FLOAT_ZERO`, which the first two assertions pin, so a test written with
+    /// `f(0, 5)` silently tests the canonical case twice. These are built with
+    /// `Float.wrap` instead: the exponent occupies the high 32 bits, so a zero
+    /// coefficient with exponent 5 and with exponent -5 are distinct words that
+    /// are both numerically zero.
+    function testAgreeRejectsNonCanonicalZeroTolerances() external {
+        Float zeroExponentFive = Float.wrap(bytes32(uint256(5) << 224));
+        Float zeroExponentMinusFive = Float.wrap(bytes32(uint256(0xfffffffb) << 224));
+
+        // The premise: these are not what `packLossless` would give, and they
+        // are numerically zero.
+        assertTrue(Float.unwrap(f(0, 5)) == Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "f(0,5) is not canonical zero");
+        assertTrue(
+            Float.unwrap(zeroExponentFive) != Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "wrapped zero is canonical"
+        );
+        assertTrue(zeroExponentFive.isZero(), "exponent 5 zero is not zero");
+        assertTrue(zeroExponentMinusFive.isZero(), "exponent -5 zero is not zero");
+
+        vm.expectRevert(
+            abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, zeroExponentFive, zeroExponentMinusFive)
+        );
+        this.agreeExternal(zeroExponentFive, zeroExponentMinusFive, f(100, 0), f(100, 0));
+
+        // Mixed with a canonical zero, either way round.
+        vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, zeroExponentFive, f(0, 0)));
+        this.agreeExternal(zeroExponentFive, f(0, 0), f(100, 0), f(100, 0));
+
+        vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, f(0, 0), zeroExponentMinusFive));
+        this.agreeExternal(f(0, 0), zeroExponentMinusFive, f(100, 0), f(100, 0));
+    }
+
+    /// A non-canonical zero is not itself the problem: paired with a positive
+    /// term it is accepted, exactly as a canonical zero is. Without this the
+    /// test above would also pass for a guard that rejected any non-canonical
+    /// tolerance.
+    function testAgreeAcceptsNonCanonicalZeroWithPositive() external pure {
+        Float zeroExponentFive = Float.wrap(bytes32(uint256(5) << 224));
+        assertTrue(LibDecimalFloat.agree(zeroExponentFive, f(1, -2), f(99, 0), f(100, 0)));
+        assertTrue(LibDecimalFloat.agree(f(1, 0), zeroExponentFive, f(100, 0), f(101, 0)));
     }
 
     /// Either tolerance ALONE may be zero. This is the boundary between the two
@@ -462,6 +502,48 @@ contract LibDecimalFloatAgreeTest is Test {
     function testAgreeAcceptsOneZeroTolerance() external pure {
         assertTrue(LibDecimalFloat.agree(f(1, 0), f(0, 0), f(100, 0), f(100, 0)));
         assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, -2), f(100, 0), f(100, 0)));
+    }
+
+    /// THE GUARD, STATED AS A LAW over arbitrary packed tolerances: `agree`
+    /// reverts exactly when a tolerance is negative, or when neither is
+    /// positive, and returns otherwise.
+    ///
+    /// The expectation is derived from the tolerances' own signs via `lt`/`gt`
+    /// against zero, not from calling `agree`, so this pins the guard's domain
+    /// rather than restating its implementation. Values are held fixed and
+    /// valid, so the only variable is the tolerance pair.
+    /// forge-config: default.fuzz.runs = 5000
+    function testAgreeGuardHoldsForArbitraryTolerances(bytes32 absoluteRaw, bytes32 proportionalRaw) external {
+        Float absolute = Float.wrap(absoluteRaw);
+        Float proportional = Float.wrap(proportionalRaw);
+        Float zero = f(0, 0);
+
+        bool anyNegative = absolute.lt(zero) || proportional.lt(zero);
+        bool nonePositive = !absolute.gt(zero) && !proportional.gt(zero);
+
+        if (anyNegative) {
+            vm.expectRevert(abi.encodeWithSelector(AgreeToleranceNegative.selector, absolute, proportional));
+            this.agreeExternal(absolute, proportional, f(100, 0), f(100, 0));
+        } else if (nonePositive) {
+            vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, absolute, proportional));
+            this.agreeExternal(absolute, proportional, f(100, 0), f(100, 0));
+        } else {
+            // A zero spread, so a valid tolerance of any size accepts it.
+            assertTrue(this.agreeExternal(absolute, proportional, f(100, 0), f(100, 0)));
+        }
+    }
+
+    /// The guard runs BEFORE the arithmetic, so a bad tolerance is rejected even
+    /// where the spread is the widest representable. A guard placed after the
+    /// spread and limit were computed would still reject these, so this is about
+    /// ordering being irrelevant to the outcome rather than about the ordering
+    /// itself.
+    function testAgreeRejectsBadToleranceAtTheRangeExtremes() external {
+        vm.expectRevert(abi.encodeWithSelector(AgreeToleranceNegative.selector, f(-1, 0), f(1, -2)));
+        this.agreeExternal(f(-1, 0), f(1, -2), minNegative(), maxPositive());
+
+        vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, f(0, 0), f(0, 0)));
+        this.agreeExternal(f(0, 0), f(0, 0), minNegative(), maxPositive());
     }
 
     /// The exact counterexample `testSubPacked` fails on, driven through
