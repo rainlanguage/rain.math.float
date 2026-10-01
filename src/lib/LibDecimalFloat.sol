@@ -417,19 +417,20 @@ library LibDecimalFloat {
 
                 // The exponent is below the int32 floor. Every division of the
                 // coefficient by ten raises the exponent by one, so the
-                // shortfall is exactly the number of digits to shed. A non-zero
-                // int256 has at most 77 decimal digits, so a shortfall beyond
-                // that is zero without computing it; this also covers a
+                // shortfall is exactly the number of digits to shed. The
+                // coefficient fits int224 here, so it has at most 68 decimal
+                // digits and a shortfall of 68 or more sheds every one of
+                // them: that is zero without computing it. This also covers a
                 // wrapped exponent, whose shortfall is astronomically large.
                 // `exponent` is negative here and below int32.min, so the
                 // subtraction cannot overflow and the shortfall is positive.
                 int256 shortfall = int256(type(int32).min) - exponent;
-                if (shortfall > 76) {
+                if (shortfall > 67) {
                     // The literal is the bool this function returns, not a condition operand.
                     //forge-lint: disable-next-line(boolean-cst)
                     return (FLOAT_ZERO, false);
                 }
-                // shortfall is in [1, 76] so 10 ** shortfall fits int256 and the
+                // shortfall is in [1, 67] so 10 ** shortfall fits int256 and the
                 // casts cannot truncate.
                 // forge-lint: disable-next-line(unsafe-typecast)
                 signedCoefficient /= int256(10 ** uint256(shortfall));

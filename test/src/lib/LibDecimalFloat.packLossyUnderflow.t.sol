@@ -329,6 +329,25 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         assertEq(e, -2147483648, "exponent");
     }
 
+    /// Pin the shortfall guard at its real boundary. A coefficient that fits
+    /// int224 has at most 68 decimal digits, so a shortfall of 67 can still
+    /// leave the leading digit standing while 68 sheds everything. int224.max
+    /// is the widest such coefficient (68 digits, leading digit 1), so it is
+    /// the only place the lower side of the guard is observable: a guard one
+    /// lower (`> 66`) would zero a value that has a digit left.
+    function testPackLossyShortfallGuardBoundary() external pure {
+        (Float kept, bool losslessKept) = LibDecimalFloat.packLossy(INT224_MAX, INT32_MIN - 67);
+        assertFalse(losslessKept, "kept lossless");
+        (int256 c, int256 e) = LibDecimalFloat.unpack(kept);
+        assertEq(c, INT224_MAX / 1e67, "kept coeff");
+        assertEq(c, 1, "kept coeff is the leading digit");
+        assertEq(e, INT32_MIN, "kept exp");
+
+        (Float shed, bool losslessShed) = LibDecimalFloat.packLossy(INT224_MAX, INT32_MIN - 68);
+        assertFalse(losslessShed, "shed lossless");
+        assertEq(Float.unwrap(shed), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "shed zero");
+    }
+
     /// Pin the boundary of the negative-exponent underflow predicate itself:
     /// a coefficient of magnitude 1 (always fits int224) with exponent exactly
     /// int32.min is in-range; one step below underflows. This isolates the
