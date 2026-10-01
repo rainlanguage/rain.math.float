@@ -189,17 +189,92 @@ contract LibDecimalFloatPowTest is LogTest {
         Float a = LibDecimalFloat.packLossless(2, 0);
         this.powExternal(a, LibDecimalFloat.packLossless(1, 9));
 
-        // 2 ^ 1e10 pushes the squared base exponent past EXPONENT_MAX and
-        // reverts with ExponentOverflow. A round trip catches this rather than
-        // treating it as a math regression.
+        // 2 ^ 1e10 pushes the squared base exponent past the int32 range and
+        // reverts with ExponentOverflow. The loop reports it as soon as the
+        // base is provably unpackable, so the error carries the base at that
+        // point rather than the final result: 1e10 has bit 33 as its top set
+        // bit, and the base squared to 2^(2^33) is 10^2585827972.98..., i.e.
+        // coefficient 9.63e75 with exponent 2585827897, more than 77 beyond
+        // type(int32).max. A round trip catches this rather than treating it
+        // as a math regression.
         vm.expectRevert(
             abi.encodeWithSelector(
                 ExponentOverflow.selector,
-                43632686345562428988582910876713633851545835514376216610528325287869870302082,
-                3010299880
+                9630350133920413014213703778052746804221370955342037654108275957670700523340,
+                2585827897
             )
         );
         this.powExternal(a, LibDecimalFloat.packLossless(1, 10));
+    }
+
+    /// Pins the counterexample from
+    /// https://github.com/rainlanguage/rain.math.float/issues/276 where `pow`
+    /// reverted with a raw `Panic(0x11)` instead of a typed error.
+    ///
+    /// `a` is about 10^1348563638 and `b` is about -7.84e69. The negative
+    /// exponent inverts the base to 1/a, whose exponent is -1348563705, and
+    /// then raises it to an integer with 232 bits. The squaring loop doubles
+    /// the base exponent per bit, so before the fix the checked exponent
+    /// addition inside `mul` overflowed int256 around the 225th squaring
+    /// (1348563705 * 2^225 exceeds 2^255) and panicked before
+    /// `packArithmeticResult` could reject the result.
+    ///
+    /// The maths cannot produce a value here: the result is 10^(-1e79), far
+    /// below the smallest representable Float, so the correct behaviour is
+    /// `ExponentUnderflow`. The loop now reports it on the first squaring,
+    /// where the base exponent -2697127352 is already more than 77 below
+    /// type(int32).min and no coefficient could bring it back into range. The
+    /// coefficient is the inverted base's coefficient squared and normalised
+    /// (9.39e66^2 = 8.82e133, scaled down by 10^58 to 8.82e75).
+    function testPowExtremeNegativeExponentUnderflows() external {
+        Float a = Float.wrap(0x5061727365206572726f7220286e656729000000000000000000000000000000);
+        Float b = Float.wrap(0x00000003b58e88c75313ec9d329eaaa18fb92f75215b170fffffffffffffffff);
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentUnderflow.selector,
+                int256(8816810532664696944190165771528495433809984303583195528090551589187161766918),
+                int256(-2697127352)
+            )
+        );
+        this.powExternal(a, b);
+    }
+
+    /// The mirror of `testPowExtremeNegativeExponentUnderflows`: the same base
+    /// raised to the same magnitude with a positive sign. No inversion
+    /// happens, so the base exponent 1348563571 doubles on the first squaring
+    /// to 2697127200, more than 77 above type(int32).max, and the loop reports
+    /// `ExponentOverflow` with that base. Before the fix this path panicked
+    /// in exactly the same way as the negative one.
+    function testPowExtremePositiveExponentOverflows() external {
+        Float a = Float.wrap(0x5061727365206572726f7220286e656729000000000000000000000000000000);
+        Float b = Float.wrap(0x00000003b58e88c75313ec9d329eaaa18fb92f75215b170fffffffffffffffff).minus();
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector,
+                int256(11341969936806284910411425730790609640426627528376563687058555052858638447414),
+                int256(2697127200)
+            )
+        );
+        this.powExternal(a, b);
+    }
+
+    /// The squaring loop must not square the base past the top set bit of the
+    /// integer exponent. The extra square is never used by the result, and
+    /// with the bound on intermediate exponents it would falsely reject
+    /// results that fit: (1, 1e9)^2 = 10^2e9 is representable, but an unused
+    /// third squaring of the base would be (1, 4e9), beyond the bound. The
+    /// same base cubed is 10^3e9, which does not fit, and must still be
+    /// rejected by the pack with the final result rather than by the loop.
+    function testPowSquaringStopsAtTopBit() external {
+        Float a = LibDecimalFloat.packLossless(1, 1e9);
+
+        Float squared = this.powExternal(a, LibDecimalFloat.packLossless(2, 0));
+        assertTrue(squared.eq(LibDecimalFloat.packLossless(1, 2e9)), "squared");
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1000), int256(2999999997)));
+        this.powExternal(a, LibDecimalFloat.packLossless(3, 0));
     }
 
     /// The complete set of custom errors `pow` is designed to throw, derived by

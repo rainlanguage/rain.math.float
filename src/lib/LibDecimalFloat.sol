@@ -35,6 +35,21 @@ import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImp
 /// the operative numeric-equality contract.
 type Float is bytes32;
 
+/// @dev The largest exponent an unpacked intermediate can carry and still
+/// possibly pack, whatever its coefficient. `packLossy` only ever raises the
+/// exponent (it shrinks the coefficient into int224 and never grows it), and an
+/// int256 coefficient has at most 77 decimal digits, so a value with an
+/// exponent above this is at least 10^(type(int32).max + 78), which exceeds
+/// the largest packable value type(int224).max * 10^type(int32).max.
+int256 constant POW_EXPONENT_OVERFLOW_BOUND = int256(type(int32).max) + 77;
+
+/// @dev The smallest exponent an unpacked intermediate can carry and still
+/// possibly pack, whatever its coefficient. An int256 coefficient is below
+/// 10^77, so a value with an exponent below this is below
+/// 10^(type(int32).min - 1), which is smaller than the smallest packable
+/// positive value 10^type(int32).min.
+int256 constant POW_EXPONENT_UNDERFLOW_BOUND = int256(type(int32).min) - 77;
+
 /// @title LibDecimalFloat
 /// Floating point math library for Rainlang.
 /// Broadly implements decimal floating point math with 224 signed bits for the
@@ -810,9 +825,33 @@ library LibDecimalFloat {
                 );
             }
             exponentBInteger >>= 1;
-            (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
-                signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
-            );
+            // Only square the base while a higher bit remains to consume it.
+            // Squaring past the top bit computes a value the result never
+            // uses, which would waste gas and, worse, trip the bound below on
+            // results that are representable: (1, 1e9)^2 = (1, 2e9) fits, but
+            // the unused third squaring (1, 4e9) does not.
+            if (exponentBInteger >= 1) {
+                (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
+                    signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
+                );
+                // The base exponent doubles per bit of the integer exponent,
+                // and `mul` adds exponents with checked arithmetic, so left
+                // unbounded a wide enough integer exponent overflows int256
+                // and panics before `packArithmeticResult` can reject the
+                // result with a typed error. Every base the loop uses is
+                // a^(2^i) with i at or below the top set bit of the integer
+                // exponent, so its magnitude lies between 1 and the final
+                // result: once the base is provably beyond every packable
+                // Float, the result is too, in the same direction. Reverting
+                // here reports that with the typed error the caller would
+                // otherwise have received from the pack.
+                if (exponentBase > POW_EXPONENT_OVERFLOW_BOUND) {
+                    revert ExponentOverflow(signedCoefficientBase, exponentBase);
+                }
+                if (exponentBase < POW_EXPONENT_UNDERFLOW_BOUND) {
+                    revert ExponentUnderflow(signedCoefficientBase, exponentBase);
+                }
+            }
         }
 
         (int256 signedCoefficientC, int256 exponentC) =
