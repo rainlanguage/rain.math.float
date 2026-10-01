@@ -14,7 +14,7 @@ import {
     MulDivOverflow
 } from "src/error/ErrDecimalFloat.sol";
 import {WithTargetExponentOverflow} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {console2} from "forge-std-1.16.1/src/Test.sol";
+import {console2} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;

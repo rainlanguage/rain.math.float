@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
-import {Test} from "forge-std-1.16.1/src/Test.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 /// Adversarial coverage for `packLossy`'s underflow and coefficient-truncation
 /// paths. The tests here derive an INDEPENDENT oracle for the normalisation
