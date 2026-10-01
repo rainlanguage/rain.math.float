@@ -27,11 +27,11 @@ cbor_metadata = false
 runs = 5096
 
 [dependencies]
-forge-std = "1.16.1"
-"@openzeppelin-contracts" = "5.6.1"
+forge-std = "1.17.0"
+"@openzeppelin-contracts" = "5.7.0"
 "rain-solmem" = "0.1.28"
-"rain-string" = "0.2.0"
-"rain-datacontract" = "0.1.9"
+"rain-string" = "0.3.9"
+"rain-datacontract" = "0.2.0"
 
 [soldeer]
 recursive_deps = false

@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDataContract} from "rain-datacontract-0.1.9/src/lib/LibDataContract.sol";
+import {LibDataContract} from "rain-datacontract-0.2.0/src/lib/LibDataContract.sol";
 import {LibLogTable, LOG_TABLE_DISAMBIGUATOR} from "src/lib/table/LibLogTable.sol";
 
 error LogTablesNotDeployed();
