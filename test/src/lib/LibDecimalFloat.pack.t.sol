@@ -114,14 +114,45 @@ contract LibDecimalFloatPackTest is Test {
         assertEq(unpackedCoefficient, signedCoefficient / 10, "coefficient");
     }
 
-    /// One step further below int32.min, the same coefficient's rescaling is no
-    /// longer enough to clear the int32 floor, so the pack underflows to the
-    /// lossy zero float.
-    function testPackNegativeExponentLossyZeroWindow() external pure {
+    /// One step further below int32.min, fitting the coefficient into int224
+    /// lifts the exponent by one, which is one short of the floor. The packing
+    /// keeps going: it sheds one more digit to reach the floor rather than
+    /// giving up on a value that still has 66 digits of magnitude to offer.
+    /// Lossy (the shed digits were not zeros), non-zero, at the floor.
+    function testPackNegativeExponentLossyNonZeroTwoBelowFloor() external pure {
         int256 signedCoefficient = int256(type(int224).max) + 1;
         int256 exponent = int256(type(int32).min) - 2;
         (Float float, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         assertFalse(lossless, "lossless");
-        assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "float");
+        assertTrue(Float.unwrap(float) != Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "non-zero");
+
+        (int256 unpackedCoefficient, int256 unpackedExponent) = LibDecimalFloat.unpack(float);
+        assertEq(unpackedExponent, int256(type(int32).min), "exponent");
+        assertEq(unpackedCoefficient, signedCoefficient / 100, "coefficient");
+    }
+
+    /// packLossless accepts a coefficient beyond int224 when the digits it
+    /// sheds are all zeros, because the packed value is numerically equal to
+    /// the input. The flag reports value preservation, not whether the input
+    /// already fitted.
+    function testPackLosslessAcceptsExactMultipleBeyondInt224() external pure {
+        // int224.max is ~1.35e67, so 1e70 needs exactly three divisions.
+        Float float = LibDecimalFloat.packLossless(1e70, 0);
+        (int256 unpackedCoefficient, int256 unpackedExponent) = LibDecimalFloat.unpack(float);
+        assertEq(unpackedCoefficient, 1e67, "coefficient");
+        assertEq(unpackedExponent, 3, "exponent");
+    }
+
+    /// packLossless accepts a value below the floor when shedding trailing
+    /// zeros is enough to reach it, and reverts when a significant digit would
+    /// have to go. The revert carries the ORIGINAL inputs.
+    function testPackLosslessBelowFloor() external {
+        Float float = LibDecimalFloat.packLossless(70, int256(type(int32).min) - 1);
+        (int256 unpackedCoefficient, int256 unpackedExponent) = LibDecimalFloat.unpack(float);
+        assertEq(unpackedCoefficient, 7, "coefficient");
+        assertEq(unpackedExponent, int256(type(int32).min), "exponent");
+
+        vm.expectRevert(abi.encodeWithSelector(CoefficientOverflow.selector, int256(7), int256(type(int32).min) - 1));
+        this.packLosslessExternal(7, int256(type(int32).min) - 1);
     }
 }

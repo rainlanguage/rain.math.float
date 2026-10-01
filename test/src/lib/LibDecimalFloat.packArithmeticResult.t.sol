@@ -43,6 +43,32 @@ contract LibDecimalFloatPackArithmeticResultTest is Test {
         this.packArithmeticResultExternal(signedCoefficient, exponent);
     }
 
+    /// The issue #271 shape: an exponent below int32.min whose coefficient has
+    /// enough trailing zeros to lift it back to the floor is not an underflow.
+    /// `add` maximises its operands, so this is what every result AT the floor
+    /// looks like when it reaches the packer.
+    function testPackArithmeticResultShedsTrailingZerosBelowFloor() external pure {
+        Float c = LibDecimalFloat.packArithmeticResult(-7e75, -2147483723);
+        (int256 unpackedCoefficient, int256 unpackedExponent) = c.unpack();
+        assertEq(unpackedCoefficient, -7);
+        assertEq(unpackedExponent, int256(type(int32).min));
+    }
+
+    /// Below the floor, significant digits are shed the same way coefficient
+    /// truncation sheds them above int224: the order of magnitude survives, so
+    /// the packing does not revert. `ExponentUnderflow` is reserved for the
+    /// case where every digit is gone and the magnitude with it, which is the
+    /// case the error exists to stop from silently becoming zero.
+    function testPackArithmeticResultUnderflowRevertsOnlyWhenAllDigitsShed() external {
+        Float c = LibDecimalFloat.packArithmeticResult(12, int256(type(int32).min) - 1);
+        (int256 unpackedCoefficient, int256 unpackedExponent) = c.unpack();
+        assertEq(unpackedCoefficient, 1);
+        assertEq(unpackedExponent, int256(type(int32).min));
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(12), int256(type(int32).min) - 2));
+        this.packArithmeticResultExternal(12, int256(type(int32).min) - 2);
+    }
+
     /// Exponents that overflow int32 revert with `ExponentOverflow`,
     /// matching `packLossy`. The underflow path is the only behavioural
     /// divergence from `packLossy`.

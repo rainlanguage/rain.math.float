@@ -21,8 +21,16 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
     }
 
     /// Independent oracle. Mirrors the DOCUMENTED contract of `packLossy` but is
-    /// implemented from scratch (naive divide-by-ten loop, no 1e72/1e5
-    /// shortcut), so it cannot share a bug with the production shortcut.
+    /// implemented from scratch (one naive divide-by-ten loop driven by BOTH
+    /// bounds, no 1e72/1e5 shortcut, no single-shot power-of-ten division, and
+    /// `lossless` tracked per digit rather than recovered by a modulo at the
+    /// end), so it cannot share a bug with the production arithmetic.
+    ///
+    /// The contract: divide the coefficient by ten (towards zero) and raise the
+    /// exponent by one until the coefficient fits int224 and the exponent is at
+    /// or above int32.min. A coefficient that reaches zero is the underflow
+    /// zero. An exponent above int32.max is an overflow revert. The pack is
+    /// lossless iff every digit shed was a zero.
     ///
     /// Returns the expected unpacked (coefficient, exponent), whether the result
     /// is the underflow zero, and the expected `lossless` flag.
@@ -35,32 +43,38 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         pure
         returns (int256 expCoeff, int256 expExponent, bool expIsZero, bool expLossless, bool expOverflow)
     {
-        // lossless iff the ORIGINAL coefficient already fits int224.
-        bool fits = signedCoefficient <= INT224_MAX && signedCoefficient >= INT224_MIN;
-        expLossless = fits;
-
-        if (fits) {
-            if (signedCoefficient == 0) {
-                // Zero is always the lossless zero, exponent ignored.
-                // The literal is the bool this function returns, not a condition operand.
-                //forge-lint: disable-next-line(boolean-cst)
-                return (0, 0, true, true, false);
-            }
-        } else {
-            // Naive normalisation: divide by ten until it fits, bumping exponent.
-            while (signedCoefficient > INT224_MAX || signedCoefficient < INT224_MIN) {
-                signedCoefficient /= 10;
-                exponent += 1;
-            }
+        if (signedCoefficient == 0) {
+            // Zero is always the lossless zero, exponent ignored.
+            // The literal is the bool this function returns, not a condition operand.
+            //forge-lint: disable-next-line(boolean-cst)
+            return (0, 0, true, true, false);
         }
 
-        // Classify by whether the (possibly bumped) exponent fits int32.
-        if (exponent > INT32_MAX || exponent < INT32_MIN) {
-            if (exponent < 0) {
+        // Naive normalisation: one digit at a time, for as long as EITHER bound
+        // is violated, tracking whether a non-zero digit was ever shed.
+        // The literal is the bool this function returns, not a condition operand.
+        //forge-lint: disable-next-line(boolean-cst)
+        expLossless = true;
+        while (signedCoefficient > INT224_MAX || signedCoefficient < INT224_MIN || exponent < INT32_MIN) {
+            if (signedCoefficient % 10 != 0) {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
+                expLossless = false;
+            }
+            signedCoefficient /= 10;
+            exponent += 1;
+            if (signedCoefficient == 0) {
+                // Every digit shed: the underflow zero, never lossless (the
+                // input was non-zero).
                 // The literal is the bool this function returns, not a condition operand.
                 //forge-lint: disable-next-line(boolean-cst)
                 return (0, 0, true, false, false);
             }
+        }
+
+        // Shedding only raises the exponent, so overflow is decided by where it
+        // ended up.
+        if (exponent > INT32_MAX) {
             // The literal is the bool this function returns, not a condition operand.
             //forge-lint: disable-next-line(boolean-cst)
             return (0, 0, false, false, true);
@@ -68,7 +82,7 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
 
         // The literal is the bool this function returns, not a condition operand.
         //forge-lint: disable-next-line(boolean-cst)
-        return (signedCoefficient, exponent, signedCoefficient == 0, expLossless, false);
+        return (signedCoefficient, exponent, false, expLossless, false);
     }
 
     /// Drive the production function and compare to the oracle.
@@ -126,13 +140,94 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         checkAgainstOracle(signedCoefficient, exponent);
     }
 
-    /// Concrete: exactly at int224.max the coefficient fits, so an exponent one
-    /// below int32.min must underflow to the lossy zero (NOT truncate the
-    /// coefficient, since it already fits — the loop never runs).
-    function testPackLossyInt224MaxExactUnderflow() external pure {
+    /// Concrete: exactly at int224.max the coefficient fits, so the int224 loop
+    /// never runs; an exponent one below int32.min is met by shedding one
+    /// digit instead. int224.max does not end in zero, so the pack is lossy,
+    /// but the magnitude survives: the result is the truncated coefficient at
+    /// the floor, not the underflow zero.
+    function testPackLossyInt224MaxOneBelowFloorShedsOneDigit() external pure {
         (Float float, bool lossless) = LibDecimalFloat.packLossy(INT224_MAX, INT32_MIN - 1);
         assertFalse(lossless, "lossless");
-        assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "zero");
+        (int256 c, int256 e) = LibDecimalFloat.unpack(float);
+        assertEq(c, INT224_MAX / 10, "coeff");
+        assertEq(e, INT32_MIN, "exp");
+    }
+
+    /// Shedding trailing zeros to reach the floor is free: for any non-zero
+    /// `m` and any `z`, `m * 10^z` at `int32.min - z` packs losslessly to
+    /// exactly `(m, int32.min)`. This is the general form of the issue #271
+    /// counterexample, where maximisation had multiplied a value AT the floor
+    /// by `1e75` and lowered its exponent to match.
+    function testPackLossyTrailingZerosBelowFloorAreFree(int256 m, uint256 z) external pure {
+        // |m| <= 1e16 and z <= 60 keeps m * 10^z inside int256 (<= 1e76).
+        m = bound(m, -1e16, 1e16);
+        vm.assume(m != 0);
+        z = bound(z, 0, 60);
+        // Safe: 1e76 fits int256.
+        //forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = m * int256(10 ** z);
+        // Safe: z <= 60.
+        //forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponent = INT32_MIN - int256(z);
+
+        (Float float, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+        assertTrue(lossless, "lossless");
+        (int256 c, int256 e) = LibDecimalFloat.unpack(float);
+        assertEq(c, m, "coeff");
+        assertEq(e, INT32_MIN, "exp");
+    }
+
+    /// Shedding a significant digit to reach the floor is lossy but keeps the
+    /// magnitude: a coefficient whose last digit is non-zero at `int32.min - d`
+    /// packs to the coefficient with its last `d` digits dropped, at the floor,
+    /// for as long as any digit remains. Once `d` reaches the digit count the
+    /// value is below any representable Float and the pack is the underflow
+    /// zero. Both outcomes report `lossless = false`.
+    function testPackLossySignificantDigitsBelowFloorAreShed(int256 m, uint256 d) external pure {
+        m = bound(m, -1e16, 1e16);
+        vm.assume(m % 10 != 0);
+        d = bound(d, 1, 20);
+        // Safe: d <= 20.
+        //forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponent = INT32_MIN - int256(d);
+        // Safe: d <= 20 so 10^d fits int256.
+        //forge-lint: disable-next-line(unsafe-typecast)
+        int256 expected = m / int256(10 ** d);
+
+        (Float float, bool lossless) = LibDecimalFloat.packLossy(m, exponent);
+        assertFalse(lossless, "lossless");
+        if (expected == 0) {
+            assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "zero");
+        } else {
+            (int256 c, int256 e) = LibDecimalFloat.unpack(float);
+            assertEq(c, expected, "coeff");
+            assertEq(e, INT32_MIN, "exp");
+        }
+    }
+
+    /// `lossless` reports numeric equality, not whether the input already
+    /// fitted: a coefficient beyond int224 that is an exact multiple of the
+    /// power of ten it is divided by packs losslessly, in both signs.
+    function testPackLossyExactMultipleBeyondInt224IsLossless() external pure {
+        // int224.max is ~1.35e67, so 1e70 needs exactly three divisions.
+        (Float float, bool lossless) = LibDecimalFloat.packLossy(1e70, 0);
+        assertTrue(lossless, "lossless");
+        (int256 c, int256 e) = LibDecimalFloat.unpack(float);
+        assertEq(c, 1e67, "coeff");
+        assertEq(e, 3, "exp");
+
+        (float, lossless) = LibDecimalFloat.packLossy(-1e70, 0);
+        assertTrue(lossless, "negative lossless");
+        (c, e) = LibDecimalFloat.unpack(float);
+        assertEq(c, -1e67, "negative coeff");
+        assertEq(e, 3, "negative exp");
+
+        // One non-zero digit inside the shed region and it is lossy again.
+        (float, lossless) = LibDecimalFloat.packLossy(1e70 + 1, 0);
+        assertFalse(lossless, "lossy");
+        (c, e) = LibDecimalFloat.unpack(float);
+        assertEq(c, 1e67, "lossy coeff");
+        assertEq(e, 3, "lossy exp");
     }
 
     /// Concrete: int224.max at exactly int32.min is in-range and lossless.
@@ -154,11 +249,14 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         assertEq(e, INT32_MIN, "exp");
     }
 
-    /// Concrete: int224.min one below the floor underflows to lossy zero.
-    function testPackLossyInt224MinUnderflow() external pure {
+    /// Concrete: int224.min one below the floor sheds one digit, lossily, and
+    /// lands at the floor. Negative-boundary twin of the int224.max case.
+    function testPackLossyInt224MinOneBelowFloorShedsOneDigit() external pure {
         (Float float, bool lossless) = LibDecimalFloat.packLossy(INT224_MIN, INT32_MIN - 1);
         assertFalse(lossless, "lossless");
-        assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "zero");
+        (int256 c, int256 e) = LibDecimalFloat.unpack(float);
+        assertEq(c, INT224_MIN / 10, "coeff");
+        assertEq(e, INT32_MIN, "exp");
     }
 
     /// DOCUMENTED EDGE (out of the reachable public domain): when the input
@@ -214,6 +312,21 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         assertTrue(losslessB, "losslessB");
 
         assertTrue(Float.unwrap(a) != Float.unwrap(b), "distinct in-range floats collided");
+    }
+
+    /// The check from issue #271, verbatim. `-7e75` at exponent `-2147483723`
+    /// is the maximised form of `-7e-2147483648`. The trailing zeros are what
+    /// maximisation added, so shedding them costs nothing and brings the
+    /// exponent back inside int32. Asserting the exact coefficient and
+    /// exponent keeps this discriminating: a fix that clamps to zero, or that
+    /// reaches a representable exponent by discarding significant digits,
+    /// still fails it.
+    function testPackLossyIssue271ShedsTrailingZerosToReachTheFloor() external pure {
+        (Float f, bool lossless) = LibDecimalFloat.packLossy(-7e75, -2147483723);
+        assertTrue(lossless, "lossless");
+        (int256 c, int256 e) = LibDecimalFloat.unpack(f);
+        assertEq(c, -7, "coefficient");
+        assertEq(e, -2147483648, "exponent");
     }
 
     /// Pin the boundary of the negative-exponent underflow predicate itself:
