@@ -189,9 +189,10 @@ contract LibDecimalFloatPowTest is LogTest {
         Float a = LibDecimalFloat.packLossless(2, 0);
         this.powExternal(a, LibDecimalFloat.packLossless(1, 9));
 
-        // 2 ^ 1e10 pushes the squared base exponent past EXPONENT_MAX and
-        // reverts with ExponentOverflow. A round trip catches this rather than
-        // treating it as a math regression.
+        // 2 ^ 1e10 pushes the squared base exponent past the int32 exponent
+        // range, so the final `packArithmeticResult` reverts with
+        // ExponentOverflow. A round trip catches this rather than treating it as
+        // a math regression.
         vm.expectRevert(
             abi.encodeWithSelector(
                 ExponentOverflow.selector,
@@ -200,6 +201,58 @@ contract LibDecimalFloatPowTest is LogTest {
             )
         );
         this.powExternal(a, LibDecimalFloat.packLossless(1, 10));
+    }
+
+    /// The counterexample from issue #276. `pow` reverted with a raw
+    /// `Panic(0x11)` here instead of one of its own errors.
+    ///
+    /// `b` is negative, so `pow` recurses as `pow(a.inv(), b.minus())`. The
+    /// inverted base is `~9.39e66 e-1348563705` and the integer part of the
+    /// positive `b` is `~7.84e69`, which is 233 bits wide. Exponentiation by
+    /// squaring doubles the base exponent on every one of those iterations, so
+    /// the exponent passes `MUL_EXPONENT_MIN` on iteration 224, with nine bits
+    /// still to go, and the next squaring `mul` overflowed `int256` on
+    /// `exponentA + exponentB`.
+    ///
+    /// The result is smaller in magnitude than any representable Float by tens
+    /// of orders of magnitude of its own exponent, so the squaring loop now
+    /// reports it as `ExponentUnderflow`, with the out-of-range base that
+    /// tripped the check. The exponent in the error is the exponent of
+    /// `(1/a) ** (2 ** 224)`.
+    function testPowExtremeIntegerExponentUnderflow() external {
+        Float a = Float.wrap(0x5061727365206572726f7220286e656729000000000000000000000000000000);
+        Float b = Float.wrap(0x00000003b58e88c75313ec9d329eaaa18fb92f75215b170fffffffffffffffff);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentUnderflow.selector,
+                int256(28789611288561288814005343817654876940374576938540016336387073693143236259179),
+                int256(-36357203758475841306696594476603448932652909956088786007620576702320652299281)
+            )
+        );
+        this.powExternal(a, b);
+    }
+
+    /// The overflow-direction counterpart of
+    /// `testPowExtremeIntegerExponentUnderflow`, which the same squaring loop
+    /// reaches with a base above one instead of below it.
+    ///
+    /// The base has coefficient 1, so squaring doubles its exponent and nothing
+    /// else: `10 ** 1e9` squared 225 times has exponent `1e9 * 2 ** 225`, which
+    /// is past `MUL_EXPONENT_MAX`. `1e67 e5` is an integer exponent of `1e72`,
+    /// which is wider than 225 bits, so the loop gets that far. Before the guard
+    /// this was the same `Panic(0x11)` from `mul` summing two exponents; now it
+    /// is the `ExponentOverflow` that the sign of the exponent names.
+    function testPowExtremeIntegerExponentOverflow() external {
+        Float a = LibDecimalFloat.packLossless(1, 1e9);
+        Float b = LibDecimalFloat.packLossless(1e67, 5);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector,
+                int256(1),
+                int256(53919893334301279589334030174039261347274288845081144962207220498432000000000)
+            )
+        );
+        this.powExternal(a, b);
     }
 
     /// The complete set of custom errors `pow` is designed to throw, derived by
