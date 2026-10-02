@@ -15,7 +15,11 @@ import {
     AgreeToleranceNegative,
     AgreeNoPositiveTolerance
 } from "../error/ErrDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    MUL_EXPONENT_MAX,
+    MUL_EXPONENT_MIN
+} from "./implementation/LibDecimalFloatImplementation.sol";
 
 /// A decimal floating point number packed into 32 bytes. The high 32 bits are
 /// a signed int32 exponent; the low 224 bits are a signed int224 coefficient.
@@ -821,6 +825,44 @@ library LibDecimalFloat {
         return result;
     }
 
+    /// Guards one of the two running values in `pow`'s exponentiation-by-
+    /// squaring loop against carrying an exponent that `mul` cannot sum without
+    /// overflowing `int256`.
+    ///
+    /// Every exponent the loop starts from is an `int32` from a packed `Float`,
+    /// but squaring doubles the base exponent on every iteration, so after
+    /// enough iterations it leaves `[MUL_EXPONENT_MIN, MUL_EXPONENT_MAX]` and
+    /// the next `mul` panics with an arithmetic overflow instead of reverting
+    /// with one of the errors `pow` is designed to throw.
+    ///
+    /// Reaching that bound means the result is not representable, so the loop
+    /// can be abandoned here. The running base is `a ** (2 ** i)` at iteration
+    /// `i`, and the loop only reaches iteration `i` when the integer exponent is
+    /// at least `2 ** i`, so `|log10(a ** integerB)| >= |log10(base)|`. The same
+    /// holds for the running result, which is `a ** m` for some `m` no greater
+    /// than the integer exponent. `log10` of a value sits within 77 of its
+    /// exponent, because a coefficient carries at most 77 digits, and the
+    /// fractional leg `10 ** (fractionB * log10(a))` shifts the final result by
+    /// at most `|log10(a)|`, which an `int32` exponent caps just over 2.1e9.
+    /// Both are nothing against a bound of ~2.9e76, so a value at the bound is
+    /// outside `int32` by dozens of orders of magnitude of its own exponent and
+    /// nothing later in `pow` brings it back.
+    ///
+    /// The sign of the exponent is therefore the sign of `log10` of the value,
+    /// which names the error: a huge positive exponent is a result too large to
+    /// represent, a huge negative one a result too small.
+    /// @param signedCoefficient The signed coefficient of the running value,
+    /// reported in the error for context.
+    /// @param exponent The exponent of the running value, checked against
+    /// `mul`'s precondition.
+    function checkPowSquaringExponent(int256 signedCoefficient, int256 exponent) private pure {
+        if (exponent > MUL_EXPONENT_MAX) {
+            revert ExponentOverflow(signedCoefficient, exponent);
+        } else if (exponent < MUL_EXPONENT_MIN) {
+            revert ExponentUnderflow(signedCoefficient, exponent);
+        }
+    }
+
     /// a^b = 10^(b * log10(a))
     ///
     /// Due to the inaccuraces of log10 and power10, this is not perfectly
@@ -830,6 +872,14 @@ library LibDecimalFloat {
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
+    ///
+    /// Raises the integer part of `b` by exponentiation by squaring, so a large
+    /// integer part walks the running exponent a long way out even when both
+    /// inputs are perfectly representable. Where the walk leaves anything
+    /// representable behind, this reverts with `ExponentOverflow` or
+    /// `ExponentUnderflow` according to which way it went, rather than letting
+    /// the intermediate arithmetic overflow into a panic. See
+    /// `checkPowSquaringExponent`.
     /// @param a The float `a` in `a^b`.
     /// @param b The float `b` in `a^b`.
     /// @param tablesDataContract The address of the contract containing the
@@ -873,6 +923,15 @@ library LibDecimalFloat {
         (int256 signedCoefficientResult, int256 exponentResult) = (1, 0);
         (int256 signedCoefficientBase, int256 exponentBase) = a.unpack();
         while (exponentBInteger >= 1) {
+            // The squaring below doubles the base exponent every iteration, and
+            // the running result accumulates those exponents, so a large enough
+            // integer exponent drives either of them past what `mul` can sum
+            // without overflowing `int256`. Check before handing them to `mul`,
+            // because the overflow inside `mul` is a raw panic rather than one
+            // of the errors `pow` is documented to throw.
+            checkPowSquaringExponent(signedCoefficientBase, exponentBase);
+            checkPowSquaringExponent(signedCoefficientResult, exponentResult);
+
             if (exponentBInteger & 0x01 == 0x01) {
                 (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
                     signedCoefficientResult, exponentResult, signedCoefficientBase, exponentBase

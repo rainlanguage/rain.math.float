@@ -35,6 +35,36 @@ int256 constant EXPONENT_MAX = type(int256).max / 2;
 /// We need it to guard against overflow when maximized.
 int256 constant EXPONENT_MIN = -EXPONENT_MAX;
 
+/// @dev An upper bound on the amount `mul` lifts the summed exponent of its
+/// operands by. `mul` normalises the 512-bit product of the two coefficients
+/// back down to 256 bits and raises the exponent by one for every decimal digit
+/// it sheds, plus at most one more when the normalised magnitude still does not
+/// fit `int256`. The product's high word is a `uint256`, so it has at most 78
+/// decimal digits and the lift is at most 79. This bound is deliberately
+/// generous: only its being at least the real lift matters, and it is spent out
+/// of a range already ~1e67 times wider than any representable exponent.
+int256 constant MUL_EXPONENT_LIFT_MAX = 128;
+
+/// @dev The largest exponent magnitude `mul` accepts on EITHER operand.
+/// `mul` sums the two exponents and then lifts the sum, both in checked
+/// arithmetic, so two operands at this magnitude sum and lift without
+/// overflowing `int256`. This is `mul`'s exponent precondition: a caller that
+/// hands `mul` an exponent outside `[MUL_EXPONENT_MIN, MUL_EXPONENT_MAX]` can
+/// get a raw overflow panic instead of a typed error.
+///
+/// This is astronomically beyond the `int32` exponent of any representable
+/// `Float`, so it is unreachable from a single operation on packed values. Only
+/// iterated internal arithmetic can approach it, and `pow`'s exponentiation by
+/// squaring (which doubles the base exponent every iteration) is the one place
+/// in this library that does.
+int256 constant MUL_EXPONENT_MAX = (type(int256).max - MUL_EXPONENT_LIFT_MAX) / 2;
+
+/// @dev The negative counterpart of `MUL_EXPONENT_MAX`. Negating is exact
+/// because `MUL_EXPONENT_MAX` is well inside `int256`. The lift only ever raises
+/// an exponent, so the negative side only needs the doubling to fit, which it
+/// does with the whole lift allowance to spare.
+int256 constant MUL_EXPONENT_MIN = -MUL_EXPONENT_MAX;
+
 /// @dev The signed coefficient of maximized zero.
 int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
 
@@ -153,6 +183,16 @@ library LibDecimalFloatImplementation {
     }
 
     /// Stack only implementation of `mul`.
+    ///
+    /// BOTH EXPONENTS MUST BE WITHIN `[MUL_EXPONENT_MIN, MUL_EXPONENT_MAX]`.
+    /// The exponent of the product is the sum of the two exponents lifted by
+    /// the coefficient normalisation, computed in checked arithmetic, so an
+    /// operand beyond that bound can overflow `int256` and panic rather than
+    /// reverting with a typed error. Every exponent that comes from a packed
+    /// `Float` is an `int32` and so satisfies this by construction; a caller
+    /// that iterates `mul` over its own output (as `pow` does when squaring)
+    /// has to check it.
+    ///
     /// @param signedCoefficientA The signed coefficient of the first operand.
     /// @param exponentA The exponent of the first operand.
     /// @param signedCoefficientB The signed coefficient of the second operand.

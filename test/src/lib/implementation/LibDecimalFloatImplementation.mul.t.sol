@@ -5,7 +5,10 @@ pragma solidity =0.8.25;
 import {
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
-    EXPONENT_MAX
+    EXPONENT_MAX,
+    MUL_EXPONENT_MIN,
+    MUL_EXPONENT_MAX,
+    MUL_EXPONENT_LIFT_MAX
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
@@ -162,5 +165,34 @@ contract LibDecimalFloatImplementationMulTest is Test {
 
         assertEq(signedCoefficient, expectedSignedCoefficient);
         assertEq(exponent, expectedExponent);
+    }
+
+    /// `MUL_EXPONENT_MAX` is the exponent `mul` promises BOTH operands may carry
+    /// without the checked exponent arithmetic overflowing. Sit on the bound
+    /// with the coefficients that make the lift as large as it gets — opposite
+    /// signs at full `int256` magnitude, so the 512-bit product's high word is
+    /// as wide as it can be AND the normalised magnitude still does not fit
+    /// `int256`, which costs one more step — and the sum plus that lift must
+    /// still land inside `int256`. This is what `MUL_EXPONENT_LIFT_MAX` buys:
+    /// trimming the allowance down to the lift this case actually needs leaves
+    /// no room for it and this panics.
+    function testMulExponentPreconditionUpperBoundary() external pure {
+        (, int256 exponent) =
+            LibDecimalFloatImplementation.mul(type(int256).min, MUL_EXPONENT_MAX, type(int256).max, MUL_EXPONENT_MAX);
+        int256 lift = exponent - (MUL_EXPONENT_MAX + MUL_EXPONENT_MAX);
+        assertTrue(lift > 0, "lift is positive");
+        assertTrue(lift <= MUL_EXPONENT_LIFT_MAX, "lift within allowance");
+    }
+
+    /// The `MUL_EXPONENT_MIN` counterpart of
+    /// `testMulExponentPreconditionUpperBoundary`. The lift only ever raises an
+    /// exponent, so the negative bound only has to survive the doubling, but
+    /// pin it rather than argue it.
+    function testMulExponentPreconditionLowerBoundary() external pure {
+        (, int256 exponent) =
+            LibDecimalFloatImplementation.mul(type(int256).min, MUL_EXPONENT_MIN, type(int256).max, MUL_EXPONENT_MIN);
+        int256 lift = exponent - (MUL_EXPONENT_MIN + MUL_EXPONENT_MIN);
+        assertTrue(lift > 0, "lift is positive");
+        assertTrue(lift <= MUL_EXPONENT_LIFT_MAX, "lift within allowance");
     }
 }
