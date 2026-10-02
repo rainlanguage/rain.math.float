@@ -2,11 +2,9 @@ out
 cache
 dependencies
 .direnv
-target
 temp
-dist
-node_modules
 .env
 .fixes
 .pre-commit-config.yaml
 .claude
+target
