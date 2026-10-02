@@ -210,9 +210,9 @@ contract LibDecimalFloatPowTest is LogTest {
     /// inverted base is `~9.39e66 e-1348563705` and the integer part of the
     /// positive `b` is `~7.84e69`, which is 233 bits wide. Exponentiation by
     /// squaring doubles the base exponent on every one of those iterations, so
-    /// the exponent passes `MUL_EXPONENT_MIN` on iteration 224, with nine bits
-    /// still to go, and the next squaring `mul` overflowed `int256` on
-    /// `exponentA + exponentB`.
+    /// the exponent passes `MUL_EXPONENT_MIN` on the 224th squaring, with the
+    /// top nine bits of the integer exponent still unprocessed, and the 225th
+    /// squaring `mul` overflowed `int256` on `exponentA + exponentB`.
     ///
     /// The result is smaller in magnitude than any representable Float by tens
     /// of orders of magnitude of its own exponent, so the squaring loop now
