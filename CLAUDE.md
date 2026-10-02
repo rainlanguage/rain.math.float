@@ -66,9 +66,10 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
 
 - 512-bit intermediate values in multiply/divide to preserve precision.
 - Exponent overflow and underflow both revert from the public arithmetic surface
-  (`ExponentOverflow` / `ExponentUnderflow`). Coefficient truncation on values
-  too large for int224 is silently tolerated because it preserves the order of
-  magnitude.
+  (`ExponentOverflow` / `ExponentUnderflow`). Coefficient truncation is silently
+  tolerated because it preserves the order of magnitude: digits are shed to fit
+  the coefficient in int224 AND to lift an exponent below int32.min back to the
+  floor. `ExponentUnderflow` is only the case where every digit has been shed.
 - Log/power use lookup table approximations with linear interpolation.
 - Three packing modes:
   - `packLossless`: reverts on any precision loss.

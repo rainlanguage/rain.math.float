@@ -16,6 +16,7 @@ import {
 } from "src/error/ErrParse.sol";
 import {ExponentOverflow, CoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
@@ -59,11 +60,27 @@ contract LibParseDecimalFloatTest is Test {
                 signedCoefficient = 0;
                 exponent = 0;
             } else {
-                (, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+                (Float packed, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
                 if (!lossless) {
                     errorSelector = ParseDecimalPrecisionLoss.selector;
                     signedCoefficient = 0;
                     exponent = 0;
+                } else {
+                    // A lossless pack may still have shed trailing zeros, to
+                    // fit the coefficient in int224 or to lift the exponent to
+                    // int32.min, so the representation can differ from the
+                    // inline parse. The VALUE cannot, and that is asserted
+                    // against the raw inline values here; the representation
+                    // comparison below is then between the two packed paths.
+                    (int256 packedCoefficient, int256 packedExponent) = packed.unpack();
+                    assertTrue(
+                        LibDecimalFloatImplementation.eq(
+                            signedCoefficient, exponent, packedCoefficient, packedExponent
+                        ),
+                        "lossless pack changed the value"
+                    );
+                    signedCoefficient = packedCoefficient;
+                    exponent = packedExponent;
                 }
             }
 
@@ -448,6 +465,18 @@ contract LibParseDecimalFloatTest is Test {
         // rather than reverting.
         (bytes4 err,) = this.parseDecimalFloatExternal("1e-2147483649");
         assertEq(err, ParseDecimalPrecisionLoss.selector);
+    }
+
+    /// A literal below the exponent floor whose coefficient carries the
+    /// trailing zeros to reach it is a representable value, and parses as
+    /// one: `10e-2147483649` is `1e-2147483648`. Only a literal that genuinely
+    /// rounds to zero (above) is a precision loss.
+    function testParseDecimalFloatBelowFloorWithTrailingZerosParses() external view {
+        (bytes4 err, Float float) = this.parseDecimalFloatExternal("10e-2147483649");
+        assertEq(err, bytes4(0));
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        assertEq(signedCoefficient, 1);
+        assertEq(exponent, int256(type(int32).min));
     }
 
     /// ParseDecimalFloatExcessCharacters from the wrapper when trailing

@@ -199,9 +199,12 @@ library LibParseDecimalFloat {
                 // packLossy handles the two exponent-overflow directions differently:
                 // - Positive exponent overflow (e.g. 1e2147483648) has no meaningful
                 //   approximation, so packLossy reverts with ExponentOverflow.
-                // - Negative exponent overflow (e.g. 1e-2147483649) is a very small
-                //   number that genuinely rounds to zero, so packLossy returns
-                //   (FLOAT_ZERO, false) and we report ParseDecimalPrecisionLoss.
+                // - Negative exponent overflow is first met by shedding trailing
+                //   digits of the coefficient to lift the exponent to int32.min
+                //   (e.g. 10e-2147483649 is 1e-2147483648, which packs
+                //   losslessly). Only a number that genuinely rounds to zero
+                //   (e.g. 1e-2147483649) makes packLossy return
+                //   (FLOAT_ZERO, false), and we report ParseDecimalPrecisionLoss.
                 (Float result, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
                 if (!lossless) {
                     return (ParseDecimalPrecisionLoss.selector, Float.wrap(0));

@@ -27,7 +27,9 @@ import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImp
 /// pack to different `bytes32`. Equality between Floats is therefore numeric
 /// (via `eq`, which rescales before comparing), not byte-level. `packLossy`
 /// does not strip trailing decimal zeros from the coefficient; it only
-/// shrinks the coefficient when it does not fit int224. This is deliberate:
+/// shrinks the coefficient when it does not fit int224, or when the exponent
+/// is below int32.min and shedding digits is the only way to reach the floor.
+/// This is deliberate:
 /// canonicalization is not free on the arithmetic hot path, and most
 /// operations do not care. Consumers that need a canonical form (raw-byte
 /// equality, hashing as a map key, downstream range checks) must canonicalize
@@ -337,27 +339,54 @@ library LibDecimalFloat {
     /// Pack a signed coefficient and exponent into a single `Float`.
     /// Clearly this involves fitting 64 bytes into 32 bytes, so there will be
     /// data loss.
+    ///
+    /// The coefficient is divided by ten (rounding towards zero) and the
+    /// exponent raised by one, as many times as it takes to fit the coefficient
+    /// in int224 AND the exponent in int32. Both directions of the trade are
+    /// the same operation, so the packing never gives up on the exponent while
+    /// it still has coefficient digits to spend: a value whose exponent is
+    /// below the floor is brought up to the floor by shedding its low digits,
+    /// and only when every digit has been shed (the value is smaller than any
+    /// representable Float) does it become `FLOAT_ZERO`. This matches the
+    /// README's stated policy for underflow: lose precision by rounding towards
+    /// zero rather than erroring, because in absolute terms the amount lost is
+    /// negligible. Exponent OVERFLOW still reverts, because no amount of
+    /// coefficient shedding can lower an exponent.
+    ///
+    /// The packing is lossless if and only if every digit shed was a zero, so
+    /// `lossless` reports whether the packed value is numerically equal to the
+    /// input, not whether the input already fitted. A coefficient that does not
+    /// fit int224 but is an exact multiple of the power of ten it was divided
+    /// by packs losslessly. This matters at the exponent floor in particular:
+    /// the arithmetic operations maximise their operands (multiplying the
+    /// coefficient up to ~1e76 and lowering the exponent to match), so a value
+    /// AT the floor reaches this function as a huge coefficient dozens of
+    /// exponent steps BELOW the floor, and the trailing zeros maximisation
+    /// added are exactly what must be shed to get back to it.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// representation.
     /// @param exponent The exponent of the floating point representation.
     /// @return float The packed representation of the signed coefficient and
     /// exponent.
-    /// @return lossless True if the conversion was lossless, false otherwise.
+    /// @return lossless True if the packed value is numerically equal to the
+    /// input, false otherwise.
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {
             int256 initialSignedCoefficient = signedCoefficient;
             int256 initialExponent = exponent;
-            // lossless is true if the signed coefficient fits in int224.
             // truncation here is intentional if it happens as that is what we
             // are testing for.
             // forge-lint: disable-next-line(unsafe-typecast)
-            lossless = int224(signedCoefficient) == signedCoefficient;
+            bool fits = int224(signedCoefficient) == signedCoefficient;
 
             // The reason that we can do unchecked exponent addition here is that
             // when it overflows it will wrap to a very large negative number.
             // This will get caught below when we check if the exponent fits in
-            // int32.
-            if (!lossless) {
+            // int32: a wrapped exponent is treated as an underflow, and the
+            // shedding it triggers always exhausts the coefficient (at most 77
+            // digits) long before it could raise a wrapped exponent back into
+            // range, so the result is the underflow zero.
+            if (!fits) {
                 if (signedCoefficient / 1e72 != 0) {
                     signedCoefficient /= 1e5;
                     exponent += 5;
@@ -382,14 +411,54 @@ library LibDecimalFloat {
             // are testing for.
             // forge-lint: disable-next-line(unsafe-typecast)
             if (int32(exponent) != exponent) {
-                // If the exponent is negative then this is a number too small
-                // to pack. We return zero but it is not a lossless conversion.
-                if (exponent < 0) {
+                if (exponent > 0) {
+                    revert ExponentOverflow(initialSignedCoefficient, initialExponent);
+                }
+
+                // The exponent is below the int32 floor. Every division of the
+                // coefficient by ten raises the exponent by one, so the
+                // shortfall is exactly the number of digits to shed. The
+                // coefficient fits int224 here, so it has at most 68 decimal
+                // digits and a shortfall of 68 or more sheds every one of
+                // them: that is zero without computing it. This also covers a
+                // wrapped exponent, whose shortfall is astronomically large.
+                // `exponent` is negative here and below int32.min, so the
+                // subtraction cannot overflow and the shortfall is positive.
+                int256 shortfall = int256(type(int32).min) - exponent;
+                if (shortfall > 67) {
                     // The literal is the bool this function returns, not a condition operand.
                     //forge-lint: disable-next-line(boolean-cst)
                     return (FLOAT_ZERO, false);
                 }
-                revert ExponentOverflow(initialSignedCoefficient, initialExponent);
+                // shortfall is in [1, 67] so 10 ** shortfall fits int256 and the
+                // casts cannot truncate.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                signedCoefficient /= int256(10 ** uint256(shortfall));
+                if (signedCoefficient == 0) {
+                    // Every digit was shed: the value is smaller in magnitude
+                    // than any representable Float, so this is the underflow
+                    // zero and it is not a lossless conversion.
+                    // The literal is the bool this function returns, not a condition operand.
+                    //forge-lint: disable-next-line(boolean-cst)
+                    return (FLOAT_ZERO, false);
+                }
+                exponent = type(int32).min;
+            }
+
+            // Lossless iff every digit shed was a zero, which is iff the
+            // original coefficient is an exact multiple of ten to the number of
+            // digits shed. The number shed is the exponent lift, which is in
+            // [0, 76] for any non-zero result (an int256 has at most 77 digits
+            // and at least one survived), so the power fits int256. The common
+            // case where nothing was shed skips the exponentiation.
+            if (exponent == initialExponent) {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
+                lossless = true;
+            } else {
+                // The lift is in [1, 76] so the casts cannot truncate.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                lossless = initialSignedCoefficient % int256(10 ** uint256(exponent - initialExponent)) == 0;
             }
 
             // Need a mask to zero out the bits that could be set to 1 if the
@@ -420,9 +489,9 @@ library LibDecimalFloat {
     /// replaces the value by `FLOAT_ZERO`, losing the magnitude entirely).
     /// Distinguishes the two `lossless = false` modes from `packLossy` by the
     /// returned float: `packLossy` only returns `FLOAT_ZERO` for the underflow
-    /// case when `lossless` is false (the coefficient-truncation path
-    /// successively divides by ten and never reaches zero from a non-zero
-    /// input).
+    /// case when `lossless` is false (digit shedding stops at int32.min with a
+    /// non-zero coefficient whenever one is reachable, so a zero from a
+    /// non-zero input means every digit was shed and the magnitude is gone).
     function packArithmeticResult(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless && Float.unwrap(c) == bytes32(0)) {
