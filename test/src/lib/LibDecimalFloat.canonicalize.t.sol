@@ -13,10 +13,6 @@ contract LibDecimalFloatCanonicalizeTest is Test {
     int224 constant INT224_MIN = type(int224).min;
     int32 constant INT32_MIN = type(int32).min;
 
-    function canonicalizeExternal(Float float) external pure returns (Float) {
-        return float.canonicalize();
-    }
-
     /// Zero at any exponent canonicalizes to FLOAT_ZERO.
     function testCanonicalizeZero(int32 exponent) external pure {
         Float zero = LibDecimalFloat.packLossless(0, exponent);
@@ -99,20 +95,6 @@ contract LibDecimalFloatCanonicalizeTest is Test {
         );
     }
 
-    // ---------------------------------------------------------------------
-    // Adversarial coverage that deliberately leaves the int128/uint8 "easy
-    // middle" the tests above stay inside. These target the int224 and int32
-    // type boundaries and, crucially, assert the SAFETY property the tests
-    // above never check: numerically DISTINCT Floats must canonicalize to
-    // byte-UNEQUAL results (no collision). They also pin the exponent to the
-    // int32.min floor where the scaling loop is capped before the coefficient
-    // is maximised, and the int224.min/int224.max coefficient boundaries.
-    // ---------------------------------------------------------------------
-
-    // ---------------------------------------------------------------------
-    // NO-COLLISION: numerically distinct -> byte-UNEQUAL after canonicalize.
-    // ---------------------------------------------------------------------
-
     /// Concrete no-collision at the int32.min exponent floor. Two tiny values
     /// pinned at the floor that differ only in their (already minimal)
     /// coefficient must NOT collapse to the same bytes. At the floor the loop
@@ -183,11 +165,6 @@ contract LibDecimalFloatCanonicalizeTest is Test {
         }
     }
 
-    // ---------------------------------------------------------------------
-    // EQ -> BYTE-EQUAL across representations, driven at the FLOOR and the
-    // int224 cap (the (c) hunt: same value via different starting reps).
-    // ---------------------------------------------------------------------
-
     /// Same value reached two different ways, both bottoming out at the floor.
     /// 10e(min) and 1e(min+1) are the same number; both must canonicalize to the
     /// identical bytes even though one starts already-scaled.
@@ -224,11 +201,6 @@ contract LibDecimalFloatCanonicalizeTest is Test {
             Float.unwrap(a.canonicalize()), Float.unwrap(b.canonicalize()), "cross-rep at floor must be byte-equal"
         );
     }
-
-    // ---------------------------------------------------------------------
-    // VALUE PRESERVATION + IDEMPOTENCE at the int224/int32 boundaries the
-    // tests above avoid.
-    // ---------------------------------------------------------------------
 
     /// Value preservation at the floor where the coefficient is NOT maximised
     /// (the loop is capped by int32.min, leaving a small coefficient). 1e(min)
