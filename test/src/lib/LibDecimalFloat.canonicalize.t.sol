@@ -83,7 +83,10 @@ contract LibDecimalFloatCanonicalizeTest is Test {
         // shift large enough to exceed int224 we would need packLossy; keep the
         // shift bounded so the shifted coefficient still fits int224).
         uint256 boundedShift = shift % 19;
+        // Safe: boundedShift <= 18.
+        //forge-lint: disable-next-line(unsafe-typecast)
         int256 shiftedCoefficient = int256(signedCoefficient) * int256(10 ** boundedShift);
+        //forge-lint: disable-next-line(unsafe-typecast)
         Float b = LibDecimalFloat.packLossless(shiftedCoefficient, -int256(boundedShift));
 
         // Same numeric value.
@@ -189,9 +192,13 @@ contract LibDecimalFloatCanonicalizeTest is Test {
         // Keep both exponents in the floor band and >= int32.min.
         uint256 kk = uint256(k) % 30 + 1; // 1..30
         uint256 jj = uint256(j) % kk; // 0..kk-1 so exp stays >= floor
+        // Safe: kk <= 30 and jj < kk, so every value stays within int32.
+        //forge-lint: disable-next-line(unsafe-typecast)
         int32 expA = int32(int256(INT32_MIN) + int256(kk));
         // base * 10^jj still fits int224 comfortably (int64 * 10^29 < int224).
+        //forge-lint: disable-next-line(unsafe-typecast)
         int256 scaled = int256(base) * int256(10 ** jj);
+        //forge-lint: disable-next-line(unsafe-typecast)
         int32 expB = int32(int256(INT32_MIN) + int256(kk) - int256(jj));
 
         Float a = LibDecimalFloat.packLossless(base, expA);
