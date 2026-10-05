@@ -174,7 +174,16 @@ library LibDecimalFloatImplementation {
             signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
             exponent = MAXIMIZED_ZERO_EXPONENT;
         } else {
-            exponent = exponentA + exponentB;
+            if (exponentB < 0) {
+                unchecked {
+                    exponent = exponentA + exponentB;
+                }
+                if (exponent > exponentA) {
+                    return mulExponentBelowFloor(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                }
+            } else {
+                exponent = exponentA + exponentB;
+            }
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
@@ -217,6 +226,31 @@ library LibDecimalFloatImplementation {
                 mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
                 exponent
             );
+        }
+    }
+
+    /// `mul` for operands whose exponent sum is below `type(int256).min`. The
+    /// product is taken with each exponent 2^254 higher, then moved back down,
+    /// shedding the digits that do not fit above the floor.
+    function mulExponentBelowFloor(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) private pure returns (int256 signedCoefficient, int256 exponent) {
+        unchecked {
+            int256 shift = 2 ** 254;
+            (signedCoefficient, exponent) =
+                mul(signedCoefficientA, exponentA + shift, signedCoefficientB, exponentB + shift);
+            if (exponent >= 0) {
+                return (signedCoefficient, exponent + type(int256).min);
+            }
+            if (exponent < -76) {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            signedCoefficient /= int256(10 ** uint256(-exponent));
+            exponent = signedCoefficient == 0 ? MAXIMIZED_ZERO_EXPONENT : type(int256).min;
         }
     }
 
@@ -288,13 +322,19 @@ library LibDecimalFloatImplementation {
             return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
         } else {
             int256 signedCoefficient;
-            int256 exponent;
+            int256 exponent = 0;
             bool fullA;
             bool fullB;
             // Move both coefficients into the e75/e76 range, so that the result
             // of division will not cause a mulDiv overflow.
             (signedCoefficientA, exponentA, fullA) = maximize(signedCoefficientA, exponentA);
             (signedCoefficientB, exponentB, fullB) = maximize(signedCoefficientB, exponentB);
+            // exponentA is pinned at its minimum, so the digits it cannot take
+            // join adjustExponent, which spills onto exponentB. `exponent` holds
+            // that shift until the quotient exponent is computed.
+            if (!fullA) {
+                (signedCoefficientA, exponent) = maximizeFull(signedCoefficientA, 0);
+            }
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
@@ -403,10 +443,8 @@ library LibDecimalFloatImplementation {
                         revert MaximizeOverflow(signedCoefficientB, exponentB);
                     }
                 }
-                if (!fullA) {
-                    revert MaximizeOverflow(signedCoefficientA, exponentA);
-                }
             }
+            adjustExponent -= exponent;
 
             // Attempt to apply the exponent adjustment.
             // First we try to apply it to exponentA.
