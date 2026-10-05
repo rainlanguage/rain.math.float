@@ -93,13 +93,22 @@ contract LibDecimalFloatImplementationEqTest is Test {
     /// `0.003`. Both directions of argument order, so neither relies on the
     /// larger magnitude arriving first.
     function testEqXEqYKnownUnequalCoefficients() external pure {
-        assertEqXEqYInvariant(-30, -4, -3, -3);
-        assertEqXEqYInvariant(-3, -3, -30, -4);
-        assertEqXEqYInvariant(30, -4, 3, -3);
-        assertEqXEqYInvariant(3, -3, 30, -4);
+        assertKnownEqualPair(-30, -4, -3, -3);
+        assertKnownEqualPair(30, -4, 3, -3);
         // A wider gap, to exercise more than a single power of ten.
-        assertEqXEqYInvariant(-3000, -6, -3, -3);
-        assertEqXEqYInvariant(3000, -6, 3, -3);
+        assertKnownEqualPair(-3000, -6, -3, -3);
+        assertKnownEqualPair(3000, -6, 3, -3);
+        // The fuzz counterexample that first exposed the defect.
+        assertKnownEqualPair(-1000, -10, -10000000000, -17);
+    }
+
+    /// The invariant only inspects pairs `eq` reports equal, so a known equal
+    /// pair must also be asserted equal or a wrong `eq` passes it vacuously.
+    function assertKnownEqualPair(int256 x, int256 exponentX, int256 y, int256 exponentY) internal pure {
+        assertTrue(LibDecimalFloatImplementation.eq(x, exponentX, y, exponentY), "known equal pair not eq");
+        assertTrue(LibDecimalFloatImplementation.eq(y, exponentY, x, exponentX), "known equal pair not eq reversed");
+        assertEqXEqYInvariant(x, exponentX, y, exponentY);
+        assertEqXEqYInvariant(y, exponentY, x, exponentX);
     }
 
     /// xeX != yeY if x != y (assuming maximized representation)
