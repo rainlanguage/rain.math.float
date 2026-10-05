@@ -912,20 +912,38 @@ library LibDecimalFloatImplementation {
             term = mulDivFixed(term, zSquared);
             series += term / k;
         }
-        // difference is at most 1e76 so it fits and maximizes in place.
+        // Scale the difference into [1e74, 1e76].
+        int256 differenceExponent = -52;
+        unchecked {
+            if (difference < 1e37) {
+                difference *= 1e37;
+                differenceExponent -= 37;
+            }
+            if (difference < 1e56) {
+                difference *= 1e19;
+                differenceExponent -= 19;
+            }
+            if (difference < 1e65) {
+                difference *= 1e10;
+                differenceExponent -= 10;
+            }
+            if (difference < 1e70) {
+                difference *= 1e5;
+                differenceExponent -= 5;
+            }
+            if (difference < 1e72) {
+                difference *= 1e3;
+                differenceExponent -= 3;
+            }
+            if (difference < 1e74) {
+                difference *= 1e2;
+                differenceExponent -= 2;
+            }
+        }
+        // The quotient is in (4e49, 5e52) and so fits.
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
-        // The quotient is below 1e53 and so fits.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 signedCoefficient = int256(
-            mulDiv(
-                // forge-lint: disable-next-line(unsafe-typecast)
-                uint256(differenceCoefficient),
-                mulDivFixed(series, POW_FIXED_TWO_OVER_LN10),
-                sum
-            )
-        );
-        return (below ? -signedCoefficient : signedCoefficient, differenceExponent - 50);
+        int256 signedCoefficient = int256(mulDiv(difference, mulDivFixed(series, POW_FIXED_TWO_OVER_LN10) * 100, sum));
+        return (below ? -signedCoefficient : signedCoefficient, differenceExponent);
     }
 
     /// 10^x for a float x.
