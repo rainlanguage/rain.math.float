@@ -56,6 +56,8 @@ contract LibFormatDecimalFloatCommasTest is Test {
         Float float = LibDecimalFloat.packLossless(1234567, 0);
         assertEq(LibFormatDecimalFloat.toDecimalString(float, true, true), "1.234567e6");
         assertEq(LibFormatDecimalFloat.toDecimalString(float, true, false), "1.234567e6");
+        assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(1, 6), true, true), "1e6");
+        assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(-1, 1000), true, true), "-1e1000");
     }
 
     /// Grouping only inserts commas: removing them recovers the ungrouped
