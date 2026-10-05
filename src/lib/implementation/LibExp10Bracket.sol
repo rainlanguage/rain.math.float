@@ -12,6 +12,9 @@ uint256 constant BRACKET_START_LIMBS = 2;
 /// @dev Halvings of the exponent before its Taylor series.
 uint256 constant BRACKET_HALVINGS = 8;
 
+/// @dev 2^BRACKET_HALVINGS.
+uint256 constant BRACKET_HALVING_DIVISOR = 256;
+
 /// Decides which side of a decimal r the value 10^s falls, for the rounding tie
 /// that log10 and pow10 cannot resolve in 1e50 fixed point.
 ///
@@ -30,44 +33,40 @@ library LibExp10Bracket {
         pure
         returns (bool)
     {
-        for (uint256 limbs = BRACKET_START_LIMBS;; limbs *= 2) {
-            (bool decided, bool result) = belowAt(gCoefficient, gExponent, negative, rCoefficient, rExponent, limbs);
-            if (decided) {
-                return result;
-            }
+        uint256 limbs = BRACKET_START_LIMBS;
+        int256 side = sideAt(gCoefficient, gExponent, negative, rCoefficient, rExponent, limbs);
+        while (side == 0) {
+            limbs *= 2;
+            side = sideAt(gCoefficient, gExponent, negative, rCoefficient, rExponent, limbs);
         }
+        return side < 0;
     }
 
-    /// `below` at one precision, or `decided` false when the bounds straddle r.
-    function belowAt(
+    /// -1 or 1 as 10^s is below or above r, at one precision, or 0 when the
+    /// bounds straddle r.
+    function sideAt(
         uint256 gCoefficient,
         int256 gExponent,
         bool negative,
         uint256 rCoefficient,
         int256 rExponent,
         uint256 limbs
-    ) internal pure returns (bool decided, bool result) {
+    ) internal pure returns (int256) {
         (uint256[] memory low, uint256[] memory high) = exp10(gCoefficient, gExponent, limbs);
         (uint256[] memory rLow, uint256[] memory rHigh) = bounds(rCoefficient, rExponent, limbs);
         if (!negative) {
             if (compare(high, rLow) < 0) {
-                return (true, true);
+                return -1;
             }
-            if (compare(low, rHigh) > 0) {
-                return (true, false);
-            }
-            return (false, false);
+            return compare(low, rHigh) > 0 ? int256(1) : int256(0);
         }
         // 10^-g < r exactly when r 10^g > 1.
         uint256[] memory one = new uint256[](limbs + 1);
         one[limbs] = 1;
         if (compare(mul(rLow, low, limbs, false), one) > 0) {
-            return (true, true);
+            return -1;
         }
-        if (compare(mul(rHigh, high, limbs, true), one) < 0) {
-            return (true, false);
-        }
-        return (false, false);
+        return compare(mul(rHigh, high, limbs, true), one) < 0 ? int256(1) : int256(0);
     }
 
     /// Bounds on 10^g for g in [gLow, gHigh], g at most 1.
@@ -85,8 +84,8 @@ library LibExp10Bracket {
         (uint256[] memory gLow, uint256[] memory gHigh) = bounds(gCoefficient, gExponent, limbs);
         (uint256[] memory lnLow, uint256[] memory lnHigh) = ln10(limbs);
         uint256 terms;
-        (low,) = expSeries(divSmall(mul(gLow, lnLow, limbs, false), 1 << BRACKET_HALVINGS, false), limbs);
-        (high, terms) = expSeries(divSmall(mul(gHigh, lnHigh, limbs, true), 1 << BRACKET_HALVINGS, true), limbs);
+        (low,) = expSeries(divSmall(mul(gLow, lnLow, limbs, false), BRACKET_HALVING_DIVISOR, false), limbs);
+        (high, terms) = expSeries(divSmall(mul(gHigh, lnHigh, limbs, true), BRACKET_HALVING_DIVISOR, true), limbs);
         addSmall(high, 2 * terms + 2);
         for (uint256 i = 0; i < BRACKET_HALVINGS; i++) {
             low = mul(low, low, limbs, false);
