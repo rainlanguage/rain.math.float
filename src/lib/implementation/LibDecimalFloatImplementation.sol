@@ -40,6 +40,13 @@ uint256 constant POW_FIXED_ONE = 1e50;
 /// @dev ln(10) at the `POW_FIXED_ONE` scale, rounded to nearest.
 uint256 constant POW_FIXED_LN10 = 230258509299404568401799145468436420760110148862877;
 
+/// @dev 2 / ln(10) at the `POW_FIXED_ONE` scale, rounded to nearest.
+uint256 constant POW_FIXED_TWO_OVER_LN10 = 86858896380650365530225783783321016458879401160733;
+
+/// @dev 2^-16 at the `POW_FIXED_ONE` scale, the last binary digit
+/// `exp10Fixed` reduces by.
+uint256 constant POW_FIXED_BINARY_STEP = 1525878906250000000000000000000000000000000000;
+
 /// @dev The inverse of 5^50 modulo 2^256, which divides a multiple of
 /// `POW_FIXED_ONE` by it once the factor 2^50 is shifted out.
 uint256 constant POW_FIXED_ONE_ODD_INVERSE =
@@ -849,14 +856,14 @@ library LibDecimalFloatImplementation {
         } else {
             unchecked {
                 // signedCoefficient is in [1.001e75, 9.999e75) so idx is in
-                // [1, 8998] and the next entry exists.
+                // [1, 8998].
                 // forge-lint: disable-next-line(unsafe-typecast)
                 uint256 idx = uint256(signedCoefficient / 1e72 - 1000);
+                uint256 tableSeed = lookupLogTableVal(tablesDataContract, idx) * 1e46;
+                // A whole number of 2^-16 steps, which exp10Fixed raises with
+                // its digit constants alone.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                int256 y1 = int256(lookupLogTableVal(tablesDataContract, idx));
-                // forge-lint: disable-next-line(unsafe-typecast)
-                int256 y2 = int256(lookupLogTableVal(tablesDataContract, idx + 1));
-                seed = y1 * 1e46 + (signedCoefficient % 1e72) * (y2 - y1) / 1e26;
+                seed = int256(tableSeed - tableSeed % POW_FIXED_BINARY_STEP);
             }
             // seed is in (0, 1e50) and so is not negative.
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -901,7 +908,7 @@ library LibDecimalFloatImplementation {
             mulDiv(
                 // forge-lint: disable-next-line(unsafe-typecast)
                 uint256(differenceCoefficient),
-                mulDiv(series, 2 * POW_FIXED_ONE, POW_FIXED_LN10),
+                mulDivFixed(series, POW_FIXED_TWO_OVER_LN10),
                 sum
             )
         );
