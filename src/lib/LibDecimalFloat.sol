@@ -437,6 +437,7 @@ library LibDecimalFloat {
                     if (signedCoefficient > type(int224).max / scale || signedCoefficient < type(int224).min / scale) {
                         revert ExponentOverflow(initialSignedCoefficient, initialExponent);
                     }
+                    //slither-disable-next-line divide-before-multiply
                     signedCoefficient *= scale;
                     exponent = type(int32).max;
                 } else {
