@@ -1,0 +1,7 @@
+# The rain-math-float bindings run over the test concretes compiled from this
+# source (crates/tests/build.rs), through their constructors. Forced so a
+# value in the shell cannot point the tests elsewhere.
+[env]
+RAIN_MATH_FLOAT_ARTIFACT = { value = "out/TestDecimalFloat.sol/TestDecimalFloat.json", relative = true, force = true }
+RAIN_MATH_FLOAT_TEST_ARTIFACT = { value = "out/TestDecimalFloatHarness.sol/TestDecimalFloatHarness.json", relative = true, force = true }
+RAIN_MATH_FLOAT_DEPLOY_MODE = { value = "create", force = true }

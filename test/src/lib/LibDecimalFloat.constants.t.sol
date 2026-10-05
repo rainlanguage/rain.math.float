@@ -7,7 +7,7 @@ import {
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Test} from "forge-std-1.16.1/src/Test.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatConstantsTest is Test {
     using LibDecimalFloat for Float;
@@ -68,6 +68,14 @@ contract LibDecimalFloatConstantsTest is Test {
             int224(2.718281828459045235360287471352662497757247093699959574966967627724e66), -66
         );
         assertEq(Float.unwrap(e), Float.unwrap(expected));
+    }
+
+    function testFloatPi() external pure {
+        Float pi = LibDecimalFloat.FLOAT_PI;
+        Float expected = LibDecimalFloat.packLossless(
+            int224(3.141592653589793238462643383279502884197169399375105820974944592308e66), -66
+        );
+        assertEq(Float.unwrap(pi), Float.unwrap(expected));
     }
 
     function testFloatZero() external pure {

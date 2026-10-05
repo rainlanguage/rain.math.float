@@ -79,3 +79,23 @@ error ScientificMinNotLessThanMax(Float scientificMin, Float scientificMax);
 /// @param actualCodehash The codehash currently at `tablesAddress` (zero
 /// if no contract is deployed there).
 error LogTablesNotDeployed(address tablesAddress, bytes32 expectedCodehash, bytes32 actualCodehash);
+
+/// @dev Thrown when `agree` is given a negative tolerance. A spread is a
+/// distance and so is never negative, which leaves nothing a negative
+/// tolerance could express. Without this revert it would be silently dominated
+/// by the other term, because the limit is the LARGER of the two, so a
+/// closeness check built on a malformed tolerance would pass as though it were
+/// well formed.
+/// @param absolute The absolute tolerance as given.
+/// @param proportional The proportional tolerance as given.
+error AgreeToleranceNegative(Float absolute, Float proportional);
+
+/// @dev Thrown when neither tolerance given to `agree` is positive. The limit
+/// is then zero and `agree` degenerates into exact equality, which `eq`
+/// already answers more cheaply and more clearly. Without this revert a caller
+/// that meant to set a tolerance and set none would get a check that only ever
+/// accepts identical values. Either tolerance ALONE may be zero; that is how a
+/// caller asks for only the other one.
+/// @param absolute The absolute tolerance as given.
+/// @param proportional The proportional tolerance as given.
+error AgreeNoPositiveTolerance(Float absolute, Float proportional);

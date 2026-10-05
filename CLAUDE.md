@@ -1,46 +1,86 @@
 # CLAUDE.md
 
-Decimal floating-point math for Rainlang/DeFi. `Float` packs an int224
-coefficient and an int32 exponent into one `bytes32`. Decimal, not binary, so
-`0.1` is exact. The Rust/WASM layer reimplements none of it — every Rust
-operation executes the Solidity through an in-memory revm, so the two cannot
-disagree.
+This file provides guidance to Claude Code (claude.ai/code) when working with
+code in this repository.
 
-Everything else about this repo — layout, build commands, dependency list, what
-CI runs — is discoverable from `foundry.toml`, `flake.nix` and
-`.github/workflows/`. What follows is only what a capable agent would get WRONG.
+## Project Overview
 
-## Hazards
+Pure Solidity decimal floating-point math library for Rainlang/DeFi. The `Float`
+type packs a 224-bit signed coefficient and 32-bit signed exponent into a single
+`bytes32`. Decimal (not binary) representation ensures exact decimal values
+(e.g., `0.1`). No NaN, Infinity, or negative zero — operations error on nonsense
+rather than producing special values.
 
-**Rust tests read Foundry artifacts out of `out/`.** `cargo test` builds against
-whatever `forge build` last wrote, so run `forge build` first or you are testing
-stale bytecode instead of your change. `dependencies/` is fetched by
-`forge soldeer install`; a compiler "file not found" on an import is that, not a
-broken remapping.
+This repository is the library half of the rain.math.float split. It publishes
+only the `rain-math-float` Soldeer package. The deployed concrete contract, the
+on-chain deploy pins/snapshot, the deploy scripts/tests, and the Rust/WASM/npm
+bindings live in `rain.math.float.deploy` and publish from there. The one Rust
+crate here, `crates/tests`, is test-only and never published. It runs the
+bindings' library tests over `test/concrete/TestDecimalFloat.sol` compiled from
+this source (`.cargo/config.toml` points the bindings at the artifacts and runs
+their constructors) and cross-references the packed constants against values
+derived in integer arithmetic.
 
-**No NaN, no Infinity, no negative zero.** Nonsense reverts rather than
-producing a special value. Do not introduce one — every consumer assumes any
-`Float` it holds is a real number.
+## Build Commands
 
-**Three packing modes, and which one a call site uses is a ruling, not a
-preference.**
+```bash
+forge build          # Compile contracts
+forge test           # Run all Solidity tests (5096 fuzz runs)
+forge test --mt testFunctionName  # Run specific test by name
+forge test -vvvv     # Verbose trace output for debugging
+nix develop          # Enter dev shell with all tooling
+```
 
-- `packLossless` reverts on any precision loss.
-- `packLossy` surfaces a `lossless` flag and returns `FLOAT_ZERO` on exponent
-  underflow. Parsing uses it because "this value rounds to zero" is a legitimate
-  parse result, reported as `ParseDecimalPrecisionLoss`.
-- `packArithmeticResult` tolerates coefficient truncation but reverts on
-  exponent underflow. Every public arithmetic operation uses it: truncation
-  preserves the order of magnitude, underflow does not.
+## Architecture
 
-**A deploy is part of a RELEASE. It never gates a merge.** Nothing in this repo
-waits on a deploy to land, and no PR should carry a "redeploy before merge"
-instruction. `src/lib/deploy/LibDecimalFloatDeploy.sol` carries the current
-deploy constants alongside a frozen set per published soldeer tag, and documents
-the convention that keeps version, tag and pins consistent; changing math or
-format source moves the current bytecode, and therefore those constants, as a
-release step.
+### Source (`src/`)
 
-**`src/generated/LogTables.pointers.sol` is generated but committed.**
-Regenerate it with `script/BuildPointers.sol` whenever log table data changes.
-Nothing regenerates it for you and nothing warns you that it is stale.
+- **`lib/LibDecimalFloat.sol`** — Public API: arithmetic, comparison,
+  conversion, formatting, parsing. User-defined type `Float` wrapping `bytes32`.
+- **`lib/implementation/`** — Internal arithmetic (512-bit intermediates for
+  mul/div), normalization, packing.
+- **`lib/parse/`** — String-to-Float parsing.
+- **`lib/format/`** — Float-to-string formatting.
+- **`lib/table/`** — Log lookup table source (`LibLogTable`); the transcendental
+  functions take the deployed tables-contract address as a parameter.
+- **`error/`** — Custom error definitions (CoefficientOverflow,
+  ExponentOverflow, DivisionByZero, etc.).
+
+### Tests (`test/`)
+
+- **`src/lib/`** — The pure-math suite mirroring `src/lib/`.
+- **`abstract/LogTest.sol`** — Test helper that rebuilds the combined log tables
+  from `LibLogTable` source and deploys them as a data contract at a `create`
+  address, so the transcendental tests (`log10`/`pow`/`pow10`/`sqrt`) run
+  without any on-chain deploy pin.
+- **`lib/`** — Reference (slow) implementations used to cross-check the library.
+
+### Dependencies (`dependencies/`)
+
+Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
+`libs = ['dependencies']`), not git submodules: forge-std,
+`@openzeppelin-contracts`, rain-solmem, rain-string, rain-datacontract. Run
+`forge soldeer install` to fetch them.
+
+## Key Design Details
+
+- 512-bit intermediate values in multiply/divide to preserve precision.
+- Exponent overflow and underflow both revert from the public arithmetic surface
+  (`ExponentOverflow` / `ExponentUnderflow`). Coefficient truncation is silently
+  tolerated because it preserves the order of magnitude: digits are shed to fit
+  the coefficient in int224 AND to lift an exponent below int32.min back to the
+  floor. `ExponentUnderflow` is only the case where every digit has been shed.
+- Log/power use lookup table approximations with linear interpolation.
+- Three packing modes:
+  - `packLossless`: reverts on any precision loss.
+  - `packLossy`: surfaces the `lossless` flag, returns `FLOAT_ZERO` on exponent
+    underflow. Used by parsing where underflow → "value rounds to zero" is a
+    legitimate parse result reported via `ParseDecimalPrecisionLoss`.
+  - `packArithmeticResult`: tolerates coefficient truncation, reverts on
+    exponent underflow. Used by every public arithmetic operation.
+- Solidity compiler: 0.8.25, EVM target: Cancun, optimizer: 1,000,000 runs.
+
+## License
+
+LicenseRef-DCL-1.0 (Rain Decentralized Computer License). All source files
+require SPDX headers per REUSE.toml.
