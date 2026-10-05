@@ -257,6 +257,25 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         return LibFormatDecimalFloat.toDecimalString(float, scientific);
     }
 
+    /// Scientific formatter reverts when `displayExponent` would exceed int32 range.
+    /// Reproduction of issue #185: (10, int32.max) → after maximizeFull coefficient
+    /// becomes 1e76 (exponent drops by 75) → displayExponent = (int32.max−75) + 76
+    /// = int32.max + 1 > int32.max.
+    function testFormatScientificDisplayExponentOverflowReverts() external {
+        int256 originalExponent = int256(type(int32).max);
+        Float float = LibDecimalFloat.packLossless(10, originalExponent);
+        vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, originalExponent));
+        this.formatExternal(float, true);
+    }
+
+    /// Boundary: (1, int32.max) does NOT overflow — coefficient→1e76 drops exponent
+    /// by 76, so displayExponent = int32.max exactly, which is in range.
+    function testFormatScientificExponentAtMaxBoundarySucceeds() external pure {
+        Float float = LibDecimalFloat.packLossless(1, int256(type(int32).max));
+        string memory s = LibFormatDecimalFloat.toDecimalString(float, true);
+        assertEq(s, string.concat("1e", Strings.toStringSigned(int256(type(int32).max))));
+    }
+
     /// Fuzz: every Float round-trips through scientific format → parse → eq
     /// across the full int224 coefficient domain, with exponent bounded to
     /// avoid the display-exponent overflow guard added by #185.
