@@ -236,6 +236,8 @@ contract LibDecimalFloatImplementationMulTest is Test {
         checkMul(1e76, min, 1e76, -77, 1e75, min);
         checkMul(-1e76, min, 1e76, -152, -1, min);
         checkMul(1e76, min, -1e76, -153, 0, 0);
+        checkMul(type(int256).max, min, 1, -76, 5, min);
+        checkMul(type(int256).max, min, 1, -77, 0, 0);
         checkMul(1, min, 1, -1, 0, 0);
         checkMul(1, min, 1, min, 0, 0);
         checkMul(type(int256).min, min, type(int256).min, min, 0, 0);
