@@ -10,7 +10,6 @@ import {
     EXPONENT_MAX,
     DivisionByZero
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationInvTest is Test {
     function invExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
@@ -18,11 +17,10 @@ contract LibDecimalFloatImplementationInvTest is Test {
         return (signedCoefficient, exponent);
     }
 
-    /// Compare reference. The exponent stays far enough inside the domain
-    /// that the inverse's exponent cannot leave it.
+    /// Compare reference.
     function testInvReference(int256 signedCoefficient, int256 exponent) external pure {
         vm.assume(signedCoefficient != 0);
-        exponent = bound(exponent, EXPONENT_MIN + 153, EXPONENT_MAX - 153);
+        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
 
         (int256 outputSignedCoefficient, int256 outputExponent) =
             LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
@@ -46,13 +44,5 @@ contract LibDecimalFloatImplementationInvTest is Test {
     function testInv0() external {
         vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, 1e76, -76));
         this.invExternal(0, 0);
-    }
-
-    /// Inverting a value at the top of the exponent domain produces an
-    /// exponent below `EXPONENT_MIN`, which reverts `ExponentOverflow` on the
-    /// result rather than returning an out-of-domain exponent.
-    function testInvAtDomainEdgeReverts() external {
-        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, 1e76, EXPONENT_MIN - 76));
-        this.invExternal(1, EXPONENT_MAX);
     }
 }

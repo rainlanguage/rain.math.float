@@ -202,23 +202,26 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(a, LibDecimalFloat.packLossless(1, 10));
     }
 
-    /// Pins the negative-exponent squaring-loop panic repro from issue #239.
-    /// pow(1e1700000000, -8e69) previously reverted with raw Panic(0x11) because
-    /// repeated self-squaring of the inverted base drove exponentBase below
-    /// EXPONENT_MIN, causing a checked int256 addition to overflow.
-    /// After the fix, the first squaring whose result exponent leaves the
-    /// arithmetic domain surfaces ExponentUnderflow on that result.
-    function testPowNegativeExponentSquaringPanic() external {
+    /// Issue #239: an integer exponent large enough to double the squared
+    /// base's exponent past int256 panicked instead of reverting typed.
+    function testPowSquaringPastInt256Underflow() external {
         Float a = LibDecimalFloat.packLossless(1, 1700000000);
-        Float b = LibDecimalFloat.packLossless(-8, 69);
         vm.expectRevert(
             abi.encodeWithSelector(
-                ExponentUnderflow.selector,
-                int256(10000000000000000000000000000000000000000000000000000000000000000000000000000),
-                int256(-33754837089798055323558008211721845025788926577583927508663322594508800000076)
+                ExponentUnderflow.selector, int256(1e76), int256(-269375752548498747818049431142400000076)
             )
         );
-        this.powExternal(a, b);
+        this.powExternal(a, LibDecimalFloat.packLossless(-8, 69));
+    }
+
+    function testPowSquaringPastInt256Overflow() external {
+        Float a = LibDecimalFloat.packLossless(1, 1700000000);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector, int256(1), int256(269375752548498747818049431142400000000)
+            )
+        );
+        this.powExternal(a, LibDecimalFloat.packLossless(8, 69));
     }
 
     /// The complete set of custom errors `pow` is designed to throw, derived by

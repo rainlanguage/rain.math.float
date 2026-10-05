@@ -128,16 +128,15 @@ contract LibDecimalFloatImplementationMulTest is Test {
         );
     }
 
-    /// a * b == b * a for all inputs whose exponent sum keeps the result in
-    /// the arithmetic domain, including the decimal renormalization headroom.
+    /// a * b == b * a for all in-range inputs.
     function testMulCommutative(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
     ) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 2, EXPONENT_MAX / 2 - 39);
-        exponentB = bound(exponentB, EXPONENT_MIN / 2, EXPONENT_MAX / 2 - 39);
+        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX / 2);
+        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX / 2);
 
         (int256 coeffAB, int256 expAB) =
             LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
@@ -154,8 +153,8 @@ contract LibDecimalFloatImplementationMulTest is Test {
         int256 signedCoefficientB,
         int256 exponentB
     ) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 2, EXPONENT_MAX / 2 - 39);
-        exponentB = bound(exponentB, EXPONENT_MIN / 2, EXPONENT_MAX / 2 - 39);
+        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX / 2);
+        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX / 2);
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
