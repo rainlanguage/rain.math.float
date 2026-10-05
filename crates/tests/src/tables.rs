@@ -216,57 +216,63 @@ fn round_certified(value: f64) -> u8 {
 /// reference PDF.
 const SECOND_LINE_STARTS: [usize; 10] = [5, 5, 6, 5, 4, 6, 5, 6, 5, 5];
 
-/// Entries where the published reference holds the other integer that
-/// brackets the derived mean difference, as (log row, second line, digit).
-/// The reference is not one formula: no single mean difference reproduces
-/// log row 12's first line or row 13's second line.
-const DEVIATIONS: [(usize, bool, usize); 28] = [
+/// Entries where the shipped table holds the other integer that brackets the
+/// derived mean difference, as (log row, second line, digit). They are the
+/// published reference's values. The reference is not one formula: no single
+/// mean difference reproduces log row 12's first line or row 13's second line.
+const DEVIATIONS: [(usize, bool, usize); 14] = [
     (10, false, 2),
     (10, false, 6),
-    (10, true, 9),
     (11, true, 5),
     (12, false, 1),
-    (13, true, 2),
     (13, true, 3),
-    (13, true, 4),
     (13, true, 9),
-    (14, true, 6),
     (14, true, 7),
     (14, true, 8),
     (14, true, 9),
-    (16, false, 5),
-    (16, false, 8),
-    (16, true, 6),
     (17, true, 8),
     (18, false, 4),
     (18, false, 7),
-    (18, true, 5),
     (18, true, 8),
     (19, false, 2),
-    (19, false, 6),
-    (19, true, 3),
-    (19, true, 4),
-    (19, true, 8),
-    (19, true, 9),
-    (74, false, 6),
 ];
 
-/// Every small log entry is its derived mean difference, or is listed in
-/// DEVIATIONS and is the other integer bracketing it.
-#[test]
-fn test_log_table_small_derivation() {
-    let main = tables::log_table_dec().unwrap();
-    let small = tables::log_table_dec_small().unwrap();
-    let alt = tables::log_table_dec_small_alt().unwrap();
+/// Entries where the shipped table takes the derived mean difference over the
+/// published reference, as (log row, second line, digit, published value).
+const PUBLISHED: [(usize, bool, usize, u8); 14] = [
+    (10, true, 9, 37),
+    (13, true, 2, 7),
+    (13, true, 4, 12),
+    (14, true, 6, 17),
+    (16, false, 5, 14),
+    (16, false, 8, 22),
+    (16, true, 6, 15),
+    (18, true, 5, 11),
+    (19, false, 6, 13),
+    (19, true, 3, 6),
+    (19, true, 4, 8),
+    (19, true, 8, 17),
+    (19, true, 9, 19),
+    (74, false, 6, 4),
+];
+
+/// The derived mean difference for (log row, second line, digit).
+fn derived_entry(main: &[[u16; 10]; 90], row: usize, second: bool, digit: usize) -> u8 {
+    let split = line_split(main, row - 10);
+    let (start, end) = if second { (split, 10) } else { (0, split) };
+    round_certified(log_mean_difference(row - 10, start, end, digit))
+}
+
+/// Every small log entry that is not its derived mean difference, asserting
+/// each is the other integer bracketing it.
+fn deviations(
+    main: &[[u16; 10]; 90],
+    small: &[[u8; 10]; 90],
+    alt: &[[u8; 10]; 10],
+) -> Vec<(usize, bool, usize)> {
     let mut deviations = Vec::new();
     for row in 0..90 {
-        let split = line_split(&main, row);
-        let expected = if row < 10 {
-            SECOND_LINE_STARTS[row]
-        } else {
-            10
-        };
-        assert_eq!(split, expected, "log row {}: line split", 10 + row);
+        let split = line_split(main, row);
         let mut lines = vec![(false, 0, split, small[row])];
         if split < 10 {
             lines.push((true, split, 10, alt[row]));
@@ -287,7 +293,241 @@ fn test_log_table_small_derivation() {
             }
         }
     }
-    assert_eq!(deviations, DEVIATIONS);
+    deviations
+}
+
+/// Every small log entry is its derived mean difference, or is listed in
+/// DEVIATIONS and is the other integer bracketing it.
+#[test]
+fn test_log_table_small_derivation() {
+    let main = tables::log_table_dec().unwrap();
+    let small = tables::log_table_dec_small().unwrap();
+    let alt = tables::log_table_dec_small_alt().unwrap();
+    for row in 0..90 {
+        let expected = if row < 10 {
+            SECOND_LINE_STARTS[row]
+        } else {
+            10
+        };
+        assert_eq!(
+            line_split(&main, row),
+            expected,
+            "log row {}: line split",
+            10 + row
+        );
+    }
+    assert_eq!(deviations(&main, &small, &alt), DEVIATIONS);
+}
+
+/// The shipped small tables with `entries` set to `value`.
+fn with_entries(
+    small: &[[u8; 10]; 90],
+    alt: &[[u8; 10]; 10],
+    entries: &[(usize, bool, usize, u8)],
+) -> ([[u8; 10]; 90], [[u8; 10]; 10]) {
+    let (mut small, mut alt) = (*small, *alt);
+    for &(row, second, digit, value) in entries {
+        if second {
+            alt[row - 10][digit] = value;
+        } else {
+            small[row - 10][digit] = value;
+        }
+    }
+    (small, alt)
+}
+
+fn published_tables() -> ([[u8; 10]; 90], [[u8; 10]; 10]) {
+    with_entries(
+        &tables::log_table_dec_small().unwrap(),
+        &tables::log_table_dec_small_alt().unwrap(),
+        &PUBLISHED,
+    )
+}
+
+/// |main + small - log10| over every mantissa 1000-9999, in units of log10.
+/// A four digit mantissa reads one main and one small entry, no
+/// interpolation, so this is log10's error there.
+fn lookup_errors(main: &[[u16; 10]; 90], small: &[[u8; 10]; 90], alt: &[[u8; 10]; 10]) -> Vec<f64> {
+    (1000..10000_usize)
+        .map(|n| {
+            let row = n / 100 - 10;
+            let entry = main[row][(n / 10) % 10];
+            let fine = if entry & ALT_TABLE_FLAG != 0 {
+                alt[row][n % 10]
+            } else {
+                small[row][n % 10]
+            };
+            let lookup = ((entry & !ALT_TABLE_FLAG) as f64 + fine as f64) / 10000.0;
+            (lookup - ((n as f64).log10() - 3.0)).abs()
+        })
+        .collect()
+}
+
+struct Stats {
+    max: f64,
+    mean: f64,
+    better: usize,
+    worse: usize,
+}
+
+fn stats(errors: &[f64], reference: &[f64]) -> Stats {
+    Stats {
+        max: errors.iter().cloned().fold(0.0, f64::max),
+        mean: errors.iter().sum::<f64>() / errors.len() as f64,
+        better: errors.iter().zip(reference).filter(|(e, r)| e < r).count(),
+        worse: errors.iter().zip(reference).filter(|(e, r)| e > r).count(),
+    }
+}
+
+/// Max and summed error over the mantissas that read the entry.
+fn line_errors(
+    main: &[[u16; 10]; 90],
+    (row, second, digit): (usize, bool, usize),
+    errors: &[f64],
+) -> (f64, f64) {
+    let split = line_split(main, row - 10);
+    let columns = if second { split..10 } else { 0..split };
+    columns
+        .map(|col| errors[(row - 10) * 100 + col * 10 + digit])
+        .fold((0.0, 0.0), |(max, sum), e| (f64::max(max, e), sum + e))
+}
+
+fn assert_within(value: f64, low: f64, high: f64, what: &str) {
+    assert!(
+        (low..=high).contains(&value),
+        "{what}: {value:e} not in [{low:e}, {high:e}]"
+    );
+}
+
+/// Each entry where the shipped table leaves the published reference holds
+/// the derived mean difference, and the published value is the other integer
+/// bracketing it.
+#[test]
+fn test_log_table_small_published() {
+    let main = tables::log_table_dec().unwrap();
+    let small = tables::log_table_dec_small().unwrap();
+    let alt = tables::log_table_dec_small_alt().unwrap();
+    for (row, second, digit, published) in PUBLISHED {
+        let shipped = if second {
+            alt[row - 10][digit]
+        } else {
+            small[row - 10][digit]
+        };
+        let derived = derived_entry(&main, row, second, digit);
+        assert_eq!(
+            shipped, derived,
+            "log row {row} second {second} digit {digit}"
+        );
+        assert_ne!(
+            published, derived,
+            "log row {row} second {second} digit {digit}"
+        );
+    }
+    let (published_small, published_alt) = published_tables();
+    let mut expected: Vec<_> = DEVIATIONS.to_vec();
+    expected.extend(
+        PUBLISHED
+            .iter()
+            .map(|&(row, second, digit, _)| (row, second, digit)),
+    );
+    expected.sort();
+    assert_eq!(
+        deviations(&main, &published_small, &published_alt),
+        expected
+    );
+}
+
+/// The four-figure lookup error of the shipped, published, all-derived and
+/// per-entry selected small tables, measured independently of the Solidity
+/// log10 that LibDecimalFloatLog10TablesTest measures.
+#[test]
+fn test_log_lookup_table_variants() {
+    let main = tables::log_table_dec().unwrap();
+    let small = tables::log_table_dec_small().unwrap();
+    let alt = tables::log_table_dec_small_alt().unwrap();
+    let (published_small, published_alt) = published_tables();
+    let published_errors = lookup_errors(&main, &published_small, &published_alt);
+
+    let published = stats(&published_errors, &published_errors);
+    assert_within(published.max, 1.3443e-4, 1.3444e-4, "published max");
+    assert_within(published.mean, 3.2936e-5, 3.2937e-5, "published mean");
+
+    let shipped = stats(&lookup_errors(&main, &small, &alt), &published_errors);
+    assert_within(shipped.max, 1.1942e-4, 1.1943e-4, "shipped max");
+    assert_within(shipped.mean, 3.2955e-5, 3.2956e-5, "shipped mean");
+    assert_eq!((shipped.better, shipped.worse), (31, 45));
+    assert!(shipped.max < 1.2e-4 && published.max > 1.2e-4);
+
+    let found = deviations(&main, &published_small, &published_alt);
+    let derived_entries: Vec<_> = found
+        .iter()
+        .map(|&(row, second, digit)| (row, second, digit, derived_entry(&main, row, second, digit)))
+        .collect();
+    let (derived_small, derived_alt) =
+        with_entries(&published_small, &published_alt, &derived_entries);
+    let derived_errors = lookup_errors(&main, &derived_small, &derived_alt);
+    let all_derived = stats(&derived_errors, &published_errors);
+    assert_within(all_derived.max, 1.1945e-4, 1.1946e-4, "all derived max");
+    assert!(all_derived.mean > published.mean);
+    assert_eq!((all_derived.better, all_derived.worse), (61, 88));
+
+    let picks = |rule: &dyn Fn(f64, f64, f64, f64) -> bool| -> Vec<(usize, bool, usize, u8)> {
+        derived_entries
+            .iter()
+            .filter(|&&(row, second, digit, _)| {
+                let (published_max, published_sum) =
+                    line_errors(&main, (row, second, digit), &published_errors);
+                let (derived_max, derived_sum) =
+                    line_errors(&main, (row, second, digit), &derived_errors);
+                rule(published_max, published_sum, derived_max, derived_sum)
+            })
+            .cloned()
+            .collect()
+    };
+
+    // Lowers one of max and summed error on its own line and raises neither.
+    let best = picks(&|published_max, published_sum, derived_max, derived_sum| {
+        (derived_max <= published_max && derived_sum < published_sum)
+            || (derived_max < published_max && derived_sum <= published_sum)
+    });
+    let keys: Vec<_> = best
+        .iter()
+        .map(|&(row, second, digit, _)| (row, second, digit))
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            (10, true, 9),
+            (13, true, 4),
+            (14, true, 6),
+            (16, true, 6),
+            (19, true, 4)
+        ]
+    );
+    let (best_small, best_alt) = with_entries(&published_small, &published_alt, &best);
+    let best = stats(
+        &lookup_errors(&main, &best_small, &best_alt),
+        &published_errors,
+    );
+    assert_eq!(best.max, published.max);
+    assert_within(best.mean, 3.289e-5, 3.2891e-5, "per entry best mean");
+    assert_eq!((best.better, best.worse), (15, 11));
+
+    // Lowers max error on its own line: exactly the shipped table.
+    let lowers_max = picks(&|published_max, _, derived_max, _| derived_max < published_max);
+    let keys: Vec<_> = lowers_max
+        .iter()
+        .map(|&(row, second, digit, _)| (row, second, digit))
+        .collect();
+    let shipped_keys: Vec<_> = PUBLISHED
+        .iter()
+        .map(|&(row, second, digit, _)| (row, second, digit))
+        .collect();
+    assert_eq!(keys, shipped_keys);
+    assert_eq!(
+        with_entries(&published_small, &published_alt, &lowers_max),
+        (small, alt)
+    );
 }
 
 /// Every small antilog entry is its derived mean difference.
