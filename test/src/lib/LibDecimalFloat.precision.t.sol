@@ -144,6 +144,8 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         if (region % 3 == 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 shift = uint256(-exponentB);
+            // shift <= 61 here, so 1e6 * 10^shift <= 1e67 fits int256.
+            // forge-lint: disable-next-line(unsafe-typecast)
             int256 limit = shift > 61 ? type(int224).max : int256(1e6 * 10 ** shift);
             coefficientB = bound(coefficientB, -limit, limit);
         } else {
