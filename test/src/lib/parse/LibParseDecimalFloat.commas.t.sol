@@ -97,6 +97,15 @@ contract LibParseDecimalFloatCommasTest is Test {
         assertEq(cursorMove, 1);
         assertEq(signedCoefficient, 1);
 
+        string memory data = "1,000";
+        uint256 start = Pointer.unwrap(bytes(data).dataPointer());
+        uint256 cursor;
+        (errorSelector, cursor, signedCoefficient,) =
+            LibParseDecimalFloat.parseDecimalFloatInline(start, Pointer.unwrap(bytes(data).endDataPointer()));
+        assertEq(errorSelector, bytes4(0));
+        assertEq(cursor - start, 1);
+        assertEq(signedCoefficient, 1);
+
         (bytes4 wrapped, Float float) = LibParseDecimalFloat.parseDecimalFloat("1,000");
         assertEq(wrapped, ParseDecimalFloatExcessCharacters.selector);
         assertEq(Float.unwrap(float), 0);
