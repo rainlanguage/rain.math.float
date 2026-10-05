@@ -174,7 +174,16 @@ library LibDecimalFloatImplementation {
             signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
             exponent = MAXIMIZED_ZERO_EXPONENT;
         } else {
-            exponent = exponentA + exponentB;
+            if (exponentB < 0) {
+                unchecked {
+                    exponent = exponentA + exponentB;
+                }
+                if (exponent > exponentA) {
+                    return mulExponentBelowFloor(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                }
+            } else {
+                exponent = exponentA + exponentB;
+            }
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
@@ -217,6 +226,31 @@ library LibDecimalFloatImplementation {
                 mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
                 exponent
             );
+        }
+    }
+
+    /// `mul` for operands whose exponent sum is below `type(int256).min`. The
+    /// product is taken with each exponent 2^254 higher, then moved back down,
+    /// shedding the digits that do not fit above the floor.
+    function mulExponentBelowFloor(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) private pure returns (int256 signedCoefficient, int256 exponent) {
+        unchecked {
+            int256 shift = 2 ** 254;
+            (signedCoefficient, exponent) =
+                mul(signedCoefficientA, exponentA + shift, signedCoefficientB, exponentB + shift);
+            if (exponent >= 0) {
+                return (signedCoefficient, exponent + type(int256).min);
+            }
+            if (exponent < -76) {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            signedCoefficient /= int256(10 ** uint256(-exponent));
+            exponent = signedCoefficient == 0 ? MAXIMIZED_ZERO_EXPONENT : type(int256).min;
         }
     }
 
