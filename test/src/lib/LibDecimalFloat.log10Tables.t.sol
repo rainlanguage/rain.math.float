@@ -17,6 +17,7 @@ contract LibDecimalFloatLog10TablesTest is Test {
     uint256 constant ONE = 1e36;
 
     struct Swaps {
+        bool worseOnly;
         uint256 deviations;
         uint256 swapped;
     }
@@ -44,10 +45,10 @@ contract LibDecimalFloatLog10TablesTest is Test {
 
     function ln(uint256 n, uint256 lnTwo) internal pure returns (uint256) {
         uint256 k = 0;
-        while (n >> (k + 1) > 0) {
+        while (2 ** (k + 1) <= n) {
             k++;
         }
-        return k * lnTwo + lnNearOne(n * ONE / (1 << k));
+        return k * lnTwo + lnNearOne(n * ONE / 2 ** k);
     }
 
     function log10(uint256 n, uint256 lnTwo, uint256 lnTen) internal pure returns (uint256) {
@@ -66,44 +67,53 @@ contract LibDecimalFloatLog10TablesTest is Test {
     /// The source small tables with the derived mean difference in place of
     /// every entry that deviates from it, or only of the five the PR found
     /// worse against the true log.
-    function derivedTables(bool worseOnly, uint256 lnTwo, uint256 lnTen)
+    function derivedTables(bool worseOnly, uint256[2] memory lnTwoTen)
         internal
         pure
-        returns (uint8[10][90] memory small, uint8[10][10] memory alt, Swaps memory swaps)
+        returns (uint8[10][90] memory, uint8[10][10] memory, Swaps memory)
     {
         uint16[10][90] memory main = LibLogTable.logTableDec();
-        small = LibLogTable.logTableDecSmall();
-        alt = LibLogTable.logTableDecSmallAlt();
+        uint8[10][90] memory small = LibLogTable.logTableDecSmall();
+        uint8[10][10] memory alt = LibLogTable.logTableDecSmallAlt();
+        Swaps memory swaps;
+        swaps.worseOnly = worseOnly;
         for (uint256 row = 0; row < 90; row++) {
             uint256 split = lineSplit(main[row]);
-            swapLine(swaps, small[row], lineDerived(row, 0, split, lnTwo, lnTen), row, false, worseOnly);
+            uint256[10] memory derived = lineDerived(row, 0, split, lnTwoTen);
+            swapLine(swaps, small[row], derived, row, false);
             if (split < 10) {
-                swapLine(swaps, alt[row], lineDerived(row, split, 10, lnTwo, lnTen), row, true, worseOnly);
+                derived = lineDerived(row, split, 10, lnTwoTen);
+                swapLine(swaps, alt[row], derived, row, true);
             }
         }
+        return (small, alt, swaps);
     }
 
-    function lineSplit(uint16[10] memory mainRow) internal pure returns (uint256 split) {
-        split = 10;
+    function lineSplit(uint16[10] memory mainRow) internal pure returns (uint256) {
+        uint256 split = 10;
         for (uint256 col = 10; col > 0; col--) {
             if (mainRow[col - 1] & ALT_TABLE_FLAG != 0) {
                 split = col - 1;
             }
         }
+        return split;
     }
 
     /// Mean differences, rounded half up, on the line of log row `row`
     /// spanning columns `start..end`.
-    function lineDerived(uint256 row, uint256 start, uint256 end, uint256 lnTwo, uint256 lnTen)
+    function lineDerived(uint256 row, uint256 start, uint256 end, uint256[2] memory lnTwoTen)
         internal
         pure
-        returns (uint256[10] memory derived)
+        returns (uint256[10] memory)
     {
+        uint256[10] memory derived;
         uint256 base = (10 + row) * 100;
-        uint256 rise = log10(base + end * 10, lnTwo, lnTen) - log10(base + start * 10, lnTwo, lnTen);
+        uint256 rise =
+            log10(base + end * 10, lnTwoTen[0], lnTwoTen[1]) - log10(base + start * 10, lnTwoTen[0], lnTwoTen[1]);
         for (uint256 digit = 0; digit < 10; digit++) {
             derived[digit] = (digit * 1000 * rise / (end - start) + ONE / 2) / ONE;
         }
+        return derived;
     }
 
     function swapLine(
@@ -111,13 +121,12 @@ contract LibDecimalFloatLog10TablesTest is Test {
         uint8[10] memory entries,
         uint256[10] memory derived,
         uint256 row,
-        bool second,
-        bool worseOnly
+        bool second
     ) internal pure {
         for (uint256 digit = 0; digit < 10; digit++) {
             if (derived[digit] != entries[digit]) {
                 swaps.deviations++;
-                if (!worseOnly || isWorse(10 + row, second, digit)) {
+                if (!swaps.worseOnly || isWorse(10 + row, second, digit)) {
                     swaps.swapped++;
                     entries[digit] = uint8(derived[digit]);
                 }
@@ -126,9 +135,8 @@ contract LibDecimalFloatLog10TablesTest is Test {
     }
 
     function toFixed(Float a) internal pure returns (uint256) {
-        (int256 coefficient, int256 exponent) = a.unpack();
-        int256 shift = exponent + 36;
-        return shift >= 0 ? uint256(coefficient) * 10 ** uint256(shift) : uint256(coefficient) / 10 ** uint256(-shift);
+        (uint256 value,) = a.toFixedDecimalLossy(36);
+        return value;
     }
 
     function absDiff(uint256 a, uint256 b) internal pure returns (uint256) {
@@ -137,7 +145,8 @@ contract LibDecimalFloatLog10TablesTest is Test {
 
     /// The largest |a / (a ^ b) ^ (1 / b) - 1| over the round trips
     /// LibDecimalFloatPowTest.testRoundTripSimple checks, scaled by ONE.
-    function maxRoundTrip(address tables) internal view returns (uint256 worst) {
+    function maxRoundTrip(address tables) internal view returns (uint256) {
+        uint256 worst = 0;
         int256[4][9] memory cases = [
             [int256(5), 0, 2, 0],
             [int256(5), 0, 3, 0],
@@ -158,18 +167,21 @@ contract LibDecimalFloatLog10TablesTest is Test {
                 worst = diff;
             }
         }
+        return worst;
     }
 
     function measure(address tables, uint256[] memory truth, uint256[] memory referenceErrors)
         internal
         view
-        returns (Stats memory stats, uint256[] memory errors)
+        returns (Stats memory, uint256[] memory)
     {
-        errors = new uint256[](truth.length);
+        Stats memory stats;
+        uint256[] memory errors = new uint256[](truth.length);
         for (uint256 i = 0; i < truth.length; i++) {
             uint256 n = 1000 + i;
-            uint256 lookupError =
-                absDiff(toFixed(LibDecimalFloat.packLossless(int256(n), 0).log10(tables)), 3 * ONE + truth[i]);
+            uint256 lookupError = absDiff(
+                toFixed(LibDecimalFloat.fromFixedDecimalLosslessPacked(n, 0).log10(tables)), 3 * ONE + truth[i]
+            );
             errors[i] = lookupError;
             stats.sumError += lookupError;
             if (lookupError > stats.maxError) {
@@ -184,6 +196,7 @@ contract LibDecimalFloatLog10TablesTest is Test {
             }
         }
         stats.maxRoundTrip = maxRoundTrip(tables);
+        return (stats, errors);
     }
 
     function report(string memory name, Stats memory stats, uint256 count) internal pure {
@@ -210,7 +223,7 @@ contract LibDecimalFloatLog10TablesTest is Test {
         assertLe(referenceStats.maxError, 1.3444e32, "reference max");
         assertGe(referenceStats.maxError, 1.3443e32, "reference max");
 
-        (uint8[10][90] memory small, uint8[10][10] memory alt, Swaps memory swaps) = derivedTables(true, lnTwo, lnTen);
+        (uint8[10][90] memory small, uint8[10][10] memory alt, Swaps memory swaps) = derivedTables(true, [lnTwo, lnTen]);
         assertEq(swaps.deviations, 28, "deviations");
         assertEq(swaps.swapped, 5, "worse swapped");
         (Stats memory worseFive,) = measure(LibTestLogTables.deploy(small, alt), truth, referenceErrors);
@@ -221,7 +234,7 @@ contract LibDecimalFloatLog10TablesTest is Test {
         assertEq(worseFive.worse, 11, "worse five worse");
         assertEq(worseFive.maxRoundTrip, referenceStats.maxRoundTrip, "worse five round trip");
 
-        (small, alt, swaps) = derivedTables(false, lnTwo, lnTen);
+        (small, alt, swaps) = derivedTables(false, [lnTwo, lnTen]);
         assertEq(swaps.swapped, 28, "all swapped");
         (Stats memory allDerived,) = measure(LibTestLogTables.deploy(small, alt), truth, referenceErrors);
         report("derived, all 28", allDerived, truth.length);
