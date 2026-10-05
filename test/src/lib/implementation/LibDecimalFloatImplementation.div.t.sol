@@ -385,10 +385,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         checkDiv(-1, type(int256).min, 3e76, max - 100, 0, 0);
     }
 
-    /// `(a / b) * b == a` for exact divisions of an unfull numerator. Both
-    /// operands sit `type(int256).min` below the frame `mul` is checked in,
-    /// because `mul` sums exponents with checked arithmetic and a product at
-    /// the floor would overflow before it is scaled.
+    /// `(a / b) * b == a` for exact divisions of an unfull numerator.
     function testDivUnfullNumeratorMulRoundTrip(int256 quotient, int256 divisor, int256 shift) external pure {
         quotient = bound(quotient, -1e37, 1e37);
         divisor = bound(divisor, -1e37, 1e37);
@@ -400,7 +397,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         int256 numerator = quotient * divisor;
         (int256 q, int256 qe) =
             LibDecimalFloatImplementation.div(numerator, type(int256).min, divisor, type(int256).min + shift);
-        (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, divisor, shift);
-        assertTrue(LibDecimalFloatImplementation.eq(back, backE, numerator, 0), "(a / b) * b == a");
+        (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, divisor, type(int256).min + shift);
+        assertTrue(LibDecimalFloatImplementation.eq(back, backE, numerator, type(int256).min), "(a / b) * b == a");
     }
 }

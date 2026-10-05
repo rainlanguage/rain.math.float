@@ -178,4 +178,91 @@ contract LibDecimalFloatImplementationMulTest is Test {
         (, int256 exponent) = LibDecimalFloatImplementation.mul(type(int256).min, bound, type(int256).max, bound);
         assertEq(exponent - 2 * bound, 77);
     }
+
+    /// `mul` in a frame shifted up by 2^254 per operand, with the exponent
+    /// moved back down and lifted to `type(int256).min` by shedding digits.
+    function mulBelowFloorExpected(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal pure returns (int256, int256) {
+        int256 shift = 2 ** 254;
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(
+            signedCoefficientA, exponentA + shift, signedCoefficientB, exponentB + shift
+        );
+        if (exponent >= 0) {
+            return (signedCoefficient, exponent + type(int256).min);
+        }
+        if (-exponent > 76) {
+            return (0, 0);
+        }
+        signedCoefficient /= int256(10 ** uint256(-exponent));
+        return (signedCoefficient, signedCoefficient == 0 ? int256(0) : type(int256).min);
+    }
+
+    function checkMulBelowFloor(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal pure {
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            mulBelowFloorExpected(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        checkMul(
+            signedCoefficientA, exponentA, signedCoefficientB, exponentB, expectedSignedCoefficient, expectedExponent
+        );
+    }
+
+    /// The repro from #296.
+    function testMulExponentSumBelowFloorIssueRepro() external pure {
+        (int256 q, int256 qe) =
+            LibDecimalFloatImplementation.div(19507 * -77, type(int256).min, -77, type(int256).min + 11002);
+        (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, -77, type(int256).min + 11002);
+        assertTrue(LibDecimalFloatImplementation.eq(back, backE, 19507 * -77, type(int256).min));
+    }
+
+    /// The digits `mul` drops when the product is wider than 256 bits lift
+    /// the exponent back above the floor without losing anything.
+    function testMulExponentSumBelowFloorLiftedByAdjust() external pure {
+        int256 min = type(int256).min;
+        checkMul(1e76, min, 1e76, -50, 1e76, min + 26);
+        checkMul(1e76, min, -1e76, -76, -1e76, min);
+    }
+
+    function testMulExponentSumBelowFloorShedsDigits() external pure {
+        int256 min = type(int256).min;
+        checkMul(1e76, min, 1e76, -77, 1e75, min);
+        checkMul(-1e76, min, 1e76, -152, -1, min);
+        checkMul(1e76, min, -1e76, -153, 0, 0);
+        checkMul(1, min, 1, -1, 0, 0);
+        checkMul(1, min, 1, min, 0, 0);
+        checkMul(type(int256).min, min, type(int256).min, min, 0, 0);
+    }
+
+    function testMulExponentSumBelowFloorMatchesShifted(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external pure {
+        vm.assume(signedCoefficientA != 0 && signedCoefficientB != 0);
+        exponentA = bound(exponentA, type(int256).min, -40);
+        exponentB = bound(exponentB, type(int256).min, -40);
+        checkMulBelowFloor(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    /// Exponent sums within 80 of the floor, where the lift and the digit
+    /// shedding meet.
+    function testMulExponentSumNearFloorMatchesShifted(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 offset
+    ) external pure {
+        vm.assume(signedCoefficientA != 0 && signedCoefficientB != 0);
+        exponentA = bound(exponentA, type(int256).min + 100, -100);
+        offset = bound(offset, -80, 80);
+        checkMulBelowFloor(signedCoefficientA, exponentA, signedCoefficientB, type(int256).min - exponentA + offset);
+    }
 }
