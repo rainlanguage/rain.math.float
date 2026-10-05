@@ -174,15 +174,16 @@ library LibDecimalFloatImplementation {
             signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
             exponent = MAXIMIZED_ZERO_EXPONENT;
         } else {
-            uint256 underflowExponentBy = 0;
-            unchecked {
-                if (exponentA < 0 && exponentB < type(int256).min - exponentA) {
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    underflowExponentBy = uint256(type(int256).min - exponentA - exponentB);
-                    exponentB = type(int256).min - exponentA;
+            if (exponentB < 0) {
+                unchecked {
+                    exponent = exponentA + exponentB;
                 }
+                if (exponent > exponentA) {
+                    return mulExponentBelowFloor(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                }
+            } else {
+                exponent = exponentA + exponentB;
             }
-            exponent = exponentA + exponentB;
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
@@ -225,26 +226,31 @@ library LibDecimalFloatImplementation {
                 mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
                 exponent
             );
+        }
+    }
 
-            if (underflowExponentBy > 0) {
-                unchecked {
-                    // exponent is at most 77 above type(int256).min here.
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    uint256 headroom = uint256(exponent - type(int256).min);
-                    if (underflowExponentBy <= headroom) {
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        exponent -= int256(underflowExponentBy);
-                    } else {
-                        underflowExponentBy -= headroom;
-                        if (underflowExponentBy > 76) {
-                            return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
-                        }
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        signedCoefficient /= int256(10 ** underflowExponentBy);
-                        exponent = signedCoefficient == 0 ? MAXIMIZED_ZERO_EXPONENT : type(int256).min;
-                    }
-                }
+    /// `mul` for operands whose exponent sum is below `type(int256).min`. The
+    /// product is taken with each exponent 2^254 higher, then moved back down,
+    /// shedding the digits that do not fit above the floor.
+    function mulExponentBelowFloor(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) private pure returns (int256 signedCoefficient, int256 exponent) {
+        unchecked {
+            int256 shift = 2 ** 254;
+            (signedCoefficient, exponent) =
+                mul(signedCoefficientA, exponentA + shift, signedCoefficientB, exponentB + shift);
+            if (exponent >= 0) {
+                return (signedCoefficient, exponent + type(int256).min);
             }
+            if (exponent < -76) {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            signedCoefficient /= int256(10 ** uint256(-exponent));
+            exponent = signedCoefficient == 0 ? MAXIMIZED_ZERO_EXPONENT : type(int256).min;
         }
     }
 

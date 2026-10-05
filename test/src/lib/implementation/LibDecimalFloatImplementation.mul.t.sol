@@ -194,9 +194,10 @@ contract LibDecimalFloatImplementationMulTest is Test {
         if (exponent >= 0) {
             return (signedCoefficient, exponent + type(int256).min);
         }
-        if (-exponent > 76) {
+        if (exponent < -76) {
             return (0, 0);
         }
+        // forge-lint: disable-next-line(unsafe-typecast)
         signedCoefficient /= int256(10 ** uint256(-exponent));
         return (signedCoefficient, signedCoefficient == 0 ? int256(0) : type(int256).min);
     }
