@@ -370,9 +370,10 @@ contract LibDecimalFloatPowTest is LogTest {
                     try this.powExternal(c, inv) returns (Float roundTrip) {
                         if (!roundTrip.isZero()) {
                             // An even power drops a negative base's sign and
-                            // the root returned is the positive one, so the
-                            // round trip recovers |a|.
-                            Float diff = a.abs().div(roundTrip).sub(LibDecimalFloat.FLOAT_ONE).abs();
+                            // the root returned is the positive one, while an
+                            // odd one keeps it, so magnitudes are compared.
+                            // testPowNegativeBaseWholeExponent pins the sign.
+                            Float diff = a.abs().div(roundTrip.abs()).sub(LibDecimalFloat.FLOAT_ONE).abs();
                             assertTrue(!diff.gt(diffLimit()), "diff");
                         }
                     } catch (bytes memory reason) {
