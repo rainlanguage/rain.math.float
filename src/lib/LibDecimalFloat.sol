@@ -901,11 +901,7 @@ library LibDecimalFloat {
                     revert PowNegativeBase(signedCoefficientA, exponentA);
                 }
                 Float magnitude = pow(a.minus(), b, tablesDataContract);
-                (int256 coefficientB, int256 exponentOfB) = b.unpack();
-                // b is whole and pow(-a, b) has already rescaled it to
-                // exponent 0 without reverting, so this is exact.
-                int256 wholeB = LibDecimalFloatImplementation.withTargetExponent(coefficientB, exponentOfB, 0);
-                return wholeB & 1 == 0 ? magnitude : magnitude.minus();
+                return b.isOdd() ? magnitude.minus() : magnitude;
             }
         }
         // Handle identity case for positive values of a, i.e. a^1.
@@ -1172,5 +1168,26 @@ library LibDecimalFloat {
             // is zero or not.
             result := iszero(and(a, mask))
         }
+    }
+
+    /// Returns true if the float is an odd whole number. A float that is not
+    /// whole is not odd. Exact: no float division or modulo is involved.
+    /// @param a The float to check.
+    /// @return True if the float is an odd whole number.
+    function isOdd(Float a) internal pure returns (bool) {
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        if (exponent > 0) {
+            // A whole multiple of ten.
+            return false;
+        }
+        if (exponent < -67) {
+            // An int224 coefficient has at most 68 digits, so the value is
+            // either zero or strictly between -1 and 1.
+            return false;
+        }
+        // exponent is in [-67, 0] so the power fits int256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 scale = int256(10 ** uint256(-exponent));
+        return signedCoefficient % scale == 0 && (signedCoefficient / scale) & 1 == 1;
     }
 }
