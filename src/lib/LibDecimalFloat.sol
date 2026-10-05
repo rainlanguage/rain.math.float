@@ -235,8 +235,8 @@ library LibDecimalFloat {
             if (finalExponent < 0) {
                 unchecked {
                     // Every possible value rounds to 0 if the exponent is less
-                    // than -77. This is always lossless as we know the value is
-                    // is not zero in real.
+                    // than -77. This is always lossy as we know the value is
+                    // not zero in real.
                     if (finalExponent < -77) {
                         // The literal is the bool this function returns, not a condition operand.
                         //forge-lint: disable-next-line(boolean-cst)
@@ -939,7 +939,11 @@ library LibDecimalFloat {
         else if (b.eq(FLOAT_ONE) && a.gt(FLOAT_ZERO)) {
             return a;
         } else if (b.lt(FLOAT_ZERO)) {
-            return pow(a.inv(), b.minus(), tablesDataContract);
+            // a^b is (1/a)^-b. The inverse stays unpacked: packed, the inverse
+            // of a value near the top of the range underflows even when the
+            // power is representable.
+            (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.inv(signedCoefficientA, exponentA);
+            b = b.minus();
         }
 
         // Uses LibDecimalFloatImplementation directly (rather than the packed
@@ -952,7 +956,7 @@ library LibDecimalFloat {
 
         // Exponentiation by squaring.
         (int256 signedCoefficientResult, int256 exponentResult) = (1, 0);
-        (int256 signedCoefficientBase, int256 exponentBase) = a.unpack();
+        (int256 signedCoefficientBase, int256 exponentBase) = (signedCoefficientA, exponentA);
         while (exponentBInteger >= 1) {
             if (exponentBInteger & 0x01 == 0x01) {
                 (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(

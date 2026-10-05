@@ -44,7 +44,7 @@ library LibParseDecimalFloat {
     {
         unchecked {
             cursor = start;
-            cursor = LibParseChar.skipMask(cursor, end, CMASK_NEGATIVE_SIGN);
+            cursor += LibParseChar.isMask(cursor, end, CMASK_NEGATIVE_SIGN);
             bool isNegative = cursor != start;
             {
                 uint256 intStart = cursor;
@@ -148,7 +148,7 @@ library LibParseDecimalFloat {
                     cursor++;
                     eStart = cursor;
                 } else {
-                    cursor = LibParseChar.skipMask(cursor, end, CMASK_NEGATIVE_SIGN);
+                    cursor += LibParseChar.isMask(cursor, end, CMASK_NEGATIVE_SIGN);
                 }
                 {
                     uint256 digitsStart = cursor;
