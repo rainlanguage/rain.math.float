@@ -35,6 +35,48 @@ library LibFormatDecimalFloat {
         return _toNonScientific(signedCoefficient, exponent);
     }
 
+    /// Format a decimal float as a string, optionally grouping the integer
+    /// part in thousands with commas, e.g. `-1,234,567.89`. Scientific output
+    /// always has a single integer digit so is never grouped. The grouped
+    /// output parses back to the same value with `commas` set in
+    /// `LibParseDecimalFloat.parseDecimalFloat`.
+    /// @param float The decimal float to format.
+    /// @param scientific Whether to format in scientific notation (e.g. 1e10).
+    /// @param commas Whether to group the integer part with commas.
+    /// @return The string representation of the decimal float.
+    function toDecimalString(Float float, bool scientific, bool commas) internal pure returns (string memory) {
+        string memory str = toDecimalString(float, scientific);
+        if (!commas || scientific) {
+            return str;
+        }
+        return _groupThousands(str);
+    }
+
+    /// Insert a comma between every three digits of the integer part of a
+    /// non-scientific decimal string, counting from the decimal point.
+    function _groupThousands(string memory str) private pure returns (string memory) {
+        bytes memory input = bytes(str);
+        uint256 intStart = input.length > 0 && input[0] == "-" ? 1 : 0;
+        uint256 intEnd = intStart;
+        while (intEnd < input.length && input[intEnd] != ".") {
+            intEnd++;
+        }
+        uint256 intLength = intEnd - intStart;
+        if (intLength <= 3) {
+            return str;
+        }
+        uint256 commaCount = (intLength - 1) / 3;
+        bytes memory out = new bytes(input.length + commaCount);
+        uint256 j = 0;
+        for (uint256 i = 0; i < input.length; i++) {
+            if (i > intStart && i < intEnd && (intEnd - i) % 3 == 0) {
+                out[j++] = ",";
+            }
+            out[j++] = input[i];
+        }
+        return string(out);
+    }
+
     /// Scientific notation: render as `d.dddeN` where the leading digit is the
     /// most significant digit of the maximized coefficient. Uses big-integer
     /// division to place the decimal point; the divisor is always `1e75` or

@@ -9,7 +9,8 @@ import {
     CMASK_PLUS_SIGN,
     CMASK_E_NOTATION,
     CMASK_ZERO,
-    CMASK_DECIMAL_POINT
+    CMASK_DECIMAL_POINT,
+    CMASK_COMMA
 } from "rain-string-0.3.9/src/lib/parse/LibParseCMask.sol";
 import {LibParseDecimal} from "rain-string-0.3.9/src/lib/parse/LibParseDecimal.sol";
 import {
@@ -19,7 +20,7 @@ import {
     ParseDecimalFloatExcessCharacters
 } from "../../error/ErrParse.sol";
 import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
-import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
+import {ParseEmptyDecimalString, ParseDecimalOverflow} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 
 /// @title LibParseDecimalFloat
@@ -29,15 +30,40 @@ import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 /// implementations by standardizing in Solidity.
 library LibParseDecimalFloat {
     /// @notice Parses a decimal float from a substring defined by [start, end).
+    /// Commas are never consumed, so a comma ends the literal.
     /// @param start The starting index of the substring (inclusive).
     /// @param end The ending index of the substring (exclusive).
+    /// @return The error selector if an error occurred, otherwise 0.
+    /// @return The position in the string after parsing.
+    /// @return The signed coefficient of the parsed decimal float.
+    /// @return The exponent of the parsed decimal float.
+    function parseDecimalFloatInline(uint256 start, uint256 end)
+        internal
+        pure
+        returns (bytes4, uint256, int256, int256)
+    {
+        return parseDecimalFloatInline(start, end, false);
+    }
+
+    /// @notice Parses a decimal float from a substring defined by [start, end),
+    /// optionally accepting commas as thousands separators in the integer
+    /// part, e.g. `1,000` or `-12,345.67`.
+    /// A comma is consumed only where it follows a leading group of one to
+    /// three digits or a previous comma group, and is itself followed by
+    /// exactly three digits. Any other comma ends the literal exactly as it
+    /// does when `commas` is false, so `1,2`, `1000,000` and `1,0000` all stop
+    /// before their first comma. The value parsed is the value of the same
+    /// digits without commas.
+    /// @param start The starting index of the substring (inclusive).
+    /// @param end The ending index of the substring (exclusive).
+    /// @param commas Whether to accept commas as thousands separators.
     /// @return errorSelector The error selector if an error occurred, otherwise
     /// 0.
     /// @return cursor The position in the string after parsing.
     /// @return signedCoefficient The signed coefficient of the parsed decimal
     /// float.
     /// @return exponent The exponent of the parsed decimal float.
-    function parseDecimalFloatInline(uint256 start, uint256 end)
+    function parseDecimalFloatInline(uint256 start, uint256 end, bool commas)
         internal
         pure
         returns (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent)
@@ -59,6 +85,30 @@ library LibParseDecimalFloat {
                     return (signedCoefficientErrorSelector, cursor, 0, 0);
                 }
                 signedCoefficient = signedCoefficientTmp;
+
+                if (commas && cursor - intStart <= 3) {
+                    while (
+                        LibParseChar.isMask(cursor, end, CMASK_COMMA) == 1
+                            && LibParseChar.skipMask(cursor + 1, end, CMASK_NUMERIC_0_9) == cursor + 4
+                    ) {
+                        (, uint256 group) = LibParseDecimal.unsafeDecimalStringToInt(cursor + 1, cursor + 4);
+                        cursor += 4;
+                        // group is at most 999.
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        int256 signedGroup = int256(group);
+                        if (isNegative) {
+                            if (signedCoefficient < (type(int256).min + signedGroup) / 1000) {
+                                return (ParseDecimalOverflow.selector, cursor, 0, 0);
+                            }
+                            signedCoefficient = signedCoefficient * 1000 - signedGroup;
+                        } else {
+                            if (signedCoefficient > (type(int256).max - signedGroup) / 1000) {
+                                return (ParseDecimalOverflow.selector, cursor, 0, 0);
+                            }
+                            signedCoefficient = signedCoefficient * 1000 + signedGroup;
+                        }
+                    }
+                }
             }
 
             int256 fracValue = int256(LibParseChar.isMask(cursor, end, CMASK_DECIMAL_POINT));
@@ -187,12 +237,22 @@ library LibParseDecimalFloat {
     /// @notice Parses a decimal float from a string. This a high-level wrapper
     /// around `parseDecimalFloatInline` that handles string memory layout and
     /// returns a packed `Float` amenable to subsequent operations with
-    /// `LibDecimalFloat`.
+    /// `LibDecimalFloat`. A comma is reported as excess characters.
     /// @param str The string to parse.
-    /// @return errorSelector The error selector if an error occurred, otherwise
-    /// 0.
-    /// @return result The parsed `Float` if no error occurred, otherwise zero.
+    /// @return The error selector if an error occurred, otherwise 0.
+    /// @return The parsed `Float` if no error occurred, otherwise zero.
     function parseDecimalFloat(string memory str) internal pure returns (bytes4, Float) {
+        return parseDecimalFloat(str, false);
+    }
+
+    /// @notice As `parseDecimalFloat(string)`, optionally accepting commas as
+    /// thousands separators per `parseDecimalFloatInline`. A comma outside
+    /// that grouping is reported as excess characters.
+    /// @param str The string to parse.
+    /// @param commas Whether to accept commas as thousands separators.
+    /// @return The error selector if an error occurred, otherwise 0.
+    /// @return The parsed `Float` if no error occurred, otherwise zero.
+    function parseDecimalFloat(string memory str, bool commas) internal pure returns (bytes4, Float) {
         uint256 start;
         uint256 end;
         assembly {
@@ -200,7 +260,7 @@ library LibParseDecimalFloat {
             end := add(start, mload(str))
         }
         (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
-            parseDecimalFloatInline(start, end);
+            parseDecimalFloatInline(start, end, commas);
         if (errorSelector == 0) {
             if (cursor == end) {
                 // If we consumed the whole string, we can return the parsed value.
