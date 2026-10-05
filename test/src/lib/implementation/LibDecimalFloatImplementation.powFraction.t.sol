@@ -14,12 +14,12 @@ contract LibDecimalFloatImplementationPowFractionTest is LogTest {
     /// References are 10^x to 50 places from `bc -l` at scale 200.
     function testExp10Fixed() external pure {
         assertEq(LibDecimalFloatImplementation.exp10Fixed(0), POW_FIXED_ONE);
-        assertNear(LibDecimalFloatImplementation.exp10Fixed(POW_FIXED_ONE), 10 * POW_FIXED_ONE, 1e5);
+        assertNear(LibDecimalFloatImplementation.exp10Fixed(POW_FIXED_ONE), 10 * POW_FIXED_ONE, 5e4);
         assertNear(
-            LibDecimalFloatImplementation.exp10Fixed(5e49), 316227766016837933199889354443271853371955513932521, 1e5
+            LibDecimalFloatImplementation.exp10Fixed(5e49), 316227766016837933199889354443271853371955513932521, 5e4
         );
         assertNear(
-            LibDecimalFloatImplementation.exp10Fixed(1e47), 100230523807789967191540488932811055405366845354216, 1e5
+            LibDecimalFloatImplementation.exp10Fixed(1e47), 100230523807789967191540488932811055405366845354216, 5e4
         );
         assertNear(LibDecimalFloatImplementation.exp10Fixed(1), POW_FIXED_ONE, 1);
     }
@@ -31,27 +31,30 @@ contract LibDecimalFloatImplementationPowFractionTest is LogTest {
         assertApproxEqAbs(
             LibDecimalFloatImplementation.log10MantissaFixed(tables, 2e75),
             30102999566398119521373889472449302676818988146210,
-            1e5
+            2e3
         );
         assertApproxEqAbs(
             LibDecimalFloatImplementation.log10MantissaFixed(tables, 9.999e75),
             99995656838019248961544395597619277332624927405429,
-            1e5
+            2e3
         );
         assertApproxEqAbs(
             LibDecimalFloatImplementation.log10MantissaFixed(tables, 1.0001e75),
             4342727686266963731352758509826813109796277589,
-            1e5
+            2e3
         );
     }
 
     function testLog10MantissaFixedRoundTrip(uint256 seed) external {
-        int256 signedCoefficient = int256(bound(seed, 1e75, 1e76 - 1));
+        uint256 coefficient = bound(seed, 1e75, 1e76 - 1);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = int256(coefficient);
         int256 log = LibDecimalFloatImplementation.log10MantissaFixed(logTables(), signedCoefficient);
         assertGe(log, 0);
-        assertLe(log, int256(POW_FIXED_ONE) + 1e5);
+        assertLe(log, 1e50 + 1e5);
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 roundTrip = LibDecimalFloatImplementation.exp10Fixed(uint256(log));
-        assertNear(roundTrip, uint256(signedCoefficient / 1e25), 1e5);
+        assertNear(roundTrip, coefficient / 1e25, 1e5);
     }
 
     function testPowFractionOne() external {

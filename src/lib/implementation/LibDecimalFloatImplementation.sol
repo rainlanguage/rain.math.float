@@ -1054,6 +1054,7 @@ library LibDecimalFloatImplementation {
         int256 characteristic = withTargetExponent(integer, exponent, 0);
         int256 mantissa = frac == 0 ? int256(0) : withTargetExponent(frac, exponent, -50);
         if (mantissa < 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
             mantissa += int256(POW_FIXED_ONE);
             characteristic -= 1;
         }
