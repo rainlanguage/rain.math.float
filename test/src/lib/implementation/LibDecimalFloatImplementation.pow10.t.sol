@@ -455,4 +455,38 @@ contract LibDecimalFloatImplementationPow10Test is Test {
             LibDecimalFloatImplementation.lte(lowCoefficient, lowExponent, highCoefficient, highExponent), "monotone"
         );
     }
+
+    /// The oracle's unit range functions against `bc -l`.
+    function testOracleUnitFunctions() external pure {
+        uint256 sqrt10 = 31622776601683793319988935444327185337195551393252168268575048527925944;
+        uint256 power = LibTranscendentalOracle.exp10Unit(ORACLE_ONE / 2);
+        assertLe(power, sqrt10, "exp10 above");
+        assertLe(sqrt10 - power, 1e3, "exp10 below");
+        for (uint256 primeSeed = 0; primeSeed < 3; primeSeed++) {
+            uint256 base = prime(primeSeed);
+            uint256 log = LibTranscendentalOracle.log10Unit(base * ORACLE_ONE);
+            uint256 expected = LibTranscendentalOracle.log10Prime(base);
+            assertLe(log > expected ? log - expected : expected - log, 1e3, "log10");
+        }
+    }
+
+    /// x is within 1e18 units of 1e-65, but at least one, of log10 of the
+    /// rounding tie T = (10 p + 5) 10^(k - 41), so 10^x is within 3e-46
+    /// relative of T and inside the tie check. The oracle's log10 is within
+    /// 1e3 units of 1e-70, so x is above log10 T exactly when delta is
+    /// positive, and pow10 must round up exactly then.
+    function testPow10NearTie(uint256 p, int256 k, int256 delta) external pure {
+        p = bound(p, 1e40, 1e41 - 1);
+        k = bound(k, -30, 30);
+        delta = bound(delta, -1e18, 1e18);
+        if (delta >= 0) {
+            delta += 2;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 log = int256(LibTranscendentalOracle.log10Unit((10 * p + 5) * 1e29) / 1e5);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(k * 1e65 + log + delta, -65);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 expected = int256(delta > 0 ? p + 1 : p);
+        assertTrue(LibDecimalFloatImplementation.eq(signedCoefficient, exponent, expected, k - 40), "near tie");
+    }
 }

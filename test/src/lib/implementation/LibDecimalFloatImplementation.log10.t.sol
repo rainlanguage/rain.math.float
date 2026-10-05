@@ -729,4 +729,34 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
             LibDecimalFloatImplementation.lte(lowCoefficient, lowExponent, highCoefficient, highExponent), "monotone"
         );
     }
+
+    /// x is 10^(±L) moved a unit or two of 1e-66 relative off, for the
+    /// rounding tie L = (10 q + 5) 10^(-42 - s), so log10 x is within 1.4e-66
+    /// of ±L and, for a log at least 1e-16, inside the tie check. The oracle's
+    /// 10^t is within 1e3 units of 1e-70, so x is above 10^(±L) exactly when
+    /// `above`, which fixes the correct rounding.
+    function testLog10NearTie(uint256 q, int256 s, bool negative, bool above) external {
+        q = bound(q, 1e40, 1e41 - 1);
+        s = bound(s, -6, 20);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 tie = (10 * q + 5) * 10 ** uint256(28 - s);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 integer = int256(tie / ORACLE_ONE);
+        uint256 fraction = tie % ORACLE_ONE;
+        if (negative) {
+            integer = -integer - 1;
+            fraction = ORACLE_ONE - fraction;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = int256(LibTranscendentalOracle.exp10Unit(fraction) / 1e4);
+        signedCoefficient = above ? signedCoefficient + 2 : signedCoefficient - 1;
+        (int256 logCoefficient, int256 logExponent) =
+            LibDecimalFloatImplementation.log10(logTables(), signedCoefficient, integer - 66);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 expected = int256(above != negative ? q + 1 : q);
+        assertTrue(
+            LibDecimalFloatImplementation.eq(logCoefficient, logExponent, negative ? -expected : expected, -41 - s),
+            "near tie"
+        );
+    }
 }
