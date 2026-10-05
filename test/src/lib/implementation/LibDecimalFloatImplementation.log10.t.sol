@@ -43,7 +43,8 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         checkLog10(1.001e3, -3, 0.0004e76, -76);
 
         checkLog10(10.02e2, -2, 1.0009e76, -76);
-        checkLog10(10.99e2, -2, 1.0411e76, -76);
+        // log10(10.99) = 1.040997692... (bc -l).
+        checkLog10(10.99e2, -2, 1.041e76, -76);
 
         checkLog10(6566, 0, 3.8173e76, -76);
 
