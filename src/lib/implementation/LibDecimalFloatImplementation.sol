@@ -45,9 +45,6 @@ uint256 constant POW_FIXED_LN10 = 2302585092994045684017991454684364207601101488
 uint256 constant POW_FIXED_ONE_ODD_INVERSE =
     32019276099673541610834237427944372346803171054071557274126404137164986125033;
 
-/// @dev Halvings of the exp10Fixed argument before its Taylor series.
-uint256 constant POW_EXP_HALVINGS = 8;
-
 /// @dev Guard digits pow10 rounds away, so that its error stays below half a
 /// unit of the result and an exact power comes out exact.
 uint256 constant POW_GUARD = 1e10;
@@ -942,23 +939,94 @@ library LibDecimalFloatImplementation {
         return (power, characteristic - 40);
     }
 
-    /// 10^x at the `POW_FIXED_ONE` scale, by the Taylor series of e^(x ln 10).
-    /// The argument is halved `POW_EXP_HALVINGS` times so the series converges
-    /// in few terms, then the sum is squared back up.
+    /// 10^x at the `POW_FIXED_ONE` scale. Each of the first 16 binary digits of
+    /// x multiplies in 10^(2^-i), rounded to nearest. The remainder, below
+    /// 2^-16, goes through the degree 9 Taylor polynomial of e^(r ln 10), whose
+    /// truncation error is below 1e-51 relative.
     /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1].
     /// @return The power at the `POW_FIXED_ONE` scale, in [1, 10].
     function exp10Fixed(uint256 x) internal pure returns (uint256) {
-        uint256 reduced = mulDiv(x, POW_FIXED_LN10, POW_FIXED_ONE << POW_EXP_HALVINGS);
-        uint256 sum = POW_FIXED_ONE;
-        uint256 term = POW_FIXED_ONE;
-        for (uint256 n = 1; term > 0; n++) {
-            term = mulDivFixed(term, reduced) / n;
-            sum += term;
+        unchecked {
+            uint256 result = POW_FIXED_ONE;
+            if (x >= 50000000000000000000000000000000000000000000000000) {
+                x -= 50000000000000000000000000000000000000000000000000;
+                result = 316227766016837933199889354443271853371955513932522;
+            }
+            if (x >= 25000000000000000000000000000000000000000000000000) {
+                x -= 25000000000000000000000000000000000000000000000000;
+                result = mulDivFixed(result, 177827941003892280122542119519268484473579052640226);
+            }
+            if (x >= 12500000000000000000000000000000000000000000000000) {
+                x -= 12500000000000000000000000000000000000000000000000;
+                result = mulDivFixed(result, 133352143216332402567593171529533109241566796476437);
+            }
+            if (x >= 6250000000000000000000000000000000000000000000000) {
+                x -= 6250000000000000000000000000000000000000000000000;
+                result = mulDivFixed(result, 115478198468945817966648288729550828156694804147961);
+            }
+            if (x >= 3125000000000000000000000000000000000000000000000) {
+                x -= 3125000000000000000000000000000000000000000000000;
+                result = mulDivFixed(result, 107460782832131749721594153196434359466719822837528);
+            }
+            if (x >= 1562500000000000000000000000000000000000000000000) {
+                x -= 1562500000000000000000000000000000000000000000000;
+                result = mulDivFixed(result, 103663292843769799729165172492534446770887303110100);
+            }
+            if (x >= 781250000000000000000000000000000000000000000000) {
+                x -= 781250000000000000000000000000000000000000000000;
+                result = mulDivFixed(result, 101815172171818184147422688857883534761587963866760);
+            }
+            if (x >= 390625000000000000000000000000000000000000000000) {
+                x -= 390625000000000000000000000000000000000000000000;
+                result = mulDivFixed(result, 100903504484144743775925442390642133138116897958824);
+            }
+            if (x >= 195312500000000000000000000000000000000000000000) {
+                x -= 195312500000000000000000000000000000000000000000;
+                result = mulDivFixed(result, 100450736425446251566479469434131766413696548644886);
+            }
+            if (x >= 97656250000000000000000000000000000000000000000) {
+                x -= 97656250000000000000000000000000000000000000000;
+                result = mulDivFixed(result, 100225114829291291546567363886657119245424113020823);
+            }
+            if (x >= 48828125000000000000000000000000000000000000000) {
+                x -= 48828125000000000000000000000000000000000000000;
+                result = mulDivFixed(result, 100112494139987987588542643436571177327133841887329);
+            }
+            if (x >= 24414062500000000000000000000000000000000000000) {
+                x -= 24414062500000000000000000000000000000000000000;
+                result = mulDivFixed(result, 100056231260220863661851136780963697869649047983110);
+            }
+            if (x >= 12207031250000000000000000000000000000000000000) {
+                x -= 12207031250000000000000000000000000000000000000;
+                result = mulDivFixed(result, 100028111678778013239925736576968704561701000407571);
+            }
+            if (x >= 6103515625000000000000000000000000000000000000) {
+                x -= 6103515625000000000000000000000000000000000000;
+                result = mulDivFixed(result, 100014054851694725816277118785892892480765770706773);
+            }
+            if (x >= 3051757812500000000000000000000000000000000000) {
+                x -= 3051757812500000000000000000000000000000000000;
+                result = mulDivFixed(result, 100007027178941143553881363867653576320883673909194);
+            }
+            if (x >= 1525878906250000000000000000000000000000000000) {
+                x -= 1525878906250000000000000000000000000000000000;
+                result = mulDivFixed(result, 100003513527746185660858233586155663318996214797055);
+            }
+            if (x == 0) {
+                return result;
+            }
+            uint256 polynomial = 501392883377544009807090987164215453583108663278;
+            polynomial = 1959769462647852369682789087147690310674843760585 + mulDivFixed(polynomial, x);
+            polynomial = 6808936507443706236540404026537606122629959236393 + mulDivFixed(polynomial, x);
+            polynomial = 20699584869686809669966601589738494188245922773011 + mulDivFixed(polynomial, x);
+            polynomial = 53938292919558141019969155571017253478007614081814 + mulDivFixed(polynomial, x);
+            polynomial = 117125514891226696317825761603265234076100689858139 + mulDivFixed(polynomial, x);
+            polynomial = 203467859229347619683099119171381053024105502647772 + mulDivFixed(polynomial, x);
+            polynomial = 265094905523919900528083319429700884579872503956640 + mulDivFixed(polynomial, x);
+            polynomial = 230258509299404568401799145468436420760110148862877 + mulDivFixed(polynomial, x);
+            polynomial = 100000000000000000000000000000000000000000000000000 + mulDivFixed(polynomial, x);
+            return mulDivFixed(result, polynomial);
         }
-        for (uint256 i = 0; i < POW_EXP_HALVINGS; i++) {
-            sum = mulDivFixed(sum, sum);
-        }
-        return sum;
     }
 
     /// Maximizes a float's signed coefficient by increasing its magnitude
