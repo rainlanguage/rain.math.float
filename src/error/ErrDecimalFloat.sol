@@ -56,7 +56,7 @@ error MaximizeOverflow(int256 signedCoefficient, int256 exponent);
 /// @param exponent The exponent of the numerator.
 error DivisionByZero(int256 signedCoefficient, int256 exponent);
 
-/// @dev Thrown when attempting to exponentiate a negative base.
+/// @dev Thrown when attempting to raise a negative base to a fractional power.
 error PowNegativeBase(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown if writing the data by creating the contract fails somehow.

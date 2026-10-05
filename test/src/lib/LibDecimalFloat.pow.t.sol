@@ -83,19 +83,66 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// a^b is error for negative a and all b.
-    /// In the future we may support negative bases with integer exponents.
-    /// https://github.com/rainlanguage/rain.math.float/issues/88
+    /// A negative base with a fractional exponent has no real result.
     function testNegativePowError(Float a, Float b) external {
         // We can't simply minus 0 to get a negative base.
         vm.assume(!a.isZero());
-        // Anything to 0 power is 1, including negative base.
-        vm.assume(!b.isZero());
+        vm.assume(!b.frac().isZero());
         if (a.gt(LibDecimalFloat.FLOAT_ZERO)) {
             a = a.minus();
         }
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         vm.expectRevert(abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA));
         this.powExternal(a, b);
+    }
+
+    /// Issue #88: (-a)^b for a whole b is a^b, negated when b is odd.
+    function assertNegativeBaseWholeExponent(Float a, Float b, bool odd) internal {
+        Float magnitude = this.powExternal(a.minus(), b);
+        Float expected = odd ? magnitude.minus() : magnitude;
+        assertEq(Float.unwrap(this.powExternal(a, b)), Float.unwrap(expected));
+    }
+
+    function testPowNegativeBaseWholeExponent() external {
+        Float minusTwo = LibDecimalFloat.packLossless(-2, 0);
+        assertTrue(
+            this.powExternal(minusTwo, LibDecimalFloat.packLossless(2, 0)).eq(LibDecimalFloat.packLossless(4, 0))
+        );
+        assertTrue(
+            this.powExternal(minusTwo, LibDecimalFloat.packLossless(3, 0)).eq(LibDecimalFloat.packLossless(-8, 0))
+        );
+        assertTrue(
+            this.powExternal(minusTwo, LibDecimalFloat.packLossless(-1, 0)).eq(LibDecimalFloat.packLossless(-5, -1))
+        );
+        assertTrue(
+            this.powExternal(minusTwo, LibDecimalFloat.packLossless(-2, 0)).eq(LibDecimalFloat.packLossless(25, -2))
+        );
+        // A negative base to the first power is itself.
+        assertEq(Float.unwrap(this.powExternal(minusTwo, LibDecimalFloat.packLossless(1, 0))), Float.unwrap(minusTwo));
+
+        Float minusOneAndAHalf = LibDecimalFloat.packLossless(-15, -1);
+        assertNegativeBaseWholeExponent(minusOneAndAHalf, LibDecimalFloat.packLossless(3, 0), true);
+        assertNegativeBaseWholeExponent(minusOneAndAHalf, LibDecimalFloat.packLossless(4, 0), false);
+        // Whole exponents written with a non-zero exponent: 30e-1 is 3, 2e1 is 20.
+        assertNegativeBaseWholeExponent(minusOneAndAHalf, LibDecimalFloat.packLossless(30, -1), true);
+        assertNegativeBaseWholeExponent(minusOneAndAHalf, LibDecimalFloat.packLossless(2, 1), false);
+        assertNegativeBaseWholeExponent(
+            LibDecimalFloat.packLossless(-1, 0), LibDecimalFloat.packLossless(12345, 0), true
+        );
+    }
+
+    function testPowNegativeBaseWholeExponentFuzz(int64 coefficientA, int8 exponentA, int8 integerB, bool scaledB)
+        external
+    {
+        vm.assume(coefficientA != 0);
+        Float a = LibDecimalFloat.packLossless(
+            -int256(coefficientA < 0 ? -int256(coefficientA) : int256(coefficientA)), exponentA
+        );
+        // Some whole exponents carry a negative Float exponent, e.g. 30e-1.
+        Float b = scaledB
+            ? LibDecimalFloat.packLossless(int256(integerB) * 10, -1)
+            : LibDecimalFloat.packLossless(integerB, 0);
+        assertNegativeBaseWholeExponent(a, b, integerB % 2 != 0);
     }
 
     /// a^0 = 1 for all a including 0^0.
@@ -322,7 +369,11 @@ contract LibDecimalFloatPowTest is LogTest {
                     // this input", not a math regression.
                     try this.powExternal(c, inv) returns (Float roundTrip) {
                         if (!roundTrip.isZero()) {
-                            Float diff = a.div(roundTrip).sub(LibDecimalFloat.FLOAT_ONE).abs();
+                            // An even power drops a negative base's sign and
+                            // the root returned is the positive one, while an
+                            // odd one keeps it, so magnitudes are compared.
+                            // testPowNegativeBaseWholeExponent pins the sign.
+                            Float diff = a.abs().div(roundTrip.abs()).sub(LibDecimalFloat.FLOAT_ONE).abs();
                             assertTrue(!diff.gt(diffLimit()), "diff");
                         }
                     } catch (bytes memory reason) {

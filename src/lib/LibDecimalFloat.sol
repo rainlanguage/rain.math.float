@@ -870,6 +870,10 @@ library LibDecimalFloat {
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
+    ///
+    /// A negative `a` is supported only for a whole `b`, where the result is
+    /// `(-a)^b` with the sign of `a` kept when `b` is odd. A negative `a` with a
+    /// fractional `b` reverts `PowNegativeBase`.
     /// @param a The float `a` in `a^b`.
     /// @param b The float `b` in `a^b`.
     /// @param tablesDataContract The address of the contract containing the
@@ -891,7 +895,13 @@ library LibDecimalFloat {
                 // This is a special case because log10(0) is undefined.
                 return FLOAT_ZERO;
             } else {
-                revert PowNegativeBase(signedCoefficientA, exponentA);
+                // A negative base has a real power only for a whole exponent:
+                // (-a)^b is a^b, negated when b is odd.
+                if (!b.frac().isZero()) {
+                    revert PowNegativeBase(signedCoefficientA, exponentA);
+                }
+                Float magnitude = pow(a.minus(), b, tablesDataContract);
+                return b.isOdd() ? magnitude.minus() : magnitude;
             }
         }
         // Handle identity case for positive values of a, i.e. a^1.
@@ -1158,5 +1168,26 @@ library LibDecimalFloat {
             // is zero or not.
             result := iszero(and(a, mask))
         }
+    }
+
+    /// Returns true if the float is an odd whole number. A float that is not
+    /// whole is not odd. Exact: no float division or modulo is involved.
+    /// @param a The float to check.
+    /// @return True if the float is an odd whole number.
+    function isOdd(Float a) internal pure returns (bool) {
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        if (exponent > 0) {
+            // A whole multiple of ten.
+            return false;
+        }
+        if (exponent < -67) {
+            // An int224 coefficient has at most 68 digits, so the value is
+            // either zero or strictly between -1 and 1.
+            return false;
+        }
+        // exponent is in [-67, 0] so the power fits int256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 scale = int256(10 ** uint256(-exponent));
+        return signedCoefficient % scale == 0 && (signedCoefficient / scale) & 1 == 1;
     }
 }
