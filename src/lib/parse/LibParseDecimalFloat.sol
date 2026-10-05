@@ -142,12 +142,13 @@ library LibParseDecimalFloat {
             if (eValue != 0) {
                 cursor++;
                 uint256 eStart = cursor;
-                cursor = LibParseChar.skipMask(cursor, end, CMASK_NEGATIVE_SIGN);
-                // Skip an optional explicit positive sign (e.g. 1e+2). Advance
-                // eStart past it so the int parser only sees the digit string.
+                // The int parser does not take `+`, so a `+` is stepped over
+                // rather than handed to it.
                 if (LibParseChar.isMask(cursor, end, CMASK_PLUS_SIGN) == 1) {
                     cursor++;
                     eStart = cursor;
+                } else {
+                    cursor = LibParseChar.skipMask(cursor, end, CMASK_NEGATIVE_SIGN);
                 }
                 {
                     uint256 digitsStart = cursor;

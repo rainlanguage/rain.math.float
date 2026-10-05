@@ -413,6 +413,16 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloatFail("0.0e+", MalformedExponentDigits.selector, 5);
     }
 
+    /// An exponent takes one sign. A `+` after a `-` must not be skipped, or
+    /// `1e-+2` parses as `1e2` with the `-` silently dropped.
+    function testParseLiteralDecimalFloatExponentSignAfterNegativeSign() external pure {
+        checkParseDecimalFloatFail("1e-+2", MalformedExponentDigits.selector, 3);
+    }
+
+    function testParseLiteralDecimalFloatExponentNegativeSignAfterPositiveSign() external pure {
+        checkParseDecimalFloatFail("1e+-2", MalformedExponentDigits.selector, 3);
+    }
+
     /// Negative e with no digits is an error.
     function testParseLiteralDecimalFloatNegativeE() external pure {
         checkParseDecimalFloatFail("0.0e-", MalformedExponentDigits.selector, 5);
