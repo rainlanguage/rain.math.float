@@ -466,9 +466,7 @@ contract LibParseDecimalFloatTest is Test {
             dashes[i] = "-";
         }
         checkParseDecimalFloatFail(string(abi.encodePacked(dashes, digits)), ParseEmptyDecimalString.selector, 1);
-        checkParseDecimalFloatFail(
-            string(abi.encodePacked("1e", dashes, digits)), MalformedExponentDigits.selector, 3
-        );
+        checkParseDecimalFloatFail(string(abi.encodePacked("1e", dashes, digits)), MalformedExponentDigits.selector, 3);
     }
 
     /// Negative e with no digits is an error.
