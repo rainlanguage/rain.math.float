@@ -163,4 +163,19 @@ contract LibDecimalFloatImplementationMulTest is Test {
         assertEq(signedCoefficient, expectedSignedCoefficient);
         assertEq(exponent, expectedExponent);
     }
+
+    /// `pow`'s squaring loop hands `mul` exponents up to `type(int128).max` in
+    /// magnitude. At that bound, with the coefficients that lift the exponent
+    /// the most, `mul` must still return rather than overflow.
+    function testMulAtPowSquaringBoundUpper() external pure {
+        int256 bound = type(int128).max;
+        (, int256 exponent) = LibDecimalFloatImplementation.mul(type(int256).min, bound, type(int256).max, bound);
+        assertEq(exponent - 2 * bound, 77);
+    }
+
+    function testMulAtPowSquaringBoundLower() external pure {
+        int256 bound = type(int128).min;
+        (, int256 exponent) = LibDecimalFloatImplementation.mul(type(int256).min, bound, type(int256).max, bound);
+        assertEq(exponent - 2 * bound, 77);
+    }
 }
