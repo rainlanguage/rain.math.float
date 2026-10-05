@@ -224,6 +224,21 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(a, LibDecimalFloat.packLossless(8, 69));
     }
 
+    /// Issue #276's counterexample, bit for bit: a full-width coefficient base
+    /// raised to a negative power with a 233-bit integer part.
+    function testPowIssue276Counterexample() external {
+        Float a = Float.wrap(0x5061727365206572726f7220286e656729000000000000000000000000000000);
+        Float b = Float.wrap(0x00000003b58e88c75313ec9d329eaaa18fb92f75215b170fffffffffffffffff);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentUnderflow.selector,
+                int256(28887451280490018407141552948600676295630204083457973794589732851247381894308),
+                int256(-213688438148915952713935726556846144011)
+            )
+        );
+        this.powExternal(a, b);
+    }
+
     /// The complete set of custom errors `pow` is designed to throw, derived by
     /// reading the implementation. Each leg of the round trip is the same `pow`
     /// call, so both legs share this set.
