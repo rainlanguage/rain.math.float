@@ -78,8 +78,8 @@ contract LibDecimalFloatPowTest is LogTest {
             checkPow(signedCoefficientE, exponentE, 1, 0, signedCoefficientE, exponentE);
         }
 
-        checkPow(1.0029e67, -67, 0.41e2, -2, 10011879843709906483145356860918928092, -37);
-        checkPow(96001e62, -62, 0.00115e5, -5, 10132803416620015886357268353997943676, -37);
+        checkPow(1.0029e67, -67, 0.41e2, -2, 10011879843709906483145356860918928113507, -40);
+        checkPow(96001e62, -62, 0.00115e5, -5, 10132803416620015886357268353997943721136, -40);
     }
 
     function checkPowPrecision(
@@ -96,7 +96,7 @@ contract LibDecimalFloatPowTest is LogTest {
         );
         Float expected = LibDecimalFloat.packLossless(referenceSignedCoefficient, referenceExponent);
         assertTrue(
-            c.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs().lte(LibDecimalFloat.packLossless(1, -34)), "precision"
+            c.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs().lte(LibDecimalFloat.packLossless(1, -39)), "precision"
         );
     }
 
@@ -112,6 +112,46 @@ contract LibDecimalFloatPowTest is LogTest {
         checkPowPrecision(999, 3, 1, -4, 100138240564875062452749129558785898736266833, -44);
         checkPowPrecision(7, -30, 37, -38, 999999999999999999999999999999999975161292222, -45);
         checkPowPrecision(123456789, -3, 1, -100, 1, 0);
+    }
+
+    function checkPowExact(Float a, Float b, Float expected) internal {
+        Float c = this.powExternal(a, b);
+        assertTrue(c.eq(expected), "exact");
+    }
+
+    function checkPowExact(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        int256 expectedSignedCoefficient,
+        int256 expectedExponent
+    ) internal {
+        checkPowExact(
+            LibDecimalFloat.packLossless(signedCoefficientA, exponentA),
+            LibDecimalFloat.packLossless(signedCoefficientB, exponentB),
+            LibDecimalFloat.packLossless(expectedSignedCoefficient, expectedExponent)
+        );
+    }
+
+    function testPowFractionExact() external {
+        checkPowExact(4, 0, 15, -1, 8, 0);
+        checkPowExact(16, 0, 25, -2, 2, 0);
+        checkPowExact(32, 0, 2, -1, 2, 0);
+        checkPowExact(81, 0, 25, -2, 3, 0);
+        checkPowExact(100, 0, 15, -1, 1000, 0);
+        checkPowExact(625, -4, 75, -2, 125, -3);
+        checkPowExact(1024, 0, 7, -1, 128, 0);
+        checkPowExact(
+            LibDecimalFloat.packLossless(8, 0),
+            LibDecimalFloat.FLOAT_ONE.div(LibDecimalFloat.packLossless(3, 0)),
+            LibDecimalFloat.packLossless(2, 0)
+        );
+        checkPowExact(
+            LibDecimalFloat.packLossless(1e18, 0),
+            LibDecimalFloat.FLOAT_ONE.div(LibDecimalFloat.packLossless(3, 0)),
+            LibDecimalFloat.packLossless(1e6, 0)
+        );
     }
 
     /// a^b is error for negative a and all b.

@@ -51,9 +51,36 @@ contract LibDecimalFloatSqrtTest is LogTest {
 
     function testSqrt() external {
         checkSqrt(0, 0, 0, 0);
-        checkSqrt(2, 0, 14142135623730950488016887242096980728, -37);
-        checkSqrt(4, 0, 19999999999999999999999999999999999938, -37);
-        checkSqrt(16, 0, 39999999999999999999999999999999999808, -37);
+        checkSqrt(2, 0, 14142135623730950488016887242096980785697, -40);
+        checkSqrt(4, 0, 2e40, -40);
+        checkSqrt(16, 0, 4e40, -40);
+    }
+
+    function checkSqrtExact(
+        int256 signedCoefficient,
+        int256 exponent,
+        int256 rootSignedCoefficient,
+        int256 rootExponent
+    ) internal {
+        Float c = LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt(logTables());
+        assertTrue(c.eq(LibDecimalFloat.packLossless(rootSignedCoefficient, rootExponent)), "exact");
+    }
+
+    function testSqrtExact() external {
+        checkSqrtExact(1, 0, 1, 0);
+        checkSqrtExact(4, 0, 2, 0);
+        checkSqrtExact(9, 0, 3, 0);
+        checkSqrtExact(16, 0, 4, 0);
+        checkSqrtExact(25, 0, 5, 0);
+        checkSqrtExact(100, 0, 10, 0);
+        checkSqrtExact(144, 0, 12, 0);
+        checkSqrtExact(10000, 0, 100, 0);
+        checkSqrtExact(1e6, 0, 1e3, 0);
+        checkSqrtExact(25, -2, 5, -1);
+        checkSqrtExact(1, -2, 1, -1);
+        checkSqrtExact(225, -2, 15, -1);
+        checkSqrtExact(152399025, 0, 12345, 0);
+        checkSqrtExact(1524157875019052100, -18, 12345678900, -10);
     }
 
     function testSqrtNegative(Float a) external {

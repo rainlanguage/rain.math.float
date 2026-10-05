@@ -221,7 +221,8 @@ inherently approximations in many cases.
 For example, `pow` will accurately calculate an integer exponent using the
 exponentiation by squaring method. The fractional component of a non-integer
 exponent takes a log table value as a seed and refines it with fixed point
-series, so it is within about 1e-34 relative of the true value.
+series, rounded to 41 significant digits, so it is within about 1e-40 relative
+of the true value and an exactly representable power such as `sqrt(4)` is exact.
 
 `log10` and `pow10` use the lookup tables directly, interpolating linearly
 between table entries. Their quality is limited by the four figure tables

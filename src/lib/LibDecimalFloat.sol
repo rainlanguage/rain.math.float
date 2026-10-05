@@ -865,7 +865,9 @@ library LibDecimalFloat {
     ///
     /// The integer part of `b` is exact, by squaring. The fractional part is
     /// computed in fixed point from a log table seed rather than interpolated
-    /// from the tables, so it is within about 1e-34 relative of the true value.
+    /// from the tables. It is rounded to 41 significant digits, so it is within
+    /// about 1e-40 relative of the true value and an exactly representable power
+    /// such as 4^0.5 is exact.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
@@ -957,7 +959,8 @@ library LibDecimalFloat {
 
     /// sqrt a = a ^ 0.5
     ///
-    /// Within about 1e-34 relative of the true value, as `pow`.
+    /// As `pow`, within about 1e-40 relative of the true value, and exact when
+    /// the root has at most 41 significant digits.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
