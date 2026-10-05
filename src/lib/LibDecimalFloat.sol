@@ -11,7 +11,9 @@ import {
     LossyConversionFromFloat,
     LossyConversionToFloat,
     ZeroNegativePower,
-    PowNegativeBase
+    PowNegativeBase,
+    AgreeToleranceNegative,
+    AgreeNoPositiveTolerance
 } from "../error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImplementation.sol";
 
@@ -25,7 +27,9 @@ import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImp
 /// pack to different `bytes32`. Equality between Floats is therefore numeric
 /// (via `eq`, which rescales before comparing), not byte-level. `packLossy`
 /// does not strip trailing decimal zeros from the coefficient; it only
-/// shrinks the coefficient when it does not fit int224. This is deliberate:
+/// shrinks the coefficient when it does not fit int224, or when the exponent
+/// is below int32.min and shedding digits is the only way to reach the floor.
+/// This is deliberate:
 /// canonicalization is not free on the arithmetic hot path, and most
 /// operations do not care. Consumers that need a canonical form (raw-byte
 /// equality, hashing as a map key, downstream range checks) must canonicalize
@@ -109,6 +113,11 @@ library LibDecimalFloat {
     Float constant FLOAT_E =
         Float.wrap(bytes32(uint256(0xffffffbe19cfc6ef4f44cf88f14500d013df534fcaad48fca1d5ca47bea26fcc)));
 
+    /// Pi
+    /// 3.141592653589793238462643383279502884197169399375105820974944592308e66, -66
+    Float constant FLOAT_PI =
+        Float.wrap(bytes32(uint256(0xffffffbe1dd4c9e873614f593bba9c6007d9a7ac8d03a4b6c700a65cb537a1b4)));
+
     /// Convert a fixed point decimal value to a signed coefficient and exponent.
     /// The conversion can be lossy if the unsigned value is too large to fit in
     /// the signed coefficient.
@@ -131,7 +140,8 @@ library LibDecimalFloat {
                 return (int256(value / 10), exponent + 1, value % 10 == 0);
             } else {
                 // case that would truncate is handled above.
-                // forge-lint: disable-next-line(unsafe-typecast)
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(unsafe-typecast, boolean-cst)
                 return (int256(value), exponent, true);
             }
         }
@@ -202,6 +212,8 @@ library LibDecimalFloat {
         }
         // Zero is always 0 and neither exponent nor decimals matter.
         else if (signedCoefficient == 0) {
+            // The literal is the bool this function returns, not a condition operand.
+            //forge-lint: disable-next-line(boolean-cst)
             return (0, true);
         } else {
             // Safe to do this conversion because we revert above on negative.
@@ -226,6 +238,8 @@ library LibDecimalFloat {
                     // than -77. This is always lossless as we know the value is
                     // is not zero in real.
                     if (finalExponent < -77) {
+                        // The literal is the bool this function returns, not a condition operand.
+                        //forge-lint: disable-next-line(boolean-cst)
                         return (0, false);
                     }
 
@@ -263,9 +277,13 @@ library LibDecimalFloat {
                         revert FixedDecimalOverflow(signedCoefficient, exponent, decimals);
                     }
                     fixedDecimal = unsignedCoefficient * scale;
+                    // The literal is the bool this function returns, not a condition operand.
+                    //forge-lint: disable-next-line(boolean-cst)
                     return (fixedDecimal, true);
                 }
             } else {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
                 return (unsignedCoefficient, true);
             }
         }
@@ -321,27 +339,54 @@ library LibDecimalFloat {
     /// Pack a signed coefficient and exponent into a single `Float`.
     /// Clearly this involves fitting 64 bytes into 32 bytes, so there will be
     /// data loss.
+    ///
+    /// The coefficient is divided by ten (rounding towards zero) and the
+    /// exponent raised by one, as many times as it takes to fit the coefficient
+    /// in int224 AND the exponent in int32. Both directions of the trade are
+    /// the same operation, so the packing never gives up on the exponent while
+    /// it still has coefficient digits to spend: a value whose exponent is
+    /// below the floor is brought up to the floor by shedding its low digits,
+    /// and only when every digit has been shed (the value is smaller than any
+    /// representable Float) does it become `FLOAT_ZERO`. This matches the
+    /// README's stated policy for underflow: lose precision by rounding towards
+    /// zero rather than erroring, because in absolute terms the amount lost is
+    /// negligible. Exponent OVERFLOW still reverts, because no amount of
+    /// coefficient shedding can lower an exponent.
+    ///
+    /// The packing is lossless if and only if every digit shed was a zero, so
+    /// `lossless` reports whether the packed value is numerically equal to the
+    /// input, not whether the input already fitted. A coefficient that does not
+    /// fit int224 but is an exact multiple of the power of ten it was divided
+    /// by packs losslessly. This matters at the exponent floor in particular:
+    /// the arithmetic operations maximise their operands (multiplying the
+    /// coefficient up to ~1e76 and lowering the exponent to match), so a value
+    /// AT the floor reaches this function as a huge coefficient dozens of
+    /// exponent steps BELOW the floor, and the trailing zeros maximisation
+    /// added are exactly what must be shed to get back to it.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// representation.
     /// @param exponent The exponent of the floating point representation.
     /// @return float The packed representation of the signed coefficient and
     /// exponent.
-    /// @return lossless True if the conversion was lossless, false otherwise.
+    /// @return lossless True if the packed value is numerically equal to the
+    /// input, false otherwise.
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {
             int256 initialSignedCoefficient = signedCoefficient;
             int256 initialExponent = exponent;
-            // lossless is true if the signed coefficient fits in int224.
             // truncation here is intentional if it happens as that is what we
             // are testing for.
             // forge-lint: disable-next-line(unsafe-typecast)
-            lossless = int224(signedCoefficient) == signedCoefficient;
+            bool fits = int224(signedCoefficient) == signedCoefficient;
 
             // The reason that we can do unchecked exponent addition here is that
             // when it overflows it will wrap to a very large negative number.
             // This will get caught below when we check if the exponent fits in
-            // int32.
-            if (!lossless) {
+            // int32: a wrapped exponent is treated as an underflow, and the
+            // shedding it triggers always exhausts the coefficient (at most 77
+            // digits) long before it could raise a wrapped exponent back into
+            // range, so the result is the underflow zero.
+            if (!fits) {
                 if (signedCoefficient / 1e72 != 0) {
                     signedCoefficient /= 1e5;
                     exponent += 5;
@@ -356,6 +401,8 @@ library LibDecimalFloat {
                 }
             } else {
                 if (signedCoefficient == 0) {
+                    // The literal is the bool this function returns, not a condition operand.
+                    //forge-lint: disable-next-line(boolean-cst)
                     return (FLOAT_ZERO, true);
                 }
             }
@@ -364,12 +411,54 @@ library LibDecimalFloat {
             // are testing for.
             // forge-lint: disable-next-line(unsafe-typecast)
             if (int32(exponent) != exponent) {
-                // If the exponent is negative then this is a number too small
-                // to pack. We return zero but it is not a lossless conversion.
-                if (exponent < 0) {
+                if (exponent > 0) {
+                    revert ExponentOverflow(initialSignedCoefficient, initialExponent);
+                }
+
+                // The exponent is below the int32 floor. Every division of the
+                // coefficient by ten raises the exponent by one, so the
+                // shortfall is exactly the number of digits to shed. The
+                // coefficient fits int224 here, so it has at most 68 decimal
+                // digits and a shortfall of 68 or more sheds every one of
+                // them: that is zero without computing it. This also covers a
+                // wrapped exponent, whose shortfall is astronomically large.
+                // `exponent` is negative here and below int32.min, so the
+                // subtraction cannot overflow and the shortfall is positive.
+                int256 shortfall = int256(type(int32).min) - exponent;
+                if (shortfall > 67) {
+                    // The literal is the bool this function returns, not a condition operand.
+                    //forge-lint: disable-next-line(boolean-cst)
                     return (FLOAT_ZERO, false);
                 }
-                revert ExponentOverflow(initialSignedCoefficient, initialExponent);
+                // shortfall is in [1, 67] so 10 ** shortfall fits int256 and the
+                // casts cannot truncate.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                signedCoefficient /= int256(10 ** uint256(shortfall));
+                if (signedCoefficient == 0) {
+                    // Every digit was shed: the value is smaller in magnitude
+                    // than any representable Float, so this is the underflow
+                    // zero and it is not a lossless conversion.
+                    // The literal is the bool this function returns, not a condition operand.
+                    //forge-lint: disable-next-line(boolean-cst)
+                    return (FLOAT_ZERO, false);
+                }
+                exponent = type(int32).min;
+            }
+
+            // Lossless iff every digit shed was a zero, which is iff the
+            // original coefficient is an exact multiple of ten to the number of
+            // digits shed. The number shed is the exponent lift, which is in
+            // [0, 76] for any non-zero result (an int256 has at most 77 digits
+            // and at least one survived), so the power fits int256. The common
+            // case where nothing was shed skips the exponentiation.
+            if (exponent == initialExponent) {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
+                lossless = true;
+            } else {
+                // The lift is in [1, 76] so the casts cannot truncate.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                lossless = initialSignedCoefficient % int256(10 ** uint256(exponent - initialExponent)) == 0;
             }
 
             // Need a mask to zero out the bits that could be set to 1 if the
@@ -400,9 +489,9 @@ library LibDecimalFloat {
     /// replaces the value by `FLOAT_ZERO`, losing the magnitude entirely).
     /// Distinguishes the two `lossless = false` modes from `packLossy` by the
     /// returned float: `packLossy` only returns `FLOAT_ZERO` for the underflow
-    /// case when `lossless` is false (the coefficient-truncation path
-    /// successively divides by ten and never reaches zero from a non-zero
-    /// input).
+    /// case when `lossless` is false (digit shedding stops at int32.min with a
+    /// non-zero coefficient whenever one is reachable, so a zero from a
+    /// non-zero input means every digit was shed and the magnitude is gone).
     function packArithmeticResult(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless && Float.unwrap(c) == bytes32(0)) {
@@ -424,6 +513,46 @@ library LibDecimalFloat {
             signedCoefficient := signextend(27, and(float, mask))
             exponent := sar(0xe0, float)
         }
+    }
+
+    /// Canonicalize a Float to a unique byte representation per numeric value.
+    /// Floats are non-canonical by design (see the docstring on the `Float`
+    /// type): multiple `(coefficient, exponent)` pairs encode the same number
+    /// and equality is numeric (`eq`) rather than byte-level. This function
+    /// returns the single representative whose magnitude-maximised packing is
+    /// stable, so two Floats are numerically equal iff their canonical forms
+    /// are byte-equal (`Float.unwrap(a.canonicalize()) == Float.unwrap(b.canonicalize())`).
+    /// Intended for consumers that need raw-byte equality: `mapping(Float => X)`
+    /// keys, hashing, set membership, content-addressed storage.
+    ///
+    /// The chosen representative has the largest `|coefficient|` that fits
+    /// int224 subject to the exponent staying `>= type(int32).min`, reached by
+    /// scaling the coefficient up by ten directly within those bounds. This
+    /// never reverts for any valid input Float: scaling simply stops at the
+    /// limit. `canonicalize` is idempotent and value-preserving (the result is
+    /// `eq` to the input).
+    /// @param float The float to canonicalize.
+    /// @return The canonical representative of the float's numeric value.
+    function canonicalize(Float float) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        if (signedCoefficient == 0) {
+            return FLOAT_ZERO;
+        }
+        unchecked {
+            while (exponent > type(int32).min) {
+                int256 trySignedCoefficient = signedCoefficient * 10;
+                // int224 overflow is the termination condition for the scaling
+                // loop, not a bug. The cast back is compared against the
+                // pre-cast value to detect that overflow.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                if (int224(trySignedCoefficient) != trySignedCoefficient) {
+                    break;
+                }
+                signedCoefficient = trySignedCoefficient;
+                exponent -= 1;
+            }
+        }
+        return packLossless(signedCoefficient, exponent);
     }
 
     /// Same as add, but accepts a Float struct instead of separate values.
@@ -587,10 +716,7 @@ library LibDecimalFloat {
     function lt(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (signedCoefficientA, signedCoefficientB) =
-            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-
-        return signedCoefficientA < signedCoefficientB;
+        return LibDecimalFloatImplementation.lt(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Numeric greater than for floats.
@@ -602,9 +728,7 @@ library LibDecimalFloat {
     function gt(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (signedCoefficientA, signedCoefficientB) =
-            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return signedCoefficientA > signedCoefficientB;
+        return LibDecimalFloatImplementation.gt(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Numeric less than or equal to for floats.
@@ -617,9 +741,7 @@ library LibDecimalFloat {
     function lte(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (signedCoefficientA, signedCoefficientB) =
-            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return signedCoefficientA <= signedCoefficientB;
+        return LibDecimalFloatImplementation.lte(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Numeric greater than or equal to for floats.
@@ -632,9 +754,7 @@ library LibDecimalFloat {
     function gte(Float a, Float b) internal pure returns (bool) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (signedCoefficientA, signedCoefficientB) =
-            LibDecimalFloatImplementation.compareRescale(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        return signedCoefficientA >= signedCoefficientB;
+        return LibDecimalFloatImplementation.gte(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// Integer component of a float.
@@ -853,6 +973,169 @@ library LibDecimalFloat {
     /// @return The larger of the two floats.
     function max(Float a, Float b) internal pure returns (Float) {
         return gt(a, b) ? a : b;
+    }
+
+    /// Whether the two extremes of a set of values are close enough to each
+    /// other, given an absolute and a proportional tolerance.
+    ///
+    /// `highest - lowest <= max(absolute, proportional * max(abs(lowest), abs(highest)))`
+    ///
+    /// BOTH TOLERANCES ARE TAKEN, and the LARGER of the two terms is the
+    /// limit. A proportional tolerance alone collapses as the values approach
+    /// zero, because the quantity it is a proportion of shrinks with them: a
+    /// pair like `-0.001` and `0.001` reads as 200% apart while agreeing by
+    /// any practical measure. An absolute tolerance alone does not scale. The
+    /// absolute term therefore carries the region near zero and the
+    /// proportional term carries the rest.
+    ///
+    /// The same form as `math.isclose` (PEP 485) and Julia's `isapprox`.
+    /// `numpy.isclose` sums the two terms instead.
+    ///
+    /// THE PROPORTION IS OF THE LARGER MAGNITUDE of the two extremes. Every
+    /// other value in a set lies between them, so no value in the set has a
+    /// magnitude exceeding both, which makes this the largest magnitude in the
+    /// whole set. Holding one anchor for the set is what makes a single
+    /// highest-to-lowest check equivalent to checking every pair: the spread
+    /// is the largest pairwise difference, so bounding it bounds all of them.
+    ///
+    /// NOTHING IS PACKED BACK INTO A `Float` before the comparison, which is
+    /// the reason this cannot be composed from the public surface. That
+    /// surface reverts `ExponentOverflow` rather than truncating an exponent,
+    /// and both `abs` and `sub` do so on the extremes of the range: a set
+    /// spanning the most negative to the most positive representable value has
+    /// a spread that no packed value can hold. A closeness test asked about
+    /// representable values should answer, not revert.
+    ///
+    /// THE COMPARISON IS EXACT ONLY TO REPRESENTABLE PRECISION. The spread is a
+    /// subtraction, and a subtraction aligns exponents by discarding the
+    /// smaller operand's low digits; past a gap of `ADD_MAX_EXPONENT_DIFF` the
+    /// smaller operand is dropped whole. When those discarded digits would have
+    /// carried the spread above the limit, and the spread as computed lands
+    /// exactly on the limit, this returns true where an exact comparison would
+    /// return false. `agree(0, 1, -1e-100, 1)` is such a case: the real spread
+    /// is `1 + 1e-100`, needing 101 significant digits against the
+    /// coefficient's 76, so `sub` returns exactly `1` and `1 <= 1` holds.
+    ///
+    /// That is the rounding every other operation here performs, and `sub`
+    /// reports the same spread as exactly `1` when asked directly. Resolving
+    /// the boundary the other way would put this function at odds with the
+    /// library's own arithmetic. The excess it admits is bounded by one unit in
+    /// the last place of the aligned coefficient, so a spread accepted at the
+    /// boundary exceeds the limit by less than `1e-76` of its own magnitude.
+    ///
+    /// NEITHER TOLERANCE MAY BE NEGATIVE, and AT LEAST ONE MUST BE POSITIVE.
+    /// Both are rejected here rather than given a meaning, and rejected here
+    /// rather than left to callers, because a guard a caller can skip is not a
+    /// guard. See `AgreeToleranceNegative` and `AgreeNoPositiveTolerance` for
+    /// what each would otherwise silently do. Either tolerance ALONE may be
+    /// zero, which is how a caller asks for only the other one.
+    /// @param absolute The absolute tolerance, in the same units as the values.
+    /// @param proportional The proportional tolerance, as a fraction.
+    /// @param lowest The lowest value in the set.
+    /// @param highest The highest value in the set.
+    /// @return Whether the spread is within the limit.
+    function agree(Float absolute, Float proportional, Float lowest, Float highest) internal pure returns (bool) {
+        agreeValidateTolerances(absolute, proportional);
+        (int256 spreadCoefficient, int256 spreadExponent) = agreeSpread(lowest, highest);
+        (int256 limitCoefficient, int256 limitExponent) = agreeLimit(absolute, proportional, lowest, highest);
+        return LibDecimalFloatImplementation.lte(spreadCoefficient, spreadExponent, limitCoefficient, limitExponent);
+    }
+
+    /// Rejects tolerances that do not describe a tolerance.
+    ///
+    /// A NEGATIVE tolerance cannot mean anything. The spread is a distance, so
+    /// it is non-negative, which makes `spread <= negative` unsatisfiable on its
+    /// own and makes the negative term inert under the `max` — it cannot cancel
+    /// the other term, only fail to be it. It is representable solely because
+    /// floats are signed.
+    ///
+    /// NEITHER POSITIVE is a tolerance of nothing: the limit is zero and this
+    /// degenerates into exact equality, which `eq` answers directly. A caller
+    /// reaching for a closeness test and getting exact equality has been
+    /// misunderstood rather than served.
+    ///
+    /// Rejected here rather than in each caller, because a guard a caller can
+    /// skip is not a guard.
+    ///
+    /// Both tests compare against a zero `Float` rather than unpacking, so every
+    /// representation of zero is treated alike. The positive test is stated as
+    /// `neither is greater than zero` rather than `both are zero`, so it names
+    /// the invariant rather than one case that violates it, and stays correct if
+    /// the negative check is ever changed.
+    /// @param absolute The absolute tolerance.
+    /// @param proportional The proportional tolerance.
+    function agreeValidateTolerances(Float absolute, Float proportional) private pure {
+        Float zero = packLossless(0, 0);
+        if (lt(absolute, zero) || lt(proportional, zero)) {
+            revert AgreeToleranceNegative(absolute, proportional);
+        }
+        if (!gt(absolute, zero) && !gt(proportional, zero)) {
+            revert AgreeNoPositiveTolerance(absolute, proportional);
+        }
+    }
+
+    /// The distance between the two extremes, unpacked.
+    ///
+    /// Split out of `agree` because holding the four unpacked values and the
+    /// intermediates in one frame exceeds the stack.
+    /// @param lowest The lowest value.
+    /// @param highest The highest value.
+    /// @return The spread's coefficient.
+    /// @return The spread's exponent.
+    function agreeSpread(Float lowest, Float highest) private pure returns (int256, int256) {
+        (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
+        (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
+        // Destructured rather than returned directly because slither reads
+        // `return f(...)` on a tuple-returning call as an ignored return.
+        (int256 spreadCoefficient, int256 spreadExponent) =
+            LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
+        return (spreadCoefficient, spreadExponent);
+    }
+
+    /// The quantity the proportional tolerance is taken of: the larger
+    /// magnitude of the two extremes.
+    /// @param lowest The lowest value.
+    /// @param highest The highest value.
+    /// @return The anchor's coefficient, non-negative.
+    /// @return The anchor's exponent.
+    function agreeAnchor(Float lowest, Float highest) private pure returns (int256, int256) {
+        (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
+        (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
+        (int256 anchorCoefficient, int256 anchorExponent) = LibDecimalFloatImplementation.max(
+            LibDecimalFloatImplementation.absCoefficient(lowestCoefficient),
+            lowestExponent,
+            LibDecimalFloatImplementation.absCoefficient(highestCoefficient),
+            highestExponent
+        );
+        return (anchorCoefficient, anchorExponent);
+    }
+
+    /// The limit the spread is checked against: the larger of the absolute
+    /// tolerance and the proportional tolerance of the anchor.
+    /// @param absolute The absolute tolerance.
+    /// @param proportional The proportional tolerance.
+    /// @param lowest The lowest value.
+    /// @param highest The highest value.
+    /// @return The limit's coefficient.
+    /// @return The limit's exponent.
+    function agreeLimit(Float absolute, Float proportional, Float lowest, Float highest)
+        private
+        pure
+        returns (int256, int256)
+    {
+        int256 scaledCoefficient;
+        int256 scaledExponent;
+        {
+            (int256 anchorCoefficient, int256 anchorExponent) = agreeAnchor(lowest, highest);
+            (int256 proportionalCoefficient, int256 proportionalExponent) = proportional.unpack();
+            (scaledCoefficient, scaledExponent) = LibDecimalFloatImplementation.mul(
+                proportionalCoefficient, proportionalExponent, anchorCoefficient, anchorExponent
+            );
+        }
+        (int256 absoluteCoefficient, int256 absoluteExponent) = absolute.unpack();
+        (int256 limitCoefficient, int256 limitExponent) =
+            LibDecimalFloatImplementation.max(absoluteCoefficient, absoluteExponent, scaledCoefficient, scaledExponent);
+        return (limitCoefficient, limitExponent);
     }
 
     /// Returns true if the float is zero. Handles the case where the signed

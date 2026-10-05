@@ -14,7 +14,7 @@ import {
     MulDivOverflow
 } from "src/error/ErrDecimalFloat.sol";
 import {WithTargetExponentOverflow} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {console2} from "forge-std-1.16.1/src/Test.sol";
+import {console2} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
@@ -241,7 +241,10 @@ contract LibDecimalFloatPowTest is LogTest {
     /// are unreachable. A low-level `Panic` (e.g. `0x11` arithmetic overflow) is
     /// also excluded by construction, so an unexpected revert is no longer
     /// silently swallowed.
-    function assertExpectedPowError(bytes memory reason) internal {
+    function assertExpectedPowError(bytes memory reason) internal pure {
+        // Casting to `bytes4` is intentional: a selector is the first four bytes of
+        // the revert reason, and the truncation is the extraction.
+        //forge-lint: disable-next-line(unsafe-typecast)
         bytes4 selector = bytes4(reason);
         bool expected = selector == ZeroNegativePower.selector || selector == PowNegativeBase.selector
             || selector == ExponentOverflow.selector || selector == ExponentUnderflow.selector

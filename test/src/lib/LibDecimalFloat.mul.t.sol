@@ -10,7 +10,7 @@ import {
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 
-import {Test} from "forge-std-1.16.1/src/Test.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatMulTest is Test {
     using LibDecimalFloat for Float;
