@@ -1,4 +1,5 @@
 .DS_Store
+.coderabbit.yaml
 .envrc
 .gas-snapshot
 .git
