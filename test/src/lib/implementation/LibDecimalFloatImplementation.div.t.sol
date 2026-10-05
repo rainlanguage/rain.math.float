@@ -9,7 +9,7 @@ import {
     EXPONENT_MAX,
     DivisionByZero
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
 
 contract LibDecimalFloatImplementationDivTest is Test {
@@ -53,7 +53,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
     function testDivMinPositiveValueDenominatorRevert(int256 signedCoefficient, int256 exponent) external {
         vm.assume(signedCoefficient != 0);
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1, type(int256).min));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, 1, type(int256).min));
         this.divExternal(signedCoefficient, exponent, 1, type(int256).min);
     }
 
@@ -255,7 +255,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         ];
         for (uint256 i = 0; i < divisors.length; i++) {
             int256 numerator = 3 * divisors[i];
-            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, divisors[i], min));
+            vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, divisors[i], min));
             this.divExternal(numerator, 0, divisors[i], min);
         }
     }
@@ -268,7 +268,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         int256[14] memory boundaries =
             [int256(1e5), 1e10, 1e14, 1e19, 1e23, 1e28, 1e33, 1e38, 1e43, 1e48, 1e53, 1e58, 1e63, 1e68];
         for (uint256 i = 0; i < boundaries.length; i++) {
-            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, boundaries[i], min));
+            vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, boundaries[i], min));
             this.divExternal(boundaries[i], 0, boundaries[i], min);
         }
     }
@@ -300,21 +300,21 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// operand, rejected before the spill machinery runs.
     function testDivAdjustExponentSpillsToExponentB() external {
         int256 min = type(int256).min;
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e76, min));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, 1e76, min));
         this.divExternal(1e76, min, 3e75, min);
     }
 
     /// The spill-overflow-to-zero path likewise requires operands at the
     /// int256 extremes, which are out-of-domain and rejected up front.
     function testDivAdjustExponentSpillOverflowReturnsZero() external {
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e76, type(int256).min));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, 1e76, type(int256).min));
         this.divExternal(1e76, type(int256).min, 3e75, type(int256).max);
     }
 
     /// A division whose operands sit at the int256 exponent extremes is
     /// rejected as out-of-domain rather than underflowing to zero.
     function testDivUnderflowReturnsZero() external {
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e76, type(int256).min));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, 1e76, type(int256).min));
         this.divExternal(1e76, type(int256).min, 3, type(int256).max);
     }
 
@@ -324,7 +324,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
     function testDivInDomainOperandsResultBelowDomainReverts() external {
         // 1e(EXPONENT_MIN) / 1e(EXPONENT_MAX): both operands are in-domain but
         // the true result exponent is ~2 * EXPONENT_MIN, far below the domain.
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 100, type(int256).min));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, 100, type(int256).min));
         this.divExternal(1, EXPONENT_MIN, 1, EXPONENT_MAX);
     }
 }

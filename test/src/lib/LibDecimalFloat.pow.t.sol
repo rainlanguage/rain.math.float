@@ -207,13 +207,13 @@ contract LibDecimalFloatPowTest is LogTest {
     /// repeated self-squaring of the inverted base drove exponentBase below
     /// EXPONENT_MIN, causing a checked int256 addition to overflow.
     /// After the fix, the first squaring whose result exponent leaves the
-    /// arithmetic domain surfaces ExponentOverflow on that result.
+    /// arithmetic domain surfaces ExponentUnderflow on that result.
     function testPowNegativeExponentSquaringPanic() external {
         Float a = LibDecimalFloat.packLossless(1, 1700000000);
         Float b = LibDecimalFloat.packLossless(-8, 69);
         vm.expectRevert(
             abi.encodeWithSelector(
-                ExponentOverflow.selector,
+                ExponentUnderflow.selector,
                 int256(10000000000000000000000000000000000000000000000000000000000000000000000000000),
                 int256(-33754837089798055323558008211721845025788926577583927508663322594508800000076)
             )

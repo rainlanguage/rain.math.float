@@ -8,7 +8,7 @@ import {
     EXPONENT_MAX,
     EXPONENT_MIN
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationSubTest is Test {
     /// Sub is the same as add, but with the second coefficient negated.
@@ -88,7 +88,7 @@ contract LibDecimalFloatImplementationSubTest is Test {
     function testSubResultBelowDomainReverts() external {
         // minus(-1, EXPONENT_MIN) == (1, EXPONENT_MIN), then
         // maximizeFull(1, EXPONENT_MIN) == (1e76, EXPONENT_MIN - 76).
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2e76), EXPONENT_MIN - 76));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(2e76), EXPONENT_MIN - 76));
         this.subExternal(1, EXPONENT_MIN, -1, EXPONENT_MIN);
     }
 }

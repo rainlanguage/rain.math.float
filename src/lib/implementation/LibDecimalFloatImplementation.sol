@@ -4,6 +4,7 @@ pragma solidity ^0.8.25;
 
 import {
     ExponentOverflow,
+    ExponentUnderflow,
     Log10Negative,
     Log10Zero,
     MulDivOverflow,
@@ -36,7 +37,7 @@ int256 constant EXPONENT_MAX = type(int256).max / 2;
 
 /// @dev The minimum exponent in the domain of the arithmetic operations
 /// `mul`/`div`/`add`/`sub`/`inv`. Operands with a nonzero coefficient and an
-/// exponent below this revert `ExponentOverflow`, and no operation returns a
+/// exponent below this revert `ExponentUnderflow`, and no operation returns a
 /// nonzero coefficient with an exponent below this. This is crazy small, so
 /// the domain covers every real use case.
 int256 constant EXPONENT_MIN = -EXPONENT_MAX;
@@ -59,14 +60,20 @@ int256 constant LOG10_Y_EXPONENT = -76;
 /// packing and unpacking having fundamental bit size limitations.
 library LibDecimalFloatImplementation {
     /// Enforces the arithmetic exponent domain `[EXPONENT_MIN, EXPONENT_MAX]`
-    /// on an operand or result. Reverts `ExponentOverflow` outside the domain.
+    /// on an operand or result. Reverts `ExponentOverflow` above the domain and
+    /// `ExponentUnderflow` below it.
     /// Zero coefficients are exempt because zero is zero at any exponent and
     /// every operation normalizes zero to a zero exponent.
     /// @param signedCoefficient The signed coefficient.
     /// @param exponent The exponent.
     function enforceExponentDomain(int256 signedCoefficient, int256 exponent) internal pure {
-        if ((exponent > EXPONENT_MAX || exponent < EXPONENT_MIN) && signedCoefficient != 0) {
-            revert ExponentOverflow(signedCoefficient, exponent);
+        if (signedCoefficient != 0) {
+            if (exponent > EXPONENT_MAX) {
+                revert ExponentOverflow(signedCoefficient, exponent);
+            }
+            if (exponent < EXPONENT_MIN) {
+                revert ExponentUnderflow(signedCoefficient, exponent);
+            }
         }
     }
 

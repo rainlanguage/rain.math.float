@@ -108,9 +108,9 @@ contract LibDecimalFloatMulTest is Test {
     /// An operand exponent below `EXPONENT_MIN` is out of the arithmetic
     /// domain and must surface as `ExponentOverflow(signedCoefficientA,
     /// exponentA)`, never as a raw `Panic(0x11)`.
-    function testMulNegativeExponentOverflowReverts() external {
+    function testMulNegativeExponentUnderflowReverts() external {
         int256 exponentA = type(int256).min;
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), exponentA));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), exponentA));
         this.mulImplExternal(1, exponentA, 1, -1);
     }
 
@@ -126,7 +126,7 @@ contract LibDecimalFloatMulTest is Test {
     /// `ExponentOverflow` on the result rather than returning an out-of-domain
     /// exponent.
     function testMulNegativeExponentBoundaryRevert() external {
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), EXPONENT_MIN - 1));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), EXPONENT_MIN - 1));
         this.mulImplExternal(1, EXPONENT_MIN, 1, -1);
     }
 
@@ -135,7 +135,7 @@ contract LibDecimalFloatMulTest is Test {
     /// back inside the domain.
     function testMulNegativeOutOfDomainOperandOppositeSignReverts() external {
         int256 exponentA = type(int256).min;
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), exponentA));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), exponentA));
         this.mulImplExternal(1, exponentA, 1, 5);
     }
 

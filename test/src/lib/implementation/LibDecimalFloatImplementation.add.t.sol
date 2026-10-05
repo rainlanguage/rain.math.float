@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {
     ExponentOverflow,
+    ExponentUnderflow,
     LibDecimalFloatImplementation,
     EXPONENT_MIN,
     EXPONENT_MAX,
@@ -150,7 +151,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
     /// An out-of-domain second operand reverts with the second operand's
     /// payload.
     function testAddOutOfDomainOperandBReverts() external {
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), EXPONENT_MIN - 1));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), EXPONENT_MIN - 1));
         this.addExternal(1, 0, 1, EXPONENT_MIN - 1);
     }
 
@@ -174,7 +175,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
     /// exponent.
     function testAddResultBelowDomainReverts() external {
         // maximizeFull(1, EXPONENT_MIN) == (1e76, EXPONENT_MIN - 76).
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2e76), EXPONENT_MIN - 76));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(2e76), EXPONENT_MIN - 76));
         this.addExternal(1, EXPONENT_MIN, 1, EXPONENT_MIN);
     }
 

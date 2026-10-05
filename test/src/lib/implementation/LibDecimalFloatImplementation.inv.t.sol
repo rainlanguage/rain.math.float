@@ -10,7 +10,7 @@ import {
     EXPONENT_MAX,
     DivisionByZero
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationInvTest is Test {
     function invExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
@@ -52,7 +52,7 @@ contract LibDecimalFloatImplementationInvTest is Test {
     /// exponent below `EXPONENT_MIN`, which reverts `ExponentOverflow` on the
     /// result rather than returning an out-of-domain exponent.
     function testInvAtDomainEdgeReverts() external {
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e76, EXPONENT_MIN - 76));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, 1e76, EXPONENT_MIN - 76));
         this.invExternal(1, EXPONENT_MAX);
     }
 }
