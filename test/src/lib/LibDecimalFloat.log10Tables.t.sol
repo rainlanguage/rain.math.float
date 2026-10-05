@@ -16,10 +16,15 @@ contract LibDecimalFloatLog10TablesTest is Test {
 
     uint256 constant ONE = 1e36;
 
-    struct Swaps {
-        bool worseOnly;
-        uint256 deviations;
-        uint256 swapped;
+    /// A source small table entry that differs from its derived mean
+    /// difference. Its line spans columns `start..end`.
+    struct Deviation {
+        uint256 row;
+        bool second;
+        uint256 digit;
+        uint256 start;
+        uint256 end;
+        uint8 derived;
     }
 
     struct Stats {
@@ -55,8 +60,10 @@ contract LibDecimalFloatLog10TablesTest is Test {
         return ln(n, lnTwo) * ONE / lnTen;
     }
 
-    function isWorse(uint256 row, bool second, uint256 digit) internal pure returns (bool) {
-        return second
+    function isWorse(Deviation memory deviation) internal pure returns (bool) {
+        uint256 row = 10 + deviation.row;
+        uint256 digit = deviation.digit;
+        return deviation.second
             && ((row == 13 && digit == 4)
                 || (row == 10 && digit == 9)
                 || (row == 16 && digit == 6)
@@ -64,29 +71,70 @@ contract LibDecimalFloatLog10TablesTest is Test {
                 || (row == 14 && digit == 6));
     }
 
-    /// The source small tables with the derived mean difference in place of
-    /// every entry that deviates from it, or only of the five the PR found
-    /// worse against the true log.
-    function derivedTables(bool worseOnly, uint256[2] memory lnTwoTen)
-        internal
-        pure
-        returns (uint8[10][90] memory, uint8[10][10] memory, Swaps memory)
-    {
+    function key(uint256 row, bool second, uint256 digit) internal pure returns (uint256) {
+        return row * 100 + (second ? 10 : 0) + digit;
+    }
+
+    function deviations(uint256[2] memory lnTwoTen) internal pure returns (Deviation[] memory) {
         uint16[10][90] memory main = LibLogTable.logTableDec();
         uint8[10][90] memory small = LibLogTable.logTableDecSmall();
         uint8[10][10] memory alt = LibLogTable.logTableDecSmallAlt();
-        Swaps memory swaps;
-        swaps.worseOnly = worseOnly;
+        Deviation[] memory found = new Deviation[](100);
+        uint256 count = 0;
         for (uint256 row = 0; row < 90; row++) {
             uint256 split = lineSplit(main[row]);
-            uint256[10] memory derived = lineDerived(row, 0, split, lnTwoTen);
-            swapLine(swaps, small[row], derived, row, false);
+            count = collectLine(found, count, small[row], row, false, split, lnTwoTen);
             if (split < 10) {
-                derived = lineDerived(row, split, 10, lnTwoTen);
-                swapLine(swaps, alt[row], derived, row, true);
+                count = collectLine(found, count, alt[row], row, true, split, lnTwoTen);
             }
         }
-        return (small, alt, swaps);
+        assembly ("memory-safe") {
+            mstore(found, count)
+        }
+        return found;
+    }
+
+    function collectLine(
+        Deviation[] memory found,
+        uint256 count,
+        uint8[10] memory entries,
+        uint256 row,
+        bool second,
+        uint256 split,
+        uint256[2] memory lnTwoTen
+    ) internal pure returns (uint256) {
+        uint256 start = second ? split : 0;
+        uint256 end = second ? 10 : split;
+        uint256[10] memory derived = lineDerived(row, start, end, lnTwoTen);
+        for (uint256 digit = 0; digit < 10; digit++) {
+            if (derived[digit] != entries[digit]) {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                found[count++] = Deviation(row, second, digit, start, end, uint8(derived[digit]));
+            }
+        }
+        return count;
+    }
+
+    /// The source small tables with the derived value in place of each
+    /// deviation `picked` selects.
+    function swappedTables(Deviation[] memory found, bool[] memory picked)
+        internal
+        pure
+        returns (uint8[10][90] memory, uint8[10][10] memory)
+    {
+        uint8[10][90] memory small = LibLogTable.logTableDecSmall();
+        uint8[10][10] memory alt = LibLogTable.logTableDecSmallAlt();
+        for (uint256 i = 0; i < found.length; i++) {
+            if (picked[i]) {
+                Deviation memory deviation = found[i];
+                if (deviation.second) {
+                    alt[deviation.row][deviation.digit] = deviation.derived;
+                } else {
+                    small[deviation.row][deviation.digit] = deviation.derived;
+                }
+            }
+        }
+        return (small, alt);
     }
 
     function lineSplit(uint16[10] memory mainRow) internal pure returns (uint256) {
@@ -116,22 +164,30 @@ contract LibDecimalFloatLog10TablesTest is Test {
         return derived;
     }
 
-    function swapLine(
-        Swaps memory swaps,
-        uint8[10] memory entries,
-        uint256[10] memory derived,
-        uint256 row,
-        bool second
-    ) internal pure {
-        for (uint256 digit = 0; digit < 10; digit++) {
-            if (derived[digit] != entries[digit]) {
-                swaps.deviations++;
-                if (!swaps.worseOnly || isWorse(10 + row, second, digit)) {
-                    swaps.swapped++;
-                    entries[digit] = uint8(derived[digit]);
-                }
+    /// Lower max error over the mantissas that read the entry, else equal max
+    /// and lower summed error. A 4-digit mantissa reads exactly one small
+    /// entry, so the all-derived errors there are the derived value's alone.
+    function derivedImproves(
+        Deviation memory deviation,
+        uint256[] memory referenceErrors,
+        uint256[] memory derivedErrors
+    ) internal pure returns (bool) {
+        uint256 referenceMax = 0;
+        uint256 referenceSum = 0;
+        uint256 derivedMax = 0;
+        uint256 derivedSum = 0;
+        for (uint256 col = deviation.start; col < deviation.end; col++) {
+            uint256 i = deviation.row * 100 + col * 10 + deviation.digit;
+            referenceSum += referenceErrors[i];
+            derivedSum += derivedErrors[i];
+            if (referenceErrors[i] > referenceMax) {
+                referenceMax = referenceErrors[i];
+            }
+            if (derivedErrors[i] > derivedMax) {
+                derivedMax = derivedErrors[i];
             }
         }
+        return derivedMax < referenceMax || (derivedMax == referenceMax && derivedSum < referenceSum);
     }
 
     function toFixed(Float a) internal pure returns (uint256) {
@@ -223,9 +279,18 @@ contract LibDecimalFloatLog10TablesTest is Test {
         assertLe(referenceStats.maxError, 1.3444e32, "reference max");
         assertGe(referenceStats.maxError, 1.3443e32, "reference max");
 
-        (uint8[10][90] memory small, uint8[10][10] memory alt, Swaps memory swaps) = derivedTables(true, [lnTwo, lnTen]);
-        assertEq(swaps.deviations, 28, "deviations");
-        assertEq(swaps.swapped, 5, "worse swapped");
+        Deviation[] memory found = deviations([lnTwo, lnTen]);
+        assertEq(found.length, 28, "deviations");
+        bool[] memory picked = new bool[](found.length);
+        uint256 count = 0;
+        for (uint256 i = 0; i < found.length; i++) {
+            picked[i] = isWorse(found[i]);
+            if (picked[i]) {
+                count++;
+            }
+        }
+        assertEq(count, 5, "worse swapped");
+        (uint8[10][90] memory small, uint8[10][10] memory alt) = swappedTables(found, picked);
         (Stats memory worseFive,) = measure(LibTestLogTables.deploy(small, alt), truth, referenceErrors);
         report("derived, 5 worse entries", worseFive, truth.length);
         assertEq(worseFive.maxError, referenceStats.maxError, "worse five max");
@@ -234,9 +299,12 @@ contract LibDecimalFloatLog10TablesTest is Test {
         assertEq(worseFive.worse, 11, "worse five worse");
         assertEq(worseFive.maxRoundTrip, referenceStats.maxRoundTrip, "worse five round trip");
 
-        (small, alt, swaps) = derivedTables(false, [lnTwo, lnTen]);
-        assertEq(swaps.swapped, 28, "all swapped");
-        (Stats memory allDerived,) = measure(LibTestLogTables.deploy(small, alt), truth, referenceErrors);
+        for (uint256 i = 0; i < found.length; i++) {
+            picked[i] = true;
+        }
+        (small, alt) = swappedTables(found, picked);
+        (Stats memory allDerived, uint256[] memory derivedErrors) =
+            measure(LibTestLogTables.deploy(small, alt), truth, referenceErrors);
         report("derived, all 28", allDerived, truth.length);
         assertLe(allDerived.maxError, 1.1946e32, "all derived max");
         assertGe(allDerived.maxError, 1.1945e32, "all derived max");
@@ -244,5 +312,47 @@ contract LibDecimalFloatLog10TablesTest is Test {
         assertEq(allDerived.better, 61, "all derived better");
         assertEq(allDerived.worse, 88, "all derived worse");
         assertEq(allDerived.maxRoundTrip, referenceStats.maxRoundTrip, "all derived round trip");
+
+        uint256[14] memory expectedPicks = [
+            key(10, true, 9),
+            key(13, true, 2),
+            key(13, true, 4),
+            key(14, true, 6),
+            key(16, false, 5),
+            key(16, false, 8),
+            key(16, true, 6),
+            key(18, true, 5),
+            key(19, false, 6),
+            key(19, true, 3),
+            key(19, true, 4),
+            key(19, true, 8),
+            key(19, true, 9),
+            key(74, false, 6)
+        ];
+        console2.log("per entry best, derived picked at row * 100 + alt * 10 + digit:");
+        count = 0;
+        for (uint256 i = 0; i < found.length; i++) {
+            picked[i] = derivedImproves(found[i], referenceErrors, derivedErrors);
+            if (picked[i]) {
+                uint256 pick = key(10 + found[i].row, found[i].second, found[i].digit);
+                console2.log(pick);
+                assertEq(pick, expectedPicks[count], "per entry best pick");
+                count++;
+            }
+        }
+        assertEq(count, expectedPicks.length, "per entry best picks");
+        (small, alt) = swappedTables(found, picked);
+        (Stats memory best,) = measure(LibTestLogTables.deploy(small, alt), truth, referenceErrors);
+        report("per entry best", best, truth.length);
+        assertLe(best.maxError, 1.1943e32, "per entry best max");
+        assertGe(best.maxError, 1.1942e32, "per entry best max");
+        assertLe(best.sumError / truth.length, 3.2956e31, "per entry best mean");
+        assertGe(best.sumError / truth.length, 3.2955e31, "per entry best mean");
+        assertGt(best.sumError, referenceStats.sumError, "per entry best mean");
+        assertEq(best.better, 31, "per entry best better");
+        assertEq(best.worse, 45, "per entry best worse");
+        assertEq(best.maxRoundTrip, referenceStats.maxRoundTrip, "per entry best round trip");
+        // LibDecimalFloatPowTest.testRoundTripSimple diffLimit.
+        assertLt(best.maxRoundTrip, 0.09e36, "per entry best diffLimit");
     }
 }
