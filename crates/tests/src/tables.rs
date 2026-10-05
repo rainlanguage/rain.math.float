@@ -212,6 +212,10 @@ fn round_certified(value: f64) -> u8 {
     value.round() as u8
 }
 
+/// First column of the second printed line of log rows 10-19, read from the
+/// reference PDF.
+const SECOND_LINE_STARTS: [usize; 10] = [5, 5, 6, 5, 4, 6, 5, 6, 5, 5];
+
 /// Entries where the published reference holds the other integer that
 /// brackets the derived mean difference, as (log row, second line, digit).
 /// The reference is not one formula: no single mean difference reproduces
@@ -257,12 +261,12 @@ fn test_log_table_small_derivation() {
     let mut deviations = Vec::new();
     for row in 0..90 {
         let split = line_split(&main, row);
-        assert_eq!(
-            split < 10,
-            row < 10,
-            "log row {}: line split {split}",
-            10 + row
-        );
+        let expected = if row < 10 {
+            SECOND_LINE_STARTS[row]
+        } else {
+            10
+        };
+        assert_eq!(split, expected, "log row {}: line split", 10 + row);
         let mut lines = vec![(false, 0, split, small[row])];
         if split < 10 {
             lines.push((true, split, 10, alt[row]));
