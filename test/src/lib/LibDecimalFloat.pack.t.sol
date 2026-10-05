@@ -35,7 +35,7 @@ contract LibDecimalFloatPackTest is Test {
     /// Error when exponent is too far above int32.max for any non-zero int224
     /// coefficient to lift it back down.
     function testPackExponentOverflow(int256 signedCoefficient, int256 exponent) external {
-        exponent = bound(exponent, int256(type(int32).max) + 68, type(int256).max - 77);
+        exponent = bound(exponent, int256(type(int32).max) + 68, type(int256).max);
         vm.assume(signedCoefficient != 0);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         this.packLossyExternal(signedCoefficient, exponent);
