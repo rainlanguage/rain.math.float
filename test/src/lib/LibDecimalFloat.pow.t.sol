@@ -271,6 +271,24 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(a, LibDecimalFloat.packLossless(8, 69));
     }
 
+    /// Issue #149: the inverse of a base this far up the range is below
+    /// int32.min, but a small negative power of it is not.
+    function testPowNegativeExponentHugeBase() external {
+        Float a = LibDecimalFloat.packLossless(1e66, type(int32).max);
+        Float b = LibDecimalFloat.packLossless(1, -7);
+        Float product = this.powExternal(a, b.minus()).mul(this.powExternal(a, b));
+        assertTrue(product.gt(LibDecimalFloat.packLossless(999, -3)));
+        assertTrue(product.lt(LibDecimalFloat.packLossless(1001, -3)));
+    }
+
+    /// The base's inverse is the result when the power is -1, so it still
+    /// underflows.
+    function testPowMinusOneHugeBaseUnderflows() external {
+        Float a = LibDecimalFloat.packLossless(1e66, type(int32).max);
+        vm.expectPartialRevert(ExponentUnderflow.selector);
+        this.powExternal(a, LibDecimalFloat.packLossless(-1, 0));
+    }
+
     /// Issue #276's counterexample, bit for bit: a full-width coefficient base
     /// raised to a negative power with a 233-bit integer part.
     function testPowIssue276Counterexample() external {
