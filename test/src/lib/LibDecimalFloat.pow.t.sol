@@ -19,8 +19,52 @@ import {console2} from "forge-std-1.17.0/src/Test.sol";
 contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
 
-    function diffLimit() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(90, -3);
+    /// Half a unit in the 41st digit, where each pow leg rounds its fractional
+    /// power, plus 2% for the fixed point series and packing under it.
+    function legError() internal pure returns (Float) {
+        return LibDecimalFloat.packLossless(51, -42);
+    }
+
+    /// Up to one unit of the coefficient, if a pack shed digits to lift the
+    /// exponent to the int32 floor.
+    function floorLoss(Float x) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = x.unpack();
+        return exponent == type(int32).min
+            ? LibDecimalFloat.FLOAT_ONE.div(LibDecimalFloat.packLossless(signedCoefficient, 0).abs())
+            : LibDecimalFloat.FLOAT_ZERO;
+    }
+
+    /// With c = a^b (1 + d1), the inverse 1/b (1 + e) and the round trip
+    /// c^(1/b (1 + e)) (1 + d2), ln(a / roundTrip) = -(d1 / b + d2 + e ln a) to
+    /// first order. Each d is within `legError` plus the floor losses of its
+    /// result and, for a negative b, of the base it inverts. e is the 1e-66 of
+    /// a pack and |b ln a| is below 5e9 for a finite c, so e ln a vanishes.
+    function roundTripLogError(Float a, Float b, Float c, Float roundTrip) internal pure returns (Float) {
+        Float first = legError().add(floorLoss(c));
+        Float second = legError().add(floorLoss(roundTrip));
+        if (b.lt(LibDecimalFloat.FLOAT_ZERO)) {
+            first = first.add(floorLoss(a.abs().inv()));
+            second = second.add(floorLoss(c.abs().inv()));
+        }
+        return first.div(b.abs()).add(second);
+    }
+
+    function assertRoundTrip(Float a, Float b, Float c, Float roundTrip) internal {
+        Float logError = roundTripLogError(a, b, c, roundTrip);
+        if (logError.lte(LibDecimalFloat.FLOAT_ONE)) {
+            // e^y - 1 <= y + y^2 for y <= 1.
+            Float diff = a.abs().div(roundTrip.abs()).sub(LibDecimalFloat.FLOAT_ONE).abs();
+            assertTrue(diff.lte(logError.add(logError.mul(logError))), "diff");
+        } else {
+            // e^y < 3^ceil(y), and past the largest Float there is no bound.
+            try this.powExternal(LibDecimalFloat.packLossless(3, 0), logError.ceil()) returns (Float factor) {
+                assertTrue(a.abs().div(roundTrip.abs()).lte(factor), "ratio");
+                assertTrue(roundTrip.abs().div(a.abs()).lte(factor), "ratio");
+            } catch (bytes memory reason) {
+                //forge-lint: disable-next-line(unsafe-typecast)
+                assertEq(bytes4(reason), ExponentOverflow.selector);
+            }
+        }
     }
 
     function checkPow(
@@ -95,9 +139,7 @@ contract LibDecimalFloatPowTest is LogTest {
             LibDecimalFloat.packLossless(signedCoefficientB, exponentB)
         );
         Float expected = LibDecimalFloat.packLossless(referenceSignedCoefficient, referenceExponent);
-        assertTrue(
-            c.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs().lte(LibDecimalFloat.packLossless(1, -39)), "precision"
-        );
+        assertTrue(c.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs().lte(legError()), "precision");
     }
 
     /// References are a^b to 45 digits from `bc -l` at scale 200.
@@ -268,15 +310,10 @@ contract LibDecimalFloatPowTest is LogTest {
         Float c = a.pow(b, tables);
 
         Float roundTrip = c.pow(b.inv(), tables);
-
-        Float diff = a.div(roundTrip).sub(LibDecimalFloat.FLOAT_ONE).abs();
-
-        assertTrue(!diff.gt(diffLimit()), "diff");
+        assertRoundTrip(a, b, c, roundTrip);
     }
 
-    /// X^Y^(1/Y) = X
-    /// Can generally round trip whatever within `diffLimit` of the original
-    /// value.
+    /// X^Y^(1/Y) = X within `roundTripLogError`.
     function testRoundTripSimple() external {
         checkRoundTrip(5, 0, 2, 0);
         checkRoundTrip(5, 0, 3, 0);
@@ -287,6 +324,46 @@ contract LibDecimalFloatPowTest is LogTest {
         checkRoundTrip(5, -1, 100, 0);
         checkRoundTrip(7721, 0, -1, -2);
         checkRoundTrip(4157, 0, -1, -2);
+    }
+
+    function testRoundTripExtremes() external {
+        int256 full = 12345678901234567890123456789012345678901234567890123456789012345;
+        checkRoundTrip(full, -100000, 3, 0);
+        checkRoundTrip(full, 100000, 3, 0);
+        checkRoundTrip(full, -1000000, 7, -6);
+        checkRoundTrip(2, 0, full, -60);
+        checkRoundTrip(2, 0, -full, -60);
+        checkRoundTrip(full, -66, 1, 9);
+        checkRoundTrip(7, 0, 1, -30);
+        checkRoundTrip(7, 0, -1, -30);
+        checkRoundTrip(full, -30, 1, -30);
+        checkRoundTrip(1e66 + 1, -66, 1, 9);
+        checkRoundTrip(1e66 - 1, -66, -1, 9);
+        checkRoundTrip(7, 0, 1e66 + 1, -66);
+        checkRoundTrip(7, 0, 1e66 - 1, -66);
+        checkRoundTrip(7, 0, -1e66 - 1, -66);
+        checkRoundTrip(7, 0, -1e66 + 1, -66);
+        checkRoundTrip(full, -50, -1e66 + 1, -66);
+        // ln(1e100) * 1e-41 sits a fraction of the 41st digit above 1, so the
+        // round trip is only good to a factor, not to the old 0.09.
+        checkRoundTrip(1, 100, 1, -41);
+    }
+
+    function testRoundTripFuzzPowBounded(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external {
+        signedCoefficientA = bound(signedCoefficientA, 1, 1e67 - 1);
+        exponentA = bound(exponentA, -300, 300);
+        signedCoefficientB = bound(signedCoefficientB, -1e67 + 1, 1e67 - 1);
+        vm.assume(signedCoefficientB != 0);
+        exponentB = bound(exponentB, -110, 40);
+        roundTripFuzz(
+            LibDecimalFloat.packLossless(signedCoefficientA, exponentA),
+            LibDecimalFloat.packLossless(signedCoefficientB, exponentB)
+        );
     }
 
     function powExternal(Float a, Float b) external returns (Float) {
@@ -424,6 +501,10 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     function testRoundTripFuzzPow(Float a, Float b) external {
+        roundTripFuzz(a, b);
+    }
+
+    function roundTripFuzz(Float a, Float b) internal {
         try this.powExternal(a, b) returns (Float c) {
             // If C is 1 then either a == 1 or b == 0 (or b rounds to 0).
             // The case where a is 1 should round trip, but all other cases won't.
@@ -445,8 +526,7 @@ contract LibDecimalFloatPowTest is LogTest {
                             // the root returned is the positive one, while an
                             // odd one keeps it, so magnitudes are compared.
                             // testPowNegativeBaseWholeExponent pins the sign.
-                            Float diff = a.abs().div(roundTrip.abs()).sub(LibDecimalFloat.FLOAT_ONE).abs();
-                            assertTrue(!diff.gt(diffLimit()), "diff");
+                            assertRoundTrip(a, b, c, roundTrip);
                         }
                     } catch (bytes memory reason) {
                         // Can't round trip something that errors, but only if it
