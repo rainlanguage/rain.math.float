@@ -72,7 +72,7 @@ contract LibDecimalFloatImplementationMinusTest is Test {
 
     /// One below EXPONENT_MAX the normalization lands exactly on the domain
     /// bound and must NOT revert.
-    function testMinusExponentAtDomainMaxMinusOneNoRevert() external {
+    function testMinusExponentAtDomainMaxMinusOneNoRevert() external view {
         (int256 signedCoefficient, int256 exponent) = this.minusExternal(type(int256).min, EXPONENT_MAX - 1);
         assertEq(signedCoefficient, -(type(int256).min / 10), "coefficient");
         assertEq(exponent, EXPONENT_MAX, "exponent");

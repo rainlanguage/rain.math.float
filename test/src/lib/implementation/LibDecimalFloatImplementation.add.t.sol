@@ -164,7 +164,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
 
     /// One below EXPONENT_MAX the same coefficient-overflow rescale lands
     /// exactly on the domain bound and must NOT revert.
-    function testAddCoefficientOverflowToDomainMaxNoRevert() external {
+    function testAddCoefficientOverflowToDomainMaxNoRevert() external view {
         (int256 signedCoefficient, int256 exponent) = this.addExternal(5e76, EXPONENT_MAX - 1, 5e76, EXPONENT_MAX - 1);
         assertEq(signedCoefficient, 1e76, "coefficient");
         assertEq(exponent, EXPONENT_MAX, "exponent");
@@ -182,7 +182,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
     /// A zero result is exempt from the exponent-domain check: exact
     /// cancellation at the bottom of the domain returns zero at the maximized
     /// exponent instead of reverting, because zero is zero at any exponent.
-    function testAddCancellationBelowDomainReturnsZero() external {
+    function testAddCancellationBelowDomainReturnsZero() external view {
         (int256 signedCoefficient, int256 exponent) = this.addExternal(1, EXPONENT_MIN, -1, EXPONENT_MIN);
         assertEq(signedCoefficient, 0, "coefficient");
         assertEq(exponent, EXPONENT_MIN - 76, "exponent");

@@ -82,7 +82,7 @@ contract LibDecimalFloatMulTest is Test {
 
     /// The domain bound is inclusive: an exponent pair summing to exactly
     /// `EXPONENT_MAX` must NOT revert and returns that exponent.
-    function testMulExponentDomainBoundaryMaxNoRevert() external {
+    function testMulExponentDomainBoundaryMaxNoRevert() external view {
         (int256 signedCoefficient, int256 exponent) = this.mulImplExternal(1, EXPONENT_MAX, 1, 0);
         assertEq(exponent, EXPONENT_MAX);
         assertEq(signedCoefficient, 1);
@@ -116,7 +116,7 @@ contract LibDecimalFloatMulTest is Test {
 
     /// The domain bound is inclusive: an exponent pair summing to exactly
     /// `EXPONENT_MIN` must NOT revert and returns that exponent.
-    function testMulExponentDomainBoundaryMinNoRevert() external {
+    function testMulExponentDomainBoundaryMinNoRevert() external view {
         (int256 signedCoefficient, int256 exponent) = this.mulImplExternal(1, EXPONENT_MIN, 1, 0);
         assertEq(exponent, EXPONENT_MIN);
         assertEq(signedCoefficient, 1);
@@ -167,7 +167,7 @@ contract LibDecimalFloatMulTest is Test {
 
     /// Opposite-sign exponents at the extreme domain bounds are in-domain
     /// operands; they simply add and cancel.
-    function testMulOppositeSignExponentsDoNotRevert() external {
+    function testMulOppositeSignExponentsDoNotRevert() external view {
         (int256 signedCoefficient, int256 exponent) = this.mulImplExternal(2, EXPONENT_MAX, 3, EXPONENT_MIN);
         assertEq(signedCoefficient, 6, "coefficient");
         assertEq(exponent, 0, "exponent");
@@ -185,7 +185,7 @@ contract LibDecimalFloatMulTest is Test {
 
     /// Same coefficient rounding one below the domain bound lands exactly on
     /// `EXPONENT_MAX` and must NOT revert.
-    function testMulCoefficientRoundingToDomainMaxNoRevert() external {
+    function testMulCoefficientRoundingToDomainMaxNoRevert() external view {
         (int256 signedCoefficient, int256 exponent) = this.mulImplExternal(8e75, EXPONENT_MAX - 1, 10, 0);
         assertEq(signedCoefficient, 8e75, "coefficient");
         assertEq(exponent, EXPONENT_MAX, "exponent");
