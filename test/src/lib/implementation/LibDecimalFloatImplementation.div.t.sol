@@ -347,4 +347,60 @@ contract LibDecimalFloatImplementationDivTest is Test {
             expectedExponent
         );
     }
+
+    /// Signs are the exclusive or of the operand signs for an unfull numerator.
+    function testDivUnfullNumeratorSigns() external pure {
+        int256 min = type(int256).min;
+        checkDiv(1, min, 3, min, THREES, -76);
+        checkDiv(-1, min, 3, min, -THREES, -76);
+        checkDiv(1, min, -3, min, -THREES, -76);
+        checkDiv(-1, min, -3, min, THREES, -76);
+        checkDiv(1, min, 3, min + 76, THREES, -152);
+        checkDiv(-1, min, 3, min + 76, -THREES, -152);
+        checkDiv(1, min, -3, min + 76, -THREES, -152);
+        checkDiv(-1, min, -3, min + 76, THREES, -152);
+    }
+
+    /// Every numerator digit count that is unfull at the floor (1 to 75; 76
+    /// digits is already full), so every amount of digits the exponent cannot
+    /// take, over both a small and a large maximized divisor.
+    function testDivUnfullNumeratorEveryDigitCount() external pure {
+        int256 min = type(int256).min;
+        int256 numerator = 1;
+        for (int256 digits = 1; digits <= 75; ++digits) {
+            checkDiv(numerator, min, 3, min, THREES, -77 + digits);
+            checkDiv(-numerator, min, 3, min, -THREES, -77 + digits);
+            checkDiv(numerator, min, 3, min + 76, THREES, -153 + digits);
+            (int256 quotient, int256 quotientExponent) = LibDecimalFloatImplementation.div(numerator * 7, min, 7, min);
+            assertTrue(LibDecimalFloatImplementation.eq(quotient, quotientExponent, 1, digits - 1), "7n / 7 == n");
+            numerator *= 10;
+        }
+    }
+
+    /// The unabsorbed digits push exponentB past `type(int256).max`, so the
+    /// quotient is maximized zero.
+    function testDivUnfullNumeratorSpillOverflowReturnsZero() external pure {
+        int256 max = type(int256).max;
+        checkDiv(1, type(int256).min, 3e76, max - 100, 0, 0);
+        checkDiv(-1, type(int256).min, 3e76, max - 100, 0, 0);
+    }
+
+    /// `(a / b) * b == a` for exact divisions of an unfull numerator. Both
+    /// operands sit `type(int256).min` below the frame `mul` is checked in,
+    /// because `mul` sums exponents with checked arithmetic and a product at
+    /// the floor would overflow before it is scaled.
+    function testDivUnfullNumeratorMulRoundTrip(int256 quotient, int256 divisor, int256 shift) external pure {
+        quotient = bound(quotient, -1e37, 1e37);
+        divisor = bound(divisor, -1e37, 1e37);
+        vm.assume(quotient != 0);
+        vm.assume(divisor != 0);
+        shift = bound(shift, 0, type(int128).max);
+        // A ±1 divisor that is unfull at the floor reverts, see #291.
+        vm.assume(shift >= 76 || (divisor != 1 && divisor != -1));
+        int256 numerator = quotient * divisor;
+        (int256 q, int256 qe) =
+            LibDecimalFloatImplementation.div(numerator, type(int256).min, divisor, type(int256).min + shift);
+        (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, divisor, shift);
+        assertTrue(LibDecimalFloatImplementation.eq(back, backE, numerator, 0), "(a / b) * b == a");
+    }
 }
