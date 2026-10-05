@@ -870,6 +870,10 @@ library LibDecimalFloat {
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
+    ///
+    /// A negative `a` is supported only for a whole `b`, where the result is
+    /// `(-a)^b` with the sign of `a` kept when `b` is odd. A negative `a` with a
+    /// fractional `b` reverts `PowNegativeBase`.
     /// @param a The float `a` in `a^b`.
     /// @param b The float `b` in `a^b`.
     /// @param tablesDataContract The address of the contract containing the
@@ -891,7 +895,17 @@ library LibDecimalFloat {
                 // This is a special case because log10(0) is undefined.
                 return FLOAT_ZERO;
             } else {
-                revert PowNegativeBase(signedCoefficientA, exponentA);
+                // A negative base has a real power only for a whole exponent:
+                // (-a)^b is a^b, negated when b is odd.
+                if (!b.frac().isZero()) {
+                    revert PowNegativeBase(signedCoefficientA, exponentA);
+                }
+                Float magnitude = pow(a.minus(), b, tablesDataContract);
+                (int256 coefficientB, int256 exponentOfB) = b.unpack();
+                // b is whole and pow(-a, b) has already rescaled it to
+                // exponent 0 without reverting, so this is exact.
+                int256 wholeB = LibDecimalFloatImplementation.withTargetExponent(coefficientB, exponentOfB, 0);
+                return wholeB & 1 == 0 ? magnitude : magnitude.minus();
             }
         }
         // Handle identity case for positive values of a, i.e. a^1.
