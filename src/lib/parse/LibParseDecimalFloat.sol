@@ -87,26 +87,11 @@ library LibParseDecimalFloat {
                 signedCoefficient = signedCoefficientTmp;
 
                 if (commas && cursor - intStart <= 3) {
-                    while (
-                        LibParseChar.isMask(cursor, end, CMASK_COMMA) == 1
-                            && LibParseChar.skipMask(cursor + 1, end, CMASK_NUMERIC_0_9) == cursor + 4
-                    ) {
-                        (, uint256 group) = LibParseDecimal.unsafeDecimalStringToInt(cursor + 1, cursor + 4);
-                        cursor += 4;
-                        // group is at most 999.
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        int256 signedGroup = int256(group);
-                        if (isNegative) {
-                            if (signedCoefficient < (type(int256).min + signedGroup) / 1000) {
-                                return (ParseDecimalOverflow.selector, cursor, 0, 0);
-                            }
-                            signedCoefficient = signedCoefficient * 1000 - signedGroup;
-                        } else {
-                            if (signedCoefficient > (type(int256).max - signedGroup) / 1000) {
-                                return (ParseDecimalOverflow.selector, cursor, 0, 0);
-                            }
-                            signedCoefficient = signedCoefficient * 1000 + signedGroup;
-                        }
+                    bytes4 groupsErrorSelector;
+                    (groupsErrorSelector, cursor, signedCoefficient) =
+                        parseCommaGroups(cursor, end, isNegative, signedCoefficient);
+                    if (groupsErrorSelector != 0) {
+                        return (groupsErrorSelector, cursor, 0, 0);
                     }
                 }
             }
@@ -231,6 +216,40 @@ library LibParseDecimalFloat {
                 // floats follow the behaviour of packed floats.
                 exponent = 0;
             }
+        }
+    }
+
+    /// Folds each `,ddd` group at `cursor` into `signedCoefficient`, stopping
+    /// at the first comma that is not followed by exactly three digits.
+    function parseCommaGroups(uint256 cursor, uint256 end, bool isNegative, int256 signedCoefficient)
+        private
+        pure
+        returns (bytes4, uint256, int256)
+    {
+        unchecked {
+            while (
+                LibParseChar.isMask(cursor, end, CMASK_COMMA) == 1
+                    && LibParseChar.skipMask(cursor + 1, end, CMASK_NUMERIC_0_9) == cursor + 4
+            ) {
+                // Three digits cannot fail to parse.
+                //slither-disable-next-line unused-return
+                (, uint256 group) = LibParseDecimal.unsafeDecimalStringToInt(cursor + 1, cursor + 4);
+                cursor += 4;
+                // forge-lint: disable-next-line(unsafe-typecast)
+                int256 signedGroup = int256(group);
+                if (isNegative) {
+                    if (signedCoefficient < (type(int256).min + signedGroup) / 1000) {
+                        return (ParseDecimalOverflow.selector, cursor, 0);
+                    }
+                    signedCoefficient = signedCoefficient * 1000 - signedGroup;
+                } else {
+                    if (signedCoefficient > (type(int256).max - signedGroup) / 1000) {
+                        return (ParseDecimalOverflow.selector, cursor, 0);
+                    }
+                    signedCoefficient = signedCoefficient * 1000 + signedGroup;
+                }
+            }
+            return (0, cursor, signedCoefficient);
         }
     }
 
