@@ -880,11 +880,8 @@ library LibDecimalFloatImplementation {
         // Otherwise the log is at least 2^-16, so 66 places keep more than the
         // 48 digits the correction carries.
         if (exponent > -1e10 && exponent < 1e10) {
-            return
-                (
-                    exponent * 1e66 + seed * 1e16 + withTargetExponent(correctionCoefficient, correctionExponent, -66),
-                    -66
-                );
+            int256 correction = withTargetExponent(correctionCoefficient, correctionExponent, -66);
+            return (exponent * 1e66 + seed * 1e16 + correction, -66);
         }
         (int256 integerCoefficient, int256 integerExponent) = add(exponent, 0, seed, -50);
         return add(integerCoefficient, integerExponent, correctionCoefficient, correctionExponent);
