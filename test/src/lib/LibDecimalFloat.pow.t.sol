@@ -281,11 +281,134 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// The base's inverse is the result when the power is -1, so it still
-    /// underflows.
+    /// underflows: 10^-2147483713 is 1e76 · 10^-2147483789.
     function testPowMinusOneHugeBaseUnderflows() external {
         Float a = LibDecimalFloat.packLossless(1e66, type(int32).max);
-        vm.expectPartialRevert(ExponentUnderflow.selector);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e76), int256(-2147483789)));
         this.powExternal(a, LibDecimalFloat.packLossless(-1, 0));
+    }
+
+    function testPowMinusOneIsInv(int64 c, int16 e) external {
+        vm.assume(c > 0);
+        Float a = LibDecimalFloat.packLossless(c, e);
+        Float r = this.powExternal(a, LibDecimalFloat.packLossless(-1, 0));
+        assertTrue(r.eq(a.inv()), "pow(a, -1) != inv(a)");
+    }
+
+    function invExternal(Float a) external pure returns (Float) {
+        return a.inv();
+    }
+
+    function mulExternal(Float a, Float b) external pure returns (Float) {
+        return a.mul(b);
+    }
+
+    /// a^-b is 1/a^b across a's whole exponent range, wherever 1/a^b has
+    /// headroom for pow's approximation error on both sides of the range.
+    function testPowNegativeExponentIsInverseFuzz(
+        int224 coefficientA,
+        int32 exponentA,
+        uint8 region,
+        int256 coefficientB,
+        int256 exponentB
+    ) external {
+        coefficientA = int224(bound(coefficientA, 1, type(int224).max));
+        if (region % 3 == 1) {
+            exponentA = int32(bound(exponentA, type(int32).max - 300, type(int32).max));
+        } else if (region % 3 == 2) {
+            exponentA = int32(bound(exponentA, type(int32).min, type(int32).min + 300));
+        }
+        Float a = LibDecimalFloat.packLossless(coefficientA, exponentA);
+        Float b = LibDecimalFloat.packLossless(bound(coefficientB, 1, 1e9), bound(exponentB, -15, 0));
+
+        bool representable;
+        Float expected;
+        try this.powExternal(a, b) returns (Float c) {
+            try this.invExternal(c) returns (Float inverse) {
+                expected = inverse;
+                try this.mulExternal(inverse, LibDecimalFloat.packLossless(1, -2)) {
+                    try this.mulExternal(inverse, LibDecimalFloat.packLossless(1, 2)) {
+                        representable = true;
+                    } catch {}
+                } catch {}
+            } catch {}
+        } catch {}
+
+        if (representable) {
+            Float actual = this.powExternal(a, b.minus());
+            Float diff = actual.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs();
+            assertTrue(!diff.gt(diffLimit()), "diff");
+        } else {
+            try this.powExternal(a, b.minus()) {}
+            catch (bytes memory reason) {
+                assertExpectedPowError(reason);
+            }
+        }
+    }
+
+    /// `lastExponent` is the last e where (1e66 · 10^e)^b packs. The true
+    /// value there is 10^((e + 66) · b), so it lands on the smallest Float,
+    /// and e + 1 underflows.
+    function checkPowNegativeBoundary(
+        Float b,
+        int256 lastExponent,
+        int256 expectedCoefficient,
+        int256 underflowCoefficient,
+        int256 underflowExponent
+    ) internal {
+        (int256 coefficient, int256 exponent) =
+            this.powExternal(LibDecimalFloat.packLossless(1e66, lastExponent), b).unpack();
+        assertEq(coefficient, expectedCoefficient, "coefficient");
+        assertEq(exponent, type(int32).min, "exponent");
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, underflowCoefficient, underflowExponent));
+        this.powExternal(LibDecimalFloat.packLossless(1e66, lastExponent + 1), b);
+    }
+
+    function testPowNegativeExponentHugeBaseBoundary() external {
+        checkPowNegativeBoundary(LibDecimalFloat.packLossless(-1, 0), 2147483582, 1, 1e76, -2147483725);
+        checkPowNegativeBoundary(
+            LibDecimalFloat.packLossless(-10000001, -7),
+            2147483367,
+            1,
+            17849384749557067517439741369554732817914499305123451699743361546070868483230,
+            -2147483725
+        );
+        checkPowNegativeBoundary(
+            LibDecimalFloat.packLossless(-1000001, -6),
+            2147481434,
+            3,
+            32992411745298581326294952161002969317057076872319366545694490267238535136910,
+            -2147483725
+        );
+        checkPowNegativeBoundary(LibDecimalFloat.packLossless(-2, 0), 1073741758, 1, 1e76, -2147483726);
+    }
+
+    /// The inverse of the smallest base is 10^2147483648, which still packs,
+    /// so every power past -1 overflows, typed.
+    function testPowNegativeExponentTinyBaseOverflows() external {
+        Float a = LibDecimalFloat.packLossless(1, type(int32).min);
+
+        (int256 coefficient, int256 exponent) = this.powExternal(a, LibDecimalFloat.packLossless(-1, 0)).unpack();
+        assertEq(coefficient, 1e67, "coefficient");
+        assertEq(exponent, 2147483581, "exponent");
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(6.31e75), int256(2362231937)));
+        this.powExternal(a, LibDecimalFloat.packLossless(-11, -1));
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e76), int256(4294967220)));
+        this.powExternal(a, LibDecimalFloat.packLossless(-2, 0));
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e76), int256(2147483647999999924)));
+        this.powExternal(a, LibDecimalFloat.packLossless(-1, 9));
+
+        // The squared base passes int128 before the loop ends.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector, int256(1e76), int256(340282366920938463463374607431768211380)
+            )
+        );
+        this.powExternal(a, LibDecimalFloat.packLossless(-1, 30));
     }
 
     /// Issue #276's counterexample, bit for bit: a full-width coefficient base
