@@ -101,7 +101,9 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     }
 
     function sqrtError(Float a) internal returns (Float) {
-        return LibTestTranscendental.relativeError(this.sqrtExternal(a), LibTestTranscendental.pow(a, LibDecimalFloat.FLOAT_HALF));
+        return LibTestTranscendental.relativeError(
+            this.sqrtExternal(a), LibTestTranscendental.pow(a, LibDecimalFloat.FLOAT_HALF)
+        );
     }
 
     /// |log10(a b) - log10 a - log10 b|.
@@ -184,8 +186,8 @@ contract LibDecimalFloatPrecisionTest is LogTest {
                 }
             }
             previous = actual;
-            (uint256 error,) = LibTestTranscendental.relativeError(actual, LibTestTranscendental.pow10(x))
-                .toFixedDecimalLossy(36);
+            (uint256 error,) =
+                LibTestTranscendental.relativeError(actual, LibTestTranscendental.pow10(x)).toFixedDecimalLossy(36);
             if (error > worst) {
                 worst = error;
             }
