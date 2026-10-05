@@ -288,7 +288,7 @@ library LibDecimalFloatImplementation {
             return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
         } else {
             int256 signedCoefficient;
-            int256 exponent;
+            int256 exponent = 0;
             bool fullA;
             bool fullB;
             // Move both coefficients into the e75/e76 range, so that the result
