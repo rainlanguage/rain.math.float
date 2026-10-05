@@ -40,6 +40,11 @@ uint256 constant POW_FIXED_ONE = 1e50;
 /// @dev ln(10) at the `POW_FIXED_ONE` scale, rounded to nearest.
 uint256 constant POW_FIXED_LN10 = 230258509299404568401799145468436420760110148862877;
 
+/// @dev The inverse of 5^50 modulo 2^256, which divides a multiple of
+/// `POW_FIXED_ONE` by it once the factor 2^50 is shifted out.
+uint256 constant POW_FIXED_ONE_ODD_INVERSE =
+    32019276099673541610834237427944372346803171054071557274126404137164986125033;
+
 /// @dev Halvings of the exp10Fixed argument before its Taylor series.
 uint256 constant POW_EXP_HALVINGS = 8;
 
@@ -484,6 +489,19 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    /// mulDiv(x, y, POW_FIXED_ONE) for a quotient below 2^256.
+    function mulDivFixed(uint256 x, uint256 y) internal pure returns (uint256 result) {
+        uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
+        assembly ("memory-safe") {
+            let mm := mulmod(x, y, not(0))
+            let prod0 := mul(x, y)
+            let remainder := mulmod(x, y, 100000000000000000000000000000000000000000000000000)
+            let prod1 := sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0))
+            prod0 := sub(prod0, remainder)
+            result := mul(or(shr(50, prod0), shl(206, prod1)), inverse)
+        }
+    }
+
     /// mulDiv as seen in Open Zeppelin, PRB Math, Solady, and other libraries.
     /// Credit to Remco Bloemen under MIT license: https://2π.com/21/muldiv
     function mulDiv(uint256 x, uint256 y, uint256 denominator) internal pure returns (uint256 result) {
@@ -869,12 +887,12 @@ library LibDecimalFloatImplementation {
         }
         uint256 sum = a + b;
         uint256 z = mulDiv(difference, POW_FIXED_ONE, sum);
-        uint256 zSquared = mulDiv(z, z, POW_FIXED_ONE);
+        uint256 zSquared = mulDivFixed(z, z);
         // atanh(z) / z
         uint256 series = POW_FIXED_ONE;
         uint256 term = POW_FIXED_ONE;
         for (uint256 k = 3; term > 0; k += 2) {
-            term = mulDiv(term, zSquared, POW_FIXED_ONE);
+            term = mulDivFixed(term, zSquared);
             series += term / k;
         }
         // difference is at most 1e76 so it fits and maximizes in place.
@@ -934,11 +952,11 @@ library LibDecimalFloatImplementation {
         uint256 sum = POW_FIXED_ONE;
         uint256 term = POW_FIXED_ONE;
         for (uint256 n = 1; term > 0; n++) {
-            term = mulDiv(term, reduced, POW_FIXED_ONE * n);
+            term = mulDivFixed(term, reduced) / n;
             sum += term;
         }
         for (uint256 i = 0; i < POW_EXP_HALVINGS; i++) {
-            sum = mulDiv(sum, sum, POW_FIXED_ONE);
+            sum = mulDivFixed(sum, sum);
         }
         return sum;
     }
