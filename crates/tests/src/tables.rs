@@ -1,5 +1,5 @@
-//! The log tables `LibLogTable` ships, read through the harness, against an
-//! independent generation from f64 math.
+//! The log tables `LibLogTable` ships, read through the harness, against
+//! derivations of the published four-figure tables.
 #![allow(clippy::needless_range_loop)]
 
 use rain_math_float::tables;
@@ -12,67 +12,22 @@ fn alt_table_flag_is_the_library_flag() {
     assert_eq!(tables::alt_table_flag().unwrap(), ALT_TABLE_FLAG);
 }
 
-/// Generate the main log table: uint16[10][90].
+/// Generate the main log table without ALT_TABLE_FLAG: uint16[10][90].
 ///
-/// Standard 4-figure log table layout. Row r (0-89) and column c (0-9)
-/// represent the 3-digit mantissa prefix (10+r) and third digit c, so
-/// the looked-up number is n = (10+r)*100 + c*10, ranging from 1000 to
-/// 9990. The stored value is the fractional part of log10(n) scaled by
-/// 10000: round((log10(n) - 3) * 10000).
-///
-/// ALT_TABLE_FLAG is set on entries where the small alt table provides
-/// different (more precise) mean differences than the regular small table.
-fn generate_log_table(small: &[[u8; 10]; 90], small_alt: &[[u8; 10]; 10]) -> [[u16; 10]; 90] {
+/// Row r (0-89) and column c (0-9) represent the 3-digit mantissa prefix
+/// (10+r) and third digit c, so the looked-up number is
+/// n = (10+r)*100 + c*10. The value is round((log10(n) - 3) * 10000).
+fn generate_log_table() -> [[u16; 10]; 90] {
     let mut table = [[0u16; 10]; 90];
     for (row, table_row) in table.iter_mut().enumerate() {
         for (col, entry) in table_row.iter_mut().enumerate() {
             let n = ((10 + row) * 100 + col * 10) as f64;
-            let base = ((n.log10() - 3.0) * 10000.0).round() as u16;
-            let needs_alt = row < 10 && small[row][col] != small_alt[row][col];
-            *entry = if needs_alt {
-                base | ALT_TABLE_FLAG
-            } else {
-                base
-            };
+            *entry = ((n.log10() - 3.0) * 10000.0).round() as u16;
         }
     }
     table
 }
 
-/// Generate the small log table: uint8[10][90].
-///
-/// Mean differences for the 4th digit. Each entry is the rounded
-/// difference in scaled log10 between the 4-digit number and the base
-/// 3-digit number for that row.
-fn generate_log_table_small() -> [[u8; 10]; 90] {
-    let mut table = [[0u8; 10]; 90];
-    for (row, table_row) in table.iter_mut().enumerate() {
-        let base_n = (10 + row) * 100;
-        let base_log = (base_n as f64).log10();
-        for (col, entry) in table_row.iter_mut().enumerate() {
-            let diff = ((base_n + col) as f64).log10() - base_log;
-            *entry = (diff * 10000.0).round() as u8;
-        }
-    }
-    table
-}
-
-/// Generate the small alt log table: uint8[10][10].
-///
-/// Higher-precision mean differences for the first 10 rows (mantissa
-/// 100-199). Uses floor of scaled values then takes the difference.
-fn generate_log_table_small_alt() -> [[u8; 10]; 10] {
-    let mut table = [[0u8; 10]; 10];
-    for (row, table_row) in table.iter_mut().enumerate() {
-        let base_n = (10 + row) * 100;
-        let base_log = (base_n as f64).log10();
-        for (col, entry) in table_row.iter_mut().enumerate() {
-            let diff = ((base_n + col) as f64).log10() - base_log;
-            *entry = (diff * 10000.0).round() as u8;
-        }
-    }
-    table
-}
 
 /// Generate the antilog table: uint16[10][100].
 ///
@@ -86,31 +41,6 @@ fn generate_antilog_table() -> [[u16; 10]; 100] {
         for (col, entry) in table_row.iter_mut().enumerate() {
             let k = row * 10 + col;
             *entry = (10.0_f64.powf((k * 10) as f64 / 10000.0) * 1000.0).round() as u16;
-        }
-    }
-    table
-}
-
-/// Generate the small antilog table: uint8[10][100].
-///
-/// Indexed by [idx/100][idx%10] where idx is the full index (0-9999).
-/// The value is the correction to add to the main table entry.
-/// For a given idx: main covers idx rounded down to nearest 10,
-/// small adds the sub-10 correction.
-///
-/// Value = round(10^(idx/10000) * 1000) - main_table[idx/10]
-/// But since many indices share the same [row][col], the table stores
-/// a representative value. In practice it's computed for the first
-/// occurrence (tens digit = 0).
-fn generate_antilog_table_small() -> [[u8; 10]; 100] {
-    let mut table = [[0u8; 10]; 100];
-    for (row, table_row) in table.iter_mut().enumerate() {
-        for (col, entry) in table_row.iter_mut().enumerate() {
-            let idx = row * 100 + col;
-            let main_k = idx / 10;
-            let main_val = (10.0_f64.powf((main_k * 10) as f64 / 10000.0) * 1000.0).round();
-            let exact_val = (10.0_f64.powf(idx as f64 / 10000.0) * 1000.0).round();
-            *entry = (exact_val - main_val).round() as u8;
         }
     }
     table
@@ -234,83 +164,150 @@ fn test_antilog_table_exact() {
     }
 }
 
-/// Verify the small log table — generated values are either exact or
-/// at most 1 above the Solidity value. The published reference table
-/// uses rounding conventions that floor certain values where IEEE 754
-/// round-half-up produces the next integer. The direction is always
-/// generated >= solidity.
+
+/// The small tables are the published mean differences: the entry for
+/// fourth digit d on a printed line is d tenths of the mean tabular
+/// difference across that line, rounded half up.
+///
+/// Log rows 10-19 print as two lines, the second starting at the first
+/// column flagged ALT_TABLE_FLAG and reading its mean differences from the
+/// alt small table. Every other log row, and every antilog row, is one line.
+fn line_split(main: &[[u16; 10]; 90], row: usize) -> usize {
+    let split = main[row]
+        .iter()
+        .position(|entry| entry & ALT_TABLE_FLAG != 0)
+        .unwrap_or(10);
+    assert!(
+        main[row][split..]
+            .iter()
+            .all(|entry| entry & ALT_TABLE_FLAG != 0),
+        "log row {}: flagged columns are not a suffix",
+        10 + row
+    );
+    split
+}
+
+/// Mean difference for `digit` on the line of log row `row` spanning
+/// columns `start..end`, in units of 1e-4 of log10.
+fn log_mean_difference(row: usize, start: usize, end: usize, digit: usize) -> f64 {
+    let base = ((10 + row) * 100) as f64;
+    let rise = (base + (end * 10) as f64).log10() - (base + (start * 10) as f64).log10();
+    digit as f64 * rise * 1000.0 / (end - start) as f64
+}
+
+/// Mean difference for `digit` on antilog row `row` (.00-.99), in units of
+/// the four-figure antilog.
+fn antilog_mean_difference(row: usize, digit: usize) -> f64 {
+    let rise = 10f64.powf((row + 1) as f64 / 100.0) - 10f64.powf(row as f64 / 100.0);
+    digit as f64 * rise * 10.0
+}
+
+/// Rounds half up. Every mean difference is at least 3e-4 from a half and
+/// f64 error here is below 1e-12, so refusing anything within 1e-6 of a half
+/// makes this the exact rounding.
+fn round_certified(value: f64) -> u8 {
+    let margin = (value - value.floor() - 0.5).abs();
+    assert!(margin > 1e-6, "{value} is too close to a half to round from f64");
+    value.round() as u8
+}
+
+/// Entries where the published reference holds the other integer that
+/// brackets the derived mean difference, as (log row, second line, digit).
+/// The reference is not one formula: no single mean difference reproduces
+/// log row 12's first line or row 13's second line.
+const DEVIATIONS: [(usize, bool, usize); 28] = [
+    (10, false, 2),
+    (10, false, 6),
+    (10, true, 9),
+    (11, true, 5),
+    (12, false, 1),
+    (13, true, 2),
+    (13, true, 3),
+    (13, true, 4),
+    (13, true, 9),
+    (14, true, 6),
+    (14, true, 7),
+    (14, true, 8),
+    (14, true, 9),
+    (16, false, 5),
+    (16, false, 8),
+    (16, true, 6),
+    (17, true, 8),
+    (18, false, 4),
+    (18, false, 7),
+    (18, true, 5),
+    (18, true, 8),
+    (19, false, 2),
+    (19, false, 6),
+    (19, true, 3),
+    (19, true, 4),
+    (19, true, 8),
+    (19, true, 9),
+    (74, false, 6),
+];
+
+/// Every small log entry is its derived mean difference, or is listed in
+/// DEVIATIONS and is the other integer bracketing it.
 #[test]
-fn test_log_table_small_generation() {
-    let generated = generate_log_table_small();
-    let solidity = tables::log_table_dec_small().unwrap();
+fn test_log_table_small_derivation() {
+    let main = tables::log_table_dec().unwrap();
+    let small = tables::log_table_dec_small().unwrap();
+    let alt = tables::log_table_dec_small_alt().unwrap();
+    let mut deviations = Vec::new();
     for row in 0..90 {
-        for col in 0..10 {
-            let diff = generated[row][col] as i16 - solidity[row][col] as i16;
-            assert!(
-                diff.abs() <= 1,
-                "log small [{row}][{col}]: generated={}, solidity={}, diff={diff}",
-                generated[row][col],
-                solidity[row][col]
-            );
+        let split = line_split(&main, row);
+        assert_eq!(split < 10, row < 10, "log row {}: line split {split}", 10 + row);
+        let mut lines = vec![(false, 0, split, small[row])];
+        if split < 10 {
+            lines.push((true, split, 10, alt[row]));
+        }
+        for (second, start, end, entries) in lines {
+            for digit in 0..10 {
+                let exact = log_mean_difference(row, start, end, digit);
+                let derived = round_certified(exact);
+                let entry = entries[digit];
+                if entry != derived {
+                    assert!(
+                        (entry as f64 - exact).abs() < 1.0,
+                        "log row {} second line {second} digit {digit}: entry {entry}, exact {exact}",
+                        10 + row
+                    );
+                    deviations.push((10 + row, second, digit));
+                }
+            }
         }
     }
+    assert_eq!(deviations, DEVIATIONS);
 }
 
-/// Verify the small alt log table — allows ±2 because the published
-/// table uses interpolation conventions that differ from per-entry
-/// floor differences by up to 2 units.
+/// Every small antilog entry is its derived mean difference.
 #[test]
-fn test_log_table_small_alt_generation() {
-    let generated = generate_log_table_small_alt();
-    let solidity = tables::log_table_dec_small_alt().unwrap();
-    for row in 0..10 {
-        for col in 0..10 {
-            let diff = generated[row][col] as i16 - solidity[row][col] as i16;
-            assert!(
-                diff.abs() <= 3,
-                "log small alt [{row}][{col}]: generated={}, solidity={}, diff={diff}",
-                generated[row][col],
-                solidity[row][col]
-            );
-        }
-    }
-}
-
-/// Verify the small antilog table — same +1 tolerance.
-#[test]
-fn test_antilog_table_small_generation() {
-    let generated = generate_antilog_table_small();
-    let solidity = tables::anti_log_table_dec_small().unwrap();
+fn test_antilog_table_small_derivation() {
+    let small = tables::anti_log_table_dec_small().unwrap();
     for row in 0..100 {
-        for col in 0..10 {
-            let diff = generated[row][col] as i16 - solidity[row][col] as i16;
-            assert!(
-                diff.abs() <= 1,
-                "antilog small [{row}][{col}]: generated={}, solidity={}, diff={diff}",
-                generated[row][col],
-                solidity[row][col]
+        for digit in 0..10 {
+            let derived = round_certified(antilog_mean_difference(row, digit));
+            assert_eq!(
+                small[row][digit], derived,
+                "antilog row .{row:02} digit {digit}"
             );
         }
     }
 }
 
 /// Verify the main log table: the base values (without ALT flag) match
-/// exactly. The flags are transcribed from the published table, whose
-/// split between the two mean-difference sets varies by row; the lookup
-/// test exercises them by following them.
+/// exactly.
 #[test]
 fn test_log_table_generation() {
-    let small = generate_log_table_small();
-    let small_alt = generate_log_table_small_alt();
-    let generated = generate_log_table(&small, &small_alt);
+    let generated = generate_log_table();
     let solidity = tables::log_table_dec().unwrap();
     for row in 0..90 {
         for col in 0..10 {
-            let gen_base = generated[row][col] & !ALT_TABLE_FLAG;
-            let sol_base = solidity[row][col] & !ALT_TABLE_FLAG;
+            let sol = solidity[row][col] & !ALT_TABLE_FLAG;
             assert_eq!(
-                gen_base, sol_base,
-                "log [{row}][{col}] base: generated={gen_base}, solidity={sol_base}",
+                generated[row][col], sol,
+                "log [{row}][{col}] base: generated={}, solidity={sol}",
+                generated[row][col]
             );
         }
     }
