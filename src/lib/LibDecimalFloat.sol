@@ -922,6 +922,15 @@ library LibDecimalFloat {
             (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
                 signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
             );
+            // Squaring doubles the exponent, so left unchecked it overflows
+            // int256 and panics. A base this far out means the result, which
+            // moves away from 1 with it, cannot be packed either.
+            if (exponentBase > type(int128).max) {
+                revert ExponentOverflow(signedCoefficientBase, exponentBase);
+            }
+            if (exponentBase < type(int128).min) {
+                revert ExponentUnderflow(signedCoefficientBase, exponentBase);
+            }
         }
 
         (int256 signedCoefficientC, int256 exponentC) =
