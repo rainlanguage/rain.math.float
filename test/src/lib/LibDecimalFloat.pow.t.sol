@@ -44,7 +44,7 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     function testPows() external {
-        checkPow(5, 0, 13, 0, 1220703125e3, -3);
+        checkPow(5, 0, 13, 0, 1220703125, 0);
         // 0.5 ^ 30 = 9.3132257462e-10
         checkPow(5e37, -38, 3e37, -36, 9.31322574615478515625e66, -66 - 10);
         // 0.5 ^ 60 = 8.6736174e-19
@@ -78,8 +78,40 @@ contract LibDecimalFloatPowTest is LogTest {
             checkPow(signedCoefficientE, exponentE, 1, 0, signedCoefficientE, exponentE);
         }
 
-        checkPow(1.0029e67, -67, 0.41e2, -2, 1.001e3, -3);
-        checkPow(96001e62, -62, 0.00115e5, -5, 1.014e3, -3);
+        checkPow(1.0029e67, -67, 0.41e2, -2, 10011879843709906483145356860918928092, -37);
+        checkPow(96001e62, -62, 0.00115e5, -5, 10132803416620015886357268353997943676, -37);
+    }
+
+    function checkPowPrecision(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        int256 referenceSignedCoefficient,
+        int256 referenceExponent
+    ) internal {
+        Float c = this.powExternal(
+            LibDecimalFloat.packLossless(signedCoefficientA, exponentA),
+            LibDecimalFloat.packLossless(signedCoefficientB, exponentB)
+        );
+        Float expected = LibDecimalFloat.packLossless(referenceSignedCoefficient, referenceExponent);
+        assertTrue(
+            c.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs().lte(LibDecimalFloat.packLossless(1, -34)), "precision"
+        );
+    }
+
+    /// References are a^b to 45 digits from `bc -l` at scale 200.
+    function testPowFractionPrecision() external {
+        checkPowPrecision(2, 0, 5, -1, 141421356237309504880168872420969807856967187, -44);
+        checkPowPrecision(10029, -4, 41, -2, 100118798437099064831453568609189281135073206, -44);
+        checkPowPrecision(96001, 0, 115, -5, 101328034166200158863572683539979437211361504, -44);
+        checkPowPrecision(123456789, -3, 37, -5, 100434717085231634989719732301784742153564552, -44);
+        checkPowPrecision(7, -30, 77, -1, 321554734269797788332981945064452993255285428, -269);
+        // Issue #148: a very small positive b.
+        checkPowPrecision(2, 0, 1, -7, 100000006931472045825965603683996211583433798, -44);
+        checkPowPrecision(999, 3, 1, -4, 100138240564875062452749129558785898736266833, -44);
+        checkPowPrecision(7, -30, 37, -38, 999999999999999999999999999999999975161292222, -45);
+        checkPowPrecision(123456789, -3, 1, -100, 1, 0);
     }
 
     /// a^b is error for negative a and all b.

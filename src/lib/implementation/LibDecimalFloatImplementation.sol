@@ -992,7 +992,7 @@ library LibDecimalFloatImplementation {
     /// between the input and 10^seed closes the remaining gap.
     /// @param tablesDataContract The address of the log tables data contract.
     /// @param signedCoefficient A coefficient in [1e75, 1e76).
-    /// @return The log at the `POW_FIXED_ONE` scale, in [0, 1].
+    /// @return The log at the `POW_FIXED_ONE` scale, in [0, 1] give or take rounding.
     function log10MantissaFixed(address tablesDataContract, int256 signedCoefficient) internal view returns (int256) {
         (int256 seedCoefficient, int256 seedExponent) = log10(tablesDataContract, signedCoefficient, -75);
         int256 seed = withTargetExponent(seedCoefficient, seedExponent, -37);

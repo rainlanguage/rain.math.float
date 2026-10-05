@@ -861,12 +861,11 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// a^b = 10^(b * log10(a))
+    /// a^b = a^int(b) * 10^(frac(b) * log10(a))
     ///
-    /// Due to the inaccuraces of log10 and power10, this is not perfectly
-    /// accurate, a round trip like x^y^(1/y) will typically be within half a
-    /// percent or less of the original value, but this can vary depending on
-    /// the input values.
+    /// The integer part of `b` is exact, by squaring. The fractional part is
+    /// computed in fixed point from a log table seed rather than interpolated
+    /// from the tables, so it is within about 1e-34 relative of the true value.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
@@ -958,10 +957,7 @@ library LibDecimalFloat {
 
     /// sqrt a = a ^ 0.5
     ///
-    /// Due to the inaccuracies of log10 and power10, this is not perfectly
-    /// accurate, a round trip like sqrt(x)^2 will typically be within half a
-    /// percent or less of the original value, but this can vary depending on
-    /// the input values.
+    /// Within about 1e-34 relative of the true value, as `pow`.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.

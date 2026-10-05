@@ -219,13 +219,11 @@ The log/pow calculations are not simply truncated on precision loss, they are
 inherently approximations in many cases.
 
 For example, `pow` will accurately calculate an integer exponent using the
-exponentiation by squaring method, but non-integer exponents use a hybrid lookup
-table to approximate the fractional component of the exponent calculation.
+exponentiation by squaring method. The fractional component of a non-integer
+exponent takes a log table value as a seed and refines it with fixed point
+series, so it is within about 1e-34 relative of the true value.
 
-Log and antilog calculations don't even do the exponentiation by squaring, they
-simply use lookup tables directly.
-
-The approximation quality is inherently limited by both the size of the log
-tables (deployed deterministically onchain as data contracts) and the
-interpolation method between exact lookup hits. Currently we use a linear
-interpolation which is the least accurate option, but most gas efficient.
+`log10` and `pow10` use the lookup tables directly, interpolating linearly
+between table entries. Their quality is limited by the four figure tables
+(deployed deterministically onchain as data contracts), not by the
+interpolation, which is the least accurate option but the most gas efficient.

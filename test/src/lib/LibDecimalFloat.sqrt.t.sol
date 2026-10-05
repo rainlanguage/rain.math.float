@@ -51,9 +51,9 @@ contract LibDecimalFloatSqrtTest is LogTest {
 
     function testSqrt() external {
         checkSqrt(0, 0, 0, 0);
-        checkSqrt(2, 0, 1415, -3);
-        checkSqrt(4, 0, 2e3, -3);
-        checkSqrt(16, 0, 3999500000000000000000000000000000000000000000000000000000000000000, -66);
+        checkSqrt(2, 0, 14142135623730950488016887242096980728, -37);
+        checkSqrt(4, 0, 19999999999999999999999999999999999938, -37);
+        checkSqrt(16, 0, 39999999999999999999999999999999999808, -37);
     }
 
     function testSqrtNegative(Float a) external {
