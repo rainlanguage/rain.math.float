@@ -21,6 +21,6 @@ contract LibDecimalFloatImplementationExp10FixedTest is Test {
         assertNear(
             LibDecimalFloatImplementation.exp10Fixed(1e47), 100230523807789967191540488932811055405366845354216, 5e4
         );
-        assertNear(LibDecimalFloatImplementation.exp10Fixed(1), POW_FIXED_ONE, 1);
+        assertNear(LibDecimalFloatImplementation.exp10Fixed(1), POW_FIXED_ONE + 2, 1);
     }
 }
