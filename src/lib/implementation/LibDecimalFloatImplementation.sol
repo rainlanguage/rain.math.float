@@ -824,20 +824,18 @@ library LibDecimalFloatImplementation {
         view
         returns (int256, int256)
     {
-        {
-            int256 unmaximizedCoefficient = signedCoefficient;
-            int256 unmaximizedExponent = exponent;
-            (signedCoefficient, exponent) = maximizeFull(signedCoefficient, exponent);
-
-            if (signedCoefficient <= 0) {
-                if (signedCoefficient == 0) {
-                    revert Log10Zero();
-                } else {
-                    revert Log10Negative(unmaximizedCoefficient, unmaximizedExponent);
-                }
+        if (signedCoefficient <= 0) {
+            if (signedCoefficient == 0) {
+                revert Log10Zero();
+            } else {
+                revert Log10Negative(signedCoefficient, exponent);
             }
         }
-
+        if (signedCoefficient < 1e75) {
+            (signedCoefficient, exponent) = exponent < type(int256).min + 75
+                ? maximizeFull(signedCoefficient, exponent)
+                : scaleUp(signedCoefficient, exponent);
+        }
         if (signedCoefficient >= 1e76) {
             signedCoefficient /= 10;
             exponent += 1;
@@ -1003,6 +1001,46 @@ library LibDecimalFloatImplementation {
         return pow10(signedCoefficient, exponent);
     }
 
+    /// Scales a coefficient in (0, 1e75) up into [1e75, 1e76), with the
+    /// exponent at least 75 above its minimum.
+    /// @param signedCoefficient The signed coefficient, in (0, 1e75).
+    /// @param exponent The exponent.
+    /// @return signedCoefficient The scaled coefficient.
+    /// @return exponent The exponent of the scaled coefficient.
+    function scaleUp(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        unchecked {
+            if (signedCoefficient < 1e38) {
+                signedCoefficient *= 1e38;
+                exponent -= 38;
+            }
+            if (signedCoefficient < 1e57) {
+                signedCoefficient *= 1e19;
+                exponent -= 19;
+            }
+            if (signedCoefficient < 1e66) {
+                signedCoefficient *= 1e10;
+                exponent -= 10;
+            }
+            if (signedCoefficient < 1e71) {
+                signedCoefficient *= 1e5;
+                exponent -= 5;
+            }
+            if (signedCoefficient < 1e73) {
+                signedCoefficient *= 1e3;
+                exponent -= 3;
+            }
+            if (signedCoefficient < 1e74) {
+                signedCoefficient *= 1e2;
+                exponent -= 2;
+            }
+            if (signedCoefficient < 1e75) {
+                signedCoefficient *= 10;
+                exponent -= 1;
+            }
+            return (signedCoefficient, exponent);
+        }
+    }
+
     /// The square root of a positive float, rounded to nearest at 41
     /// significant digits.
     /// @param signedCoefficient The signed coefficient, positive.
@@ -1011,38 +1049,11 @@ library LibDecimalFloatImplementation {
     /// @return exponent The root's exponent.
     function sqrt(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
+            if (signedCoefficient < 1e75) {
+                (signedCoefficient, exponent) = scaleUp(signedCoefficient, exponent);
+            }
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 coefficient = uint256(signedCoefficient);
-            if (coefficient < 1e75) {
-                if (coefficient < 1e38) {
-                    coefficient *= 1e38;
-                    exponent -= 38;
-                }
-                if (coefficient < 1e57) {
-                    coefficient *= 1e19;
-                    exponent -= 19;
-                }
-                if (coefficient < 1e66) {
-                    coefficient *= 1e10;
-                    exponent -= 10;
-                }
-                if (coefficient < 1e71) {
-                    coefficient *= 1e5;
-                    exponent -= 5;
-                }
-                if (coefficient < 1e73) {
-                    coefficient *= 1e3;
-                    exponent -= 3;
-                }
-                if (coefficient < 1e74) {
-                    coefficient *= 1e2;
-                    exponent -= 2;
-                }
-                if (coefficient < 1e75) {
-                    coefficient *= 10;
-                    exponent -= 1;
-                }
-            }
             // The root of coefficient * scale is in [1e40, 1e41], and the
             // root of estimate * estimateScale^2 is within a part in 1e37 of it.
             uint256 scale;
