@@ -70,7 +70,8 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
   tolerated because it preserves the order of magnitude: digits are shed to fit
   the coefficient in int224 AND to lift an exponent below int32.min back to the
   floor. `ExponentUnderflow` is only the case where every digit has been shed.
-- log10 refines a log table seed in 1e50 fixed point; pow10 reads no tables.
+- log10 reduces by binary digits and refines in 1e50 fixed point; log10, pow10,
+  pow and sqrt read no tables.
 - Three packing modes:
   - `packLossless`: reverts on any precision loss.
   - `packLossy`: surfaces the `lossless` flag, returns `FLOAT_ZERO` on exponent

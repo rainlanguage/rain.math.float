@@ -44,10 +44,6 @@ uint256 constant POW_FIXED_LN10 = 2302585092994045684017991454684364207601101488
 /// @dev 2 / ln(10) at the `POW_FIXED_ONE` scale, rounded to nearest.
 uint256 constant POW_FIXED_TWO_OVER_LN10 = 86858896380650365530225783783321016458879401160733;
 
-/// @dev 2^-16 at the `POW_FIXED_ONE` scale, the last binary digit
-/// `exp10Fixed` reduces by.
-uint256 constant POW_FIXED_BINARY_STEP = 1525878906250000000000000000000000000000000000;
-
 /// @dev The inverse of 5^50 modulo 2^256, which divides a multiple of
 /// `POW_FIXED_ONE` by it once the factor 2^50 is shifted out.
 uint256 constant POW_FIXED_ONE_ODD_INVERSE =
@@ -808,22 +804,17 @@ library LibDecimalFloatImplementation {
 
     /// log10(x) for a float x.
     ///
-    /// The four figure log table gives a seed and the atanh series of the
-    /// ratio between the input and 10^seed closes the remaining gap. The
-    /// absolute error is below 1e-46. Inputs within a table step of a power of
-    /// ten take an exact seed, so a log near zero keeps its relative precision.
+    /// `log10Reduce` takes the first 16 binary digits of the log and the atanh
+    /// series of the remainder closes the gap. Inputs within 1e-3 relative of
+    /// a power of ten skip the reduction, so a log near zero keeps its
+    /// relative precision. No tables are read.
     ///
-    /// @param tablesDataContract The address of the log tables data contract.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function log10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
-        internal
-        view
-        returns (int256, int256)
-    {
+    function log10(address, int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         if (signedCoefficient <= 0) {
             if (signedCoefficient == 0) {
                 revert Log10Zero();
@@ -853,20 +844,13 @@ library LibDecimalFloatImplementation {
             seed = 1e50;
             estimate = 1e76;
         } else {
-            unchecked {
-                // signedCoefficient is in [1.001e75, 9.999e75) so idx is in
-                // [1, 8998].
-                // forge-lint: disable-next-line(unsafe-typecast)
-                uint256 idx = uint256(signedCoefficient / 1e72 - 1000);
-                uint256 tableSeed = lookupLogTableVal(tablesDataContract, idx) * 1e46;
-                // A whole number of 2^-16 steps, which exp10Fixed raises with
-                // its digit constants alone.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                seed = int256(tableSeed - tableSeed % POW_FIXED_BINARY_STEP);
-            }
-            // seed is in (0, 1e50) and so is not negative.
+            estimate = 1e75;
+            // signedCoefficient is positive.
             // forge-lint: disable-next-line(unsafe-typecast)
-            estimate = exp10Fixed(uint256(seed)) * 1e25;
+            (uint256 reduced, uint256 reducedSeed) = log10Reduce(uint256(signedCoefficient));
+            // Both are below 1e76.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            (signedCoefficient, seed) = (int256(reduced), int256(reducedSeed));
         }
 
         // signedCoefficient is positive.
@@ -942,6 +926,131 @@ library LibDecimalFloatImplementation {
         return (below ? -signedCoefficient : signedCoefficient, differenceExponent);
     }
 
+    /// Divides x out by 10^(2^-i) for each i in [1, 16] where x is at least
+    /// it, each by its reciprocal at the 2^256 scale, so x lands within a
+    /// factor 10^(2^-16) of 1e75 and the summed powers are the log of the
+    /// factor taken out.
+    /// @param x A value in [1e75, 1e76).
+    /// @return The reduced x.
+    /// @return seed The summed powers at the `POW_FIXED_ONE` scale.
+    function log10Reduce(uint256 x) internal pure returns (uint256, uint256 seed) {
+        assembly ("memory-safe") {
+            if iszero(lt(x, 3162277660168379331998893544432718533719555139325216826857504852792594438640)) {
+                let mm :=
+                    mulmod(x, 36616673701938843778068833497358723556965087776446405157389940026215161181517, not(0))
+                let low := mul(x, 36616673701938843778068833497358723556965087776446405157389940026215161181517)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 50000000000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1778279410038922801225421195192684844735790526402255358011830722776301881540)) {
+                let mm :=
+                    mulmod(x, 65114676908271546481783089451486774924122586772716488419433647202158216225712, not(0))
+                let low := mul(x, 65114676908271546481783089451486774924122586772716488419433647202158216225712)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 25000000000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1333521432163324025675931715295331092415667964764370993329549987162758943181)) {
+                let mm :=
+                    mulmod(x, 86831817205570396472488487376619414734776470364260362375271208847034186727869, not(0))
+                let low := mul(x, 86831817205570396472488487376619414734776470364260362375271208847034186727869)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 12500000000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1154781984689458179666482887295508281566948041479611129977426848717929206981)) {
+                let mm :=
+                    mulmod(x, 100271818206840824917852211318445810475964718432762174250931870037200512150264, not(0))
+                let low := mul(x, 100271818206840824917852211318445810475964718432762174250931870037200512150264)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 6250000000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1074607828321317497215941531964343594667198228375277635737525385456277680090)) {
+                let mm :=
+                    mulmod(x, 107752880805083163274215415406366939907498821726554665908884917759802168845149, not(0))
+                let low := mul(x, 107752880805083163274215415406366939907498821726554665908884917759802168845149)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 3125000000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1036632928437697997291651724925344467708873031101004651184732490611638515681)) {
+                let mm :=
+                    mulmod(x, 111700184376571576959242954511464064493576035854940459532905296431575491590884, not(0))
+                let low := mul(x, 111700184376571576959242954511464064493576035854940459532905296431575491590884)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 1562500000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1018151721718181841474226888578835347615879638667598311831418789512158676639)) {
+                let mm :=
+                    mulmod(x, 113727735039244707269314004292417912634116897559789282410115004998408115167755, not(0))
+                let low := mul(x, 113727735039244707269314004292417912634116897559789282410115004998408115167755)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 781250000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1009035044841447437759254423906421331381168979588236162503174368256031811568)) {
+                let mm :=
+                    mulmod(x, 114755270225040536177195215467999502584020270197659510607710463068073932425995, not(0))
+                let low := mul(x, 114755270225040536177195215467999502584020270197659510607710463068073932425995)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 390625000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1004507364254462515664794694341317664136965486448855489880346341316837480908)) {
+                let mm :=
+                    mulmod(x, 115272514028064070535758128409080922034070970152660607303989700309153489211414, not(0))
+                let low := mul(x, 115272514028064070535758128409080922034070970152660607303989700309153489211414)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 195312500000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1002251148292912915465673638866571192454241130208227099208420545124889760121)) {
+                let mm :=
+                    mulmod(x, 115532009551238127069034569024473762622767147147788687595329406319473705950071, not(0))
+                let low := mul(x, 115532009551238127069034569024473762622767147147788687595329406319473705950071)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 97656250000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1001124941399879875885426434365711773271338418873287617190761945242904872061)) {
+                let mm :=
+                    mulmod(x, 115661976291793632079080739461244514212109858454009171777232224145244584379146, not(0))
+                let low := mul(x, 115661976291793632079080739461244514212109858454009171777232224145244584379146)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 48828125000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1000562312602208636618511367809636978696490479831100413718397439177031575557)) {
+                let mm :=
+                    mulmod(x, 115727014478658864191206019837644585076293120248274136969870782148370783742109, not(0))
+                let low := mul(x, 115727014478658864191206019837644585076293120248274136969870782148370783742109)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 24414062500000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1000281116787780132399257365769687045617010004075711462195816279315578112995)) {
+                let mm :=
+                    mulmod(x, 115759547285228489644640649073775386641395351335601881572150779206589155570705, not(0))
+                let low := mul(x, 115759547285228489644640649073775386641395351335601881572150779206589155570705)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 12207031250000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1000140548516947258162771187858928924807657707067732580839449098218983450057)) {
+                let mm :=
+                    mulmod(x, 115775817117921914513665754670628277870063336875992169054789846993299520681056, not(0))
+                let low := mul(x, 115775817117921914513665754670628277870063336875992169054789846993299520681056)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 6103515625000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1000070271789411435538813638676535763208836739091941327682886747964405335251)) {
+                let mm :=
+                    mulmod(x, 115783952891761361996258436523111610648709418794355347035638479532448488583968, not(0))
+                let low := mul(x, 115783952891761361996258436523111610648709418794355347035638479532448488583968)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 3051757812500000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1000035135277461856608582335861556633189962147970549360011398536055919590052)) {
+                let mm :=
+                    mulmod(x, 115788020993071844566540918178001145605824617021039977012160767671253988218160, not(0))
+                let low := mul(x, 115788020993071844566540918178001145605824617021039977012160767671253988218160)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 1525878906250000000000000000000000000000000000)
+            }
+        }
+        return (x, seed);
+    }
+
     /// 10^x for a float x.
     ///
     /// The fractional part of x goes through `exp10Fixed` and the result is
@@ -988,7 +1097,7 @@ library LibDecimalFloatImplementation {
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
-    ) internal view returns (int256, int256) {
+    ) internal pure returns (int256, int256) {
         bool half;
         assembly ("memory-safe") {
             half := and(sgt(exponentB, sub(0, 77)), eq(shl(1, signedCoefficientB), exp(10, sub(0, exponentB))))

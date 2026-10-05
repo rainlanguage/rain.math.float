@@ -847,11 +847,11 @@ library LibDecimalFloat {
     /// Same as log10, but accepts a Float struct instead of separate values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
-    /// @param tablesDataContract The address of the contract containing the
-    /// logarithm tables.
+    /// @param tablesDataContract Unused, and kept so that callers need not
+    /// change.
     /// @param a The float to log10.
     /// @return The base-10 logarithm of a.
-    function log10(Float a, address tablesDataContract) internal view returns (Float) {
+    function log10(Float a, address tablesDataContract) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         (signedCoefficient, exponent) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficient, exponent);
@@ -863,8 +863,8 @@ library LibDecimalFloat {
     /// a^b = a^int(b) * 10^(frac(b) * log10(a))
     ///
     /// The integer part of `b` is exact, by squaring. The fractional part is
-    /// computed in fixed point from a log table seed rather than interpolated
-    /// from the tables. It is rounded to 41 significant digits, so it is within
+    /// computed in fixed point, by an integer square root when it is a half.
+    /// It is rounded to 41 significant digits, so it is within
     /// about 1e-40 relative of the true value and an exactly representable power
     /// such as 4^0.5 is exact.
     ///
@@ -876,10 +876,10 @@ library LibDecimalFloat {
     /// fractional `b` reverts `PowNegativeBase`.
     /// @param a The float `a` in `a^b`.
     /// @param b The float `b` in `a^b`.
-    /// @param tablesDataContract The address of the contract containing the
-    /// logarithm tables.
+    /// @param tablesDataContract Unused, and kept so that callers need not
+    /// change.
     /// @return The result of a^b.
-    function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
+    function pow(Float a, Float b, address tablesDataContract) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
 
         if (b.isZero()) {
