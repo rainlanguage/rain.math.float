@@ -395,10 +395,13 @@ library LibDecimalFloat {
                 // casts cannot truncate.
                 // forge-lint: disable-next-line(unsafe-typecast)
                 int256 scale = int256(10 ** uint256(excess));
-                if (signedCoefficient > type(int224).max / scale || signedCoefficient < type(int224).min / scale) {
+                if (
+                    initialSignedCoefficient > type(int224).max / scale
+                        || initialSignedCoefficient < type(int224).min / scale
+                ) {
                     revert ExponentOverflow(initialSignedCoefficient, initialExponent);
                 }
-                signedCoefficient *= scale;
+                signedCoefficient = initialSignedCoefficient * scale;
                 exponent = type(int32).max;
             }
 
