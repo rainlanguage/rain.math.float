@@ -403,6 +403,8 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
                 inverse *= 2 - five67 * inverse;
             }
         }
+        // Reduced mod 2^189, so the cast cannot truncate.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 c = int256(inverse % (1 << 189));
         unchecked {
             assertEq(c * 1e67, int256(1 << 67), "wraps positive");
@@ -444,11 +446,11 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         // coefficient that lifts one step lifts, the next does not.
         (Float edge,) = LibDecimalFloat.packLossy(INT224_MAX / 10, INT32_MAX + 1);
         (c, e) = LibDecimalFloat.unpack(edge);
-        assertEq(c, (INT224_MAX / 10) * 10, "edge coeff");
+        assertEq(c, INT224_MAX - INT224_MAX % 10, "edge coeff");
         assertEq(e, INT32_MAX, "edge exp");
         (edge,) = LibDecimalFloat.packLossy(INT224_MIN / 10, INT32_MAX + 1);
         (c, e) = LibDecimalFloat.unpack(edge);
-        assertEq(c, (INT224_MIN / 10) * 10, "edge neg coeff");
+        assertEq(c, INT224_MIN - INT224_MIN % 10, "edge neg coeff");
         assertEq(e, INT32_MAX, "edge neg exp");
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MAX / 10 + 1, INT32_MAX + 1));
         this.packLossyExternal(INT224_MAX / 10 + 1, INT32_MAX + 1);
@@ -461,7 +463,7 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
     /// in-range value. Both signs revert, including the one whose shed-then-
     /// lifted coefficient would still fit int224.
     function testPackLossyShedPastCeilingReverts() external {
-        assertTrue(((INT224_MAX + 1) / 10) * 10 <= INT224_MAX, "lift would fit");
+        assertTrue((INT224_MAX + 1) - (INT224_MAX + 1) % 10 <= INT224_MAX, "lift would fit");
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MAX + 1, INT32_MAX));
         this.packLossyExternal(INT224_MAX + 1, INT32_MAX);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MIN - 1, INT32_MAX));
