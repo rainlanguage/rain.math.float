@@ -11,6 +11,7 @@ import {
     MaximizeOverflow
 } from "../../error/ErrDecimalFloat.sol";
 import {LOG_TABLE_SIZE_BYTES, LOG_TABLE_SIZE_BASE} from "../table/LibLogTable.sol";
+import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 /// @dev Thrown when attempting to rescale a coefficient to a target exponent
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
@@ -972,6 +973,107 @@ library LibDecimalFloatImplementation {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 power = int256((exp10Fixed(uint256(mantissa)) + POW_GUARD / 2) / POW_GUARD);
         return (power, characteristic - 40);
+    }
+
+    /// a^b for a positive a and a b in (0, 1), as `sqrt` when b is a half and
+    /// as 10^(b log10(a)) otherwise.
+    /// @param tablesDataContract The address of the log tables data contract.
+    /// @param signedCoefficientA The signed coefficient of a, positive.
+    /// @param exponentA The exponent of a.
+    /// @param signedCoefficientB The signed coefficient of b.
+    /// @param exponentB The exponent of b, negative.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
+    function powFraction(
+        address tablesDataContract,
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal view returns (int256, int256) {
+        bool half;
+        assembly ("memory-safe") {
+            half := and(sgt(exponentB, sub(0, 77)), eq(shl(1, signedCoefficientB), exp(10, sub(0, exponentB))))
+        }
+        if (half) {
+            return sqrt(signedCoefficientA, exponentA);
+        }
+        (int256 signedCoefficient, int256 exponent) = log10(tablesDataContract, signedCoefficientA, exponentA);
+        (signedCoefficient, exponent) = mul(signedCoefficient, exponent, signedCoefficientB, exponentB);
+        return pow10(signedCoefficient, exponent);
+    }
+
+    /// The square root of a positive float, rounded to nearest at 41
+    /// significant digits.
+    /// @param signedCoefficient The signed coefficient, positive.
+    /// @param exponent The exponent.
+    /// @return signedCoefficient The root's coefficient, in [1e40, 1e41].
+    /// @return exponent The root's exponent.
+    function sqrt(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        unchecked {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 coefficient = uint256(signedCoefficient);
+            if (coefficient < 1e75) {
+                if (coefficient < 1e38) {
+                    coefficient *= 1e38;
+                    exponent -= 38;
+                }
+                if (coefficient < 1e57) {
+                    coefficient *= 1e19;
+                    exponent -= 19;
+                }
+                if (coefficient < 1e66) {
+                    coefficient *= 1e10;
+                    exponent -= 10;
+                }
+                if (coefficient < 1e71) {
+                    coefficient *= 1e5;
+                    exponent -= 5;
+                }
+                if (coefficient < 1e73) {
+                    coefficient *= 1e3;
+                    exponent -= 3;
+                }
+                if (coefficient < 1e74) {
+                    coefficient *= 1e2;
+                    exponent -= 2;
+                }
+                if (coefficient < 1e75) {
+                    coefficient *= 10;
+                    exponent -= 1;
+                }
+            }
+            // The root of coefficient * scale is in [1e40, 1e41], and the
+            // root of estimate * estimateScale^2 is within a part in 1e37 of it.
+            uint256 scale;
+            uint256 estimate;
+            uint256 estimateScale;
+            bool odd = exponent & 1 == 1;
+            if (coefficient < 1e76) {
+                (scale, estimate, estimateScale) = odd ? (1e5, coefficient / 10, 1e3) : (1e6, coefficient, 1e3);
+            } else {
+                (scale, estimate, estimateScale) = odd ? (1e5, coefficient / 10, 1e3) : (1e4, coefficient, 1e2);
+            }
+            exponent = (exponent - (odd ? int256(5) : (coefficient < 1e76 ? int256(6) : int256(4)))) / 2;
+            // At or above the root, and above it by at most 2 estimateScale, so
+            // one Newton step lands on the floor of the root or one above it.
+            uint256 root = (Math.sqrt(estimate) + 2) * estimateScale;
+            root = (root + mulDiv(coefficient, scale, root)) >> 1;
+            (uint256 high, uint256 low) = mul512(coefficient, scale);
+            (uint256 rootHigh, uint256 rootLow) = mul512(root, root);
+            if (rootHigh > high || (rootHigh == high && rootLow > low)) {
+                root -= 1;
+                (rootHigh, rootLow) = mul512(root, root);
+            }
+            // Round up when coefficient * scale - root^2 > root.
+            assembly ("memory-safe") {
+                let differenceLow := sub(low, rootLow)
+                let differenceHigh := sub(sub(high, rootHigh), lt(low, rootLow))
+                root := add(root, or(gt(differenceHigh, 0), gt(differenceLow, root)))
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return (int256(root), exponent);
+        }
     }
 
     /// 10^x at the `POW_FIXED_ONE` scale. Each of the first 16 binary digits of

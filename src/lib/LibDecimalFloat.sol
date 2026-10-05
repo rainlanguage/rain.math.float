@@ -944,11 +944,9 @@ library LibDecimalFloat {
         }
 
         if (fractionB != 0) {
-            (int256 signedCoefficientC, int256 exponentC) =
-                LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
-            (signedCoefficientC, exponentC) =
-                LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
-            (signedCoefficientC, exponentC) = LibDecimalFloatImplementation.pow10(signedCoefficientC, exponentC);
+            (int256 signedCoefficientC, int256 exponentC) = LibDecimalFloatImplementation.powFraction(
+                tablesDataContract, signedCoefficientA, exponentA, fractionB, exponentB
+            );
             if (signedCoefficientResult == 1 && exponentResult == 0) {
                 (signedCoefficientResult, exponentResult) = (signedCoefficientC, exponentC);
             } else {
@@ -964,17 +962,23 @@ library LibDecimalFloat {
 
     /// sqrt a = a ^ 0.5
     ///
-    /// As `pow`, within about 1e-40 relative of the true value, and exact when
-    /// the root has at most 41 significant digits.
+    /// Rounded to nearest at 41 significant digits, so exact when the root has
+    /// at most 41 significant digits. A negative `a` reverts `PowNegativeBase`.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
     /// @param a The float to take the square root of.
-    /// @param tablesDataContract The address of the contract containing the
-    /// logarithm tables.
     /// @return The square root of a.
-    function sqrt(Float a, address tablesDataContract) internal view returns (Float) {
-        return pow(a, FLOAT_HALF, tablesDataContract);
+    function sqrt(Float a, address) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        if (signedCoefficient <= 0) {
+            if (signedCoefficient == 0) {
+                return FLOAT_ZERO;
+            }
+            revert PowNegativeBase(signedCoefficient, exponent);
+        }
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
+        return packArithmeticResult(signedCoefficient, exponent);
     }
 
     /// Returns the minimum of two values.
