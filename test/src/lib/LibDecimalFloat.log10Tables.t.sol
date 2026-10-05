@@ -164,9 +164,10 @@ contract LibDecimalFloatLog10TablesTest is Test {
         return derived;
     }
 
-    /// Lower max error over the mantissas that read the entry, else equal max
-    /// and lower summed error. A 4-digit mantissa reads exactly one small
-    /// entry, so the all-derived errors there are the derived value's alone.
+    /// Over the mantissas that read the entry, one of max and summed error is
+    /// lower and the other is not higher. A 4-digit mantissa reads exactly
+    /// one small entry, so the all-derived errors there are the derived
+    /// value's alone.
     function derivedImproves(
         Deviation memory deviation,
         uint256[] memory referenceErrors,
@@ -187,7 +188,8 @@ contract LibDecimalFloatLog10TablesTest is Test {
                 derivedMax = derivedErrors[i];
             }
         }
-        return derivedMax < referenceMax || (derivedMax == referenceMax && derivedSum < referenceSum);
+        return (derivedMax <= referenceMax && derivedSum < referenceSum)
+            || (derivedMax < referenceMax && derivedSum <= referenceSum);
     }
 
     function toFixed(Float a) internal pure returns (uint256) {
@@ -313,22 +315,8 @@ contract LibDecimalFloatLog10TablesTest is Test {
         assertEq(allDerived.worse, 88, "all derived worse");
         assertEq(allDerived.maxRoundTrip, referenceStats.maxRoundTrip, "all derived round trip");
 
-        uint256[14] memory expectedPicks = [
-            key(10, true, 9),
-            key(13, true, 2),
-            key(13, true, 4),
-            key(14, true, 6),
-            key(16, false, 5),
-            key(16, false, 8),
-            key(16, true, 6),
-            key(18, true, 5),
-            key(19, false, 6),
-            key(19, true, 3),
-            key(19, true, 4),
-            key(19, true, 8),
-            key(19, true, 9),
-            key(74, false, 6)
-        ];
+        uint256[5] memory expectedPicks =
+            [key(10, true, 9), key(13, true, 4), key(14, true, 6), key(16, true, 6), key(19, true, 4)];
         console2.log("per entry best, derived picked at row * 100 + alt * 10 + digit:");
         count = 0;
         for (uint256 i = 0; i < found.length; i++) {
@@ -344,13 +332,12 @@ contract LibDecimalFloatLog10TablesTest is Test {
         (small, alt) = swappedTables(found, picked);
         (Stats memory best,) = measure(LibTestLogTables.deploy(small, alt), truth, referenceErrors);
         report("per entry best", best, truth.length);
-        assertLe(best.maxError, 1.1943e32, "per entry best max");
-        assertGe(best.maxError, 1.1942e32, "per entry best max");
-        assertLe(best.sumError / truth.length, 3.2956e31, "per entry best mean");
-        assertGe(best.sumError / truth.length, 3.2955e31, "per entry best mean");
-        assertGt(best.sumError, referenceStats.sumError, "per entry best mean");
-        assertEq(best.better, 31, "per entry best better");
-        assertEq(best.worse, 45, "per entry best worse");
+        assertEq(best.maxError, referenceStats.maxError, "per entry best max");
+        assertLe(best.sumError / truth.length, 3.2891e31, "per entry best mean");
+        assertGe(best.sumError / truth.length, 3.289e31, "per entry best mean");
+        assertLt(best.sumError, referenceStats.sumError, "per entry best mean");
+        assertEq(best.better, 15, "per entry best better");
+        assertEq(best.worse, 11, "per entry best worse");
         assertEq(best.maxRoundTrip, referenceStats.maxRoundTrip, "per entry best round trip");
         // LibDecimalFloatPowTest.testRoundTripSimple diffLimit.
         assertLt(best.maxRoundTrip, 0.09e36, "per entry best diffLimit");
