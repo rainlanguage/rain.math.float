@@ -45,6 +45,16 @@ int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
 /// when using the log tables.
 int256 constant LOG10_Y_EXPONENT = -76;
 
+/// @dev Fixed point one for pow's fractional leg. Every value the leg
+/// multiplies is at most 10, so a product of two fits in uint256.
+uint256 constant POW_FIXED_ONE = 1e37;
+
+/// @dev ln(10) at the `POW_FIXED_ONE` scale, rounded to nearest.
+uint256 constant POW_FIXED_LN10 = 23025850929940456840179914546843642077;
+
+/// @dev Halvings of the exp10Fixed argument before its Taylor series.
+uint256 constant POW_EXP_HALVINGS = 3;
+
 /// @dev Library implementing core DecimalFloat operations using only stack
 /// variables.
 /// NOT intended for external use, typical use is to treat the `Float` type
@@ -956,6 +966,93 @@ library LibDecimalFloatImplementation {
         }
 
         return (signedCoefficient, 1 + exponent + withTargetExponent(intCoefficient, characteristicExponent, 0));
+    }
+
+    /// 10^x at the `POW_FIXED_ONE` scale, by the Taylor series of e^(x ln 10).
+    /// The argument is halved `POW_EXP_HALVINGS` times so the series converges
+    /// in few terms, then the sum is squared back up.
+    /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1].
+    /// @return The power at the `POW_FIXED_ONE` scale, in [1, 10].
+    function exp10Fixed(uint256 x) internal pure returns (uint256) {
+        uint256 reduced = x * POW_FIXED_LN10 / (POW_FIXED_ONE << POW_EXP_HALVINGS);
+        uint256 sum = POW_FIXED_ONE;
+        uint256 term = POW_FIXED_ONE;
+        for (uint256 n = 1; term > 0; n++) {
+            term = term * reduced / (POW_FIXED_ONE * n);
+            sum += term;
+        }
+        for (uint256 i = 0; i < POW_EXP_HALVINGS; i++) {
+            sum = sum * sum / POW_FIXED_ONE;
+        }
+        return sum;
+    }
+
+    /// log10(c / 1e75) at the `POW_FIXED_ONE` scale. The log table gives a
+    /// seed good to about four places, and the atanh series of the ratio
+    /// between the input and 10^seed closes the remaining gap.
+    /// @param tablesDataContract The address of the log tables data contract.
+    /// @param signedCoefficient A coefficient in [1e75, 1e76).
+    /// @return The log at the `POW_FIXED_ONE` scale, in [0, 1].
+    function log10MantissaFixed(address tablesDataContract, int256 signedCoefficient) internal view returns (int256) {
+        (int256 seedCoefficient, int256 seedExponent) = log10(tablesDataContract, signedCoefficient, -75);
+        int256 seed = withTargetExponent(seedCoefficient, seedExponent, -37);
+        // seed is in [0, 1e37] and so is not negative.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 estimate = int256(exp10Fixed(uint256(seed)));
+        int256 mantissa = signedCoefficient / 1e38;
+        int256 one = int256(POW_FIXED_ONE);
+        int256 z = (mantissa - estimate) * one / (mantissa + estimate);
+        int256 zSquared = z * z / one;
+        int256 sum = z;
+        int256 term = z;
+        for (int256 k = 3; term != 0; k += 2) {
+            term = term * zSquared / one;
+            sum += term / k;
+        }
+        // ln(c / 1e75) = ln(10^seed) + 2 atanh(z)
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return seed + 2 * sum * one / int256(POW_FIXED_LN10);
+    }
+
+    /// a^f for a positive a and a fraction f in (0, 1), as
+    /// 10^(f log10(a)) with both legs in fixed point rather than interpolated
+    /// from the tables.
+    /// @param tablesDataContract The address of the log tables data contract.
+    /// @param signedCoefficientA The signed coefficient of a, positive.
+    /// @param exponentA The exponent of a.
+    /// @param signedCoefficientF The signed coefficient of f.
+    /// @param exponentF The exponent of f.
+    /// @return signedCoefficient The signed coefficient of a^f.
+    /// @return exponent The exponent of a^f.
+    function powFraction(
+        address tablesDataContract,
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientF,
+        int256 exponentF
+    ) internal view returns (int256, int256) {
+        (int256 signedCoefficient, int256 exponent) = maximizeFull(signedCoefficientA, exponentA);
+        if (signedCoefficient >= 1e76) {
+            signedCoefficient /= 10;
+            exponent += 1;
+        }
+        (signedCoefficient, exponent) =
+            add(exponent + 75, 0, log10MantissaFixed(tablesDataContract, signedCoefficient), -37);
+        (signedCoefficient, exponent) = mul(signedCoefficient, exponent, signedCoefficientF, exponentF);
+        if (signedCoefficient == 0) {
+            return (1, 0);
+        }
+        (int256 integer, int256 frac) = intFrac(signedCoefficient, exponent);
+        int256 characteristic = withTargetExponent(integer, exponent, 0);
+        int256 mantissa = frac == 0 ? int256(0) : withTargetExponent(frac, exponent, -37);
+        if (mantissa < 0) {
+            mantissa += int256(POW_FIXED_ONE);
+            characteristic -= 1;
+        }
+        // mantissa is in [0, 1e37) and so is not negative, and the power is
+        // below 1e38 and so fits.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (int256(exp10Fixed(uint256(mantissa))), characteristic - 37);
     }
 
     /// Maximizes a float's signed coefficient by increasing its magnitude

@@ -943,19 +943,16 @@ library LibDecimalFloat {
             }
         }
 
-        (int256 signedCoefficientC, int256 exponentC) =
-            LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
-
-        (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
-
-        (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficientC, exponentC);
-
-        (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientResult, exponentResult);
+        if (fractionB != 0) {
+            (int256 signedCoefficientC, int256 exponentC) = LibDecimalFloatImplementation.powFraction(
+                tablesDataContract, signedCoefficientA, exponentA, fractionB, exponentB
+            );
+            (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
+                signedCoefficientC, exponentC, signedCoefficientResult, exponentResult
+            );
+        }
         // We don't care if power is lossy because it's an approximation anyway.
-        Float c = packArithmeticResult(signedCoefficientC, exponentC);
+        Float c = packArithmeticResult(signedCoefficientResult, exponentResult);
         return c;
     }
 
