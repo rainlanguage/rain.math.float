@@ -7,6 +7,7 @@ import {
     EXPONENT_MIN,
     EXPONENT_MAX
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 
@@ -267,5 +268,126 @@ contract LibDecimalFloatImplementationMulTest is Test {
         exponentA = bound(exponentA, type(int256).min + 100, -100);
         offset = bound(offset, -80, 80);
         checkMulBelowFloor(signedCoefficientA, exponentA, signedCoefficientB, type(int256).min - exponentA + offset);
+    }
+
+    function mulExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (int256, int256)
+    {
+        return LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function checkMulExponentOverflow(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA, exponentA));
+        this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    /// The exponent sum itself overflows.
+    function testMulExponentSumAboveCeiling() external {
+        int256 max = type(int256).max;
+        checkMul(1, max, 1, 0, 1, max);
+        checkMulExponentOverflow(1, max, 1, 1);
+        checkMulExponentOverflow(-1, 1, 1, max);
+        checkMulExponentOverflow(1, max, 1, max);
+    }
+
+    /// The sum fits but the normalisation lift of up to 77 does not.
+    function testMulExponentLiftAboveCeiling() external {
+        int256 max = type(int256).max;
+        int256 maxSquared = int256(3.3519519824856492748935062495514615318698414551480983444308903609304410075182e76);
+        checkMul(max, max - 77, max, 0, maxSquared, max);
+        checkMulExponentOverflow(max, max - 76, max, 0);
+        checkMul(max, max, max, -77, maxSquared, max);
+        checkMulExponentOverflow(max, max, max, -76);
+    }
+
+    /// The lift fits but the divide by 10 for a coefficient wider than int256
+    /// does not.
+    function testMulExponentCoefficientRescaleAboveCeiling() external {
+        int256 max = type(int256).max;
+        checkMul(1e76, max - 76, -1e76, 0, -1e76, max);
+        checkMulExponentOverflow(1e76, max - 75, -1e76, 0);
+    }
+
+    function checkMulNearCeiling(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal {
+        (int256 expectedSignedCoefficient, int256 normalisedExponent) =
+            LibDecimalFloatSlow.mulSlow(signedCoefficientA, 0, signedCoefficientB, 0);
+        // exponentA is non-negative and exponentB + normalisedExponent small,
+        // so neither side wraps.
+        if (exponentB + normalisedExponent > type(int256).max - exponentA) {
+            checkMulExponentOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        } else {
+            checkMul(
+                signedCoefficientA,
+                exponentA,
+                signedCoefficientB,
+                exponentB,
+                expectedSignedCoefficient,
+                exponentA + exponentB + normalisedExponent
+            );
+        }
+    }
+
+    function testMulExponentNearCeiling(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external {
+        vm.assume(signedCoefficientA != 0 && signedCoefficientB != 0);
+        exponentA = bound(exponentA, type(int256).max - 200, type(int256).max);
+        exponentB = bound(exponentB, -200, 200);
+        checkMulNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    /// Small coefficients leave the normalisation at most a few digits, so
+    /// the boundary sits next to the exponent sum.
+    function testMulExponentNearCeilingSmallCoefficients(
+        int64 signedCoefficientA,
+        int256 exponentA,
+        int64 signedCoefficientB,
+        int256 exponentB
+    ) external {
+        vm.assume(signedCoefficientA != 0 && signedCoefficientB != 0);
+        exponentA = bound(exponentA, type(int256).max - 100, type(int256).max);
+        exponentB = bound(exponentB, -100, 100);
+        checkMulNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    /// Exponents anywhere in the upper half, mostly wrapping the sum.
+    function testMulExponentAboveCeilingWide(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external {
+        vm.assume(signedCoefficientA != 0 && signedCoefficientB != 0);
+        exponentA = bound(exponentA, 0, type(int256).max);
+        exponentB = bound(exponentB, 0, type(int256).max);
+        (int256 expectedSignedCoefficient, int256 normalisedExponent) =
+            LibDecimalFloatSlow.mulSlow(signedCoefficientA, 0, signedCoefficientB, 0);
+        if (exponentB > type(int256).max - exponentA - normalisedExponent) {
+            checkMulExponentOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        } else {
+            checkMul(
+                signedCoefficientA,
+                exponentA,
+                signedCoefficientB,
+                exponentB,
+                expectedSignedCoefficient,
+                exponentA + exponentB + normalisedExponent
+            );
+        }
     }
 }

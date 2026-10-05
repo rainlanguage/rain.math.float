@@ -174,15 +174,20 @@ library LibDecimalFloatImplementation {
             signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
             exponent = MAXIMIZED_ZERO_EXPONENT;
         } else {
+            unchecked {
+                exponent = exponentA + exponentB;
+            }
             if (exponentB < 0) {
-                unchecked {
-                    exponent = exponentA + exponentB;
-                }
                 if (exponent > exponentA) {
                     return mulExponentBelowFloor(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
                 }
-            } else {
-                exponent = exponentA + exponentB;
+            } else if (exponent < exponentA) {
+                return mulExponentNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            }
+            // The lift below adds at most 77 and `unabsUnsignedMulOrDivLossy`
+            // at most 1.
+            if (exponent > type(int256).max - 78) {
+                return mulExponentNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             }
 
             // mulDiv only works with unsigned integers, so get the absolute
@@ -214,11 +219,11 @@ library LibDecimalFloatImplementation {
                     prod1 /= 10;
                     adjustExponent++;
                 }
-            }
 
-            // adjustExponent [0, 76]
-            // forge-lint: disable-next-line(unsafe-typecast)
-            exponent += int256(adjustExponent);
+                // adjustExponent [0, 77]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                exponent += int256(adjustExponent);
+            }
 
             (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
@@ -251,6 +256,26 @@ library LibDecimalFloatImplementation {
             // forge-lint: disable-next-line(unsafe-typecast)
             signedCoefficient /= int256(10 ** uint256(-exponent));
             exponent = signedCoefficient == 0 ? MAXIMIZED_ZERO_EXPONENT : type(int256).min;
+        }
+    }
+
+    /// `mul` for operands whose exponent sum is above `type(int256).max - 78`,
+    /// where the normalisation can lift the exponent past `type(int256).max`.
+    /// Reverts `ExponentOverflow` when the result exponent does not fit.
+    function mulExponentNearCeiling(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) private pure returns (int256 signedCoefficient, int256 exponent) {
+        (signedCoefficient, exponent) = mul(signedCoefficientA, 0, signedCoefficientB, 0);
+        unchecked {
+            int256 sum = exponentA + exponentB;
+            int256 result = sum + exponent;
+            if ((exponentB >= 0 && sum < exponentA) || result < sum) {
+                revert ExponentOverflow(signedCoefficientA, exponentA);
+            }
+            exponent = result;
         }
     }
 
