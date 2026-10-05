@@ -289,16 +289,16 @@ library LibDecimalFloatImplementation {
         } else {
             int256 signedCoefficient;
             int256 exponent = 0;
-            bool fullA;
             bool fullB;
             // Move both coefficients into the e75/e76 range, so that the result
             // of division will not cause a mulDiv overflow.
-            (signedCoefficientA, exponentA, fullA) = maximize(signedCoefficientA, exponentA);
+            (signedCoefficientA, exponentA,) = maximize(signedCoefficientA, exponentA);
             (signedCoefficientB, exponentB, fullB) = maximize(signedCoefficientB, exponentB);
             // exponentA is pinned at its minimum, so the digits it cannot take
             // join adjustExponent, which spills onto exponentB. `exponent` holds
-            // that shift until the quotient exponent is computed.
-            if (!fullA) {
+            // that shift until the quotient exponent is computed. A coefficient
+            // that `maximize` reports full can still be one digit short here.
+            if (exponentA == type(int256).min) {
                 (signedCoefficientA, exponent) = maximizeFull(signedCoefficientA, 0);
             }
 
@@ -311,11 +311,11 @@ library LibDecimalFloatImplementation {
             int256 adjustExponent = 76;
 
             // We are going to scale the numerator up by the largest power of ten
-            // that is smaller than the denominator. This will always overflow
+            // that is not larger than the denominator. This will always overflow
             // internally to the mulDiv during the initial multiplication, in
             // 512 bits, but will subsequently always be reduced back down to
-            // fit in 256 bits by the division of a denominator that is larger
-            // than the scale up.
+            // fit in 256 bits by the division of a denominator that is not
+            // smaller than the scale up.
             if (signedCoefficientBAbs < scale) {
                 if (fullB) {
                     scale = 1e75;
@@ -399,14 +399,11 @@ library LibDecimalFloatImplementation {
                     }
 
                     // Finalize the scale after the binary search.
-                    while (signedCoefficientBAbs <= scale) {
+                    while (signedCoefficientBAbs < scale) {
                         unchecked {
                             scale /= 10;
                             adjustExponent -= 1;
                         }
-                    }
-                    if (scale == 0) {
-                        revert MaximizeOverflow(signedCoefficientB, exponentB);
                     }
                 }
             }
@@ -442,6 +439,10 @@ library LibDecimalFloatImplementation {
                 if (exponentA < 0 && exponentB > 0) {
                     int256 headroom = exponentA - type(int256).min;
                     underflowExponentBy = exponentB > headroom ? exponentB - headroom : int256(0);
+                }
+
+                if (exponentB < 0 && exponentA > type(int256).max + exponentB) {
+                    revert ExponentOverflow(signedCoefficientA, exponentA);
                 }
 
                 exponent = exponentA + underflowExponentBy - exponentB;

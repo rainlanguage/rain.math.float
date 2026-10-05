@@ -8,7 +8,7 @@ import {
     EXPONENT_MIN,
     EXPONENT_MAX,
     DivisionByZero,
-    MaximizeOverflow
+    ExponentOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
 
@@ -45,10 +45,59 @@ contract LibDecimalFloatImplementationDivTest is Test {
         LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
     }
 
-    function testDivMinPositiveValueDenominatorRevert(int256 signedCoefficient, int256 exponent) external {
+    /// A ±1 divisor at the floor divides exactly when the quotient exponent
+    /// fits in int256, and reverts `ExponentOverflow` when it does not.
+    function testDivByOneAtFloor(int256 signedCoefficient, int256 exponent, bool negative) external {
         vm.assume(signedCoefficient != 0);
-        vm.expectRevert(abi.encodeWithSelector(MaximizeOverflow.selector, 1, type(int256).min));
-        this.divExternal(signedCoefficient, exponent, 1, type(int256).min);
+        int256 one = negative ? int256(-1) : int256(1);
+        (int256 maximized, int256 maximizedExponent,) =
+            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+        if (maximizedExponent < 0) {
+            (int256 expected, int256 expectedExponent) = (maximized, maximizedExponent - type(int256).min);
+            if (negative) {
+                (expected, expectedExponent) = LibDecimalFloatImplementation.minus(expected, expectedExponent);
+            }
+            (int256 q, int256 qe) =
+                LibDecimalFloatImplementation.div(signedCoefficient, exponent, one, type(int256).min);
+            assertTrue(LibDecimalFloatImplementation.eq(q, qe, expected, expectedExponent), "a / 1 == a");
+        } else {
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, maximized, maximizedExponent));
+            this.divExternal(signedCoefficient, exponent, one, type(int256).min);
+        }
+    }
+
+    function testDivOneByOneAtFloor() external pure {
+        int256 min = type(int256).min;
+        checkDiv(1, min, 1, min, 1e76, -76);
+        checkDiv(-1, min, 1, min, -1e76, -76);
+        checkDiv(1, min, -1, min, -1e76, -76);
+        checkDiv(-1, min, -1, min, 1e76, -76);
+    }
+
+    /// An unfull power of ten divisor at the floor is its own scale, so no
+    /// quotient digit is lost.
+    function testDivByUnfullPowerOfTenAtFloor() external pure {
+        int256 min = type(int256).min;
+        int256 divisor = 10;
+        for (int256 k = 1; k <= 74; ++k) {
+            checkDiv(1, min, divisor, min, 1e76, -76 - k);
+            divisor *= 10;
+        }
+    }
+
+    /// The quotient exponent is exactly `type(int256).max` on one side of the
+    /// boundary and overflows on the other.
+    function testDivExponentOverflowBoundary() external {
+        checkDiv(1e76, 75, 1, type(int256).min + 76, 1e76, type(int256).max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e76, 0));
+        this.divExternal(1e76, 76, 1, type(int256).min + 76);
+    }
+
+    /// An unfull divisor at the floor overflows the quotient exponent for a
+    /// numerator with a non-negative maximized exponent.
+    function testDivUnfullDivisorExponentOverflow() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e76, 924));
+        this.divExternal(1, 1000, 3, type(int256).min);
     }
 
     /// 1 / 3 gas by parts 10
@@ -327,12 +376,12 @@ contract LibDecimalFloatImplementationDivTest is Test {
     }
 
     /// Moving both exponents down by the same amount does not change the
-    /// quotient, so an unfull numerator matches its maximizable equivalent.
-    function testDivUnfullNumeratorMatchesShifted(int256 signedCoefficientA, int256 signedCoefficientB, int256 shift)
+    /// quotient, so a numerator at the floor, full or not, matches its
+    /// maximizable equivalent.
+    function testDivFloorNumeratorMatchesShifted(int256 signedCoefficientA, int256 signedCoefficientB, int256 shift)
         external
         pure
     {
-        signedCoefficientA = bound(signedCoefficientA, -1e75 + 1, 1e75 - 1);
         vm.assume(signedCoefficientA != 0);
         vm.assume(signedCoefficientB != 0);
         shift = bound(shift, 76, type(int128).max);
@@ -348,6 +397,17 @@ contract LibDecimalFloatImplementationDivTest is Test {
         );
     }
 
+    /// A 76 digit numerator at the floor divides with all 77 digits.
+    function testDivFullNumeratorAtFloorKeepsLastDigit() external pure {
+        int256 a = -1721758284977530853596865604091066801911468845366650376773079384479962783021;
+        int256 b = -868809616206213416579646778253544419036053804;
+        (int256 q, int256 qe) = LibDecimalFloatImplementation.div(a, type(int256).min, b, type(int256).min + 76);
+        assertEq(q, 1981744047097274120016830328557190949665214948375329466032481915679868495689, "coefficient");
+        (int256 shifted, int256 shiftedExponent) = LibDecimalFloatImplementation.div(a, 0, b, 76);
+        assertEq(q, shifted, "shifted coefficient");
+        assertEq(qe, shiftedExponent, "shifted exponent");
+    }
+
     /// Signs are the exclusive or of the operand signs for an unfull numerator.
     function testDivUnfullNumeratorSigns() external pure {
         int256 min = type(int256).min;
@@ -361,13 +421,13 @@ contract LibDecimalFloatImplementationDivTest is Test {
         checkDiv(-1, min, -3, min + 76, THREES, -152);
     }
 
-    /// Every numerator digit count that is unfull at the floor (1 to 75; 76
-    /// digits is already full), so every amount of digits the exponent cannot
-    /// take, over both a small and a large maximized divisor.
-    function testDivUnfullNumeratorEveryDigitCount() external pure {
+    /// Every numerator digit count that is one digit short or more at the
+    /// floor, so every amount of digits the exponent cannot take, over both a
+    /// small and a large maximized divisor.
+    function testDivFloorNumeratorEveryDigitCount() external pure {
         int256 min = type(int256).min;
         int256 numerator = 1;
-        for (int256 digits = 1; digits <= 75; ++digits) {
+        for (int256 digits = 1; digits <= 76; ++digits) {
             checkDiv(numerator, min, 3, min, THREES, -77 + digits);
             checkDiv(-numerator, min, 3, min, -THREES, -77 + digits);
             checkDiv(numerator, min, 3, min + 76, THREES, -153 + digits);
@@ -395,8 +455,6 @@ contract LibDecimalFloatImplementationDivTest is Test {
         vm.assume(quotient != 0);
         vm.assume(divisor != 0);
         shift = bound(shift, 0, type(int128).max);
-        // A ±1 divisor that is unfull at the floor reverts, see #291.
-        vm.assume(shift >= 76 || (divisor != 1 && divisor != -1));
         int256 numerator = quotient * divisor;
         (int256 q, int256 qe) =
             LibDecimalFloatImplementation.div(numerator, type(int256).min, divisor, type(int256).min + shift);
