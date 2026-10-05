@@ -14,7 +14,7 @@ import {
     MulDivOverflow
 } from "src/error/ErrDecimalFloat.sol";
 import {WithTargetExponentOverflow} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {console2} from "forge-std-1.16.1/src/Test.sol";
+import {console2} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
@@ -202,6 +202,28 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(a, LibDecimalFloat.packLossless(1, 10));
     }
 
+    /// Issue #239: an integer exponent large enough to double the squared
+    /// base's exponent past int256 panicked instead of reverting typed.
+    function testPowSquaringPastInt256Underflow() external {
+        Float a = LibDecimalFloat.packLossless(1, 1700000000);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentUnderflow.selector, int256(1e76), int256(-269375752548498747818049431142400000076)
+            )
+        );
+        this.powExternal(a, LibDecimalFloat.packLossless(-8, 69));
+    }
+
+    function testPowSquaringPastInt256Overflow() external {
+        Float a = LibDecimalFloat.packLossless(1, 1700000000);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector, int256(1), int256(269375752548498747818049431142400000000)
+            )
+        );
+        this.powExternal(a, LibDecimalFloat.packLossless(8, 69));
+    }
+
     /// The complete set of custom errors `pow` is designed to throw, derived by
     /// reading the implementation. Each leg of the round trip is the same `pow`
     /// call, so both legs share this set.
@@ -222,7 +244,10 @@ contract LibDecimalFloatPowTest is LogTest {
     /// are unreachable. A low-level `Panic` (e.g. `0x11` arithmetic overflow) is
     /// also excluded by construction, so an unexpected revert is no longer
     /// silently swallowed.
-    function assertExpectedPowError(bytes memory reason) internal {
+    function assertExpectedPowError(bytes memory reason) internal pure {
+        // Casting to `bytes4` is intentional: a selector is the first four bytes of
+        // the revert reason, and the truncation is the extraction.
+        //forge-lint: disable-next-line(unsafe-typecast)
         bytes4 selector = bytes4(reason);
         bool expected = selector == ZeroNegativePower.selector || selector == PowNegativeBase.selector
             || selector == ExponentOverflow.selector || selector == ExponentUnderflow.selector
