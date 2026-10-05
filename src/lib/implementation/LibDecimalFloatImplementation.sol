@@ -295,6 +295,12 @@ library LibDecimalFloatImplementation {
             // of division will not cause a mulDiv overflow.
             (signedCoefficientA, exponentA, fullA) = maximize(signedCoefficientA, exponentA);
             (signedCoefficientB, exponentB, fullB) = maximize(signedCoefficientB, exponentB);
+            // exponentA is pinned at its minimum, so the digits it cannot take
+            // join adjustExponent, which spills onto exponentB. `exponent` holds
+            // that shift until the quotient exponent is computed.
+            if (!fullA) {
+                (signedCoefficientA, exponent) = maximizeFull(signedCoefficientA, 0);
+            }
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
@@ -403,10 +409,8 @@ library LibDecimalFloatImplementation {
                         revert MaximizeOverflow(signedCoefficientB, exponentB);
                     }
                 }
-                if (!fullA) {
-                    revert MaximizeOverflow(signedCoefficientA, exponentA);
-                }
             }
+            adjustExponent -= exponent;
 
             // Attempt to apply the exponent adjustment.
             // First we try to apply it to exponentA.

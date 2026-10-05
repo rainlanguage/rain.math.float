@@ -297,8 +297,6 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// `exponentB` instead.
     function testDivAdjustExponentSpillsToExponentB() external pure {
         int256 min = type(int256).min;
-        // 1e76 is full at any exponent, so fullA holds even at min, avoiding the
-        // MaximizeOverflow revert while forcing the spill-to-exponentB path.
         // 1e76 * 10^min / (3e75 * 10^min) == 10/3.
         checkDiv(1e76, min, 3e75, min, THREES, -75);
     }
@@ -314,5 +312,39 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// represent returns maximized zero.
     function testDivUnderflowReturnsZero() external pure {
         checkDiv(1e76, type(int256).min, 3, type(int256).max, 0, 0);
+    }
+
+    /// A numerator that cannot be maximized because its exponent is pinned at
+    /// `type(int256).min` keeps full precision.
+    function testDivUnfullNumeratorOneThird() external pure {
+        checkDiv(1, type(int256).min, 3, type(int256).min, THREES, -76);
+        checkDiv(-1, type(int256).min, 3, type(int256).min, -THREES, -76);
+    }
+
+    /// An unfull numerator over a divisor that maximizes past `1e76`.
+    function testDivUnfullNumeratorLargeDivisor() external pure {
+        checkDiv(1, type(int256).min, 3, type(int256).min + 76, THREES, -152);
+    }
+
+    /// Moving both exponents down by the same amount does not change the
+    /// quotient, so an unfull numerator matches its maximizable equivalent.
+    function testDivUnfullNumeratorMatchesShifted(int256 signedCoefficientA, int256 signedCoefficientB, int256 shift)
+        external
+        pure
+    {
+        signedCoefficientA = bound(signedCoefficientA, -1e75 + 1, 1e75 - 1);
+        vm.assume(signedCoefficientA != 0);
+        vm.assume(signedCoefficientB != 0);
+        shift = bound(shift, 76, type(int128).max);
+        (int256 expectedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementation.div(signedCoefficientA, 0, signedCoefficientB, shift);
+        checkDiv(
+            signedCoefficientA,
+            type(int256).min,
+            signedCoefficientB,
+            type(int256).min + shift,
+            expectedCoefficient,
+            expectedExponent
+        );
     }
 }
