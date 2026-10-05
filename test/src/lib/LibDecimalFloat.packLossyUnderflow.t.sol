@@ -391,6 +391,30 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         assertEq(e, INT32_MAX, "lifted exp");
     }
 
+    /// The headroom check is what stops the unchecked lift wrapping int256.
+    /// `c` is the inverse of 5^67 mod 2^189, so `c * 1e67` wraps to exactly
+    /// 2^67 (and `-c * 1e67` to -2^67), which fits int224 and would pack as a
+    /// silent wrong value if the lift were attempted. Both signs must revert.
+    function testPackLossyCeilLiftWrapReverts() external {
+        uint256 five67 = 5 ** 67;
+        uint256 inverse = five67;
+        unchecked {
+            for (uint256 i = 0; i < 8; i++) {
+                inverse *= 2 - five67 * inverse;
+            }
+        }
+        int256 c = int256(inverse % (1 << 189));
+        unchecked {
+            assertEq(c * 1e67, int256(1 << 67), "wraps positive");
+            assertEq(-c * 1e67, -int256(1 << 67), "wraps negative");
+        }
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, c, INT32_MAX + 67));
+        this.packLossyExternal(c, INT32_MAX + 67);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, -c, INT32_MAX + 67));
+        this.packLossyExternal(-c, INT32_MAX + 67);
+    }
+
     /// The lift is bounded by int224 headroom on both signs: the widest power
     /// of ten that fits is lifted exactly, one more digit reverts.
     function testPackLossyCeilHeadroomBoundary() external {
