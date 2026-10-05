@@ -11,12 +11,18 @@ library LibTestLogTables {
     /// Deploys the combined log tables from `LibLogTable` source as a data
     /// contract at a `create` address and returns it.
     function deploy() internal returns (address) {
+        return deploy(LibLogTable.antiLogTableDecSmall());
+    }
+
+    /// As `deploy`, with the given small antilog table in place of the source
+    /// one.
+    function deploy(uint8[10][100] memory antiLogTableDecSmall) internal returns (address) {
         bytes memory tables = abi.encodePacked(
             LibLogTable.toBytes(LibLogTable.logTableDec()),
             LibLogTable.toBytes(LibLogTable.logTableDecSmall()),
             LibLogTable.toBytes(LibLogTable.logTableDecSmallAlt()),
             LibLogTable.toBytes(LibLogTable.antiLogTableDec()),
-            LibLogTable.toBytes(LibLogTable.antiLogTableDecSmall()),
+            LibLogTable.toBytes(antiLogTableDecSmall),
             LOG_TABLE_DISAMBIGUATOR
         );
         bytes memory creationCode = LibDataContract.contractCreationCode(tables);

@@ -111,7 +111,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     // -- mantissa4 --
 
     function testMantissa4Zero() external pure {
-        (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(0, -1);
+        (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(0, -1);
         assertEq(idx, 0);
         assertFalse(interpolate);
         assertEq(scale, 1);
@@ -119,7 +119,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
 
     function testMantissa4ExactLookup() external pure {
         // 5000e-4 = 0.5, mantissa should be exact at index 5000
-        (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(5000, -4);
+        (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(5000, -4);
         assertEq(idx, 5000);
         assertFalse(interpolate);
         assertEq(scale, 1);
@@ -129,7 +129,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     /// digits, so it is returned verbatim with no interpolation and unit scale,
     /// for any coefficient.
     function testMantissa4FuzzExponentMinus4(int256 signedCoefficient) external pure {
-        (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(signedCoefficient, -4);
+        (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(signedCoefficient, -4);
         assertEq(idx, signedCoefficient);
         assertFalse(interpolate);
         assertEq(scale, 1);
@@ -148,7 +148,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
         // the production code tolerates via `unchecked`.
         signedCoefficient = bound(signedCoefficient, type(int256).min / factor, type(int256).max / factor);
 
-        (int256 idx, bool interpolate, int256 scale) =
+        (int256 idx, bool interpolate, int256 scale,) =
             LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
         assertEq(idx, signedCoefficient * factor);
         assertFalse(interpolate);
@@ -159,7 +159,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     /// is always 0 with no interpolation and unit scale, for any coefficient.
     function testMantissa4FuzzExponentNonNegative(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, 0, type(int256).max);
-        (int256 idx, bool interpolate, int256 scale) =
+        (int256 idx, bool interpolate, int256 scale,) =
             LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
         assertEq(idx, 0);
         assertFalse(interpolate);
@@ -177,24 +177,59 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
         int256 expectedRescaled = signedCoefficient / scale;
         bool expectedInterpolate = expectedRescaled * scale != signedCoefficient;
 
-        (int256 idx, bool interpolate, int256 resultScale) =
+        (int256 idx, bool interpolate, int256 resultScale,) =
             LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
         assertEq(idx, expectedRescaled);
         assertEq(interpolate, expectedInterpolate);
         assertEq(resultScale, scale);
     }
 
-    /// Exponent < -80: the value is below the resolution of the 4-digit
-    /// mantissa, so the index collapses to 0 with unit scale. Interpolation is
-    /// flagged for any non-zero coefficient (there is some lost magnitude) and
-    /// not for zero.
+    /// Exponent < -80: digits are shed to exponent -80, so the result is the
+    /// -80 result for the shed coefficient, and the position is that
+    /// coefficient at scale 10^76.
     function testMantissa4FuzzExponentBelowMinus80(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, type(int256).min, -81);
-        (int256 idx, bool interpolate, int256 scale) =
+        exponent = bound(exponent, -156, -81);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 shed = signedCoefficient / int256(10 ** uint256(-80 - exponent));
+        (int256 idx, bool interpolate, int256 scale, int256 position) =
+            LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
+        (int256 expectedIdx, bool expectedInterpolate, int256 expectedScale, int256 expectedPosition) =
+            LibDecimalFloatImplementation.mantissa4(shed, -80);
+        assertEq(idx, expectedIdx);
+        assertEq(interpolate, expectedInterpolate);
+        assertEq(scale, expectedScale);
+        assertEq(position, expectedPosition);
+        assertEq(position, shed);
+        assertEq(scale, int256(1e76));
+    }
+
+    /// Exponent < -156: more than 76 digits are shed, so no int256 coefficient
+    /// survives and the position is exactly 0.
+    function testMantissa4FuzzExponentBelowMinus156(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, type(int256).min, -157);
+        (int256 idx, bool interpolate, int256 scale, int256 position) =
             LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
         assertEq(idx, 0);
-        assertEq(interpolate, signedCoefficient != 0);
-        assertEq(scale, 1);
+        assertFalse(interpolate);
+        assertEq(scale, int256(1e76));
+        assertEq(position, 0);
+    }
+
+    /// The -156 / -157 edge: at -156 exactly 76 digits are shed and a
+    /// coefficient of 10^76 survives as 1; at -157 nothing survives.
+    function testMantissa4ShedEdgeMinus156() external pure {
+        (int256 idx, bool interpolate, int256 scale, int256 position) =
+            LibDecimalFloatImplementation.mantissa4(int256(5e76), -156);
+        assertEq(idx, 0);
+        assertTrue(interpolate);
+        assertEq(scale, int256(1e76));
+        assertEq(position, 5);
+
+        (idx, interpolate, scale, position) = LibDecimalFloatImplementation.mantissa4(int256(5e76), -157);
+        assertEq(idx, 0);
+        assertFalse(interpolate);
+        assertEq(scale, int256(1e76));
+        assertEq(position, 0);
     }
 
     // -- mantissa4 adversarial boundary tests --
@@ -216,7 +251,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     function testMantissa4ExponentMinus4BoundaryCoefficients() external pure {
         int256[4] memory coeffs = [INT224_MAX, INT224_MIN, int256(1), int256(-1)];
         for (uint256 i = 0; i < coeffs.length; i++) {
-            (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(coeffs[i], -4);
+            (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(coeffs[i], -4);
             assertEq(idx, coeffs[i]);
             assertFalse(interpolate);
             assertEq(scale, 1);
@@ -236,32 +271,34 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
         // exact multiples that still fit are 1..5 (6 * 10^76 > int256.max).
         int256 scale76 = int256(10 ** 76);
         // A coefficient that divides exactly: 5 * 10^76 -> idx 5, no interpolation.
-        (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(5 * scale76, -80);
+        (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(5 * scale76, -80);
         assertEq(idx, 5);
         assertFalse(interpolate);
         assertEq(scale, scale76);
 
         // One above an exact multiple -> truncates -> interpolate.
-        (idx, interpolate, scale) = LibDecimalFloatImplementation.mantissa4(5 * scale76 + 1, -80);
+        (idx, interpolate, scale,) = LibDecimalFloatImplementation.mantissa4(5 * scale76 + 1, -80);
         assertEq(idx, 5);
         assertTrue(interpolate);
         assertEq(scale, scale76);
     }
 
-    /// -81 is INSIDE the below-resolution branch: idx collapses to 0, scale 1,
-    /// interpolate iff coefficient != 0. If the `< -80` bound were widened to
-    /// include -81 in the scale branch, scale would be 10^77 (negative int256)
-    /// and idx would be a nonzero garbage value, failing these assertions.
-    function testMantissa4ExponentMinus81IsBelowResolution() external pure {
-        (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(INT224_MAX, -81);
+    /// -81 sheds one digit to -80: scale 10^76 and the position is the
+    /// coefficient divided by 10. Without the shed, scale would be 10^77
+    /// (negative int256) and idx a nonzero garbage value.
+    function testMantissa4ExponentMinus81ShedsToMinus80() external pure {
+        (int256 idx, bool interpolate, int256 scale, int256 position) =
+            LibDecimalFloatImplementation.mantissa4(INT224_MAX, -81);
         assertEq(idx, 0);
         assertTrue(interpolate);
-        assertEq(scale, 1);
+        assertEq(scale, int256(1e76));
+        assertEq(position, INT224_MAX / 10);
 
-        (idx, interpolate, scale) = LibDecimalFloatImplementation.mantissa4(0, -81);
+        (idx, interpolate, scale, position) = LibDecimalFloatImplementation.mantissa4(0, -81);
         assertEq(idx, 0);
         assertFalse(interpolate);
-        assertEq(scale, 1);
+        assertEq(scale, int256(1e76));
+        assertEq(position, 0);
     }
 
     /// The truncation-vs-interpolate flag at the exact edge of the scale branch.
@@ -272,13 +309,13 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     /// breaks exactly one of the two assertions).
     function testMantissa4TruncationFlagEdgeMinus5() external pure {
         // 50000e-5 = 0.5 exactly -> idx 5000, no interpolation.
-        (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(50000, -5);
+        (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(50000, -5);
         assertEq(idx, 5000);
         assertFalse(interpolate);
         assertEq(scale, 10);
 
         // 50001e-5 has a fifth significant digit -> truncates -> interpolate.
-        (idx, interpolate, scale) = LibDecimalFloatImplementation.mantissa4(50001, -5);
+        (idx, interpolate, scale,) = LibDecimalFloatImplementation.mantissa4(50001, -5);
         assertEq(idx, 5000);
         assertTrue(interpolate);
         assertEq(scale, 10);
@@ -288,12 +325,12 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     /// Solidity integer division does) and flag interpolation on any remainder.
     /// -50001e-5 -> idx -5000 (truncated toward zero), interpolate true.
     function testMantissa4NegativeTruncationMinus5() external pure {
-        (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(-50001, -5);
+        (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(-50001, -5);
         assertEq(idx, -5000);
         assertTrue(interpolate);
         assertEq(scale, 10);
 
-        (idx, interpolate, scale) = LibDecimalFloatImplementation.mantissa4(-50000, -5);
+        (idx, interpolate, scale,) = LibDecimalFloatImplementation.mantissa4(-50000, -5);
         assertEq(idx, -5000);
         assertFalse(interpolate);
         assertEq(scale, 10);
@@ -306,7 +343,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     /// multiple of 10, so truncation is always lossy here.
     function testMantissa4Int256MinScaleBranch() external pure {
         int256 scale10 = 10;
-        (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(type(int256).min, -5);
+        (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(type(int256).min, -5);
         assertEq(idx, type(int256).min / scale10);
         assertTrue(interpolate);
         assertEq(scale, scale10);
@@ -321,13 +358,13 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     /// guard the branch's lower edge.
     function testMantissa4ScaleUpBranchExact() external pure {
         // exponent -1 -> factor 10^3 = 1000. 7e-1 = 0.7 -> mantissa 7000.
-        (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(7, -1);
+        (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(7, -1);
         assertEq(idx, 7000);
         assertFalse(interpolate);
         assertEq(scale, 1);
 
         // exponent -3 -> factor 10^1 = 10. 123e-3 = 0.123 -> mantissa 1230.
-        (idx, interpolate, scale) = LibDecimalFloatImplementation.mantissa4(123, -3);
+        (idx, interpolate, scale,) = LibDecimalFloatImplementation.mantissa4(123, -3);
         assertEq(idx, 1230);
         assertFalse(interpolate);
         assertEq(scale, 1);
@@ -341,7 +378,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     function testMantissa4NonNegativeBoundaries() external pure {
         int256[3] memory exps = [int256(0), int256(type(int32).max), type(int256).max];
         for (uint256 i = 0; i < exps.length; i++) {
-            (int256 idx, bool interpolate, int256 scale) = LibDecimalFloatImplementation.mantissa4(INT224_MAX, exps[i]);
+            (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(INT224_MAX, exps[i]);
             assertEq(idx, 0);
             assertFalse(interpolate);
             assertEq(scale, 1);
@@ -359,7 +396,7 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     function testMantissa4InterpolateFalseImpliesExact(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, INT224_MIN, INT224_MAX);
         exponent = bound(exponent, -80, -5);
-        (int256 idx, bool interpolate, int256 scale) =
+        (int256 idx, bool interpolate, int256 scale,) =
             LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
         if (!interpolate) {
             // No interpolation promised => the division was exact.
@@ -373,19 +410,23 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
         assertEq(scale, int256(10 ** uint256(-(exponent + 4))));
     }
 
-    /// Safety invariant for the below-resolution branch over the realistic
-    /// int224 domain and full int32-style negative exponent range below -80:
-    /// idx is always 0, scale always 1, and the interpolate flag is true exactly
-    /// when information (a nonzero coefficient) was discarded. This is what makes
-    /// the flag a faithful "we lost magnitude" signal.
-    function testMantissa4BelowResolutionFlagIsFaithful(int256 signedCoefficient, int256 exponent) external pure {
+    /// Over the int224 / int32 domain below -80 the value is under 10^-13, so
+    /// idx is 0, and the position is the value at scale 10^76: its magnitude is
+    /// under 10^76 and interpolation is flagged exactly when it is nonzero.
+    function testMantissa4BelowMinus80PositionIsTheValue(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, INT224_MIN, INT224_MAX);
         exponent = bound(exponent, type(int32).min, -81);
-        (int256 idx, bool interpolate, int256 scale) =
+        (int256 idx, bool interpolate, int256 scale, int256 position) =
             LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
         assertEq(idx, 0);
-        assertEq(scale, 1);
-        assertEq(interpolate, signedCoefficient != 0);
+        assertEq(scale, int256(1e76));
+        assertTrue(position < 1e76 && position > -1e76);
+        assertEq(interpolate, position != 0);
+        if (signedCoefficient >= 0) {
+            assertTrue(position >= 0);
+        } else {
+            assertTrue(position <= 0);
+        }
     }
 
     // -- unitLinearInterpolation --

@@ -930,7 +930,10 @@ library LibDecimalFloatImplementation {
         (int256 intCoefficient, int256 fracCoefficient) = intFrac(signedCoefficient, exponent);
         int256 characteristicExponent = exponent;
         {
-            (int256 idx, bool interpolate, int256 scale) = mantissa4(fracCoefficient, exponent);
+            int256 idx;
+            bool interpolate;
+            int256 scale;
+            (idx, interpolate, scale, fracCoefficient) = mantissa4(fracCoefficient, exponent);
             // idx is positive here because the signedCoefficient is positive due
             // to the opening `if` above.
             int256 y1Coefficient = 9997;
@@ -1337,29 +1340,38 @@ library LibDecimalFloatImplementation {
     /// @return mantissa The first 4 digits of the mantissa.
     /// @return interpolate `true` if we need to interpolate, `false` otherwise.
     /// @return scale The scale used if we need to interpolate.
-    function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256, bool, int256) {
+    /// @return position The interpolation position at `scale`, between
+    /// `mantissa * scale` and `(mantissa + 1) * scale`.
+    function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256, bool, int256, int256) {
         unchecked {
             if (exponent == -4) {
                 // The literal is the bool this function returns, not a condition operand.
                 //forge-lint: disable-next-line(boolean-cst)
-                return (signedCoefficient, false, 1);
+                return (signedCoefficient, false, 1, signedCoefficient);
             } else if (exponent < -4) {
+                // Below -80 the scale does not fit in int256, so digits are
+                // shed to exponent -80. Every shed digit is below 10^-80.
                 if (exponent < -80) {
-                    return (0, signedCoefficient != 0, 1);
+                    signedCoefficient =
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    exponent < -156 ? int256(0) : signedCoefficient / int256(10 ** uint256(-80 - exponent));
+                    exponent = -80;
                 }
                 int256 scale = int256(10 ** uint256(-(exponent + 4)));
                 //slither-disable-next-line divide-before-multiply
                 int256 rescaled = signedCoefficient / scale;
-                return (rescaled, rescaled * scale != signedCoefficient, scale);
+                return (rescaled, rescaled * scale != signedCoefficient, scale, signedCoefficient);
             } else if (exponent >= 0) {
                 // The literal is the bool this function returns, not a condition operand.
                 //forge-lint: disable-next-line(boolean-cst)
-                return (0, false, 1);
+                return (0, false, 1, 0);
             } else {
                 // exponent is [-3, -1]
+                //forge-lint: disable-next-line(unsafe-typecast)
+                int256 mantissa = signedCoefficient * int256(10 ** uint256(4 + exponent));
                 // The literal is the bool this function returns, not a condition operand.
-                //forge-lint: disable-next-line(unsafe-typecast, boolean-cst)
-                return (signedCoefficient * int256(10 ** uint256(4 + exponent)), false, 1);
+                //forge-lint: disable-next-line(boolean-cst)
+                return (mantissa, false, 1, mantissa);
             }
         }
     }

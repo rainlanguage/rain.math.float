@@ -6,6 +6,8 @@ import {LogTest} from "../../../abstract/LogTest.sol";
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibLogTable} from "src/lib/table/LibLogTable.sol";
+import {LibTestLogTables} from "test/lib/LibTestLogTables.sol";
 
 contract LibDecimalFloatImplementationPow10Test is LogTest {
     using LibDecimalFloat for Float;
@@ -89,6 +91,39 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
     function testNoRevert(int224 x, int32 exponent) external {
         (x, exponent) = boundFloat(x, exponent);
         LibDecimalFloatImplementation.pow10(logTables(), x, exponent);
+    }
+
+    /// 10^x for 0 < |x| < 10^-13 is 1 to table precision. With today's tables
+    /// that is exactly (1000, -3), or its inverse for negative x.
+    function testPow10BelowMinus80IsOne(int224 x, int32 exponent) external {
+        exponent = int32(bound(exponent, type(int32).min, -81));
+        vm.assume(x != 0);
+        (int256 signedCoefficient, int256 resultExponent) =
+            LibDecimalFloatImplementation.pow10(logTables(), x, exponent);
+        if (x > 0) {
+            assertEq(signedCoefficient, 1000);
+            assertEq(resultExponent, -3);
+        } else {
+            (int256 one, int256 oneExponent) = LibDecimalFloatImplementation.inv(1000, -3);
+            assertEq(signedCoefficient, one);
+            assertEq(resultExponent, oneExponent);
+        }
+    }
+
+    /// The interpolation position below -80 must not depend on the antilog
+    /// table having equal entries 0 and 1. With entry 1 raised to 1005, 10^x
+    /// for 0 < x < 10^-13 must still be 1 to within 10^-12.
+    function testPow10BelowMinus80PerturbedAntilogTable(int224 x, int32 exponent) external {
+        exponent = int32(bound(exponent, type(int32).min, -81));
+        x = int224(bound(x, 1, type(int224).max));
+        uint8[10][100] memory small = LibLogTable.antiLogTableDecSmall();
+        small[0][1] = 5;
+        address tables = LibTestLogTables.deploy(small);
+
+        (int256 signedCoefficient, int256 resultExponent) = LibDecimalFloatImplementation.pow10(tables, x, exponent);
+        (Float result,) = LibDecimalFloat.packLossy(signedCoefficient, resultExponent);
+        assertTrue(result.gte(LibDecimalFloat.FLOAT_ONE), "below one");
+        assertTrue(result.lt(LibDecimalFloat.packLossless(1e12 + 1, -12)), "above one");
     }
 
     function testPow10One() external {
