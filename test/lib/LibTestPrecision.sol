@@ -3,33 +3,36 @@
 pragma solidity =0.8.25;
 
 /// Error bounds for the transcendental functions, scaled by 1e36.
+///
+/// Against LibTestTranscendental each bound is the library's proven error plus
+/// the reference's proven error, 4.5e-35 absolute for log10 and 4.2e-34
+/// relative for pow10. log10 and pow10 are correctly rounded to 41 digits, so
+/// within half a unit, 5e-41 relative. A leg of pow or sqrt is within
+/// 5.00006e-41 relative: half a unit, plus log10Unrounded's 2.245e-47 times a
+/// fraction below 1 and ln 10, plus the packing.
 library LibTestPrecision {
     /// Max |four figure log table error| over every four digit mantissa.
     uint256 internal constant LOG10_TABLE_MAX_ERROR = 1.2e32;
     /// Every round trip in the log10 table test is below 1e-36.
     uint256 internal constant POW_ROUND_TRIP_LIMIT = 1;
-    // Against LibTestTranscendental the library's 41 digit error is far below
-    // the reference's own 1e36 fixed point truncation, so the reference bounds
-    // the bounds below. pow10's grid measures the reference at 1.04e-34
-    // relative, past the 1e-34 it documents. A comparison between the
-    // library's own outputs has no reference error and is within one unit.
-    /// Half a unit at 41 digits of a log up to 2.2e9, plus the reference.
-    uint256 internal constant LOG10_MAX_ERROR = 5.01e4;
+    /// Half a unit at 41 digits of a log below 1e10, 5e-32, plus the
+    /// reference.
+    uint256 internal constant LOG10_MAX_ERROR = 50045;
+    /// Three logs below 1e3 rounded, each within 5e-39, summed exactly.
     uint256 internal constant LOG10_PRODUCT_MAX_ERROR = 1;
-    uint256 internal constant LOG10_MONOTONE_MAX_DROP = 0;
-    /// The reference pow10 error, five times its grid worst.
-    uint256 internal constant POW10_MAX_ERROR = 5e2;
-    uint256 internal constant POW10_GRID_MAX_ERROR_MEASURED = 104;
-    uint256 internal constant POW10_MONOTONE_MAX_DROP = 0;
+    /// The reference, plus half a unit, over 1 - 4.2e-34.
+    uint256 internal constant POW10_MAX_ERROR = 421;
+    /// log10 of a base below 1e140 within 5e-39, 1.16e-38 relative through
+    /// pow10, plus its half unit.
     uint256 internal constant POW10_LOG10_MAX_ERROR = 1;
-    /// The reference log10 error times |b| up to 1e6 and ln 10, plus the
-    /// reference pow10 error.
-    uint256 internal constant POW_MAX_ERROR = 1.62e8;
+    /// The reference log10 error times |b| up to 1e6 and ln 10, 1.0362e-28,
+    /// plus the reference pow10 error and a leg.
+    uint256 internal constant POW_MAX_ERROR = 1.0363e8;
+    /// Three legs.
     uint256 internal constant POW_PRODUCT_MAX_ERROR = 1;
-    uint256 internal constant POW_MONOTONE_MAX_DROP = 0;
-    /// Half the reference log10 error times ln 10, plus the reference pow10
-    /// error.
-    uint256 internal constant SQRT_MAX_ERROR = 5.81e2;
+    /// Half the reference log10 error times ln 10, 5.181e-35, plus the
+    /// reference pow10 error and a leg.
+    uint256 internal constant SQRT_MAX_ERROR = 472;
+    /// Twice a leg.
     uint256 internal constant SQRT_SQUARE_MAX_ERROR = 1;
-    uint256 internal constant SQRT_MONOTONE_MAX_DROP = 0;
 }

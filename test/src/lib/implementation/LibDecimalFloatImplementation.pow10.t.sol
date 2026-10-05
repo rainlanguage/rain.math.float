@@ -34,9 +34,8 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         checkPow10(-20, -1, 1, -2);
     }
 
-    /// The result is rounded to 41 significant digits, so it is within half a
-    /// unit in the last place plus the 5e-47 relative error of exp10Fixed,
-    /// below 5e-6 of a unit.
+    /// The result is correctly rounded to 41 significant digits, so within
+    /// half a unit, and the 70 digit reference is within 1e-29 of a unit.
     function testPow10Accuracy() external pure {
         int256[4][] memory references = pow10References();
         for (uint256 i = 0; i < references.length; i++) {
@@ -56,7 +55,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
                 exponent += 1;
             }
             assertTrue(
-                LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 500005, exponent - 6), "pow10 error"
+                LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 500001, exponent - 6), "pow10 error"
             );
         }
     }
@@ -418,11 +417,11 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         return actual > expected ? actual - expected : expected - actual;
     }
 
-    /// Half a unit plus 3e-6, against a worst of 0.49999 units over 100,000
-    /// inputs. The 3e-6 is exp10Fixed's 2.6e-47 relative error at the 41st
-    /// digit, which only shows within that distance of a rounding tie.
+    /// Half a unit, as pow10 is correctly rounded, plus 2 for the oracle:
+    /// exp10Small is within a few units of 1e-70, under 1e-18 of these
+    /// billionths, and the expected value floors one.
     function testPow10OracleFuzz(uint256 primeSeed, uint256 j, int256 d, int256 n) external pure {
-        assertLe(pow10OracleError(primeSeed, j, d, n), 500003000, "pow10 error");
+        assertLe(pow10OracleError(primeSeed, j, d, n), 500000002, "pow10 error");
     }
 
     /// pow10(x + k) is pow10(x) 10^k exactly for an integer k. x is at the

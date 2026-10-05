@@ -167,12 +167,11 @@ contract LibDecimalFloatSqrtTest is LogTest {
         return uint256(error < 0 ? -error : error);
     }
 
-    /// Half a unit plus 6e-6, against a worst of 0.49999 units over 100,000
-    /// inputs. The 6e-6 is half log10Unrounded's 2e-47 and exp10Fixed's 2.6e-47
-    /// relative error at the 41st digit, which only shows within that
-    /// distance of a rounding tie.
+    /// pow10 correctly rounds half log10Unrounded, which is within half of
+    /// 2.245e-47, so the root is within half a unit plus 2.585e-47 relative,
+    /// which is 2585 billionths of a unit at most 1e-41 relative.
     function testSqrtUlpFuzz(int256 signedCoefficient, int256 exponent) external {
-        assertLe(sqrtUlpError(signedCoefficient, exponent), 500006000, "sqrt error");
+        assertLe(sqrtUlpError(signedCoefficient, exponent), 500002585, "sqrt error");
     }
 
     /// x < y implies sqrt(x) <= sqrt(y), down to adjacent coefficients.

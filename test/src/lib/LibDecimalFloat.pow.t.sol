@@ -19,10 +19,16 @@ import {console2} from "forge-std-1.17.0/src/Test.sol";
 contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
 
-    /// Half a unit in the 41st digit, where each pow leg rounds its fractional
-    /// power, plus 2% for the fixed point series and packing under it.
-    function legError() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(51, -42);
+    /// Half a unit in the 41st digit, 5e-41 relative, where pow10 correctly
+    /// rounds the fractional power. Its argument is log10Unrounded, within
+    /// 2.245e-47, times a fraction below 1, which moves the power by under
+    /// 5.17e-47 relative, and the pack under 1e-60. Raising the base, or its
+    /// inverse, to the integer part N of b truncates under 1e-75 relative per
+    /// multiply, which squaring compounds to under 3 N 1e-75.
+    function legError(Float b) internal pure returns (Float) {
+        return LibDecimalFloat.packLossless(500006, -46).add(
+            b.abs().integer().mul(LibDecimalFloat.packLossless(3, -75))
+        );
     }
 
     /// Up to one unit of the coefficient, if a pack shed digits to lift the
@@ -40,8 +46,8 @@ contract LibDecimalFloatPowTest is LogTest {
     /// result and, for a negative b, of the base it inverts. e is the 1e-66 of
     /// a pack and |b ln a| is below 5e9 for a finite c, so e ln a vanishes.
     function roundTripLogError(Float a, Float b, Float c, Float roundTrip) internal pure returns (Float) {
-        Float first = legError().add(floorLoss(c));
-        Float second = legError().add(floorLoss(roundTrip));
+        Float first = legError(b).add(floorLoss(c));
+        Float second = legError(b.inv()).add(floorLoss(roundTrip));
         if (b.lt(LibDecimalFloat.FLOAT_ZERO)) {
             first = first.add(floorLoss(a.abs().inv()));
             second = second.add(floorLoss(c.abs().inv()));
@@ -138,7 +144,7 @@ contract LibDecimalFloatPowTest is LogTest {
             LibDecimalFloat.packLossless(signedCoefficientB, exponentB)
         );
         Float expected = LibDecimalFloat.packLossless(referenceSignedCoefficient, referenceExponent);
-        assertTrue(c.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs().lte(legError()), "precision");
+        assertTrue(c.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs().lte(legError(LibDecimalFloat.packLossless(signedCoefficientB, exponentB))), "precision");
     }
 
     /// References are a^b to 45 digits from `bc -l` at scale 200.
@@ -490,7 +496,7 @@ contract LibDecimalFloatPowTest is LogTest {
             Float actual = this.powExternal(a, b.minus());
             Float diff = actual.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs();
             Float limit =
-                legError().add(legError()).add(floorLoss(power)).add(floorLoss(actual)).add(floorLoss(expected));
+                legError(b).add(legError(b)).add(floorLoss(power)).add(floorLoss(actual)).add(floorLoss(expected));
             assertTrue(diff.lte(limit), "diff");
         } else {
             try this.powExternal(a, b.minus()) {}
@@ -756,23 +762,17 @@ contract LibDecimalFloatPowTest is LogTest {
         assertTrue(low.lte(high), "monotone");
     }
 
-    /// b < c implies a^b <= a^c for a > 1, down to adjacent exponents, with b
-    /// and c sharing an integer part.
-    function testPowMonotoneInExponent(
-        int256 signedCoefficientA,
-        int256 exponentA,
-        int256 integer,
-        int256 fraction,
-        int256 gap
-    ) external {
+    /// b < c implies a^b <= a^c for a > 1, down to adjacent exponents.
+    function testPowMonotoneInExponent(int256 signedCoefficientA, int256 exponentA, int256 lowB, int256 gap)
+        external
+    {
         signedCoefficientA = bound(signedCoefficientA, 1e40 + 1, 1e41 - 1);
         exponentA = bound(exponentA, -40, 0);
-        integer = bound(integer, 0, 3);
-        fraction = bound(fraction, 1, 1e18 - 1e3);
+        lowB = bound(lowB, 1, 4e18);
         gap = bound(gap, 1, 1e3);
         Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
-        Float low = this.powExternal(a, LibDecimalFloat.packLossless(integer * 1e18 + fraction, -18));
-        Float high = this.powExternal(a, LibDecimalFloat.packLossless(integer * 1e18 + fraction + gap, -18));
+        Float low = this.powExternal(a, LibDecimalFloat.packLossless(lowB, -18));
+        Float high = this.powExternal(a, LibDecimalFloat.packLossless(lowB + gap, -18));
         assertTrue(low.lte(high), "monotone");
     }
 }

@@ -157,21 +157,10 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         b = LibDecimalFloat.packLossless(coefficientB, exponentB);
     }
 
-    /// How far high falls below low, relative to low, or zero if it does not.
-    function relativeDrop(Float low, Float high) internal pure returns (Float) {
-        return high.gte(low) ? LibDecimalFloat.FLOAT_ZERO : low.sub(high).div(low);
-    }
-
-    /// How far high falls below low, or zero if it does not.
-    function absoluteDrop(Float low, Float high) internal pure returns (Float) {
-        return high.gte(low) ? LibDecimalFloat.FLOAT_ZERO : low.sub(high);
-    }
-
     /// pow10 over every antilog table input, x = idx / 1e4 for idx 0-9999.
     /// Neighbours differ by 2.3e-4 relative, far above the 41 digit rounding,
     /// so the grid strictly increases.
     function testPow10Grid() external {
-        uint256 worst = 0;
         Float previous = LibDecimalFloat.FLOAT_ZERO;
         for (uint256 idx = 0; idx < 10000; idx++) {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -179,14 +168,12 @@ contract LibDecimalFloatPrecisionTest is LogTest {
             Float actual = this.pow10External(x);
             assertTrue(actual.gt(previous), "pow10 grid increasing");
             previous = actual;
-            (uint256 error,) =
-                LibTestTranscendental.relativeError(actual, LibTestTranscendental.pow10(x)).toFixedDecimalLossy(36);
-            if (error > worst) {
-                worst = error;
-            }
+            assertWithin(
+                LibTestTranscendental.relativeError(actual, LibTestTranscendental.pow10(x)),
+                LibTestPrecision.POW10_MAX_ERROR,
+                "pow10 grid"
+            );
         }
-        assertEq(worst, LibTestPrecision.POW10_GRID_MAX_ERROR_MEASURED, "pow10 grid max");
-        assertLe(worst, LibTestPrecision.POW10_MAX_ERROR, "pow10 grid bound");
     }
 
     /// log10 is non decreasing over every four digit mantissa.
@@ -216,11 +203,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
 
     function testLog10Monotone(int224 coefficient, int32 exponent, uint8 region, uint256 step) external {
         Float a = positive(coefficient, exponent, region);
-        assertWithin(
-            absoluteDrop(this.log10External(a), this.log10External(stepUp(a, step))),
-            LibTestPrecision.LOG10_MONOTONE_MAX_DROP,
-            "log10 monotone"
-        );
+        assertTrue(this.log10External(a).lte(this.log10External(stepUp(a, step))), "log10 monotone");
     }
 
     function testLog10MonotonePairs(
@@ -235,11 +218,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         if (a.gt(b)) {
             (a, b) = (b, a);
         }
-        assertWithin(
-            absoluteDrop(this.log10External(a), this.log10External(b)),
-            LibTestPrecision.LOG10_MONOTONE_MAX_DROP,
-            "log10 monotone pairs"
-        );
+        assertTrue(this.log10External(a).lte(this.log10External(b)), "log10 monotone pairs");
     }
 
     function testLog10Product(int224 coefficientA, int32 exponentA, int224 coefficientB, int32 exponentB) external {
@@ -264,15 +243,8 @@ contract LibDecimalFloatPrecisionTest is LogTest {
 
     function testPow10Monotone(int256 coefficient, int256 exponent, uint256 digits, uint256 step) external {
         Float x = exponentInput(coefficient, exponent, digits);
-        Float y = stepUp(x, step);
-        if (y.gt(LibDecimalFloat.packLossless(2e9, 0))) {
-            return;
-        }
-        assertWithin(
-            relativeDrop(this.pow10External(x), this.pow10External(y)),
-            LibTestPrecision.POW10_MONOTONE_MAX_DROP,
-            "pow10 monotone"
-        );
+        Float y = stepUp(x, step).min(LibDecimalFloat.packLossless(2e9, 0));
+        assertTrue(this.pow10External(x).lte(this.pow10External(y)), "pow10 monotone");
     }
 
     function testPow10MonotonePairs(int256 coefficientX, int256 coefficientY, int256 exponent, uint256 digits)
@@ -283,11 +255,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         if (x.gt(y)) {
             (x, y) = (y, x);
         }
-        assertWithin(
-            relativeDrop(this.pow10External(x), this.pow10External(y)),
-            LibTestPrecision.POW10_MONOTONE_MAX_DROP,
-            "pow10 monotone pairs"
-        );
+        assertTrue(this.pow10External(x).lte(this.pow10External(y)), "pow10 monotone pairs");
     }
 
     function testPow10Log10(int224 coefficient, int32 exponent) external {
@@ -324,11 +292,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     ) external {
         (Float a, Float b) = powInputs(coefficientA, exponentA, 0, coefficientB, exponentB);
         b = b.abs();
-        assertWithin(
-            relativeDrop(this.powExternal(a, b), this.powExternal(stepUp(a, step), b)),
-            LibTestPrecision.POW_MONOTONE_MAX_DROP,
-            "pow monotone in base"
-        );
+        assertTrue(this.powExternal(a, b).lte(this.powExternal(stepUp(a, step), b)), "pow monotone in base");
     }
 
     function testSqrtReference(int224 coefficient, int32 exponent, uint8 region) external {
@@ -345,10 +309,6 @@ contract LibDecimalFloatPrecisionTest is LogTest {
 
     function testSqrtMonotone(int224 coefficient, int32 exponent, uint8 region, uint256 step) external {
         Float a = positive(coefficient, exponent, region);
-        assertWithin(
-            relativeDrop(this.sqrtExternal(a), this.sqrtExternal(stepUp(a, step))),
-            LibTestPrecision.SQRT_MONOTONE_MAX_DROP,
-            "sqrt monotone"
-        );
+        assertTrue(this.sqrtExternal(a).lte(this.sqrtExternal(stepUp(a, step))), "sqrt monotone");
     }
 }

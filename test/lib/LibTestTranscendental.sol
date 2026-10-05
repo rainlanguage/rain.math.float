@@ -51,7 +51,13 @@ library LibTestTranscendental {
         return sum;
     }
 
-    /// log10(a) for a > 0, to within 1e-35.
+    /// log10(a) for a > 0, to within 4.5e-35.
+    ///
+    /// In units of 1e-36: z is at most 1/3 and floors a unit, 2.25 of the
+    /// log. Each power of z^2 is within 2.25, so each of the 38 terms down to
+    /// z^75 within 1 + 2.25 / k, under 45.5 with the tail and 91 doubled. The
+    /// floors of the mantissa and of m / 2^k, and k ln 2 for k up to 3, add
+    /// 2.95, and dividing by ln 10 gives under 43.3 with its floor.
     function log10(Float a) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         require(signedCoefficient > 0, "log10 reference domain");
@@ -68,7 +74,14 @@ library LibTestTranscendental {
         return LibDecimalFloat.packLossless(int256(log10Scaled(mantissa)) + characteristic * int256(ONE), -36);
     }
 
-    /// 10^x, relative to within 1e-34, wherever 10^x packs.
+    /// 10^x, relative to within 4.2e-34, wherever 10^x packs.
+    ///
+    /// In units of 1e-36: y = f ln 10 / 8 is at most 0.2878 and within 1.125
+    /// below and 0.05 above. Each term floors to within 2 of the previous
+    /// term's loss times y / k, over at most 24 terms, so the sum is within
+    /// 50.5 below and 0.07 above, 5.05e-35 relative. Three squarings, each
+    /// doubling it and flooring a unit, give 4.11e-34, and the truncated
+    /// fraction 2.3e-36.
     function pow10(Float x) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = x.unpack();
         int256 integer;
