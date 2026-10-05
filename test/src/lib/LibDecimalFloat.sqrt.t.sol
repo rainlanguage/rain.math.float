@@ -11,8 +11,10 @@ import {console2} from "forge-std-1.17.0/src/Test.sol";
 contract LibDecimalFloatSqrtTest is LogTest {
     using LibDecimalFloat for Float;
 
+    /// Squaring doubles the root's half unit in the 41st digit, plus 2% for the
+    /// fixed point series and packing under it.
     function diffLimit() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(19, -4);
+        return LibDecimalFloat.packLossless(102, -42);
     }
 
     function sqrtExternal(Float a, address tables) external view returns (Float) {
