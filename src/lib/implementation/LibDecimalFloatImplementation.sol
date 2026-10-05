@@ -11,6 +11,7 @@ import {
     MaximizeOverflow
 } from "../../error/ErrDecimalFloat.sol";
 import {LOG_TABLE_SIZE_BYTES, LOG_TABLE_SIZE_BASE} from "../table/LibLogTable.sol";
+import {LibExp10Bracket} from "./LibExp10Bracket.sol";
 
 /// @dev Thrown when attempting to rescale a coefficient to a target exponent
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
@@ -43,9 +44,17 @@ uint256 constant POW_FIXED_LN10 = 2302585092994045684017991454684364207601101488
 /// @dev Halvings of the exp10Fixed argument before its Taylor series.
 uint256 constant POW_EXP_HALVINGS = 8;
 
-/// @dev Guard digits pow10 rounds away, so that its error stays below half a
-/// unit of the result and an exact power comes out exact.
+/// @dev Guard digits pow10 rounds away.
 uint256 constant POW_GUARD = 1e10;
+
+/// @dev How far, in units of 1e-50, the true 10^m 1e50 can lie below and
+/// above pow10's fixed point power. See `pow10`.
+uint256 constant POW10_TIE_BELOW = 29;
+uint256 constant POW10_TIE_ABOVE = 51662;
+
+/// @dev How far, in units of 1e-50, the true log can lie either side of
+/// `log10Unrounded` when it sums at 1e-50. See `log10Bracketed`.
+uint256 constant LOG10_WINDOW = 2245;
 
 /// @dev Library implementing core DecimalFloat operations using only stack
 /// variables.
@@ -821,9 +830,11 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// log10(x) for a float x, rounded to 41 significant digits, so it is
-    /// within half a unit in the 41st digit plus the error of
-    /// `log10Unrounded`. log10(10^k) is exactly k.
+    /// log10(x) for a float x, correctly rounded to 41 significant digits, half
+    /// away from zero. log10(10^k) is exactly k.
+    ///
+    /// Where `log10Unrounded` is within its proven error of a rounding tie,
+    /// the side of the tie is decided exactly, by comparing x with 10^tie.
     ///
     /// @param tablesDataContract The address of the log tables data contract.
     /// @param signedCoefficient The signed coefficient of the floating point
@@ -836,8 +847,107 @@ library LibDecimalFloatImplementation {
         view
         returns (int256, int256)
     {
-        (signedCoefficient, exponent) = log10Unrounded(tablesDataContract, signedCoefficient, exponent);
-        return roundSignificant(signedCoefficient, exponent);
+        (int256 logCoefficient, int256 logExponent, uint256 window) =
+            log10Bracketed(tablesDataContract, signedCoefficient, exponent);
+        if (logCoefficient / 1e41 == 0) {
+            return (logCoefficient, logExponent);
+        }
+        return roundLog10(logCoefficient, logExponent, window, signedCoefficient, exponent);
+    }
+
+    /// Rounds a log of x to 41 significant digits, deciding a tie within the
+    /// window exactly.
+    /// @param logCoefficient The signed coefficient of the log, at least 1e41
+    /// in magnitude.
+    /// @param logExponent The exponent of the log.
+    /// @param window How far the true log can lie either side, in units of
+    /// `logExponent`.
+    /// @param signedCoefficient The signed coefficient of x.
+    /// @param exponent The exponent of x.
+    /// @return signedCoefficient The signed coefficient of the rounded log.
+    /// @return exponent The exponent of the rounded log.
+    function roundLog10(
+        int256 logCoefficient,
+        int256 logExponent,
+        uint256 window,
+        int256 signedCoefficient,
+        int256 exponent
+    ) internal pure returns (int256, int256) {
+        int256 maximizedExponent;
+        (logCoefficient, maximizedExponent) = maximizeFull(logCoefficient, logExponent);
+        // maximizeFull only multiplies, by at most 10^76.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        window *= 10 ** uint256(logExponent - maximizedExponent);
+        uint256 half = 5e34;
+        logExponent = maximizedExponent + 35;
+        if (logCoefficient / 1e76 != 0) {
+            half = 5e35;
+            logExponent += 1;
+        }
+        bool negative = logCoefficient < 0;
+        // logCoefficient is nonzero and above type(int256).min.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 rounded = uint256(negative ? -logCoefficient : logCoefficient);
+        uint256 remainder = rounded % (2 * half);
+        rounded /= 2 * half;
+        if (window > 0 && remainder + window >= half && remainder <= half + window) {
+            // rounded is below 1e42.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 tie = int256(10 * rounded + 5);
+            // The log is above the tie exactly when 10^tie is below x, and
+            // its magnitude rounds up when it is further from zero.
+            if (exp10Below(negative ? -tie : tie, logExponent - 1, signedCoefficient, exponent) != negative) {
+                rounded += 1;
+            }
+        } else if (remainder >= half) {
+            rounded += 1;
+        }
+        // rounded is below 1e42.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        logCoefficient = int256(rounded);
+        return (negative ? -logCoefficient : logCoefficient, logExponent);
+    }
+
+    /// Whether 10^x < r, for a non-integer x and r > 0. 10^x is irrational
+    /// for a non-integer decimal x, so it is never r.
+    /// @param xCoefficient The signed coefficient of x.
+    /// @param xExponent The exponent of x.
+    /// @param rCoefficient The signed coefficient of r.
+    /// @param rExponent The exponent of r.
+    /// @return `true` if 10^x < r.
+    function exp10Below(int256 xCoefficient, int256 xExponent, int256 rCoefficient, int256 rExponent)
+        internal
+        pure
+        returns (bool)
+    {
+        (int256 integer, int256 frac) = intFrac(xCoefficient, xExponent);
+        // 10^x < r exactly when 10^frac < r 10^-integer.
+        rExponent -= withTargetExponent(integer, xExponent, 0);
+        if (frac > 0) {
+            if (gte(rCoefficient, rExponent, 10, 0)) {
+                return true;
+            }
+            if (lte(rCoefficient, rExponent, 1, 0)) {
+                return false;
+            }
+        } else {
+            if (gte(rCoefficient, rExponent, 1, 0)) {
+                return true;
+            }
+            if (lte(rCoefficient, rExponent, 1, -1)) {
+                return false;
+            }
+        }
+        // frac is nonzero and r is positive.
+        return LibExp10Bracket.below(
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256(frac > 0 ? frac : -frac),
+            xExponent,
+            frac < 0,
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256(rCoefficient),
+            rExponent
+        );
     }
 
     /// Rounds a float to 41 significant digits, half away from zero.
@@ -868,13 +978,7 @@ library LibDecimalFloatImplementation {
     }
 
     /// log10(x) for a float x, with the guard digits that `log10` rounds
-    /// away.
-    ///
-    /// The four figure log table gives a seed and the atanh series of the
-    /// ratio between the input and 10^seed closes the remaining gap. The
-    /// absolute error is below 2.5e-47. Inputs within a table step of a power
-    /// of ten take an exact seed, so a log near zero keeps its relative
-    /// precision.
+    /// away, within the window of `log10Bracketed`.
     ///
     /// @param tablesDataContract The address of the log tables data contract.
     /// @param signedCoefficient The signed coefficient of the floating point
@@ -886,6 +990,41 @@ library LibDecimalFloatImplementation {
         internal
         view
         returns (int256, int256)
+    {
+        (signedCoefficient, exponent,) = log10Bracketed(tablesDataContract, signedCoefficient, exponent);
+        return (signedCoefficient, exponent);
+    }
+
+    /// log10(x) for a float x, and a proven bound on its error.
+    ///
+    /// The four figure log table gives a seed S and the atanh series of the
+    /// ratio between the input and E = exp10Fixed(S) closes the remaining gap.
+    /// Inputs within a table step of a power of ten take an exact seed, so a
+    /// log near zero keeps its relative precision.
+    ///
+    /// The window, from the bounds on `exp10Fixed` and `log10Ratio`:
+    /// - Within a table step of 1: E is exact and the result is the relative
+    ///   coefficient C of `log10Ratio`, within C / 1e49 + 2 units.
+    /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. The
+    ///   log E lacks to be log10(10^S) is in [-2.24256e-47, 2.3e-51], from
+    ///   exp10Fixed's relative error in [-5.1637e-47, 5.2e-51]. With
+    ///   log10Ratio's 1.005 units, the true log is within 2244 units. `add`
+    ///   sums a characteristic of 1e25 or more at an exponent of -50 or above
+    ///   and loses under a unit of it, so `LOG10_WINDOW` is 2245.
+    /// - log10(10^k) is exactly k, window 0.
+    ///
+    /// @param tablesDataContract The address of the log tables data contract.
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
+    /// @return window How far the true log can lie either side of the result,
+    /// in units of its exponent.
+    function log10Bracketed(address tablesDataContract, int256 signedCoefficient, int256 exponent)
+        internal
+        view
+        returns (int256, int256, uint256)
     {
         {
             int256 unmaximizedCoefficient = signedCoefficient;
@@ -906,7 +1045,7 @@ library LibDecimalFloatImplementation {
             exponent += 1;
         }
         if (signedCoefficient == 1e75) {
-            return (exponent + 75, 0);
+            return (exponent + 75, 0, 0);
         }
         int256 characteristic = exponent + 75;
 
@@ -943,17 +1082,38 @@ library LibDecimalFloatImplementation {
         uint256 input = uint256(signedCoefficient);
         (int256 correctionCoefficient, int256 correctionExponent) = log10Ratio(input, estimate, relative);
         if (relative) {
-            return (correctionCoefficient, correctionExponent);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 magnitude = uint256(correctionCoefficient < 0 ? -correctionCoefficient : correctionCoefficient);
+            return (correctionCoefficient, correctionExponent, magnitude / 1e49 + 2);
         }
         correctionCoefficient += seed;
         if (characteristic > -1e25 && characteristic < 1e25) {
-            return (characteristic * 1e50 + correctionCoefficient, -50);
+            return (characteristic * 1e50 + correctionCoefficient, -50, LOG10_WINDOW);
         }
-        return add(characteristic, 0, correctionCoefficient, -50);
+        (signedCoefficient, exponent) = add(characteristic, 0, correctionCoefficient, -50);
+        return (signedCoefficient, exponent, LOG10_WINDOW);
     }
 
     /// log10(a / b) as a float, by 2 atanh((a - b) / (a + b)) / ln(10), for
     /// a and b within a few parts in ten thousand of each other.
+    ///
+    /// Error, in units of 1e-50 unless stated, for z = |a - b| / (a + b) at
+    /// most 5.1e-4. That holds as |log10(a / b)| is at most log10(1.001) at a
+    /// table edge and 1.2e-4 inside the table, the shipped entries' worst error
+    /// plus 5.4e-8 of interpolation curvature.
+    /// - The floored z and z^2 make each power of z^2 at most 2.001 below its
+    ///   exact value, then at most 1.000001 once the floor dominates. Each
+    ///   term's divide floors a further unit. z^16 is below 1e-50, so the loop
+    ///   stops by the eighth power and the floored series is at most 8.4 below
+    ///   atanh(z) / z.
+    /// - Scaling by 2 / ln 10 floors a unit, and POW_FIXED_LN10 is 0.2976
+    ///   below ln 10 1e50, so the scaled series is within (-8.3, 1.3e-51
+    ///   relative] of 2 atanh(z) / (z ln 10).
+    /// - The last mulDiv multiplies that by z, or by z 10^k when `relative`,
+    ///   and floors a unit. Not relative, the result is within 1.005 units of
+    ///   the log. Relative, it is within the coefficient C times 9.6e-50, plus
+    ///   a unit, below and 1.3e-51 relative above, so within C / 1e49 + 2
+    ///   units of its exponent.
     /// @param a The numerator, at most 1e76.
     /// @param b The denominator, at most 1e76.
     /// @param relative `true` for at least 48 significant digits however small
@@ -988,12 +1148,19 @@ library LibDecimalFloatImplementation {
         return (below ? -signedCoefficient : signedCoefficient, exponent);
     }
 
-    /// 10^x for a float x.
+    /// 10^x for a float x, correctly rounded to 41 significant digits, half
+    /// up. 10^k is exactly 10^k for an integer k.
     ///
-    /// The fractional part of x goes through `exp10Fixed` and the result is
-    /// rounded to 41 significant digits, so it is within half a unit in the
-    /// 41st digit of the true value and an exactly representable power such
-    /// as 10^2 is exact.
+    /// The fraction m of x, truncated to 1e-50, goes through `exp10Fixed`.
+    /// Truncation moves 10^m by under 2.3026e-50 relative either way, and with
+    /// exp10Fixed's bounds the true 10^m 1e50 is within `POW10_TIE_BELOW`
+    /// units below and `POW10_TIE_ABOVE` units above the fixed point power,
+    /// for a power below 1e51 units. Where a rounding tie falls in that range
+    /// the side of the tie is decided exactly by `exp10Below`.
+    ///
+    /// A nonzero fraction that truncates to zero is under 1e-50 from an
+    /// integer, which puts 10^x within 2.4e-50 relative of the power of ten
+    /// that is returned, far inside half a unit.
     ///
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
@@ -1012,16 +1179,39 @@ library LibDecimalFloatImplementation {
         if (mantissa == 0) {
             return (1, characteristic);
         }
-        // mantissa is in (0, 1e50) and so is not negative, and the rounded
-        // power is at most 1e41 and so fits.
+        // mantissa is in (0, 1e50) and so is not negative.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 power = int256((exp10Fixed(uint256(mantissa)) + POW_GUARD / 2) / POW_GUARD);
+        uint256 fixedPower = exp10Fixed(uint256(mantissa));
+        uint256 remainder = fixedPower % POW_GUARD;
+        // The power is at most 1e41 and so fits.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 power = int256(fixedPower / POW_GUARD);
+        if (remainder + POW10_TIE_ABOVE >= POW_GUARD / 2 && remainder <= POW_GUARD / 2 + POW10_TIE_BELOW) {
+            // The tie is (power + 1/2) 10^(characteristic - 40).
+            if (!exp10Below(signedCoefficient, exponent, 10 * power + 5, characteristic - 41)) {
+                power += 1;
+            }
+        } else if (remainder >= POW_GUARD / 2) {
+            power += 1;
+        }
         return (power, characteristic - 40);
     }
 
     /// 10^x at the `POW_FIXED_ONE` scale, by the Taylor series of e^(x ln 10).
     /// The argument is halved `POW_EXP_HALVINGS` times so the series converges
     /// in few terms, then the sum is squared back up.
+    ///
+    /// The result is within [-5.1637e-47, 5.2e-51] relative of 10^x:
+    /// - The reduced argument r is x ln 10 / 256, at most 0.0089944, floored a
+    ///   unit, and POW_FIXED_LN10 is 0.2976 units of 1e-50 below ln 10, so r
+    ///   is within (-1.002e-50, 2e-53] of exact.
+    /// - Each term floors once, losing a unit plus 0.009 of the previous
+    ///   term's loss, under 1.00908 units. r^18 / 18! is below 1e-50, so at
+    ///   most 17 terms are nonzero and the floored series is at most 18.2
+    ///   units below e^r. With r's error, the sum is within [-1.9175e-49,
+    ///   2e-53] relative.
+    /// - Each squaring doubles the relative error and floors a unit, under
+    ///   1e-50 relative, which over eight squarings gives the bound.
     /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1].
     /// @return The power at the `POW_FIXED_ONE` scale, in [1, 10].
     function exp10Fixed(uint256 x) internal pure returns (uint256) {
