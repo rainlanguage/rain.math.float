@@ -70,6 +70,9 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
   tolerated because it preserves the order of magnitude: digits are shed to fit
   the coefficient in int224 AND to lift an exponent below int32.min back to the
   floor. `ExponentUnderflow` is only the case where every digit has been shed.
+  An exponent above int32.max is lowered to the ceiling by multiplying the
+  coefficient up while int224 has headroom; `ExponentOverflow` is only the case
+  where it has none.
 - Log/power use lookup table approximations with linear interpolation.
 - Three packing modes:
   - `packLossless`: reverts on any precision loss.

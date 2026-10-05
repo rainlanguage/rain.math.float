@@ -25,17 +25,17 @@ contract LibDecimalFloatPow10Test is LogTest {
         this.pow10External(float);
     }
 
+    function packLossyExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float, bool) {
+        return LibDecimalFloat.packLossy(signedCoefficient, exponent);
+    }
+
     function testPow10Packed(Float float) external {
         (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
         try this.pow10External(signedCoefficientFloat, exponentFloat) returns (
             int256 signedCoefficient, int256 exponent
         ) {
-            if (exponent > type(int32).max) {
-                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
-                this.pow10External(float);
-            } else {
+            try this.packLossyExternal(signedCoefficient, exponent) returns (Float predicted, bool lossless) {
                 // Predict whether packArithmeticResult will revert on underflow.
-                (Float predicted, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
                 if (!lossless && Float.unwrap(predicted) == bytes32(0)) {
                     vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
                     this.pow10External(float);
@@ -46,6 +46,9 @@ contract LibDecimalFloatPow10Test is LogTest {
                     assertEq(signedCoefficient, signedCoefficientUnpacked);
                     assertEq(exponent, exponentUnpacked);
                 }
+            } catch {
+                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+                this.pow10External(float);
             }
         } catch (bytes memory err) {
             vm.expectRevert(err);

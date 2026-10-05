@@ -350,8 +350,12 @@ library LibDecimalFloat {
     /// representable Float) does it become `FLOAT_ZERO`. This matches the
     /// README's stated policy for underflow: lose precision by rounding towards
     /// zero rather than erroring, because in absolute terms the amount lost is
-    /// negligible. Exponent OVERFLOW still reverts, because no amount of
-    /// coefficient shedding can lower an exponent.
+    /// negligible. The inverse trade covers an exponent above the ceiling: the
+    /// coefficient is multiplied by ten and the exponent lowered by one until
+    /// the exponent is int32.max, which is exact, so `1` at int32.max + 1 packs
+    /// losslessly as `10` at int32.max. Multiplying grows the coefficient, so
+    /// this only works while it has int224 headroom; exponent OVERFLOW reverts
+    /// when it does not.
     ///
     /// The packing is lossless if and only if every digit shed was a zero, so
     /// `lossless` reports whether the packed value is numerically equal to the
@@ -407,58 +411,84 @@ library LibDecimalFloat {
                 }
             }
 
+            // Digits shed so far. The fit above raised the exponent by one per
+            // digit shed and is the only shedding yet, so this is that rise.
+            int256 shed = exponent - initialExponent;
+
             // truncation here is intentional if it happens as that is what we
             // are testing for.
             // forge-lint: disable-next-line(unsafe-typecast)
             if (int32(exponent) != exponent) {
                 if (exponent > 0) {
-                    revert ExponentOverflow(initialSignedCoefficient, initialExponent);
+                    // The exponent is above the int32 ceiling. Each step down
+                    // multiplies the coefficient by ten, exactly, so the excess
+                    // is lifted into the coefficient while int224 has the
+                    // headroom. The coefficient is non-zero and fits int224, so
+                    // an excess of 68 or more never has it. `exponent` is above
+                    // int32.max so the subtraction cannot overflow.
+                    int256 excess = exponent - type(int32).max;
+                    if (excess > 67) {
+                        revert ExponentOverflow(initialSignedCoefficient, initialExponent);
+                    }
+                    // excess is in [1, 67] so 10 ** excess fits int256 and the
+                    // casts cannot truncate.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    int256 scale = int256(10 ** uint256(excess));
+                    if (signedCoefficient > type(int224).max / scale || signedCoefficient < type(int224).min / scale) {
+                        revert ExponentOverflow(initialSignedCoefficient, initialExponent);
+                    }
+                    signedCoefficient *= scale;
+                    exponent = type(int32).max;
+                } else {
+                    // The exponent is below the int32 floor. Every division of
+                    // the coefficient by ten raises the exponent by one, so the
+                    // shortfall is exactly the number of digits to shed. The
+                    // coefficient fits int224 here, so it has at most 68
+                    // decimal digits and a shortfall of 68 or more sheds every
+                    // one of them: that is zero without computing it. This also
+                    // covers a wrapped exponent, whose shortfall is
+                    // astronomically large. `exponent` is negative here and
+                    // below int32.min, so the subtraction cannot overflow and
+                    // the shortfall is positive.
+                    int256 shortfall = int256(type(int32).min) - exponent;
+                    if (shortfall > 67) {
+                        // The literal is the bool this function returns, not a condition operand.
+                        //forge-lint: disable-next-line(boolean-cst)
+                        return (FLOAT_ZERO, false);
+                    }
+                    // shortfall is in [1, 67] so 10 ** shortfall fits int256
+                    // and the casts cannot truncate.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    signedCoefficient /= int256(10 ** uint256(shortfall));
+                    if (signedCoefficient == 0) {
+                        // Every digit was shed: the value is smaller in
+                        // magnitude than any representable Float, so this is
+                        // the underflow zero and it is not a lossless
+                        // conversion.
+                        // The literal is the bool this function returns, not a condition operand.
+                        //forge-lint: disable-next-line(boolean-cst)
+                        return (FLOAT_ZERO, false);
+                    }
+                    shed += shortfall;
+                    exponent = type(int32).min;
                 }
-
-                // The exponent is below the int32 floor. Every division of the
-                // coefficient by ten raises the exponent by one, so the
-                // shortfall is exactly the number of digits to shed. The
-                // coefficient fits int224 here, so it has at most 68 decimal
-                // digits and a shortfall of 68 or more sheds every one of
-                // them: that is zero without computing it. This also covers a
-                // wrapped exponent, whose shortfall is astronomically large.
-                // `exponent` is negative here and below int32.min, so the
-                // subtraction cannot overflow and the shortfall is positive.
-                int256 shortfall = int256(type(int32).min) - exponent;
-                if (shortfall > 67) {
-                    // The literal is the bool this function returns, not a condition operand.
-                    //forge-lint: disable-next-line(boolean-cst)
-                    return (FLOAT_ZERO, false);
-                }
-                // shortfall is in [1, 67] so 10 ** shortfall fits int256 and the
-                // casts cannot truncate.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                signedCoefficient /= int256(10 ** uint256(shortfall));
-                if (signedCoefficient == 0) {
-                    // Every digit was shed: the value is smaller in magnitude
-                    // than any representable Float, so this is the underflow
-                    // zero and it is not a lossless conversion.
-                    // The literal is the bool this function returns, not a condition operand.
-                    //forge-lint: disable-next-line(boolean-cst)
-                    return (FLOAT_ZERO, false);
-                }
-                exponent = type(int32).min;
             }
 
             // Lossless iff every digit shed was a zero, which is iff the
             // original coefficient is an exact multiple of ten to the number of
-            // digits shed. The number shed is the exponent lift, which is in
-            // [0, 76] for any non-zero result (an int256 has at most 77 digits
-            // and at least one survived), so the power fits int256. The common
-            // case where nothing was shed skips the exponentiation.
-            if (exponent == initialExponent) {
+            // digits shed. Lifting at the ceiling multiplies, which is exact,
+            // so only `shed` counts. It is in [0, 76] for any non-zero result
+            // (an int256 has at most 77 digits and at least one survived), so
+            // the power fits int256. The common case where nothing was shed
+            // skips the exponentiation.
+            if (shed == 0) {
                 // The literal is the bool this function returns, not a condition operand.
                 //forge-lint: disable-next-line(boolean-cst)
                 lossless = true;
             } else {
-                // The lift is in [1, 76] so the casts cannot truncate.
+                // shed is in [1, 76] so the casts cannot truncate.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                lossless = initialSignedCoefficient % int256(10 ** uint256(exponent - initialExponent)) == 0;
+                lossless = initialSignedCoefficient % int256(10 ** uint256(shed)) == 0;
             }
 
             // Need a mask to zero out the bits that could be set to 1 if the
