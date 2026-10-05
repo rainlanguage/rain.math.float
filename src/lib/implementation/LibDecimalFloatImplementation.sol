@@ -870,10 +870,21 @@ library LibDecimalFloatImplementation {
             estimate = exp10Fixed(uint256(seed)) * 1e25;
         }
 
-        (int256 integerCoefficient, int256 integerExponent) = add(exponent + 75, 0, seed, -50);
         // signedCoefficient is positive.
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 correctionCoefficient, int256 correctionExponent) = log10Ratio(uint256(signedCoefficient), estimate);
+        exponent += 75;
+        if ((exponent == 0 && seed == 0) || (exponent == -1 && seed == 1e50)) {
+            return (correctionCoefficient, correctionExponent);
+        }
+        // Otherwise the log is at least 2^-16, so 66 places keep more than the
+        // 48 digits the correction carries.
+        if (exponent > -1e10 && exponent < 1e10) {
+            return (
+                exponent * 1e66 + seed * 1e16 + withTargetExponent(correctionCoefficient, correctionExponent, -66), -66
+            );
+        }
+        (int256 integerCoefficient, int256 integerExponent) = add(exponent, 0, seed, -50);
         return add(integerCoefficient, integerExponent, correctionCoefficient, correctionExponent);
     }
 
