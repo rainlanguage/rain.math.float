@@ -13,7 +13,6 @@ path = [
   "Cargo.toml",
   "crates/**/",
   ".cargo/**/",
-  ".gitmodules",
   "CLAUDE.md",
   "README.md",
   "flake.lock",
@@ -22,7 +21,6 @@ path = [
   "remappings.txt",
   "slither.config.json",
   "REUSE.toml",
-  "foundry.lock",
   "soldeer.lock",
 ]
 SPDX-FileCopyrightText = "Copyright (c) 2020 Rain Open Source Software Ltd"
