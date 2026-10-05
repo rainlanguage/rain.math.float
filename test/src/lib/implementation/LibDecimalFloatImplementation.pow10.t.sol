@@ -126,6 +126,19 @@ contract LibDecimalFloatImplementationPow10Test is LogTest {
         assertTrue(result.lt(LibDecimalFloat.packLossless(1e12 + 1, -12)), "above one");
     }
 
+    /// At exponent -80 a coefficient of 5.5e76 puts (idx + 1) * scale past
+    /// int256, so the scale and position are both cut by 10 before
+    /// interpolating. Entries 5 and 6 are both 1001 in today's table, so entry 6
+    /// is raised to 1003 to make the position observable: halfway gives 1.002.
+    function testPow10ScaleOverflowAtMinus80() external {
+        uint8[10][100] memory small = LibLogTable.antiLogTableDecSmall();
+        small[0][6] = 3;
+        address tables = LibTestLogTables.deploy(small);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(tables, 55e75, -80);
+        (Float result,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+        assertTrue(result.eq(LibDecimalFloat.packLossless(1002, -3)), "1.002");
+    }
+
     function testPow10One() external {
         unchecked {
             int256 exponent = 0;

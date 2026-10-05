@@ -129,10 +129,12 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
     /// digits, so it is returned verbatim with no interpolation and unit scale,
     /// for any coefficient.
     function testMantissa4FuzzExponentMinus4(int256 signedCoefficient) external pure {
-        (int256 idx, bool interpolate, int256 scale,) = LibDecimalFloatImplementation.mantissa4(signedCoefficient, -4);
+        (int256 idx, bool interpolate, int256 scale, int256 position) =
+            LibDecimalFloatImplementation.mantissa4(signedCoefficient, -4);
         assertEq(idx, signedCoefficient);
         assertFalse(interpolate);
         assertEq(scale, 1);
+        assertEq(position, signedCoefficient);
     }
 
     /// Exponent in [-3, -1]: the coefficient is scaled UP to 4 digits by
@@ -148,22 +150,24 @@ contract LibDecimalFloatImplementationInternalsTest is LogTest {
         // the production code tolerates via `unchecked`.
         signedCoefficient = bound(signedCoefficient, type(int256).min / factor, type(int256).max / factor);
 
-        (int256 idx, bool interpolate, int256 scale,) =
+        (int256 idx, bool interpolate, int256 scale, int256 position) =
             LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
         assertEq(idx, signedCoefficient * factor);
         assertFalse(interpolate);
         assertEq(scale, 1);
+        assertEq(position, signedCoefficient * factor);
     }
 
     /// Exponent >= 0: there is no fractional mantissa to look up, so the index
     /// is always 0 with no interpolation and unit scale, for any coefficient.
     function testMantissa4FuzzExponentNonNegative(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, 0, type(int256).max);
-        (int256 idx, bool interpolate, int256 scale,) =
+        (int256 idx, bool interpolate, int256 scale, int256 position) =
             LibDecimalFloatImplementation.mantissa4(signedCoefficient, exponent);
         assertEq(idx, 0);
         assertFalse(interpolate);
         assertEq(scale, 1);
+        assertEq(position, 0);
     }
 
     /// Exponent in [-80, -5]: the coefficient is scaled DOWN to its first 4
