@@ -28,7 +28,6 @@ fn generate_log_table() -> [[u16; 10]; 90] {
     table
 }
 
-
 /// Generate the antilog table: uint16[10][100].
 ///
 /// The full antilog index range is 0-9999 (ANTILOG_IDX_CARDINALITY).
@@ -164,7 +163,6 @@ fn test_antilog_table_exact() {
     }
 }
 
-
 /// The small tables are the published mean differences: the entry for
 /// fourth digit d on a printed line is d tenths of the mean tabular
 /// difference across that line, rounded half up.
@@ -207,7 +205,10 @@ fn antilog_mean_difference(row: usize, digit: usize) -> f64 {
 /// makes this the exact rounding.
 fn round_certified(value: f64) -> u8 {
     let margin = (value - value.floor() - 0.5).abs();
-    assert!(margin > 1e-6, "{value} is too close to a half to round from f64");
+    assert!(
+        margin > 1e-6,
+        "{value} is too close to a half to round from f64"
+    );
     value.round() as u8
 }
 
@@ -256,7 +257,12 @@ fn test_log_table_small_derivation() {
     let mut deviations = Vec::new();
     for row in 0..90 {
         let split = line_split(&main, row);
-        assert_eq!(split < 10, row < 10, "log row {}: line split {split}", 10 + row);
+        assert_eq!(
+            split < 10,
+            row < 10,
+            "log row {}: line split {split}",
+            10 + row
+        );
         let mut lines = vec![(false, 0, split, small[row])];
         if split < 10 {
             lines.push((true, split, 10, alt[row]));
