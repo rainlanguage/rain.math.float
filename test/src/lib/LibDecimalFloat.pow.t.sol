@@ -26,9 +26,8 @@ contract LibDecimalFloatPowTest is LogTest {
     /// inverse, to the integer part N of b truncates under 1e-75 relative per
     /// multiply, which squaring compounds to under 3 N 1e-75.
     function legError(Float b) internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(500006, -46).add(
-            b.abs().integer().mul(LibDecimalFloat.packLossless(3, -75))
-        );
+        return
+            LibDecimalFloat.packLossless(500006, -46).add(b.abs().integer().mul(LibDecimalFloat.packLossless(3, -75)));
     }
 
     /// Up to one unit of the coefficient, if a pack shed digits to lift the
@@ -144,7 +143,11 @@ contract LibDecimalFloatPowTest is LogTest {
             LibDecimalFloat.packLossless(signedCoefficientB, exponentB)
         );
         Float expected = LibDecimalFloat.packLossless(referenceSignedCoefficient, referenceExponent);
-        assertTrue(c.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs().lte(legError(LibDecimalFloat.packLossless(signedCoefficientB, exponentB))), "precision");
+        assertTrue(
+            c.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs()
+                .lte(legError(LibDecimalFloat.packLossless(signedCoefficientB, exponentB))),
+            "precision"
+        );
     }
 
     /// References are a^b to 45 digits from `bc -l` at scale 200.
@@ -763,9 +766,7 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// b < c implies a^b <= a^c for a > 1, down to adjacent exponents.
-    function testPowMonotoneInExponent(int256 signedCoefficientA, int256 exponentA, int256 lowB, int256 gap)
-        external
-    {
+    function testPowMonotoneInExponent(int256 signedCoefficientA, int256 exponentA, int256 lowB, int256 gap) external {
         signedCoefficientA = bound(signedCoefficientA, 1e40 + 1, 1e41 - 1);
         exponentA = bound(exponentA, -40, 0);
         lowB = bound(lowB, 1, 4e18);

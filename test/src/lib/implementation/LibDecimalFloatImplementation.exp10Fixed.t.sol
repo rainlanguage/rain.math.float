@@ -20,8 +20,14 @@ contract LibDecimalFloatImplementationExp10FixedTest is Test {
     function testExp10Fixed() external pure {
         assertEq(LibDecimalFloatImplementation.exp10Fixed(0), POW_FIXED_ONE);
         assertProvenBound(LibDecimalFloatImplementation.exp10Fixed(POW_FIXED_ONE), 10 * POW_FIXED_ONE);
-        assertProvenBound(LibDecimalFloatImplementation.exp10Fixed(5e49), 316227766016837933199889354443271853371955513932521);
-        assertProvenBound(LibDecimalFloatImplementation.exp10Fixed(1e47), 100230523807789967191540488932811055405366845354216);
-        assertProvenBound(LibDecimalFloatImplementation.exp10Fixed(1), 100000000000000000000000000000000000000000000000002);
+        assertProvenBound(
+            LibDecimalFloatImplementation.exp10Fixed(5e49), 316227766016837933199889354443271853371955513932521
+        );
+        assertProvenBound(
+            LibDecimalFloatImplementation.exp10Fixed(1e47), 100230523807789967191540488932811055405366845354216
+        );
+        assertProvenBound(
+            LibDecimalFloatImplementation.exp10Fixed(1), 100000000000000000000000000000000000000000000000002
+        );
     }
 }

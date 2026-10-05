@@ -621,9 +621,7 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
     /// within 5e-69 relative.
     function testLog10UnroundedNearOneOracleFuzz(uint256 p, uint256 d, bool negative) external {
         (int256 errorCoefficient, int256 errorExponent) = log10NearOneRelativeError(p, d, negative);
-        assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 327, -51), "log10 relative error"
-        );
+        assertTrue(LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 327, -51), "log10 relative error");
     }
 
     /// |log10(x) - oracle| for x near 1, in billionths of a unit in the
