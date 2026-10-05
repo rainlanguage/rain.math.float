@@ -787,8 +787,9 @@ library LibDecimalFloatImplementation {
     ///
     /// The four figure log table gives a seed and the atanh series of the
     /// ratio between the input and 10^seed closes the remaining gap. The
-    /// absolute error is below 1e-46. Inputs within a table step of a power of
-    /// ten take an exact seed, so a log near zero keeps its relative precision.
+    /// absolute error is below 2.5e-47. Inputs within a table step of a power
+    /// of ten take an exact seed, so a log near zero keeps its relative
+    /// precision.
     ///
     /// @param tablesDataContract The address of the log tables data contract.
     /// @param signedCoefficient The signed coefficient of the floating point
@@ -822,6 +823,7 @@ library LibDecimalFloatImplementation {
         if (signedCoefficient == 1e75) {
             return (exponent + 75, 0);
         }
+        int256 characteristic = exponent + 75;
 
         // log10(estimate / 1e75) = seed / 1e50
         int256 seed;
@@ -829,7 +831,7 @@ library LibDecimalFloatImplementation {
         if (signedCoefficient < 1.001e75) {
             estimate = 1e75;
         } else if (signedCoefficient >= 9.999e75) {
-            seed = 1e50;
+            characteristic += 1;
             estimate = 1e76;
         } else {
             unchecked {
@@ -848,25 +850,34 @@ library LibDecimalFloatImplementation {
             estimate = exp10Fixed(uint256(seed)) * 1e25;
         }
 
-        (int256 integerCoefficient, int256 integerExponent) = add(exponent + 75, 0, seed, -50);
+        // A log near zero is all correction, which keeps its relative
+        // precision. Anything else is summed at the 1e50 scale.
+        bool relative = characteristic == 0 && seed == 0;
         // signedCoefficient is positive.
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 correctionCoefficient, int256 correctionExponent) = log10Ratio(uint256(signedCoefficient), estimate);
-        return add(integerCoefficient, integerExponent, correctionCoefficient, correctionExponent);
+        (int256 correctionCoefficient, int256 correctionExponent) =
+            log10Ratio(uint256(signedCoefficient), estimate, relative);
+        if (relative) {
+            return (correctionCoefficient, correctionExponent);
+        }
+        correctionCoefficient += seed;
+        if (characteristic > -1e25 && characteristic < 1e25) {
+            return (characteristic * 1e50 + correctionCoefficient, -50);
+        }
+        return add(characteristic, 0, correctionCoefficient, -50);
     }
 
     /// log10(a / b) as a float, by 2 atanh((a - b) / (a + b)) / ln(10), for
     /// a and b within a few parts in ten thousand of each other.
     /// @param a The numerator, at most 1e76.
     /// @param b The denominator, at most 1e76.
+    /// @param relative `true` for at least 48 significant digits however small
+    /// the log, `false` for a coefficient at the `POW_FIXED_ONE` scale.
     /// @return signedCoefficient The signed coefficient of the log.
     /// @return exponent The exponent of the log.
-    function log10Ratio(uint256 a, uint256 b) internal pure returns (int256, int256) {
+    function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
-        if (difference == 0) {
-            return (0, 0);
-        }
         uint256 sum = a + b;
         uint256 z = mulDiv(difference, POW_FIXED_ONE, sum);
         uint256 zSquared = mulDiv(z, z, POW_FIXED_ONE);
@@ -877,20 +888,19 @@ library LibDecimalFloatImplementation {
             term = mulDiv(term, zSquared, POW_FIXED_ONE);
             series += term / k;
         }
-        // difference is at most 1e76 so it fits and maximizes in place.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
+        int256 exponent = -50;
+        if (relative) {
+            // difference is below 1e76 so it fits and maximizes in place.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            difference = uint256(differenceCoefficient);
+            exponent += differenceExponent;
+        }
         // The quotient is below 1e53 and so fits.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 signedCoefficient = int256(
-            mulDiv(
-                // forge-lint: disable-next-line(unsafe-typecast)
-                uint256(differenceCoefficient),
-                mulDiv(series, 2 * POW_FIXED_ONE, POW_FIXED_LN10),
-                sum
-            )
-        );
-        return (below ? -signedCoefficient : signedCoefficient, differenceExponent - 50);
+        int256 signedCoefficient = int256(mulDiv(difference, mulDiv(series, 2 * POW_FIXED_ONE, POW_FIXED_LN10), sum));
+        return (below ? -signedCoefficient : signedCoefficient, exponent);
     }
 
     /// 10^x for a float x.
