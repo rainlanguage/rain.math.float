@@ -440,6 +440,37 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloatFail("1e+-2", MalformedExponentDigits.selector, 3);
     }
 
+    /// A coefficient takes at most one `-`.
+    function testParseLiteralDecimalFloatRepeatedNegativeSign() external pure {
+        checkParseDecimalFloatFail("--5", ParseEmptyDecimalString.selector, 1);
+        checkParseDecimalFloatFail("---5", ParseEmptyDecimalString.selector, 1);
+        checkParseDecimalFloatFail("--5.5e2", ParseEmptyDecimalString.selector, 1);
+        checkParseDecimalFloatFail("-.5", ParseEmptyDecimalString.selector, 1);
+        checkParseDecimalFloatFail("-", ParseEmptyDecimalString.selector, 1);
+        checkParseDecimalFloat("-5", -5, 0, 2);
+    }
+
+    /// An exponent takes at most one `-`.
+    function testParseLiteralDecimalFloatRepeatedExponentNegativeSign() external pure {
+        checkParseDecimalFloatFail("1e--2", MalformedExponentDigits.selector, 3);
+        checkParseDecimalFloatFail("1e---2", MalformedExponentDigits.selector, 3);
+        checkParseDecimalFloatFail("1.5e--2", MalformedExponentDigits.selector, 5);
+        checkParseDecimalFloat("1e-2", 1, -2, 4);
+    }
+
+    /// Repeated signs are rejected for any digits that follow them.
+    function testParseLiteralDecimalFloatRepeatedNegativeSignFuzz(uint256 value, uint8 extra) external pure {
+        string memory digits = value.toString();
+        bytes memory dashes = new bytes(uint256(extra) + 2);
+        for (uint256 i = 0; i < dashes.length; i++) {
+            dashes[i] = "-";
+        }
+        checkParseDecimalFloatFail(string(abi.encodePacked(dashes, digits)), ParseEmptyDecimalString.selector, 1);
+        checkParseDecimalFloatFail(
+            string(abi.encodePacked("1e", dashes, digits)), MalformedExponentDigits.selector, 3
+        );
+    }
+
     /// Negative e with no digits is an error.
     function testParseLiteralDecimalFloatNegativeE() external pure {
         checkParseDecimalFloatFail("0.0e-", MalformedExponentDigits.selector, 5);
