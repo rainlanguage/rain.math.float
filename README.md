@@ -218,13 +218,17 @@ rather than simply return a bool, with a standard default error message.
 The log/pow calculations are not simply truncated on precision loss, they are
 inherently approximations in many cases.
 
-For example, `pow` will accurately calculate an integer exponent using the
-exponentiation by squaring method. The fractional component of a non-integer
-exponent takes a log table value as a seed and refines it with fixed point
-series, rounded to 41 significant digits, so it is within about 1e-40 relative
-of the true value and an exactly representable power such as `sqrt(4)` is exact.
+`log10` takes a four figure log table value (from the tables deployed
+deterministically onchain as data contracts) as a seed and refines it with a
+fixed point series. It is within 2.5e-47 of the true value, and within 3e-49
+relative of it for an input within a table step of a power of ten, so a log near
+zero keeps its precision. A power of ten has an exact log.
 
-`log10` and `pow10` use the lookup tables directly, interpolating linearly
-between table entries. Their quality is limited by the four figure tables
-(deployed deterministically onchain as data contracts), not by the
-interpolation, which is the least accurate option but the most gas efficient.
+`pow10` reads no tables. It computes the power in fixed point and rounds it to
+41 significant digits, so it is within half a unit in the 41st digit and an
+exactly representable power such as `10^2` is exact.
+
+`pow` calculates an integer exponent exactly by squaring, and the fractional
+component of a non-integer exponent as `pow10(frac(b) * log10(a))`, so it is
+within about 1e-40 relative of the true value and an exactly representable power
+such as `sqrt(4)` is exact.

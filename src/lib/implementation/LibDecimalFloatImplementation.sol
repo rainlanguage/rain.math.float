@@ -10,14 +10,7 @@ import {
     DivisionByZero,
     MaximizeOverflow
 } from "../../error/ErrDecimalFloat.sol";
-import {
-    LOG_TABLE_SIZE_BYTES,
-    LOG_TABLE_SIZE_BASE,
-    ALT_SMALL_LOG_TABLE_SIZE_BYTES,
-    ANTILOG_TABLE_SIZE_BYTES,
-    LOG_MANTISSA_LAST_INDEX,
-    ANTILOG_IDX_LAST_INDEX
-} from "../table/LibLogTable.sol";
+import {LOG_TABLE_SIZE_BYTES, LOG_TABLE_SIZE_BASE} from "../table/LibLogTable.sol";
 
 /// @dev Thrown when attempting to rescale a coefficient to a target exponent
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
@@ -41,11 +34,7 @@ int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
 /// @dev The exponent of maximized zero.
 int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
 
-/// @dev The exponent used in log10 calculations to get the correct result
-/// when using the log tables.
-int256 constant LOG10_Y_EXPONENT = -76;
-
-/// @dev Fixed point one for pow's fractional leg.
+/// @dev Fixed point one for the log10 and pow10 series.
 uint256 constant POW_FIXED_ONE = 1e50;
 
 /// @dev ln(10) at the `POW_FIXED_ONE` scale, rounded to nearest.
@@ -54,8 +43,8 @@ uint256 constant POW_FIXED_LN10 = 2302585092994045684017991454684364207601101488
 /// @dev Halvings of the exp10Fixed argument before its Taylor series.
 uint256 constant POW_EXP_HALVINGS = 8;
 
-/// @dev Guard digits pow's fractional leg rounds away, so that its error stays
-/// below half a unit of the result and an exact power comes out exact.
+/// @dev Guard digits pow10 rounds away, so that its error stays below half a
+/// unit of the result and an exact power comes out exact.
 uint256 constant POW_GUARD = 1e10;
 
 /// @dev Library implementing core DecimalFloat operations using only stack
@@ -796,10 +785,12 @@ library LibDecimalFloatImplementation {
 
     /// log10(x) for a float x.
     ///
-    /// Internally uses log tables so is not perfectly accurate, but also doesn't
-    /// require any loops or iterations, and works across a wide range of
-    /// exponents without precision loss.
+    /// The four figure log table gives a seed and the atanh series of the
+    /// ratio between the input and 10^seed closes the remaining gap. The
+    /// absolute error is below 1e-46. Inputs within a table step of a power of
+    /// ten take an exact seed, so a log near zero keeps its relative precision.
     ///
+    /// @param tablesDataContract The address of the log tables data contract.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
     /// @param exponent The exponent of the floating point number.
@@ -824,151 +815,113 @@ library LibDecimalFloatImplementation {
             }
         }
 
-        // all powers of 10 look like 1 with a different exponent
-        if (signedCoefficient == 1e76) {
-            return (exponent + 76, 0);
+        if (signedCoefficient >= 1e76) {
+            signedCoefficient /= 10;
+            exponent += 1;
         }
-        bool isAtLeastE76 = signedCoefficient >= 1e76;
+        if (signedCoefficient == 1e75) {
+            return (exponent + 75, 0);
+        }
 
-        // This is a positive log. i.e. log(x) where x >= 1.
-        if (exponent >= (isAtLeastE76 ? -76 : -75)) {
-            int256 y1Coefficient;
-            int256 y2Coefficient;
-            int256 x1Coefficient;
-            int256 x2Coefficient;
-            // exact powers of 10 are already caught above.
-            // but e.g. 20 would be 2e76, -75 and true for isAtLeastE76
-            // => adding exp 76 yields 1, which is the correct result.
-            // 200 would be 2e76, -74 and true for isAtLeastE76
-            // => adding exp 76 yields 2, which is the correct result.
-            // however 90 would be 9e75, -74 and false for isAtLeastE76
-            // => adding exp 75 yields 1, which is the correct result.
-            // 900 would be 9e75, -73 and false for isAtLeastE76
-            // => adding exp 75 yields 2, which is the correct result.
-            int256 powerOfTen = exponent + int256(isAtLeastE76 ? int256(76) : int256(75));
-
-            // Table lookup.
-            {
-                uint256 idx = 0;
-                unchecked {
-                    {
-                        uint256 scale = isAtLeastE76 ? 1e73 : 1e72;
-                        // Truncate the signed coefficient to what we can look
-                        // up in the table.
-                        // Slither false positive because the truncation is
-                        // deliberate here.
-                        //slither-disable-start divide-before-multiply
-                        // scale is one of two possible values so won't truncate
-                        // when cast.
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        x1Coefficient = signedCoefficient / int256(scale);
-                        // slither-disable-end divide-before-multiply
-                        // x1Coefficient is positive here so won't truncate when
-                        // cast.
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        idx = uint256(x1Coefficient - 1000);
-                        // scale is one of two possible values so won't truncate
-                        // when cast.
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        x1Coefficient = x1Coefficient * int256(scale);
-                        // Technically we only need to do this if we need to
-                        // interpolate but it's cheaper to just do an `add`
-                        // unconditionally than pay for an `if` and often also
-                        // do the `add`.
-                        // scale is one of two possible values so won't truncate
-                        // when cast.
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        x2Coefficient = x1Coefficient + int256(scale);
-                    }
-
-                    y1Coefficient = int256(1e72 * lookupLogTableVal(tablesDataContract, idx));
-                    y2Coefficient = y1Coefficient;
-                    // Only do the second lookup if we expect interpolation
-                    // to need it.
-                    if (x1Coefficient != signedCoefficient) {
-                        y2Coefficient = idx == LOG_MANTISSA_LAST_INDEX
-                            ? int256(1e76)
-                            : int256(1e72 * lookupLogTableVal(tablesDataContract, idx + 1));
-                    }
-                }
+        // log10(estimate / 1e75) = seed / 1e50
+        int256 seed;
+        uint256 estimate;
+        if (signedCoefficient < 1.001e75) {
+            estimate = 1e75;
+        } else if (signedCoefficient >= 9.999e75) {
+            seed = 1e50;
+            estimate = 1e76;
+        } else {
+            unchecked {
+                // signedCoefficient is in [1.001e75, 9.999e75) so idx is in
+                // [1, 8998] and the next entry exists.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                uint256 idx = uint256(signedCoefficient / 1e72 - 1000);
+                // forge-lint: disable-next-line(unsafe-typecast)
+                int256 y1 = int256(lookupLogTableVal(tablesDataContract, idx));
+                // forge-lint: disable-next-line(unsafe-typecast)
+                int256 y2 = int256(lookupLogTableVal(tablesDataContract, idx + 1));
+                seed = y1 * 1e46 + (signedCoefficient % 1e72) * (y2 - y1) / 1e26;
             }
+            // seed is in (0, 1e50) and so is not negative.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            estimate = exp10Fixed(uint256(seed)) * 1e25;
+        }
 
-            (signedCoefficient, exponent) = unitLinearInterpolation(
-                x1Coefficient,
-                signedCoefficient,
-                x2Coefficient,
-                exponent,
-                y1Coefficient,
-                y2Coefficient,
-                LOG10_Y_EXPONENT
-            );
-            return add(signedCoefficient, exponent, powerOfTen, 0);
+        (int256 integerCoefficient, int256 integerExponent) = add(exponent + 75, 0, seed, -50);
+        // signedCoefficient is positive.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 correctionCoefficient, int256 correctionExponent) = log10Ratio(uint256(signedCoefficient), estimate);
+        return add(integerCoefficient, integerExponent, correctionCoefficient, correctionExponent);
+    }
+
+    /// log10(a / b) as a float, by 2 atanh((a - b) / (a + b)) / ln(10), for
+    /// a and b within a few parts in ten thousand of each other.
+    /// @param a The numerator, at most 1e76.
+    /// @param b The denominator, at most 1e76.
+    /// @return signedCoefficient The signed coefficient of the log.
+    /// @return exponent The exponent of the log.
+    function log10Ratio(uint256 a, uint256 b) internal pure returns (int256, int256) {
+        bool below = a < b;
+        uint256 difference = below ? b - a : a - b;
+        if (difference == 0) {
+            return (0, 0);
         }
-        // This is a negative log. i.e. log(x) where 0 < x < 1.
-        // log(x) = -log(1/x)
-        else {
-            (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
-            (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
-            return minus(signedCoefficient, exponent);
+        uint256 sum = a + b;
+        uint256 z = mulDiv(difference, POW_FIXED_ONE, sum);
+        uint256 zSquared = mulDiv(z, z, POW_FIXED_ONE);
+        // atanh(z) / z
+        uint256 series = POW_FIXED_ONE;
+        uint256 term = POW_FIXED_ONE;
+        for (uint256 k = 3; term > 0; k += 2) {
+            term = mulDiv(term, zSquared, POW_FIXED_ONE);
+            series += term / k;
         }
+        // difference is at most 1e76 so it fits and maximizes in place.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
+        // The quotient is below 1e53 and so fits.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = int256(
+            mulDiv(
+                // forge-lint: disable-next-line(unsafe-typecast)
+                uint256(differenceCoefficient),
+                mulDiv(series, 2 * POW_FIXED_ONE, POW_FIXED_LN10),
+                sum
+            )
+        );
+        return (below ? -signedCoefficient : signedCoefficient, differenceExponent - 50);
     }
 
     /// 10^x for a float x.
     ///
-    /// Internally uses log tables so is not perfectly accurate, but also doesn't
-    /// require any loops or iterations, and works across a wide range of
-    /// exponents without precision loss.
+    /// The fractional part of x goes through `exp10Fixed` and the result is
+    /// rounded to 41 significant digits, so it is within half a unit in the
+    /// 41st digit of the true value and an exactly representable power such
+    /// as 10^2 is exact.
     ///
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function pow10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
-        internal
-        view
-        returns (int256, int256)
-    {
-        if (signedCoefficient < 0) {
-            (signedCoefficient, exponent) = minus(signedCoefficient, exponent);
-            (signedCoefficient, exponent) = pow10(tablesDataContract, signedCoefficient, exponent);
-            return inv(signedCoefficient, exponent);
+    function pow10(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (int256 integer, int256 frac) = intFrac(signedCoefficient, exponent);
+        int256 characteristic = withTargetExponent(integer, exponent, 0);
+        int256 mantissa = frac == 0 ? int256(0) : withTargetExponent(frac, exponent, -50);
+        if (mantissa < 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            mantissa += int256(POW_FIXED_ONE);
+            characteristic -= 1;
         }
-
-        // Table lookup.
-        (int256 intCoefficient, int256 fracCoefficient) = intFrac(signedCoefficient, exponent);
-        int256 characteristicExponent = exponent;
-        {
-            (int256 idx, bool interpolate, int256 scale) = mantissa4(fracCoefficient, exponent);
-            // idx is positive here because the signedCoefficient is positive due
-            // to the opening `if` above.
-            int256 y1Coefficient = 9997;
-            int256 y2Coefficient = 10000;
-            if (idx != ANTILOG_IDX_LAST_INDEX) {
-                (y1Coefficient, y2Coefficient) =
-                // forge-lint: disable-next-line(unsafe-typecast)
-                lookupAntilogTableY1Y2(tablesDataContract, uint256(idx), interpolate);
-            }
-            if (interpolate) {
-                // This avoids a potential overflow below.
-                int256 idxPlus1 = (idx + 1);
-                unchecked {
-                    while ((idxPlus1 * scale) / scale != idxPlus1) {
-                        scale /= 10;
-                        fracCoefficient /= 10;
-                    }
-                }
-
-                (signedCoefficient, exponent) = unitLinearInterpolation(
-                    idx * scale, fracCoefficient, idxPlus1 * scale, exponent, y1Coefficient, y2Coefficient, -4
-                );
-            } else {
-                signedCoefficient = y1Coefficient;
-                exponent = -4;
-            }
+        if (mantissa == 0) {
+            return (1, characteristic);
         }
-
-        return (signedCoefficient, 1 + exponent + withTargetExponent(intCoefficient, characteristicExponent, 0));
+        // mantissa is in (0, 1e50) and so is not negative, and the rounded
+        // power is at most 1e41 and so fits.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 power = int256((exp10Fixed(uint256(mantissa)) + POW_GUARD / 2) / POW_GUARD);
+        return (power, characteristic - 40);
     }
 
     /// 10^x at the `POW_FIXED_ONE` scale, by the Taylor series of e^(x ln 10).
@@ -988,81 +941,6 @@ library LibDecimalFloatImplementation {
             sum = mulDiv(sum, sum, POW_FIXED_ONE);
         }
         return sum;
-    }
-
-    /// log10(c / 1e75) at the `POW_FIXED_ONE` scale. The log table gives a
-    /// seed good to about four places, and the atanh series of the ratio
-    /// between the input and 10^seed closes the remaining gap.
-    /// @param tablesDataContract The address of the log tables data contract.
-    /// @param signedCoefficient A coefficient in [1e75, 1e76).
-    /// @return The log at the `POW_FIXED_ONE` scale, in [0, 1] give or take rounding.
-    function log10MantissaFixed(address tablesDataContract, int256 signedCoefficient) internal view returns (int256) {
-        (int256 seedCoefficient, int256 seedExponent) = log10(tablesDataContract, signedCoefficient, -75);
-        int256 seed = withTargetExponent(seedCoefficient, seedExponent, -50);
-        // seed is in [0, 1e50] and so is not negative.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 estimate = exp10Fixed(uint256(seed));
-        // signedCoefficient is positive.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 mantissa = uint256(signedCoefficient) / 1e25;
-        bool below = mantissa < estimate;
-        // |z| for z = (mantissa - estimate) / (mantissa + estimate).
-        uint256 z = mulDiv(below ? estimate - mantissa : mantissa - estimate, POW_FIXED_ONE, mantissa + estimate);
-        uint256 zSquared = mulDiv(z, z, POW_FIXED_ONE);
-        uint256 sum = z;
-        uint256 term = z;
-        for (uint256 k = 3; term > 0; k += 2) {
-            term = mulDiv(term, zSquared, POW_FIXED_ONE);
-            sum += term / k;
-        }
-        // ln(c / 1e75) = ln(10^seed) + 2 atanh(z)
-        // The correction is far below 1e50 and so fits.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 correction = int256(mulDiv(sum, 2 * POW_FIXED_ONE, POW_FIXED_LN10));
-        return below ? seed - correction : seed + correction;
-    }
-
-    /// a^f for a positive a and a fraction f in (0, 1), as
-    /// 10^(f log10(a)) with both legs in fixed point rather than interpolated
-    /// from the tables.
-    /// @param tablesDataContract The address of the log tables data contract.
-    /// @param signedCoefficientA The signed coefficient of a, positive.
-    /// @param exponentA The exponent of a.
-    /// @param signedCoefficientF The signed coefficient of f.
-    /// @param exponentF The exponent of f.
-    /// @return signedCoefficient The signed coefficient of a^f.
-    /// @return exponent The exponent of a^f.
-    function powFraction(
-        address tablesDataContract,
-        int256 signedCoefficientA,
-        int256 exponentA,
-        int256 signedCoefficientF,
-        int256 exponentF
-    ) internal view returns (int256, int256) {
-        (int256 signedCoefficient, int256 exponent) = maximizeFull(signedCoefficientA, exponentA);
-        if (signedCoefficient >= 1e76) {
-            signedCoefficient /= 10;
-            exponent += 1;
-        }
-        (signedCoefficient, exponent) =
-            add(exponent + 75, 0, log10MantissaFixed(tablesDataContract, signedCoefficient), -50);
-        (signedCoefficient, exponent) = mul(signedCoefficient, exponent, signedCoefficientF, exponentF);
-        if (signedCoefficient == 0) {
-            return (1, 0);
-        }
-        (int256 integer, int256 frac) = intFrac(signedCoefficient, exponent);
-        int256 characteristic = withTargetExponent(integer, exponent, 0);
-        int256 mantissa = frac == 0 ? int256(0) : withTargetExponent(frac, exponent, -50);
-        if (mantissa < 0) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            mantissa += int256(POW_FIXED_ONE);
-            characteristic -= 1;
-        }
-        // mantissa is in [0, 1e50) and so is not negative, and the rounded
-        // power is at most 1e41 and so fits.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 power = int256((exp10Fixed(uint256(mantissa)) + POW_GUARD / 2) / POW_GUARD);
-        return (power, characteristic - 40);
     }
 
     /// Maximizes a float's signed coefficient by increasing its magnitude
@@ -1432,126 +1310,5 @@ library LibDecimalFloatImplementation {
             frac = signedCoefficient % unit;
             integer = signedCoefficient - frac;
         }
-    }
-
-    /// First 4 digits of the mantissa and whether we need to interpolate.
-    /// @param signedCoefficient The signed coefficient.
-    /// @param exponent The exponent.
-    /// @return mantissa The first 4 digits of the mantissa.
-    /// @return interpolate `true` if we need to interpolate, `false` otherwise.
-    /// @return scale The scale used if we need to interpolate.
-    function mantissa4(int256 signedCoefficient, int256 exponent) internal pure returns (int256, bool, int256) {
-        unchecked {
-            if (exponent == -4) {
-                // The literal is the bool this function returns, not a condition operand.
-                //forge-lint: disable-next-line(boolean-cst)
-                return (signedCoefficient, false, 1);
-            } else if (exponent < -4) {
-                if (exponent < -80) {
-                    return (0, signedCoefficient != 0, 1);
-                }
-                int256 scale = int256(10 ** uint256(-(exponent + 4)));
-                //slither-disable-next-line divide-before-multiply
-                int256 rescaled = signedCoefficient / scale;
-                return (rescaled, rescaled * scale != signedCoefficient, scale);
-            } else if (exponent >= 0) {
-                // The literal is the bool this function returns, not a condition operand.
-                //forge-lint: disable-next-line(boolean-cst)
-                return (0, false, 1);
-            } else {
-                // exponent is [-3, -1]
-                // The literal is the bool this function returns, not a condition operand.
-                //forge-lint: disable-next-line(unsafe-typecast, boolean-cst)
-                return (signedCoefficient * int256(10 ** uint256(4 + exponent)), false, 1);
-            }
-        }
-    }
-
-    /// Looks up the antilog table values y1 and y2 for a given index.
-    /// @param tablesDataContract The address of the log tables data contract.
-    /// @param idx The index into the antilog table.
-    /// @param lossyIdx `true` if the index may be lossy and we need y2, `false`
-    /// otherwise.
-    /// @return y1Coefficient The y1 antilog table coefficient.
-    /// @return y2Coefficient The y2 antilog table coefficient.
-    // forge-lint: disable-next-line(mixed-case-function)
-    function lookupAntilogTableY1Y2(address tablesDataContract, uint256 idx, bool lossyIdx)
-        internal
-        view
-        returns (int256 y1Coefficient, int256 y2Coefficient)
-    {
-        // 1 byte for start of data contract
-        // + 1800 for log tables
-        // + 900 for small log tables
-        // + 100 for alt small log tables
-        uint256 offsetSize = 1 + LOG_TABLE_SIZE_BYTES + LOG_TABLE_SIZE_BASE + ALT_SMALL_LOG_TABLE_SIZE_BYTES;
-        assembly ("memory-safe") {
-            //slither-disable-next-line divide-before-multiply
-            function lookupTableVal(tables, offset, index) -> result {
-                mstore(0, 0)
-                extcodecopy(tables, 30, add(offset, mul(div(index, 10), 2)), 2)
-                let mainTableVal := mload(0)
-
-                offset := add(offset, ANTILOG_TABLE_SIZE_BYTES)
-                mstore(0, 0)
-                extcodecopy(tables, 31, add(offset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
-                result := add(mainTableVal, mload(0))
-            }
-
-            y1Coefficient := lookupTableVal(tablesDataContract, offsetSize, idx)
-            if lossyIdx { y2Coefficient := lookupTableVal(tablesDataContract, offsetSize, add(idx, 1)) }
-        }
-    }
-
-    /// Linear interpolation.
-    /// y = y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
-    /// @param x1Coefficient The x1 coefficient.
-    /// @param xCoefficient The x coefficient.
-    /// @param x2Coefficient The x2 coefficient.
-    /// @param xExponent The x exponent.
-    /// @param y1Coefficient The y1 coefficient.
-    /// @param y2Coefficient The y2 coefficient.
-    /// @param yExponent The y exponent.
-    /// @return signedCoefficient The signed coefficient of the result.
-    /// @return exponent The exponent of the result.
-    function unitLinearInterpolation(
-        int256 x1Coefficient,
-        int256 xCoefficient,
-        int256 x2Coefficient,
-        int256 xExponent,
-        int256 y1Coefficient,
-        int256 y2Coefficient,
-        int256 yExponent
-    ) internal pure returns (int256, int256) {
-        // Short circuit if the amount of interpolation is 0.
-        if (xCoefficient == x1Coefficient) {
-            return (y1Coefficient, yExponent);
-        }
-        int256 numeratorSignedCoefficient;
-        int256 numeratorExponent;
-
-        {
-            // x - x1
-            (int256 xDiffCoefficient0, int256 xDiffExponent0) = sub(xCoefficient, xExponent, x1Coefficient, xExponent);
-
-            // y2 - y1
-            (int256 yDiffCoefficient, int256 yDiffExponent) = sub(y2Coefficient, yExponent, y1Coefficient, yExponent);
-
-            // (x - x1) * (y2 - y1)
-            (numeratorSignedCoefficient, numeratorExponent) =
-                mul(xDiffCoefficient0, xDiffExponent0, yDiffCoefficient, yDiffExponent);
-        }
-
-        // x2 - x1
-        (int256 xDiffCoefficient1, int256 xDiffExponent1) = sub(x2Coefficient, xExponent, x1Coefficient, xExponent);
-
-        // ((x - x1) * (y2 - y1)) / (x2 - x1)
-        (int256 yMarginalSignedCoefficient, int256 yMarginalExponent) =
-            div(numeratorSignedCoefficient, numeratorExponent, xDiffCoefficient1, xDiffExponent1);
-
-        // y1 + ((x - x1) * (y2 - y1)) / (x2 - x1)
-        (int256 signedCoefficient, int256 exponent) =
-            add(yMarginalSignedCoefficient, yMarginalExponent, y1Coefficient, yExponent);
-        return (signedCoefficient, exponent);
     }
 }

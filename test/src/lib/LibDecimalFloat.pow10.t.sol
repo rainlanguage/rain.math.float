@@ -10,7 +10,7 @@ contract LibDecimalFloatPow10Test is LogTest {
     using LibDecimalFloat for Float;
 
     function pow10External(int256 signedCoefficient, int256 exponent) external returns (int256, int256) {
-        return LibDecimalFloatImplementation.pow10(logTables(), signedCoefficient, exponent);
+        return LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
     }
 
     function pow10External(Float float) external returns (Float) {

@@ -832,13 +832,12 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    /// @param tablesDataContract The address of the contract containing the
-    /// logarithm tables.
-    /// @return The result of 10^float.
-    function pow10(Float float, address tablesDataContract) internal view returns (Float) {
+    /// The tables address is unused, and kept so that callers need not change.
+    /// @return The result of 10^float, within half a unit in the 41st
+    /// significant digit.
+    function pow10(Float float, address) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
-        (signedCoefficient, exponent) =
-            LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
         // We don't care if power10 is lossy because it's an approximation
         // anyway.
         Float result = packArithmeticResult(signedCoefficient, exponent);
@@ -945,9 +944,11 @@ library LibDecimalFloat {
         }
 
         if (fractionB != 0) {
-            (int256 signedCoefficientC, int256 exponentC) = LibDecimalFloatImplementation.powFraction(
-                tablesDataContract, signedCoefficientA, exponentA, fractionB, exponentB
-            );
+            (int256 signedCoefficientC, int256 exponentC) =
+                LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
+            (signedCoefficientC, exponentC) =
+                LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
+            (signedCoefficientC, exponentC) = LibDecimalFloatImplementation.pow10(signedCoefficientC, exponentC);
             (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
                 signedCoefficientC, exponentC, signedCoefficientResult, exponentResult
             );
