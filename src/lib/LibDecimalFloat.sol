@@ -850,7 +850,8 @@ library LibDecimalFloat {
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
     /// @param a The float to log10.
-    /// @return The base-10 logarithm of a.
+    /// @return The base-10 logarithm of a, within half a unit in the 41st
+    /// significant digit plus 2.5e-47.
     function log10(Float a, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         (signedCoefficient, exponent) =
@@ -949,7 +950,7 @@ library LibDecimalFloat {
 
         if (fractionB != 0) {
             (int256 signedCoefficientC, int256 exponentC) =
-                LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
+                LibDecimalFloatImplementation.log10Unrounded(tablesDataContract, signedCoefficientA, exponentA);
             (signedCoefficientC, exponentC) =
                 LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
             (signedCoefficientC, exponentC) = LibDecimalFloatImplementation.pow10(signedCoefficientC, exponentC);

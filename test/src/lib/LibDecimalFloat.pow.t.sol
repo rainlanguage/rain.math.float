@@ -454,6 +454,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     /// a^-b is 1/a^b across a's whole exponent range, wherever 1/a^b has
     /// headroom for pow's approximation error on both sides of the range.
+    /// Each side is within `legError` plus the floor losses of what it packed.
     function testPowNegativeExponentIsInverseFuzz(
         int224 coefficientA,
         int32 exponentA,
@@ -471,8 +472,10 @@ contract LibDecimalFloatPowTest is LogTest {
         Float b = LibDecimalFloat.packLossless(bound(coefficientB, 1, 1e9), bound(exponentB, -15, 0));
 
         bool representable;
+        Float power;
         Float expected;
         try this.powExternal(a, b) returns (Float c) {
+            power = c;
             try this.invExternal(c) returns (Float inverse) {
                 expected = inverse;
                 try this.mulExternal(inverse, LibDecimalFloat.packLossless(1, -2)) {
@@ -486,7 +489,9 @@ contract LibDecimalFloatPowTest is LogTest {
         if (representable) {
             Float actual = this.powExternal(a, b.minus());
             Float diff = actual.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs();
-            assertTrue(!diff.gt(diffLimit()), "diff");
+            Float limit =
+                legError().add(legError()).add(floorLoss(power)).add(floorLoss(actual)).add(floorLoss(expected));
+            assertTrue(diff.lte(limit), "diff");
         } else {
             try this.powExternal(a, b.minus()) {}
             catch (bytes memory reason) {
@@ -520,14 +525,14 @@ contract LibDecimalFloatPowTest is LogTest {
             LibDecimalFloat.packLossless(-10000001, -7),
             2147483367,
             1,
-            17849384749557067517439741369554732817914499305123451699743361546070868483230,
+            17850755436588146297541876494389270655413000000000000000000000000000000000000,
             -2147483725
         );
         checkPowNegativeBoundary(
             LibDecimalFloat.packLossless(-1000001, -6),
             2147481434,
             3,
-            32992411745298581326294952161002969317057076872319366545694490267238535136910,
+            32998864808301811879257186566783903264015000000000000000000000000000000000000,
             -2147483725
         );
         checkPowNegativeBoundary(LibDecimalFloat.packLossless(-2, 0), 1073741758, 1, 1e76, -2147483726);
@@ -542,7 +547,13 @@ contract LibDecimalFloatPowTest is LogTest {
         assertEq(coefficient, 1e67, "coefficient");
         assertEq(exponent, 2147483581, "exponent");
 
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(6.31e75), int256(2362231937)));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector,
+                int256(6309573444801932494343601366223438646729500000000000000000000000000000000000),
+                int256(2362231937)
+            )
+        );
         this.powExternal(a, LibDecimalFloat.packLossless(-11, -1));
 
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e76), int256(4294967220)));
@@ -684,5 +695,84 @@ contract LibDecimalFloatPowTest is LogTest {
             // swallowed.
             assertExpectedPowError(reason);
         }
+    }
+
+    /// a^(p / q) for a = n^q 10^(qk) is n^p 10^(pk) exactly, as the fractional
+    /// leg is a root with fewer than the 41 digits pow keeps.
+    function testPowExactRoots(uint256 n, int256 k, uint256 which) external {
+        // (q, p, the largest n for n^q below 1e66, b's coefficient, b's exponent)
+        uint256[5][11] memory roots = [
+            [uint256(2), 1, 1e20 - 1, 5, 1],
+            [uint256(2), 3, 1e20 - 1, 15, 1],
+            [uint256(4), 1, 1e10 - 1, 25, 2],
+            [uint256(4), 3, 1e10 - 1, 75, 2],
+            [uint256(5), 1, 1e8 - 1, 2, 1],
+            [uint256(5), 2, 1e8 - 1, 4, 1],
+            [uint256(5), 3, 1e8 - 1, 6, 1],
+            [uint256(8), 1, 1e5 - 1, 125, 3],
+            [uint256(8), 5, 1e5 - 1, 625, 3],
+            [uint256(10), 1, 1e4 - 1, 1, 1],
+            [uint256(10), 7, 1e4 - 1, 7, 1]
+        ];
+        uint256[5] memory root = roots[which % roots.length];
+        n = bound(n, 1, root[2]);
+        k = bound(k, -1e7, 1e7);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float a = LibDecimalFloat.packLossless(int256(n ** root[0]), int256(root[0]) * k);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float b = LibDecimalFloat.packLossless(int256(root[3]), -int256(root[4]));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float expected = LibDecimalFloat.packLossless(int256(n ** root[1]), int256(root[1]) * k);
+        assertTrue(this.powExternal(a, b).eq(expected), "exact");
+    }
+
+    function pow10External(Float x) external pure returns (Float) {
+        return x.pow10(address(0));
+    }
+
+    /// (10^k)^b is pow10(k b) exactly, as log10(10^k) is exactly k.
+    function testPowPowersOfTenMatchPow10(int256 k, int256 signedCoefficientB, int256 exponentB) external {
+        k = bound(k, -1e4, 1e4);
+        vm.assume(k != 0);
+        Float b = LibDecimalFloat.packLossless(bound(signedCoefficientB, 1, 1e12), bound(exponentB, -12, -9));
+        Float kb = LibDecimalFloat.packLossless(k, 0).mul(b);
+        assertTrue(this.powExternal(LibDecimalFloat.packLossless(1, k), b).eq(this.pow10External(kb)), "pow10");
+    }
+
+    /// a < c implies a^b <= c^b for b > 0, down to adjacent coefficients.
+    function testPowMonotoneInBase(
+        int256 signedCoefficientA,
+        int256 gap,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external {
+        signedCoefficientA = bound(signedCoefficientA, 1, type(int224).max - 1e3);
+        gap = bound(gap, 1, 1e3);
+        exponentA = bound(exponentA, -1000, 1000);
+        Float b = LibDecimalFloat.packLossless(bound(signedCoefficientB, 1, 1e9), bound(exponentB, -9, -8));
+        Float low = this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
+        Float high = this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA + gap, exponentA), b);
+        assertTrue(low.lte(high), "monotone");
+    }
+
+    /// b < c implies a^b <= a^c for a > 1, down to adjacent exponents, with b
+    /// and c sharing an integer part.
+    function testPowMonotoneInExponent(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 integer,
+        int256 fraction,
+        int256 gap
+    ) external {
+        signedCoefficientA = bound(signedCoefficientA, 1e40 + 1, 1e41 - 1);
+        exponentA = bound(exponentA, -40, 0);
+        integer = bound(integer, 0, 3);
+        fraction = bound(fraction, 1, 1e18 - 1e3);
+        gap = bound(gap, 1, 1e3);
+        Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
+        Float low = this.powExternal(a, LibDecimalFloat.packLossless(integer * 1e18 + fraction, -18));
+        Float high = this.powExternal(a, LibDecimalFloat.packLossless(integer * 1e18 + fraction + gap, -18));
+        assertTrue(low.lte(high), "monotone");
     }
 }

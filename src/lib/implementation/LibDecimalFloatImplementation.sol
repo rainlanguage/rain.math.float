@@ -821,7 +821,54 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// log10(x) for a float x.
+    /// log10(x) for a float x, rounded to 41 significant digits, so it is
+    /// within half a unit in the 41st digit plus the error of
+    /// `log10Unrounded`. log10(10^k) is exactly k.
+    ///
+    /// @param tablesDataContract The address of the log tables data contract.
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
+    function log10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
+        internal
+        view
+        returns (int256, int256)
+    {
+        (signedCoefficient, exponent) = log10Unrounded(tablesDataContract, signedCoefficient, exponent);
+        return roundSignificant(signedCoefficient, exponent);
+    }
+
+    /// Rounds a float to 41 significant digits, half away from zero.
+    /// @param signedCoefficient The signed coefficient of the float.
+    /// @param exponent The exponent of the float.
+    /// @return signedCoefficient The rounded signed coefficient.
+    /// @return exponent The rounded exponent.
+    function roundSignificant(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        if (signedCoefficient / 1e41 == 0) {
+            return (signedCoefficient, exponent);
+        }
+        (signedCoefficient, exponent) = maximizeFull(signedCoefficient, exponent);
+        unchecked {
+            int256 guard = 1e35;
+            if (signedCoefficient / 1e76 != 0) {
+                guard = 1e36;
+                exponent += 1;
+            }
+            int256 rounded = signedCoefficient / guard;
+            int256 remainder = signedCoefficient % guard;
+            if (remainder >= guard / 2) {
+                rounded += 1;
+            } else if (remainder <= -guard / 2) {
+                rounded -= 1;
+            }
+            return (rounded, exponent + 35);
+        }
+    }
+
+    /// log10(x) for a float x, with the guard digits that `log10` rounds
+    /// away.
     ///
     /// The four figure log table gives a seed and the atanh series of the
     /// ratio between the input and 10^seed closes the remaining gap. The
@@ -835,7 +882,7 @@ library LibDecimalFloatImplementation {
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function log10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
+    function log10Unrounded(address tablesDataContract, int256 signedCoefficient, int256 exponent)
         internal
         view
         returns (int256, int256)
@@ -864,7 +911,7 @@ library LibDecimalFloatImplementation {
         int256 characteristic = exponent + 75;
 
         // log10(estimate / 1e75) = seed / 1e50
-        int256 seed;
+        int256 seed = 0;
         uint256 estimate;
         if (signedCoefficient < 1.001e75) {
             estimate = 1e75;
@@ -893,8 +940,8 @@ library LibDecimalFloatImplementation {
         bool relative = characteristic == 0 && seed == 0;
         // signedCoefficient is positive.
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 correctionCoefficient, int256 correctionExponent) =
-            log10Ratio(uint256(signedCoefficient), estimate, relative);
+        uint256 input = uint256(signedCoefficient);
+        (int256 correctionCoefficient, int256 correctionExponent) = log10Ratio(input, estimate, relative);
         if (relative) {
             return (correctionCoefficient, correctionExponent);
         }
