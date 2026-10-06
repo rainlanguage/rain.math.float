@@ -69,14 +69,19 @@ contract LibDecimalFloatPackArithmeticResultTest is Test {
         this.packArithmeticResultExternal(12, int256(type(int32).min) - 2);
     }
 
-    /// Exponents that overflow int32 revert with `ExponentOverflow`,
-    /// matching `packLossy`. The underflow path is the only behavioural
-    /// divergence from `packLossy`.
+    /// Exponents above int32 that the coefficient cannot lift revert with
+    /// `ExponentOverflow`, and ones it can are lifted, matching `packLossy`.
+    /// The underflow path is the only behavioural divergence from
+    /// `packLossy`.
     function testPackArithmeticResultExponentOverflowReverts() external {
-        int256 signedCoefficient = 1;
+        int256 signedCoefficient = int256(type(int224).max);
         int256 exponent = int256(type(int32).max) + 1;
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         this.packArithmeticResultExternal(signedCoefficient, exponent);
+
+        (int256 c, int256 e) = LibDecimalFloat.packArithmeticResult(1, exponent).unpack();
+        assertEq(c, 10);
+        assertEq(e, int256(type(int32).max));
     }
 
     /// A zero coefficient is the only legitimate way to produce FLOAT_ZERO
