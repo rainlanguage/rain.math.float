@@ -948,7 +948,8 @@ library LibDecimalFloat {
         returns (int256, int256)
     {
         if (b.isZero()) {
-            return FLOAT_ONE.unpack();
+            (signedCoefficientA, exponentA) = FLOAT_ONE.unpack();
+            return (signedCoefficientA, exponentA);
         } else if (signedCoefficientA <= 0) {
             if (signedCoefficientA == 0) {
                 if (b.lt(FLOAT_ZERO)) {
@@ -958,7 +959,8 @@ library LibDecimalFloat {
 
                 // If a is zero, then a^b is always zero, regardless of b.
                 // This is a special case because log10(0) is undefined.
-                return FLOAT_ZERO.unpack();
+                (signedCoefficientA, exponentA) = FLOAT_ZERO.unpack();
+                return (signedCoefficientA, exponentA);
             } else {
                 // A negative base has a real power only for a whole exponent:
                 // (-a)^b is a^b, negated when b is odd.
@@ -975,7 +977,8 @@ library LibDecimalFloat {
         }
         // 1^b is 1 for every b, including one too large for the integer leg.
         else if (isOne(signedCoefficientA, exponentA)) {
-            return FLOAT_ONE.unpack();
+            (signedCoefficientA, exponentA) = FLOAT_ONE.unpack();
+            return (signedCoefficientA, exponentA);
         }
         // Handle identity case for positive values of a, i.e. a^1.
         else if (b.eq(FLOAT_ONE)) {
