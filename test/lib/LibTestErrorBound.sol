@@ -37,8 +37,8 @@ library LibTestErrorBound {
         return LibDecimalFloat.packLossless(int256(POW_GUARD / 2 + POW10_RAW_ERROR), -50);
     }
 
-    /// pow, relative, for the integer part N of |b|: 5.00006e-41, pow10's
-    /// bound plus log10Unrounded's 2.245e-47 times a fraction below 1 and
+    /// pow, relative, for the integer part N of |b|: 5.0000517e-41, pow10's
+    /// bound plus log10Unrounded's 2e-50 times a fraction below 1 and
     /// ln 10, plus the packing, and 3 N 1e-75. Every multiply and the inverse
     /// truncate toward zero by under 1e-75, and squaring to the Nth power
     /// weights them by at most 2N in all, so the integer part is within
@@ -46,7 +46,7 @@ library LibTestErrorBound {
     /// under N 1e-75.
     function pow(Float b) internal pure returns (Float) {
         return
-            LibDecimalFloat.packLossless(500006, -46).add(b.abs().integer().mul(LibDecimalFloat.packLossless(3, -75)));
+            LibDecimalFloat.packLossless(50000517, -48).add(b.abs().integer().mul(LibDecimalFloat.packLossless(3, -75)));
     }
 
     /// For x < y, an absolute bound gives f(x) - f(y) <= E(x) + E(y).

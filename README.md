@@ -137,9 +137,9 @@ including an integer power and `a^1`, within proven bounds of the true value:
 
 - `pow10`: half a unit in the 41st digit plus 5.1662e-6 of a unit, under
   5.0000517e-41 relative.
-- `log10`: half a unit in the 41st digit plus 2.245e-47 absolute.
-- `pow`: 5.00006e-41 + 3N·1e-75 relative, for N the integer part of |b|.
-- `sqrt`: 5.00006e-41 relative.
+- `log10`: half a unit in the 41st digit plus 2e-50 absolute.
+- `pow`: 5.0000517e-41 + 3N·1e-75 relative, for N the integer part of |b|.
+- `sqrt`: 5.0000517e-41 relative.
 
 A `pow10` or `pow` result below 1e-2147483608 sheds digits to lift its exponent
 to the int32 floor, so its bound adds 1e-2147483648 absolute. Below
@@ -150,7 +150,7 @@ They are monotone within rounding error, not strictly monotone. For a < b the
 order of the results can flip by exactly one unit in the last place, only when
 both true values lie within the larger raw error of the same rounding tie, and
 never by more. The raw error, before rounding, is 5.1662e-6 of a unit for
-`pow10`, 2.245e-47 for `log10`, and 5.69e-46 + 3N·1e-75 relative for `pow` and
+`pow10`, 2e-50 for `log10`, and 5.1667e-46 + 3N·1e-75 relative for `pow` and
 `sqrt`. Callers must not rely on strict ordering at one-ulp resolution.
 
 Exact results stay exact: powers of ten (`pow10(k)` is `10^k`, `log10(10^k)` is

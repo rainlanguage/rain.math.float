@@ -61,7 +61,7 @@ uint256 constant POW10_RAW_ERROR = 51662;
 
 /// @dev The most, in units of 1e-50, that the true log can lie from
 /// `log10Unrounded`. See `log10Unrounded`.
-uint256 constant LOG10_RAW_ERROR = 2245;
+uint256 constant LOG10_RAW_ERROR = 2;
 
 /// @dev Library implementing core DecimalFloat operations using only stack
 /// variables.
@@ -896,7 +896,7 @@ library LibDecimalFloatImplementation {
     /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. R
     ///   is within 16.7 units of C / 10^S, 1.67e-74 relative, which moves its
     ///   log by under 1e-24 units. With log10Ratio's 1.0043 units the true
-    ///   log is within 1.0044 units.
+    ///   log is within 1.0044 units, which rounds up to 2.
     /// - log10(10^k) is exactly k.
     /// A characteristic of 1e25 or more is summed by `add`, which loses under
     /// a unit of the sum's exponent, at least -50.

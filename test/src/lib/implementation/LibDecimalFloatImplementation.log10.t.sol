@@ -563,7 +563,7 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         return Math.mulDiv(error, 1e9, 10 ** uint256(70 + ulpExponent(logCoefficient, logExponent)));
     }
 
-    /// Half a unit plus `LOG10_RAW_ERROR` units of 1e-50, which is 224500
+    /// Half a unit plus `LOG10_RAW_ERROR` units of 1e-50, which is 200
     /// billionths of a last place at least 1e-43. The oracle is within 101
     /// units of 1e-70: each truncated prime log is under a unit low and
     /// log10OnePlus is within 2. That is under 1e-16 billionths, and the

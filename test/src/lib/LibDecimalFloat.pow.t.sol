@@ -98,7 +98,7 @@ contract LibDecimalFloatPowTest is LogTest {
     /// the oracle. pow's bound E is relative, but its integer leg truncates
     /// multiplicatively, (1 - 1e-75)^(2N + 1), which moves L by under
     /// (2N + 1) 1e-75 / ln 10; the leg and the rounding move it by under
-    /// 5.00006e-41. So E, with |b| for N, is a slack on L both ways.
+    /// 5.0000517e-41. So E, with |b| for N, is a slack on L both ways.
     function powRange(Float a, Float b) internal pure returns (PowRange) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -109,7 +109,7 @@ contract LibDecimalFloatPowTest is LogTest {
             signedCoefficientB < 0 ? -signedCoefficientB : signedCoefficientB, exponentB, 3, -75
         );
         (slackCoefficient, slackExponent) =
-            LibDecimalFloatImplementation.add(slackCoefficient, slackExponent, 500006, -46);
+            LibDecimalFloatImplementation.add(slackCoefficient, slackExponent, 50000517, -48);
         return LibTestPowRange.range(signedCoefficientL, exponentL, slackCoefficient, slackExponent);
     }
 

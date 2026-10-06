@@ -173,11 +173,11 @@ contract LibDecimalFloatSqrtTest is LogTest {
 
     /// pow10 rounds to nearest with its fixed point power within
     /// `POW10_RAW_ERROR` units, 5166.2 billionths of a unit, and its argument
-    /// is half log10Unrounded, within half of 2.245e-47, which moves the root
-    /// by 2.5847e-47 relative, 2584.7 billionths of a unit at most 1e-41
-    /// relative. With the half unit that is under 500007751.
+    /// is half log10Unrounded, within half of 2e-50, which moves the root by
+    /// 2.3026e-50 relative, 2.3026 billionths of a unit at most 1e-41
+    /// relative. With the half unit that is under 500005169.
     function testSqrtUlpFuzz(int256 signedCoefficient, int256 exponent) external {
-        assertLe(sqrtUlpError(signedCoefficient, exponent), 500007751, "sqrt error");
+        assertLe(sqrtUlpError(signedCoefficient, exponent), 500005169, "sqrt error");
     }
 
     /// x < y implies sqrt(x) <= sqrt(y) + 2E, down to adjacent coefficients.

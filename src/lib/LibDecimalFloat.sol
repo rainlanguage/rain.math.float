@@ -877,7 +877,7 @@ library LibDecimalFloat {
     /// change.
     /// @param a The float to log10.
     /// @return The base-10 logarithm of a, rounded to nearest at 41
-    /// significant digits, within half a unit in the 41st digit plus 2.245e-47
+    /// significant digits, within half a unit in the 41st digit plus 2e-50
     /// absolute. Monotone within rounding error: for x < y the results can be
     /// out of order by exactly one unit in the last place, only when both
     /// true values lie within the raw error of the same rounding tie, and
@@ -899,11 +899,11 @@ library LibDecimalFloat {
     ///
     /// The final product, including a^1, is rounded to nearest at 41
     /// significant digits, half away from zero. For N the integer part of
-    /// |b|, the result is within 5.00006e-41 + 3N 1e-75 relative of the true
+    /// |b|, the result is within 5.0000517e-41 + 3N 1e-75 relative of the true
     /// value:
     /// - The leg keeps pow10's guard digits. Their 5.1662e-46 relative, plus
-    ///   log10Unrounded's 2.245e-47 times a fraction below 1 and ln 10, puts
-    ///   it within 5.69e-46 relative of 10^(frac(b) log10(a)).
+    ///   log10Unrounded's 2e-50 times a fraction below 1 and ln 10, puts
+    ///   it within 5.1667e-46 relative of 10^(frac(b) log10(a)).
     /// - Every multiply and the inverse truncate toward zero by under 1e-75,
     ///   and squaring to the Nth power weights them by at most 2N in all, so
     ///   the integer part is within 2N 1e-75 relative, and its product with
@@ -916,7 +916,7 @@ library LibDecimalFloat {
     ///   1e-2147483648 it reverts `ExponentUnderflow`.
     /// Monotone within rounding error: for b < c, a^b and a^c can be out of
     /// order by exactly one unit in the last place, only when both true
-    /// values lie within the larger raw error, 5.69e-46 + 3N 1e-75 relative,
+    /// values lie within the larger raw error, 5.1667e-46 + 3N 1e-75 relative,
     /// of the same rounding tie, and never by more. Callers must not rely on
     /// strict ordering at one-ulp resolution.
     /// Exact results stay exact: a power with at most 41 significant digits,
@@ -1107,7 +1107,7 @@ library LibDecimalFloat {
 
     /// sqrt a = a ^ 0.5
     ///
-    /// As `pow`: within 5.00006e-41 relative of the true value, rounded to
+    /// As `pow`: within 5.0000517e-41 relative of the true value, rounded to
     /// nearest at 41 significant digits. Monotone within rounding error: for
     /// x < y the roots can be out of order by exactly one unit in the last
     /// place, only when both true values lie within the raw error of the same
