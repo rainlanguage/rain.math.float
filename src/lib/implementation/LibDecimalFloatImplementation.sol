@@ -454,6 +454,7 @@ library LibDecimalFloatImplementation {
         assembly ("memory-safe") {
             let mm := mulmod(x, y, not(0))
             let prod0 := mul(x, y)
+            // slither-disable-next-line too-many-digits
             let remainder := mulmod(x, y, 100000000000000000000000000000000000000000000000000)
             let prod1 := sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0))
             prod0 := sub(prod0, remainder)
@@ -1078,6 +1079,8 @@ library LibDecimalFloatImplementation {
     /// @param x A value in [1e75, 1e76).
     /// @return The reduced x.
     /// @return seed The summed powers at the `POW_FIXED_ONE` scale.
+    // slither-disable-start too-many-digits
+    //slither-disable-next-line cyclomatic-complexity
     function log10Reduce(uint256 x) internal pure returns (uint256, uint256 seed) {
         assembly ("memory-safe") {
             if iszero(lt(x, 3162277660168379331998893544432718533719555139325216826857504852792594438640)) {
@@ -1195,6 +1198,7 @@ library LibDecimalFloatImplementation {
         }
         return (x, seed);
     }
+    // slither-disable-end too-many-digits
 
     /// 10^x for a float x, rounded to nearest at 41 significant digits, half
     /// up. 10^k is exactly 10^k for an integer k.
@@ -1273,6 +1277,7 @@ library LibDecimalFloatImplementation {
     /// In all that is under 30.471.
     /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1).
     /// @return result The power at the `POW_FIXED_ONE` scale, in [1, 10).
+    //slither-disable-next-line cyclomatic-complexity
     function exp10Fixed(uint256 x) internal pure returns (uint256 result) {
         unchecked {
             result = POW_FIXED_ONE;
