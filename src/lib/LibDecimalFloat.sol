@@ -1159,10 +1159,14 @@ library LibDecimalFloat {
     /// [1e75, 1e76), m^2 = (2c +- 1)^2 10^(2e) / 4, so a is past it as 4 A
     /// 10^(f - 2e) is past (2c +- 1)^2. c^2 10^(2e) is within 1e-39 relative
     /// of a, so 10^(f - 2e) is within that of c^2 / A, in (1e4, 1e7), and
-    /// f - 2e is in [4, 7]. At c = 1e40 r rounded up from at least
-    /// 1e41 - 0.5 units of the exponent below, so the neighbour below is
-    /// 1e41 - 1 at exponent e - 1 and the midpoint (2e41 - 1) 10^(e - 1) / 2,
-    /// compared at f - 2e + 2, at most 7 as c^2 / A is then at most 1e5.
+    /// f - 2e is in [4, 7].
+    ///
+    /// r = 10^n is never above the true root by the midpoint a decade down,
+    /// so c = 1e40 never rounds down. Below that midpoint a is within 1e-41
+    /// below 10^2n, its half log is at most a unit of 1e-50 high, 2.31e-50
+    /// relative in the root, and exp10Fixed takes every step, whose product
+    /// alone is 7.6e-50 relative below 10^(1 - 2^-16). So the unrounded root is
+    /// below the true root and rounds below 10^n.
     /// @return signedCoefficient r, or the neighbour the root rounds to.
     /// @return exponent Its exponent.
     function roundRoot(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficient, int256 exponent)
@@ -1192,11 +1196,7 @@ library LibDecimalFloat {
         if (above(scaledA, k, m)) {
             return (c + 1, e);
         }
-        if (c == 1e40) {
-            if (!above(scaledA, k + 2, 2e41 - 1)) {
-                return (1e41 - 1, e - 1);
-            }
-        } else if (!above(scaledA, k, m - 2)) {
+        if (!above(scaledA, k, m - 2)) {
             return (c - 1, e);
         }
         return (signedCoefficient, exponent);

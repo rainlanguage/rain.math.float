@@ -273,6 +273,26 @@ contract LibDecimalFloatSqrtTest is LogTest {
         checkMidpoint(1e40, 5);
     }
 
+    /// m = 2c + 1 is the first odd m past sqrt(100007 2^256), with m^2 under
+    /// m / 4 past 100007 2^256. a = (c + 1/4)^2 floored to 67 digits has 4a
+    /// 10^k under m^2 by about 2c, so below 100007 2^256: the high words of
+    /// 4a 10^k and m^2 differ while 4a's low word is the larger.
+    function testSqrtMidpointStraddlesWord() external {
+        uint256 c = 53805249438034112592410659411875078206494;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 a = int256(Math.mulDiv(4 * c + 1, 4 * c + 1, 16e15));
+        (uint256 mHigh, uint256 mLow) = LibDecimalFloatImplementation.mul512(2 * c + 1, 2 * c + 1);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (uint256 xHigh, uint256 xLow) = LibDecimalFloatImplementation.mul512(uint256(a) * 4, 1e15);
+        assertEq(mHigh, 100007, "m high");
+        assertEq(xHigh, 100006, "x high");
+        assertGt(xLow, mLow, "low words");
+        Float root = LibDecimalFloat.packLossless(a, 15).sqrt(logTables());
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertTrue(root.eq(LibDecimalFloat.packLossless(int256(c), 0)), "root");
+        assertCorrectlyRounded(a, 15, root);
+    }
+
     function testSqrtMidpointFuzz(uint256 c, int256 k) external {
         c = bound(c, 1e40, 1e41 - 1);
         k = bound(k, -5e8, 5e8);
