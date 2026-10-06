@@ -38,14 +38,48 @@ contract LibDecimalFloatPow10Test is LogTest {
         assertEq(exponent, type(int32).min);
     }
 
+    /// 10^(int32.max + k) is 10^k at int32.max while 10^k fits int224, which
+    /// it does up to k 67.
+    function testPow10PastInt32Max() external {
+        int256[2] memory ks = [int256(1), 67];
+        for (uint256 i = 0; i < ks.length; i++) {
+            (int256 signedCoefficient, int256 exponent) =
+                this.pow10External(LibDecimalFloat.packLossless(int256(type(int32).max) + ks[i], 0)).unpack();
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertEq(signedCoefficient, int256(10 ** uint256(ks[i])));
+            assertEq(exponent, type(int32).max);
+        }
+    }
+
+    /// 10^(int32.max + 68) is 1e68 at int32.max, past int224.
+    function testPow10PastInt32MaxOverflows() external {
+        vm.expectPartialRevert(ExponentOverflow.selector);
+        this.pow10External(LibDecimalFloat.packLossless(int256(type(int32).max) + 68, 0));
+    }
+
     function testPow10Packed(Float float) external {
         (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
         try this.pow10External(signedCoefficientFloat, exponentFloat) returns (
             int256 signedCoefficient, int256 exponent
         ) {
             if (exponent > type(int32).max) {
-                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
-                this.pow10External(float);
+                // Digits are taken back to pack at int32.max when int224 holds
+                // them.
+                int256 excess = exponent - type(int32).max;
+                int256 lifted = signedCoefficient;
+                // forge-lint: disable-next-line(unsafe-typecast)
+                for (int256 i = 0; i < excess && int224(lifted) == lifted; i++) {
+                    lifted *= 10;
+                }
+                // forge-lint: disable-next-line(unsafe-typecast)
+                if (int224(lifted) == lifted) {
+                    (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = this.pow10External(float).unpack();
+                    assertEq(signedCoefficientUnpacked, lifted);
+                    assertEq(exponentUnpacked, type(int32).max);
+                } else {
+                    vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+                    this.pow10External(float);
+                }
             } else {
                 // Predict whether packArithmeticResult will revert on underflow.
                 (Float predicted, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
