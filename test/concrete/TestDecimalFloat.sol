@@ -5,7 +5,6 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
-import {ScientificMinNotLessThanMax} from "src/error/ErrDecimalFloat.sol";
 import {LibTestLogTables} from "test/lib/LibTestLogTables.sol";
 
 /// The `DecimalFloat` ABI over this source, for the Rust bindings' tests. The
@@ -58,11 +57,7 @@ contract TestDecimalFloat {
     }
 
     function format(Float a, Float scientificMin, Float scientificMax) public pure returns (string memory) {
-        if (!scientificMin.lt(scientificMax)) {
-            revert ScientificMinNotLessThanMax(scientificMin, scientificMax);
-        }
-        Float absA = a.abs();
-        return LibFormatDecimalFloat.toDecimalString(a, absA.lt(scientificMin) || absA.gt(scientificMax));
+        return LibFormatDecimalFloat.toDecimalString(a, scientificMin, scientificMax);
     }
 
     function format(Float a, bool scientific) external pure returns (string memory) {
