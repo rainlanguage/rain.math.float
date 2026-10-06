@@ -72,7 +72,7 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         }
     }
 
-    /// Within a table step of a power of ten the seed is exact, so the error
+    /// Within a factor 1.001 of a power of ten the seed is exact, so the error
     /// is relative to the log, which can be arbitrarily close to zero:
     /// `log10Ratio`'s 9.6e-50 relative plus a unit of its quotient, which is at
     /// least 1e75 (2 / ln 10) / 2e76, 4.34e48, so 3.27e-49 relative.
@@ -412,7 +412,7 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         ];
     }
 
-    /// As `log10References`, for inputs within a table step of a power of ten.
+    /// As `log10References`, for inputs within a factor 1.001 of a power of ten.
     function log10NearPowerOfTenReferences() internal pure returns (int256[4][] memory references) {
         references = new int256[4][](8);
         references[0] = [
@@ -521,9 +521,9 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
     }
 
     /// |log10(x) - oracle| for x = prime^j (1 ± d / 10^p) 10^n, which spreads
-    /// the seed over the whole table. Unrounded, in units of 1e-70. Rounded,
+    /// the seed over the whole decade. Unrounded, in units of 1e-70. Rounded,
     /// in billionths of a unit in the result's last place, with n moved off 0
-    /// when j is 0, as a log within a table step of zero is finer than the
+    /// when j is 0, as a log within log10(1.001) of zero is finer than the
     /// oracle's 1e-70. `log10NearOneUlpError` covers it.
     function log10OracleError(uint256 primeSeed, uint256 j, uint256 p, uint256 d, bool negative, int256 n, bool rounded)
         internal
@@ -582,7 +582,7 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         assertLe(log10OracleError(primeSeed, j, p, d, negative, n, false), LOG10_RAW_ERROR * 1e20 + 102, "log10 error");
     }
 
-    /// x = 1 ± d / 10^p, within a table step of 1, and log10(x) from the
+    /// x = 1 ± d / 10^p, within a factor 1.001 of 1, and log10(x) from the
     /// oracle as a float.
     function nearOne(uint256 p, uint256 d, bool negative)
         internal
@@ -661,8 +661,8 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
     }
 
     /// log10Unrounded(x 10^k) = log10Unrounded(x) + k exactly, as the
-    /// characteristic is summed as an integer, except that a log within a
-    /// table step of zero keeps digits below the 1e-50 its shift truncates
+    /// characteristic is summed as an integer, except that a log within
+    /// log10(1.001) of zero keeps digits below the 1e-50 its shift truncates
     /// to.
     function testLog10DecadeShift(int256 signedCoefficient, int256 exponent, int256 shift) external {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);

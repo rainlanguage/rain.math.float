@@ -873,8 +873,8 @@ library LibDecimalFloat {
     /// Same as log10, but accepts a Float struct instead of separate values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
-    /// @param tablesDataContract The address of the contract containing the
-    /// logarithm tables.
+    /// @param tablesDataContract Unused, and kept so that callers need not
+    /// change.
     /// @param a The float to log10.
     /// @return The base-10 logarithm of a, rounded to nearest at 41
     /// significant digits, within half a unit in the 41st digit plus 2.245e-47
@@ -895,8 +895,7 @@ library LibDecimalFloat {
     /// a^b = a^int(b) * 10^(frac(b) * log10(a))
     ///
     /// The integer part of `b` is exact, by squaring. The fractional part is
-    /// computed in fixed point from a log table seed rather than interpolated
-    /// from the tables.
+    /// computed in fixed point.
     ///
     /// The final product, including a^1, is rounded to nearest at 41
     /// significant digits, half away from zero. For N the integer part of
@@ -931,8 +930,8 @@ library LibDecimalFloat {
     /// fractional `b` reverts `PowNegativeBase`.
     /// @param a The float `a` in `a^b`.
     /// @param b The float `b` in `a^b`.
-    /// @param tablesDataContract The address of the contract containing the
-    /// logarithm tables.
+    /// @param tablesDataContract Unused, and kept so that callers need not
+    /// change.
     /// @return The result of a^b.
     function pow(Float a, Float b, address tablesDataContract) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
@@ -1119,8 +1118,8 @@ library LibDecimalFloat {
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
     /// @param a The float to take the square root of.
-    /// @param tablesDataContract The address of the contract containing the
-    /// logarithm tables.
+    /// @param tablesDataContract Unused, and kept so that callers need not
+    /// change.
     /// @return The square root of a.
     function sqrt(Float a, address tablesDataContract) internal pure returns (Float) {
         return pow(a, FLOAT_HALF, tablesDataContract);

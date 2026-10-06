@@ -808,7 +808,8 @@ library LibDecimalFloatImplementation {
     /// half away from zero, so within half a unit in the 41st digit plus
     /// `LOG10_RAW_ERROR` units of 1e-50. log10(10^k) is exactly k.
     ///
-    /// @param tablesDataContract The address of the log tables data contract.
+    /// @param tablesDataContract Unused, and kept so that callers need not
+    /// change.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
     /// @param exponent The exponent of the floating point number.
@@ -880,22 +881,22 @@ library LibDecimalFloatImplementation {
     /// log10(x) for a float x, with the guard digits that `log10` rounds
     /// away.
     ///
-    /// The four figure log table gives a seed S and the atanh series of the
-    /// ratio between the input and E = exp10Fixed(S) closes the remaining gap.
-    /// Inputs within a table step of a power of ten take an exact seed, so a
-    /// log near zero keeps its relative precision.
+    /// `log10Reduce` divides the coefficient C in [1e75, 1e76) by powers
+    /// 10^(2^-i) that sum to an exact seed S, leaving R within 10^(2^-16) of
+    /// 1e75, and the atanh series of R / 1e75 closes the remaining gap. A
+    /// coefficient within a factor 1.001 of a power of ten skips the reduction
+    /// and takes S = 0, so a log near zero keeps its relative precision.
     ///
-    /// The error, from the bounds on `exp10Fixed` and `log10Ratio`, is within
+    /// The error, from the bounds on `log10Reduce` and `log10Ratio`, is within
     /// `LOG10_RAW_ERROR` units of 1e-50 for a log below 1e25 in magnitude,
     /// which includes every float:
-    /// - Within a table step of 1: E is exact and the result is the relative
-    ///   coefficient of `log10Ratio`, at least 4.34e48, so within 3.27e-49
-    ///   relative of a log below log10(1.001), under 1.5e-52.
-    /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. The
-    ///   log E lacks to be log10(10^S) is in [-2.24256e-47, 2.3e-51], from
-    ///   exp10Fixed's relative error in [-5.1637e-47, 5.2e-51]. With
-    ///   log10Ratio's 1.005 units the true log is within 2244 units, which
-    ///   rounds up to 2245.
+    /// - Within a factor 1.001 of 1: the result is the relative coefficient
+    ///   of `log10Ratio`, at least 4.34e48, so within 3.27e-49 relative of a
+    ///   log below log10(1.001), under 1.5e-52.
+    /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. R
+    ///   is within 16.7 units of C / 10^S, 1.67e-74 relative, which moves its
+    ///   log by under 1e-24 units. With log10Ratio's 1.0043 units the true
+    ///   log is within 1.0044 units.
     /// - log10(10^k) is exactly k.
     /// A characteristic of 1e25 or more is summed by `add`, which loses under
     /// a unit of the sum's exponent, at least -50.
@@ -975,9 +976,8 @@ library LibDecimalFloatImplementation {
     /// a and b within a few parts in ten thousand of each other.
     ///
     /// Error, in units of 1e-50 unless stated, for z = |a - b| / (a + b) at
-    /// most 5.1e-4. That holds as |log10(a / b)| is at most log10(1.001) at a
-    /// table edge and 1.2e-4 inside the table, the shipped entries' worst error
-    /// plus 5.4e-8 of interpolation curvature.
+    /// most 5.1e-4. That holds as a / b is within a factor 1.001 at a power
+    /// of ten and within 10^(2^-16) after `log10Reduce`.
     /// - The floored z and z^2 make each power of z^2 at most 2.001 below its
     ///   exact value, then at most 1.000001 once the floor dominates. Each
     ///   term's divide floors a further unit. z^16 is below 1e-50, so the loop
@@ -987,8 +987,8 @@ library LibDecimalFloatImplementation {
     ///   below ln 10 1e50, so the scaled series is within (-8.3, 1.3e-51
     ///   relative] of 2 atanh(z) / (z ln 10).
     /// - The last mulDiv multiplies that by z, or by z 10^k when `relative`,
-    ///   and floors a unit. Not relative, the result is within 1.005 units of
-    ///   the log. Relative, it is within the coefficient C times 9.6e-50, plus
+    ///   and floors a unit. Not relative, the result is within 1 + 8.3 z,
+    ///   under 1.0043, units of the log. Relative, it is within the coefficient C times 9.6e-50, plus
     ///   a unit, below and 1.3e-51 relative above, so within C / 1e49 + 2
     ///   units of its exponent.
     /// @param a The numerator, at most 1e76.
@@ -1066,9 +1066,17 @@ library LibDecimalFloatImplementation {
     }
 
     /// Divides x out by 10^(2^-i) for each i in [1, 16] where x is at least
-    /// it, each by its reciprocal at the 2^256 scale, so x lands within a
-    /// factor 10^(2^-16) of 1e75 and the summed powers are the log of the
-    /// factor taken out.
+    /// 1e75 10^(2^-i), each by its reciprocal at the 2^256 scale, so x lands
+    /// within a factor 10^(2^-16) of 1e75 and the summed powers are the log
+    /// of the factor taken out.
+    ///
+    /// Each threshold is 1e75 10^(2^-i) rounded up and each reciprocal
+    /// 2^256 / 10^(2^-i) rounded to nearest, so a step is within
+    /// x / 2^257 < 0.0432 of x / 10^(2^-i) before its floor, in
+    /// (-1.0432, 0.0432]. Later steps only shrink an earlier step's error, so
+    /// the reduced x is within (-16.7, 0.7] of x / 10^seed. A step leaves x
+    /// below the next threshold, so the reduced x is in (1e75 - 1.05,
+    /// 1e75 10^(2^-16)).
     /// @param x A value in [1e75, 1e76).
     /// @return The reduced x.
     /// @return seed The summed powers at the `POW_FIXED_ONE` scale.

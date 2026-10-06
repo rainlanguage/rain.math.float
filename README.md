@@ -245,13 +245,13 @@ rather than simply return a bool, with a standard default error message.
 The log/pow calculations are not simply truncated on precision loss, they are
 inherently approximations in many cases.
 
-`log10` takes a four figure log table value (from the tables deployed
-deterministically onchain as data contracts) as a seed and refines it with a
-fixed point series. Before rounding it is within 2.5e-47 of the true value, and
-within 3e-49 relative of it for an input within a table step of a power of ten,
-so a log near zero keeps its precision. The result is rounded to 41 significant
-digits, so it is within half a unit in the 41st digit plus 2.5e-47. A power of
-ten has an exact log.
+`log10` reads no tables. It divides the input by powers 10^(2^-i) down to within
+10^(2^-16) of a power of ten and closes the gap with a fixed point series.
+Before rounding it is within 2.5e-47 of the true value, and within 3e-49
+relative of it for an input within a factor 1.001 of a power of ten, so a log
+near zero keeps its precision. The result is rounded to 41 significant digits,
+so it is within half a unit in the 41st digit plus 2.5e-47. A power of ten has
+an exact log.
 
 `pow10` reads no tables. It computes the power in fixed point and rounds it to
 41 significant digits, so it is within half a unit in the 41st digit and an
