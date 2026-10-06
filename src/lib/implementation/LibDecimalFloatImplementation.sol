@@ -283,11 +283,10 @@ library LibDecimalFloatImplementation {
                 let remainder := mulmod(signedCoefficientAAbs, signedCoefficientBAbs, exp(10, adjustExponent))
                 prod1 := sub(prod1, gt(remainder, prod0))
                 prod0 := sub(prod0, remainder)
-                prod0 :=
-                    mul(
-                        or(shr(adjustExponent, prod0), shl(sub(256, adjustExponent), prod1)),
-                        exp(FIVE_INVERSE, adjustExponent)
-                    )
+                prod0 := mul(
+                    or(shr(adjustExponent, prod0), shl(sub(256, adjustExponent), prod1)),
+                    exp(FIVE_INVERSE, adjustExponent)
+                )
             }
 
             (signedCoefficient, exponent) =
