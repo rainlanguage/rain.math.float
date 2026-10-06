@@ -693,6 +693,22 @@ pub(crate) fn literal() -> BoxedStrategy<String> {
         .boxed()
 }
 
+/// #327: a nonzero integer part outside int224 with an all-zero
+/// fraction, which Solidity rejects as ParseDecimalPrecisionLoss before it
+/// reads the exponent.
+pub(crate) fn zero_fraction_defect(s: &str) -> bool {
+    let mantissa = s.split(['e', 'E']).next().unwrap();
+    let Some((int_str, frac)) = mantissa.split_once('.') else {
+        return false;
+    };
+    let int: BigInt = int_str.parse().unwrap();
+    frac.bytes().all(|b| b == b'0')
+        && !int.is_zero()
+        && !r::fits_int224(&int)
+        && int >= r::int256_min()
+        && int <= r::int256_max()
+}
+
 pub(crate) fn check_parse(s: &str) -> Result<(), TestCaseError> {
     let case = format!("parse({s})");
     let want = r::parse(s);
@@ -714,6 +730,15 @@ pub(crate) fn check_parse(s: &str) -> Result<(), TestCaseError> {
                 (w, p) => prop_assert!(false, "{case}: reference {w:?}, python {p:?}"),
             }
         }
+    }
+    if zero_fraction_defect(s) {
+        let sol = sol_parse(s);
+        prop_assert!(
+            sol.as_ref()
+                .is_err_and(|e| error_matches(e, RefError::ParseDecimalPrecisionLoss)),
+            "{case}: solidity {sol:?}"
+        );
+        return Ok(());
     }
     match (sol_parse(s), want) {
         (Ok(f), Ok(w)) => {
@@ -978,5 +1003,34 @@ mod found {
     fn parse_sheds_past_the_int256_exponent() {
         let int256_max = (BigInt::from(1) << 255usize) - 1u32;
         run(check_parse(&format!("1{}e{int256_max}", "0".repeat(68))));
+    }
+
+    /// #327: the literal without its all-zero fraction parses or fails with
+    /// the reference; with it, Solidity says ParseDecimalPrecisionLoss.
+    #[test]
+    fn parse_zero_fraction_checks_the_integer_part() {
+        let nines = "9".repeat(68);
+        for (int, exp) in [
+            (nines.as_str(), "e2200000000"),
+            (&format!("2{}", "0".repeat(67)), ""),
+            (&format!("-2{}", "0".repeat(67)), "e-5"),
+        ] {
+            let bare = format!("{int}{exp}");
+            run(check_parse(&bare));
+            for frac in [".0", ".000"] {
+                let s = format!("{int}{frac}{exp}");
+                match (r::parse(&s), r::parse(&bare)) {
+                    (Ok(a), Ok(b)) => assert!(a.eq_value(&b), "{s}"),
+                    (Err(a), Err(b)) => assert_eq!(a, b, "{s}"),
+                    (a, b) => panic!("{s}: {a:?}, {bare}: {b:?}"),
+                }
+                assert!(!matches!(r::parse(&s), Err(RefError::ParseDecimalPrecisionLoss)), "{s}");
+                assert!(zero_fraction_defect(&s), "{s}");
+                assert!(
+                    error_matches(&sol_parse(&s).unwrap_err(), RefError::ParseDecimalPrecisionLoss),
+                    "{s}"
+                );
+            }
+        }
     }
 }
