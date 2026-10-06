@@ -8,8 +8,8 @@ import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
 import {LibTranscendentalOracle} from "../../../lib/LibTranscendentalOracle.sol";
 
 /// `log10Unrounded` against the oracle, which is within 1e-67, and its proven
-/// `LOG10_RAW_ERROR` units of 1e-50, plus under a unit of the result's
-/// exponent when the characteristic is summed by `add`.
+/// `LOG10_RAW_ERROR` units of 1e-50, plus under a unit of the exponent of the
+/// oracle's sum when the characteristic is summed by `add`.
 contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
     function log10UnroundedExternal(int256 signedCoefficient, int256 exponent) external returns (int256, int256) {
         return LibDecimalFloatImplementation.log10Unrounded(logTables(), signedCoefficient, exponent);
@@ -22,7 +22,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
     /// |log10Unrounded - oracle| and the oracle's log as a float.
     function errorAgainstOracle(int256 signedCoefficient, int256 exponent)
         internal
-        returns (int256, int256, int256, int256, int256)
+        returns (int256, int256, int256, int256)
     {
         (int256 actualCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.log10Unrounded(logTables(), signedCoefficient, exponent);
@@ -36,17 +36,17 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
             LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, characteristic, 0);
         (errorCoefficient, errorExponent) =
             LibDecimalFloatImplementation.sub(errorCoefficient, errorExponent, signedFraction, -70);
-        return (abs(errorCoefficient), errorExponent, expectedCoefficient, expectedExponent, actualExponent);
+        return (abs(errorCoefficient), errorExponent, expectedCoefficient, expectedExponent);
     }
 
     function checkAbsolute(int256 signedCoefficient, int256 exponent) internal {
-        (int256 errorCoefficient, int256 errorExponent,,, int256 actualExponent) =
+        (int256 errorCoefficient, int256 errorExponent,, int256 expectedExponent) =
             errorAgainstOracle(signedCoefficient, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 boundCoefficient, int256 boundExponent) = (int256(LOG10_RAW_ERROR) * 1e17 + 1, int256(-67));
-        if (actualExponent > -50) {
+        if (expectedExponent > -50) {
             (boundCoefficient, boundExponent) =
-                LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, actualExponent);
+                LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, expectedExponent);
         }
         assertTrue(
             LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, boundCoefficient, boundExponent),
@@ -57,7 +57,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
     /// Within a table step of 1 the log is all correction and the error is
     /// under 3.27e-49 of it.
     function checkRelative(int256 signedCoefficient, int256 exponent) internal {
-        (int256 errorCoefficient, int256 errorExponent, int256 expectedCoefficient, int256 expectedExponent,) =
+        (int256 errorCoefficient, int256 errorExponent, int256 expectedCoefficient, int256 expectedExponent) =
             errorAgainstOracle(signedCoefficient, exponent);
         (int256 boundCoefficient, int256 boundExponent) =
             LibDecimalFloatImplementation.mul(abs(expectedCoefficient), expectedExponent, 327, -51);
