@@ -345,4 +345,32 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         assertEq(ef, type(int256).min, "floor tail exponent");
         assertEq(sf, 1, "floor tail shortfall");
     }
+
+    /// The tail step takes exactly the coefficients whose tenfold fits in
+    /// int256: `type(int256).max / 10` and `type(int256).min / 10` do, one
+    /// further out on either side does not.
+    function testMaximizeOneMoreOomExactBounds() external pure {
+        int256 hi = type(int256).max / 10;
+        int256 lo = type(int256).min / 10;
+
+        (int256 c, int256 e, int256 s) = LibDecimalFloatImplementation.maximize(hi, 0);
+        assertEq(c, hi * 10, "hi coefficient");
+        assertEq(e, -1, "hi exponent");
+        assertEq(s, 0, "hi shortfall");
+
+        (c, e, s) = LibDecimalFloatImplementation.maximize(hi + 1, 0);
+        assertEq(c, hi + 1, "past hi coefficient");
+        assertEq(e, 0, "past hi exponent");
+        assertEq(s, 0, "past hi shortfall");
+
+        (c, e, s) = LibDecimalFloatImplementation.maximize(lo, 0);
+        assertEq(c, lo * 10, "lo coefficient");
+        assertEq(e, -1, "lo exponent");
+        assertEq(s, 0, "lo shortfall");
+
+        (c, e, s) = LibDecimalFloatImplementation.maximize(lo - 1, 0);
+        assertEq(c, lo - 1, "past lo coefficient");
+        assertEq(e, 0, "past lo exponent");
+        assertEq(s, 0, "past lo shortfall");
+    }
 }
