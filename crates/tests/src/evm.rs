@@ -97,17 +97,19 @@ pub fn float<C: SolCall<Return = B256>>(c: C) -> Result<Dec, Bytes> {
     concrete(c).map(Dec::from_bytes)
 }
 
-/// `log10` reads the tables `TestDecimalFloat`'s constructor deploys, so it
-/// only answers if the constructor's state is kept.
+/// `TestDecimalFloat`'s constructor deploys the log tables as a data contract,
+/// and `create` keeps it: one account with code besides the concrete.
 #[test]
 fn constructor_state_is_kept() {
-    let log2 = float(TestDecimalFloat::log10Call {
-        a: Dec::new(2, 0).to_bytes(),
-    })
-    .unwrap();
-    assert!(
-        Dec::new(30102, -5).cmp_value(&log2).is_lt()
-            && log2.cmp_value(&Dec::new(30103, -5)).is_lt(),
-        "{log2:?}"
-    );
+    let mut db = InMemoryDB::default();
+    create(&mut db, CONCRETE, &TestDecimalFloat::BYTECODE);
+    let deployed: Vec<_> = db
+        .cache
+        .accounts
+        .iter()
+        .filter(|(at, account)| {
+            **at != CONCRETE && account.info.code.as_ref().is_some_and(|c| !c.is_empty())
+        })
+        .collect();
+    assert_eq!(deployed.len(), 1, "{deployed:?}");
 }
