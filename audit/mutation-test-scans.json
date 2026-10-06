@@ -60,5 +60,27 @@
       "testsAfter": 134,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-06T20:13:44Z",
+    "commit": "c9d432debfd400ea5f38c84fb883d66952c37dc6",
+    "testsAfterCommit": "32adda2d9d125f82bbadd185f7968faa10e732ec",
+    "publishedTag": "sol-v0.2.16",
+    "commitsAheadOfTag": 25,
+    "scope": "pr:309 gas rework of log10/pow10/pow/sqrt/mul: exp10Fixed, mulDivFixed, mulDivPow10, log10Reduce, scaleUp and its log10 branch, the pow integer-one skip, sqrt roundRoot and above. Probe suite: forge test --mc Pow|Sqrt|Log|Precision|Mul|Exp10Fixed|Maximize|MainEquivalence|Div, excluding testDivByOneAtFloor and testMainEquivalenceDivNearFloor, which fail on main for an int256.min coefficient (#320, out of scope); test counts are that suite. Equivalent: S07, W04 (multiply by exact one), Q02. Q06 and Q12 (roundRoot decade-boundary round-down) survived as unreachable: proved in 32adda2 that pow never rounds to 10^n while the true root is below the midpoint a decade down, and the branch was deleted.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 51,
+      "killedBefore": 37,
+      "killedAfter": 9,
+      "equivalent": 3,
+      "deletedUnreachable": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 244,
+      "testsAfter": 272,
+      "filed": []
+    }
   }
 ]
