@@ -458,8 +458,6 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
 
     function testLog10NegativeReverts(int256 signedCoefficient, int256 exponent) external {
         signedCoefficient = bound(signedCoefficient, type(int256).min, -1);
-        // Bound exponent to avoid MaximizeOverflow before reaching the sign check.
-        exponent = bound(exponent, -1e18, 1e18);
         vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficient, exponent));
         this.log10External(signedCoefficient, exponent);
     }
@@ -738,5 +736,33 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
             LibTestErrorBound.monotoneAbsolute(low, high, LibTestErrorBound.log10(low), LibTestErrorBound.log10(high)),
             "monotone"
         );
+    }
+
+    /// Coefficients too small to take their full shift at the floor.
+    /// log10(c * 10^e) = log10(c) + e, which for e within 76 of int256.min
+    /// rounds at 41 digits to the same value as int256.min itself, from `bc`:
+    /// -57896044618658097711785492504343953926634|992332820282019728792003956564819968.
+    function testLog10AtFloor() external {
+        int256 min = type(int256).min;
+        int256 rounded = -57896044618658097711785492504343953926635;
+        checkLog10(1, min, rounded, 36);
+        checkLog10(10, min, rounded, 36);
+        checkLog10(1e75, min, rounded, 36);
+        checkLog10(1, min + 1, rounded, 36);
+        checkLog10(1, min + 75, rounded, 36);
+        checkLog10(2, min, rounded, 36);
+        checkLog10(2, min + 1, rounded, 36);
+        checkLog10(5e75, min, rounded, 36);
+    }
+
+    /// Near the floor, log10(c * 10^e) = log10(c) + e is in [min + 3, min + 61]
+    /// for c up to 1e10, and the 36 digits of int256.min below its 41st are
+    /// 992332820282019728792003956564819968, so every such log rounds at 41
+    /// digits to the same value as int256.min.
+    function testLog10NearFloorMatchesShifted(int256 signedCoefficient, uint256 headroom) external {
+        signedCoefficient = bound(signedCoefficient, 1, 1e10);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponent = type(int256).min + int256(bound(headroom, 3, 50));
+        checkLog10(signedCoefficient, exponent, -57896044618658097711785492504343953926635, 36);
     }
 }
