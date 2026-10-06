@@ -26,18 +26,17 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
     /// `lossless` tracked per digit rather than recovered by a modulo at the
     /// end), so it cannot share a bug with the production arithmetic.
     ///
-    /// The contract: divide the coefficient by ten (towards zero) and raise the
-    /// exponent by one until the coefficient fits int224 and the exponent is at
-    /// or above int32.min. A coefficient that reaches zero is the underflow
-    /// zero. An exponent above int32.max is an overflow revert. The pack is
-    /// lossless iff every digit shed was a zero.
+    /// The contract: an exponent above int32.max is first lowered by
+    /// multiplying the coefficient by ten while it still fits int224, and is an
+    /// overflow revert once it does not. Then divide the coefficient by ten
+    /// (towards zero) and raise the exponent by one until the coefficient fits
+    /// int224 and the exponent is at or above int32.min. A coefficient that
+    /// reaches zero is the underflow zero, and shedding that pushes the
+    /// exponent above int32.max is an overflow revert. The pack is lossless iff
+    /// every digit shed was a zero.
     ///
     /// Returns the expected unpacked (coefficient, exponent), whether the result
     /// is the underflow zero, and the expected `lossless` flag.
-    ///
-    /// Restricted to a domain where the production unchecked exponent
-    /// arithmetic cannot wrap int256 (|exponent| well below int256 limits), so
-    /// every transition is exercised without leaving the well-defined region.
     function oracle(int256 signedCoefficient, int256 exponent)
         internal
         pure
@@ -48,6 +47,19 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
             // The literal is the bool this function returns, not a condition operand.
             //forge-lint: disable-next-line(boolean-cst)
             return (0, 0, true, true, false);
+        }
+
+        // Above the ceiling, lift one digit at a time: multiplying by ten and
+        // lowering the exponent is exact. Overflow is running out of int224
+        // headroom before reaching int32.max.
+        while (exponent > INT32_MAX) {
+            if (signedCoefficient > INT224_MAX / 10 || signedCoefficient < INT224_MIN / 10) {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
+                return (0, 0, false, false, true);
+            }
+            signedCoefficient *= 10;
+            exponent -= 1;
         }
 
         // Naive normalisation: one digit at a time, for as long as EITHER bound
@@ -72,8 +84,7 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
             }
         }
 
-        // Shedding only raises the exponent, so overflow is decided by where it
-        // ended up.
+        // Shedding past the ceiling is a magnitude no Float holds.
         if (exponent > INT32_MAX) {
             // The literal is the bool this function returns, not a condition operand.
             //forge-lint: disable-next-line(boolean-cst)
@@ -259,33 +270,15 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         assertEq(e, INT32_MIN, "exp");
     }
 
-    /// DOCUMENTED EDGE (out of the reachable public domain): when the input
-    /// exponent is itself near int256.max AND the coefficient does not fit
-    /// int224, the unchecked `exponent += 5` / `++exponent` normalisation wraps
-    /// int256 to a very large NEGATIVE number, so the `int32(exponent) != exponent`
-    /// check sees a negative exponent and returns the underflow sentinel
-    /// `(FLOAT_ZERO, false)` — even though the true value is an enormous OVERFLOW.
-    ///
-    /// This cannot be reached from the public arithmetic/parse surface: every
-    /// packed `Float` carries an int32 exponent, and arithmetic only sums/offsets
-    /// those, so exponents fed to `packLossy` stay within ~int33 magnitude — many
-    /// orders below the int256 wrap point. The existing overflow test deliberately
-    /// caps the exponent at `int256.max - 77` to stay clear of this region.
-    ///
-    /// This test PINS the current behaviour so a future change to the
-    /// normalisation arithmetic is caught; it is NOT asserting that returning the
-    /// underflow sentinel for an overflow is "correct".
-    function testPackLossyInt256MaxExponentWrapIsUnderflowSentinel() external pure {
-        // Coefficient way past int224 so the normalisation loop runs and the
-        // exponent gets bumped (and thus wraps from int256.max).
-        (Float a, bool losslessA) = LibDecimalFloat.packLossy(type(int256).max, type(int256).max);
-        assertFalse(losslessA, "huge coeff lossless");
-        assertEq(Float.unwrap(a), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "huge coeff -> sentinel");
+    /// A coefficient past int224 at an exponent near int256.max is an
+    /// overflow. Shedding it would have wrapped the unchecked exponent negative
+    /// and returned the underflow zero; the ceiling is met before any shedding.
+    function testPackLossyInt256MaxExponentIsOverflow() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, type(int256).max, type(int256).max));
+        this.packLossyExternal(type(int256).max, type(int256).max);
 
-        // One past int224 (single loop iteration) at int256.max also wraps.
-        (Float b, bool losslessB) = LibDecimalFloat.packLossy(INT224_MAX + 1, type(int256).max);
-        assertFalse(losslessB, "boundary coeff lossless");
-        assertEq(Float.unwrap(b), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "boundary coeff -> sentinel");
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MAX + 1, type(int256).max));
+        this.packLossyExternal(INT224_MAX + 1, type(int256).max);
     }
 
     /// NO-COLLISION / injectivity near the boundaries. Two numerically-distinct
@@ -381,16 +374,115 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         checkAgainstOracle(-int256(1e73), 7);
     }
 
-    /// Pin the positive overflow boundary mirror: unit coefficient at exactly
-    /// int32.max is in-range; one above reverts ExponentOverflow.
-    function testPackLossyUnitCoefficientCeilBoundary() external {
+    /// Issue #285: unit coefficient at exactly int32.max is in-range, and one
+    /// above is the same number as `10` at int32.max, so it lifts losslessly
+    /// rather than reverting.
+    function testPackLossyUnitCoefficientCeilBoundary() external pure {
         (Float ceil, bool losslessCeil) = LibDecimalFloat.packLossy(1, INT32_MAX);
         assertTrue(losslessCeil, "ceil lossless");
         (int256 c, int256 e) = LibDecimalFloat.unpack(ceil);
         assertEq(c, 1, "ceil coeff");
         assertEq(e, INT32_MAX, "ceil exp");
 
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), INT32_MAX + 1));
-        this.packLossyExternal(1, INT32_MAX + 1);
+        (Float lifted, bool losslessLifted) = LibDecimalFloat.packLossy(1, INT32_MAX + 1);
+        assertTrue(losslessLifted, "lifted lossless");
+        (c, e) = LibDecimalFloat.unpack(lifted);
+        assertEq(c, 10, "lifted coeff");
+        assertEq(e, INT32_MAX, "lifted exp");
+    }
+
+    /// The headroom check is what stops the unchecked lift wrapping int256.
+    /// `c` is the inverse of 5^67 mod 2^189, so `c * 1e67` wraps to exactly
+    /// 2^67 (and `-c * 1e67` to -2^67), which fits int224 and would pack as a
+    /// silent wrong value if the lift were attempted. Both signs must revert.
+    function testPackLossyCeilLiftWrapReverts() external {
+        uint256 five67 = 5 ** 67;
+        uint256 inverse = five67;
+        unchecked {
+            for (uint256 i = 0; i < 8; i++) {
+                inverse *= 2 - five67 * inverse;
+            }
+        }
+        // Reduced mod 2^189, so the cast cannot truncate.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 c = int256(inverse % (1 << 189));
+        unchecked {
+            assertEq(c * 1e67, int256(1 << 67), "wraps positive");
+            assertEq(-c * 1e67, -int256(1 << 67), "wraps negative");
+        }
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, c, INT32_MAX + 67));
+        this.packLossyExternal(c, INT32_MAX + 67);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, -c, INT32_MAX + 67));
+        this.packLossyExternal(-c, INT32_MAX + 67);
+    }
+
+    /// The lift is bounded by int224 headroom on both signs: the widest power
+    /// of ten that fits is lifted exactly, one more digit reverts.
+    function testPackLossyCeilHeadroomBoundary() external {
+        (Float top, bool losslessTop) = LibDecimalFloat.packLossy(1, INT32_MAX + 67);
+        assertTrue(losslessTop, "top lossless");
+        (int256 c, int256 e) = LibDecimalFloat.unpack(top);
+        assertEq(c, 1e67, "top coeff");
+        assertEq(e, INT32_MAX, "top exp");
+
+        (Float bottom, bool losslessBottom) = LibDecimalFloat.packLossy(-1, INT32_MAX + 67);
+        assertTrue(losslessBottom, "bottom lossless");
+        (c, e) = LibDecimalFloat.unpack(bottom);
+        assertEq(c, -1e67, "bottom coeff");
+        assertEq(e, INT32_MAX, "bottom exp");
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), INT32_MAX + 68));
+        this.packLossyExternal(1, INT32_MAX + 68);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-1), INT32_MAX + 68));
+        this.packLossyExternal(-1, INT32_MAX + 68);
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MAX, INT32_MAX + 1));
+        this.packLossyExternal(INT224_MAX, INT32_MAX + 1);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MIN, INT32_MAX + 1));
+        this.packLossyExternal(INT224_MIN, INT32_MAX + 1);
+
+        // The headroom bound is exact, not a digit count: the largest
+        // coefficient that lifts one step lifts, the next does not.
+        (Float edge,) = LibDecimalFloat.packLossy(INT224_MAX / 10, INT32_MAX + 1);
+        (c, e) = LibDecimalFloat.unpack(edge);
+        assertEq(c, INT224_MAX - INT224_MAX % 10, "edge coeff");
+        assertEq(e, INT32_MAX, "edge exp");
+        (edge,) = LibDecimalFloat.packLossy(INT224_MIN / 10, INT32_MAX + 1);
+        (c, e) = LibDecimalFloat.unpack(edge);
+        assertEq(c, INT224_MIN - INT224_MIN % 10, "edge neg coeff");
+        assertEq(e, INT32_MAX, "edge neg exp");
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MAX / 10 + 1, INT32_MAX + 1));
+        this.packLossyExternal(INT224_MAX / 10 + 1, INT32_MAX + 1);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MIN / 10 - 1, INT32_MAX + 1));
+        this.packLossyExternal(INT224_MIN / 10 - 1, INT32_MAX + 1);
+    }
+
+    /// A coefficient past int224 at the ceiling exceeds the largest Float, so
+    /// shedding its digit to fit must not be undone by a lift into a smaller
+    /// in-range value. Both signs revert, including the one whose shed-then-
+    /// lifted coefficient would still fit int224.
+    function testPackLossyShedPastCeilingReverts() external {
+        assertTrue((INT224_MAX + 1) - (INT224_MAX + 1) % 10 <= INT224_MAX, "lift would fit");
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MAX + 1, INT32_MAX));
+        this.packLossyExternal(INT224_MAX + 1, INT32_MAX);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MIN - 1, INT32_MAX));
+        this.packLossyExternal(INT224_MIN - 1, INT32_MAX);
+    }
+
+    /// The oracle needs no exponent bound: lifting comes before any shedding,
+    /// so no exponent near either int256 limit can wrap.
+    function testPackLossyOracleUnboundedExponent(int256 signedCoefficient, int256 exponent) external {
+        checkAgainstOracle(signedCoefficient, exponent);
+    }
+
+    /// Fuzz the ceiling band against the oracle with coefficients spanning
+    /// every digit count, so lift, headroom revert and shed-then-lift all fire.
+    function testPackLossyOracleCeilBand(int256 signedCoefficient, uint256 digits, int256 exponent) external {
+        digits = bound(digits, 0, 76);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        signedCoefficient = signedCoefficient % int256(10 ** digits);
+        exponent = bound(exponent, INT32_MAX - 5, INT32_MAX + 80);
+        checkAgainstOracle(signedCoefficient, exponent);
     }
 }
