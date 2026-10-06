@@ -745,11 +745,15 @@ fn test_integer_whole_numbers() {
     assert!(neg.frac().unwrap().eq(zero).unwrap());
 }
 
+/// Every non-negative I224, a negative draw mapped to its complement -c - 1.
+fn non_negative_i224() -> impl Strategy<Value = I224> {
+    any::<I224>().prop_map(|c| if c.is_negative() { !c } else { c })
+}
+
 proptest! {
     #[test]
     /// from_fixed_decimal then to_fixed_decimal round-trips for any non-negative I224.
-    fn test_from_to_fixed_decimal_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
-        prop_assume!(coeff >= I224::ZERO);
+    fn test_from_to_fixed_decimal_valid_range(coeff in non_negative_i224(), decimals in 0u8..=66u8) {
 
         let exponent = -(decimals as i32);
         let value = U256::from(coeff);
@@ -1040,8 +1044,7 @@ proptest! {
     #[test]
     /// Lossy fixed-decimal round-trip: from(decimals+1) then to(decimals) is
     /// lossy iff the last digit is nonzero.
-    fn test_from_to_fixed_decimal_lossy_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
-        prop_assume!(coeff >= I224::ZERO);
+    fn test_from_to_fixed_decimal_lossy_valid_range(coeff in non_negative_i224(), decimals in 0u8..=66u8) {
 
         let exponent = -(decimals as i32 + 1);
         let value = U256::from(coeff);
