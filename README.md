@@ -130,6 +130,26 @@ The lossy version simply returns a bool alongside the packed `Float` that
 signifies whether the packing was lossy or not, to allow the caller to make
 additional judgement calls re: when precision loss is acceptable.
 
+#### log10, pow10, pow and sqrt
+
+These are rounded to nearest at 41 significant digits, within proven bounds of
+the true value:
+
+- `pow10`: half a unit in the 41st digit plus 5.1662e-6 of a unit, under
+  5.0000517e-41 relative.
+- `log10`: half a unit in the 41st digit plus 2.245e-47 absolute.
+- `pow`: 5.00006e-41 + 3N·1e-75 relative, for N the integer part of |b|.
+- `sqrt`: 5.00006e-41 relative.
+
+They are monotone within rounding error, not strictly monotone. For a < b the
+order of the results can flip by exactly one unit in the last place, only when
+both true values lie within the raw error of the same rounding tie, and never by
+more. Callers must not rely on strict ordering at one-ulp resolution.
+
+Exact results stay exact: powers of ten (`pow10(k)` is `10^k`, `log10(10^k)` is
+`k`), integer powers, and perfect squares whose root has at most 41 significant
+digits.
+
 #### Fixed decimal conversions
 
 There are some convenience methods in the lib for converting to/from fixed

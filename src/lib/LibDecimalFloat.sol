@@ -833,8 +833,13 @@ library LibDecimalFloat {
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
     /// The tables address is unused, and kept so that callers need not change.
-    /// @return The result of 10^float, within half a unit in the 41st
-    /// significant digit.
+    /// @return The result of 10^float, rounded to nearest at 41 significant
+    /// digits, within half a unit in the 41st digit plus 5.1662e-6 of a unit,
+    /// under 5.0000517e-41 relative. Monotone within rounding error: for
+    /// x < y the results can be out of order by exactly one unit in the last
+    /// place, only when both true values lie within the raw error of the same
+    /// rounding tie, and never by more. Callers must not rely on strict
+    /// ordering at one-ulp resolution. 10^k is exactly 10^k for an integer k.
     function pow10(Float float, address) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
@@ -850,8 +855,13 @@ library LibDecimalFloat {
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
     /// @param a The float to log10.
-    /// @return The base-10 logarithm of a, within half a unit in the 41st
-    /// significant digit plus 2.5e-47.
+    /// @return The base-10 logarithm of a, rounded to nearest at 41
+    /// significant digits, within half a unit in the 41st digit plus 2.245e-47
+    /// absolute. Monotone within rounding error: for x < y the results can be
+    /// out of order by exactly one unit in the last place, only when both
+    /// true values lie within the raw error of the same rounding tie, and
+    /// never by more. Callers must not rely on strict ordering at one-ulp
+    /// resolution. log10(10^k) is exactly k.
     function log10(Float a, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         (signedCoefficient, exponent) =
@@ -865,9 +875,16 @@ library LibDecimalFloat {
     ///
     /// The integer part of `b` is exact, by squaring. The fractional part is
     /// computed in fixed point from a log table seed rather than interpolated
-    /// from the tables. It is rounded to 41 significant digits, so it is within
-    /// about 1e-40 relative of the true value and an exactly representable power
-    /// such as 4^0.5 is exact.
+    /// from the tables.
+    ///
+    /// For N the integer part of |b|, the result is within 5.00006e-41 +
+    /// 3N 1e-75 relative of the true value, rounded to nearest at 41
+    /// significant digits. Monotone within rounding error: for b < c, a^b and
+    /// a^c can be out of order by exactly one unit in the last place, only
+    /// when both true values lie within the raw error of the same rounding
+    /// tie, and never by more. Callers must not rely on strict ordering at
+    /// one-ulp resolution. Exact results stay exact: an integer power, and a
+    /// fractional power with at most 41 significant digits such as 4^0.5.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
@@ -965,8 +982,13 @@ library LibDecimalFloat {
 
     /// sqrt a = a ^ 0.5
     ///
-    /// As `pow`, within about 1e-40 relative of the true value, and exact when
-    /// the root has at most 41 significant digits.
+    /// As `pow`: within 5.00006e-41 relative of the true value, rounded to
+    /// nearest at 41 significant digits. Monotone within rounding error: for
+    /// x < y the roots can be out of order by exactly one unit in the last
+    /// place, only when both true values lie within the raw error of the same
+    /// rounding tie, and never by more. Callers must not rely on strict
+    /// ordering at one-ulp resolution. A perfect square whose root has at most
+    /// 41 significant digits has an exact root.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
