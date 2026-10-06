@@ -373,6 +373,19 @@ contract LibDecimalFloatPowTest is LogTest {
         );
     }
 
+    /// A rounded exponent one past int32 takes back one digit.
+    function testPowRoundedOnePastTheTop() external {
+        assertEq(
+            Float.unwrap(
+                this.powExternal(
+                    LibDecimalFloat.packLossless(1234567890123456789012345678901234567890123, type(int32).max - 1),
+                    LibDecimalFloat.FLOAT_ONE
+                )
+            ),
+            Float.unwrap(LibDecimalFloat.packLossless(123456789012345678901234567890123456789010, type(int32).max))
+        );
+    }
+
     /// Issue #297 review: a^1 kept all 67 digits of a, and 2 - 1e-50 put a
     /// 51 digit product above a^2, a 41 digit leg times a.
     function testPowRoundsAtFortyOneDigits() external {
