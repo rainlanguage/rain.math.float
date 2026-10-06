@@ -96,3 +96,18 @@ pub fn harness<C: SolCall>(c: C) -> Result<C::Return, Bytes> {
 pub fn float<C: SolCall<Return = B256>>(c: C) -> Result<Dec, Bytes> {
     concrete(c).map(Dec::from_bytes)
 }
+
+/// `log10` reads the tables `TestDecimalFloat`'s constructor deploys, so it
+/// only answers if the constructor's state is kept.
+#[test]
+fn constructor_state_is_kept() {
+    let log2 = float(TestDecimalFloat::log10Call {
+        a: Dec::new(2, 0).to_bytes(),
+    })
+    .unwrap();
+    assert!(
+        Dec::new(30102, -5).cmp_value(&log2).is_lt()
+            && log2.cmp_value(&Dec::new(30103, -5)).is_lt(),
+        "{log2:?}"
+    );
+}

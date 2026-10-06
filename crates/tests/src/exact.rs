@@ -394,33 +394,35 @@ fn check_unary(a: &Dec) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-/// The getters return the documented extremes exactly, and no Float lies
-/// past them.
+/// The four getters, in the order `check_extremes_with` takes them.
+fn sol_extremes() -> [Result<B256, Bytes>; 4] {
+    [
+        evm::concrete(T::maxPositiveValueCall {}),
+        evm::concrete(T::minPositiveValueCall {}),
+        evm::concrete(T::maxNegativeValueCall {}),
+        evm::concrete(T::minNegativeValueCall {}),
+    ]
+}
+
 fn check_extremes(a: &Dec) -> Result<(), TestCaseError> {
     let py = ask(json!({"op": "extremes"}))["ok"].clone();
+    check_extremes_with(a, sol_extremes(), py)
+}
+
+/// The getters return the documented extremes exactly, and no Float lies
+/// past them.
+fn check_extremes_with(
+    a: &Dec,
+    sol: [Result<B256, Bytes>; 4],
+    py: Value,
+) -> Result<(), TestCaseError> {
     let extremes = [
-        (
-            "maxPositiveValue",
-            evm::concrete(T::maxPositiveValueCall {}),
-            r::max_positive(),
-        ),
-        (
-            "minPositiveValue",
-            evm::concrete(T::minPositiveValueCall {}),
-            r::min_positive(),
-        ),
-        (
-            "maxNegativeValue",
-            evm::concrete(T::maxNegativeValueCall {}),
-            r::max_negative(),
-        ),
-        (
-            "minNegativeValue",
-            evm::concrete(T::minNegativeValueCall {}),
-            r::min_negative(),
-        ),
+        ("maxPositiveValue", r::max_positive()),
+        ("minPositiveValue", r::min_positive()),
+        ("maxNegativeValue", r::max_negative()),
+        ("minNegativeValue", r::min_negative()),
     ];
-    for (i, (name, sol, want)) in extremes.iter().enumerate() {
+    for (i, ((name, want), sol)) in extremes.iter().zip(&sol).enumerate() {
         let p = oracle::to_dec(&py[i]);
         prop_assert!(p.eq_value(want), "{name}: python {p:?}, reference {want:?}");
         prop_assert_eq!(
@@ -853,6 +855,58 @@ mod checker {
         // The selector alone does not decode.
         let bare = Fail::Revert(Bytes::from(dz.selector().to_vec()));
         assert!(!error_matches(&bare, dz));
+    }
+
+    fn py_extremes() -> Value {
+        json!([
+            oracle::float(&r::max_positive()),
+            oracle::float(&r::min_positive()),
+            oracle::float(&r::max_negative()),
+            oracle::float(&r::min_negative()),
+        ])
+    }
+
+    fn extremes_accept(a: &Dec, sol: [Result<B256, Bytes>; 4], py: Value) -> bool {
+        check_extremes_with(a, sol, py).is_ok()
+    }
+
+    #[test]
+    fn extremes_accept_agreement() {
+        assert!(extremes_accept(&one(), sol_extremes(), py_extremes()));
+    }
+
+    #[test]
+    fn extremes_reject_wrong_solidity() {
+        for i in 0..4 {
+            let mut sol = sol_extremes();
+            sol[i] = Ok(one().to_bytes());
+            assert!(!extremes_accept(&one(), sol, py_extremes()), "{i}");
+        }
+    }
+
+    #[test]
+    fn extremes_reject_wrong_python() {
+        for i in 0..4 {
+            let mut py = py_extremes();
+            py[i] = oracle::float(&one());
+            assert!(!extremes_accept(&one(), sol_extremes(), py), "{i}");
+        }
+    }
+
+    /// Values past each extreme, which no Float holds.
+    #[test]
+    fn extremes_reject_values_past_them() {
+        for past in [
+            Dec::new(1, I32_MAX + 68),
+            Dec::new(-1, I32_MAX + 68),
+            Dec::new(1, I32_MIN - 1),
+            Dec::new(-1, I32_MIN - 1),
+        ] {
+            assert!(
+                !extremes_accept(&past, sol_extremes(), py_extremes()),
+                "{past:?}"
+            );
+        }
     }
 
     #[test]
