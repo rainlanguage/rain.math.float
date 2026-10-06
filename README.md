@@ -143,7 +143,8 @@ including an integer power and `a^1`, within proven bounds of the true value:
 
 A `pow10` or `pow` result below 1e-2147483608 sheds digits to lift its exponent
 to the int32 floor, so its bound adds 1e-2147483648 absolute. Below
-1e-2147483648 it reverts `ExponentUnderflow`.
+1e-2147483648 it reverts `ExponentUnderflow`. A `pow` result that rounding would
+carry above the largest Float is truncated to int224 instead.
 
 They are monotone within rounding error, not strictly monotone. For a < b the
 order of the results can flip by exactly one unit in the last place, only when

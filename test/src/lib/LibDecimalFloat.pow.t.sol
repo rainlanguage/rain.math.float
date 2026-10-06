@@ -310,8 +310,9 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// Rounding a 68 digit coefficient at the top exponent raises the exponent
-    /// past int32, and pow packs it back with a wider coefficient, unless the
-    /// rounding goes above the largest Float.
+    /// past int32, and pow packs it back with a wider coefficient. A rounding
+    /// that carries above the largest Float keeps the unrounded value, and
+    /// only a value above the largest Float reverts.
     function testPowRoundedAtTheTop() external {
         (int256 signedCoefficient, int256 exponent) = this.powExternal(
                 LibDecimalFloat.packLossless(1e67 + 1, type(int32).max), LibDecimalFloat.FLOAT_ONE
@@ -319,14 +320,34 @@ contract LibDecimalFloatPowTest is LogTest {
         assertEq(signedCoefficient, 1e67);
         assertEq(exponent, type(int32).max);
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentOverflow.selector,
-                int256(13479973333575319897333507543509815336819000000000000000000000000000),
-                int256(type(int32).max)
-            )
+        (signedCoefficient, exponent) = this.powExternal(
+                LibDecimalFloat.packLossless(type(int224).max, type(int32).max), LibDecimalFloat.FLOAT_ONE
+            ).unpack();
+        assertEq(signedCoefficient, type(int224).max);
+        assertEq(exponent, type(int32).max);
+
+        (signedCoefficient, exponent) = this.powExternal(
+                LibDecimalFloat.packLossless(-type(int224).max, type(int32).max), LibDecimalFloat.FLOAT_ONE
+            ).unpack();
+        assertEq(signedCoefficient, -type(int224).max);
+        assertEq(exponent, type(int32).max);
+
+        // 13479973333575319897333507543509815336818.5e27 at the top exponent is
+        // below the largest Float and rounds up past it.
+        (signedCoefficient, exponent) = this.powExternal(
+                LibDecimalFloat.packLossless(
+                    13479973333575319897333507543509815336818500000000000000000000000000, type(int32).max
+                ),
+                LibDecimalFloat.FLOAT_ONE
+            ).unpack();
+        assertEq(signedCoefficient, 13479973333575319897333507543509815336818500000000000000000000000000);
+        assertEq(exponent, type(int32).max);
+
+        // A square above the largest Float still reverts.
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(13689), int256(type(int32).max) + 63));
+        this.powExternal(
+            LibDecimalFloat.packLossless(117, type(int32).max / 2 + 32), LibDecimalFloat.packLossless(2, 0)
         );
-        this.powExternal(LibDecimalFloat.packLossless(type(int224).max, type(int32).max), LibDecimalFloat.FLOAT_ONE);
     }
 
     /// Issue #297 review: a^1 kept all 67 digits of a, and 2 - 1e-50 put a

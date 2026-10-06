@@ -892,7 +892,8 @@ library LibDecimalFloat {
     ///   the integer part is within 2N 1e-75 relative, and its product with
     ///   the leg adds 1e-75 more. With N 1 the integer part is a itself.
     /// - Rounding adds half a unit in the 41st digit, at most 5e-41 of the
-    ///   product.
+    ///   product. A product that rounding would carry above the largest
+    ///   Float is instead truncated to int224, under 1e-67 relative.
     /// - A result below 1e-2147483608 sheds digits to lift its exponent to
     ///   the int32 floor, so its bound adds 1e-2147483648 absolute. Below
     ///   1e-2147483648 it reverts `ExponentUnderflow`.
@@ -999,17 +1000,23 @@ library LibDecimalFloat {
 
     /// Rounds to 41 significant digits and packs. The rounded coefficient is
     /// at most 1e41, so it takes back up to 27 digits, as int224 allows, to
-    /// keep a result at the top of the exponent range packable.
+    /// keep a result at the top of the exponent range packable. A rounding
+    /// that carries above the largest Float packs the unrounded value instead.
     function packRoundedSignificant(int256 signedCoefficient, int256 exponent) private pure returns (Float) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
-        int256 excess = exponent - type(int32).max;
+        (int256 roundedCoefficient, int256 roundedExponent) =
+            LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
+        int256 excess = roundedExponent - type(int32).max;
         if (excess > 0 && excess <= 27) {
             // excess is in [1, 27] so the casts cannot truncate.
             // forge-lint: disable-next-line(unsafe-typecast)
-            signedCoefficient *= int256(10 ** uint256(excess));
-            exponent = type(int32).max;
+            roundedCoefficient *= int256(10 ** uint256(excess));
+            roundedExponent = type(int32).max;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (int224(roundedCoefficient) != roundedCoefficient) {
+                return packArithmeticResult(signedCoefficient, exponent);
+            }
         }
-        return packArithmeticResult(signedCoefficient, exponent);
+        return packArithmeticResult(roundedCoefficient, roundedExponent);
     }
 
     /// sqrt a = a ^ 0.5
