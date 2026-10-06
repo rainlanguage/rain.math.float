@@ -1,0 +1,20 @@
+[
+  {
+    "timestamp": "2026-10-06T16:02:31Z",
+    "commit": "c59faa8941892f4ee71176a8d5a9d4f17ecd3dcf",
+    "testsAfterCommit": "2c906fe026cad72b1542c15779ab9968319c94ed",
+    "publishedTag": "sol-v0.2.13",
+    "commitsAheadOfTag": 1,
+    "scope": "pr: LibFormatDecimalFloat.toDecimalString(Float, Float, Float) and the TestDecimalFloat.format delegate (#319)",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 15,
+      "candidates": 0,
+      "confirmed": 0,
+      "killedBefore": 5,
+      "killedAfter": 15,
+      "filed": ["#320"]
+    }
+  }
+]
