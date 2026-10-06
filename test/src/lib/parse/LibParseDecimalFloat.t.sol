@@ -627,11 +627,12 @@ contract LibParseDecimalFloatTest is Test {
         }
     }
 
-    function parseOutcome(string memory s) internal view returns (bool ok, bytes memory outcome) {
+    /// A return and a revert are tagged apart, so equal outcomes are equal bytes.
+    function parseOutcome(string memory s) internal view returns (bytes memory) {
         try this.parseDecimalFloatExternal(s) returns (bytes4 err, Float float) {
-            return (true, abi.encode(err, float));
+            return abi.encode("return", err, float);
         } catch (bytes memory revertData) {
-            return (false, revertData);
+            return abi.encode("revert", revertData);
         }
     }
 
@@ -670,10 +671,7 @@ contract LibParseDecimalFloatTest is Test {
             assertEq(fracCursor, bytes(frac).length, "frac cursor");
         }
 
-        (bool bareOk, bytes memory bareOutcome) = parseOutcome(bare);
-        (bool fracOk, bytes memory fracOutcome) = parseOutcome(frac);
-        assertEq(fracOk, bareOk, "wrapper reverted");
-        assertEq(fracOutcome, bareOutcome, "wrapper outcome");
+        assertEq(parseOutcome(frac), parseOutcome(bare), "wrapper outcome");
     }
 
     /// Can't have more than max total precision. Add decimals after the max int.
