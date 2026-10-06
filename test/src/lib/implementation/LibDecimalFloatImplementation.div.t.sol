@@ -366,6 +366,32 @@ contract LibDecimalFloatImplementationDivTest is Test {
         );
     }
 
+    /// Both operands near the floor, either one short of its full shift,
+    /// divide as the same operands shifted up by `-type(int256).min`.
+    function testDivNearFloorMatchesShifted(
+        int256 signedCoefficientA,
+        int256 signedCoefficientB,
+        uint256 headroomA,
+        uint256 headroomB
+    ) external pure {
+        vm.assume(signedCoefficientA != 0);
+        vm.assume(signedCoefficientB != 0);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentA = int256(bound(headroomA, 0, 80));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentB = int256(bound(headroomB, 0, 80));
+        (int256 expectedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        checkDiv(
+            signedCoefficientA,
+            type(int256).min + exponentA,
+            signedCoefficientB,
+            type(int256).min + exponentB,
+            expectedCoefficient,
+            expectedExponent
+        );
+    }
+
     /// A 76 digit numerator at the floor divides with all 77 digits.
     function testDivFullNumeratorAtFloorKeepsLastDigit() external pure {
         int256 a = -1721758284977530853596865604091066801911468845366650376773079384479962783021;
