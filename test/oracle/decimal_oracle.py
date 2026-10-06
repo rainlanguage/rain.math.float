@@ -42,8 +42,12 @@ def dec(f):
 def literal(s):
     # The exponent is read with int() because libmpdec turns an exponent of
     # many digits into Infinity even when they are leading zeros.
+    # Zero is zero at any exponent, including one past the module's range.
     mantissa, _, exp = s.lower().partition("e")
-    return Decimal(mantissa).scaleb(int(exp or "0"), EXACT)
+    m = Decimal(mantissa)
+    if m.is_zero():
+        return Decimal(0)
+    return m.scaleb(int(exp or "0"), EXACT)
 
 
 def out(x):
