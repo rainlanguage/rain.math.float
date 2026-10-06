@@ -72,4 +72,44 @@ contract LibDecimalFloatImplementationSubTest is Test {
         (exponent);
         assertEq(signedCoefficient, 0, "LibDecimalFloatImplementation.sub self coefficient");
     }
+
+    /// Operands too close to `type(int256).min` to take their full shift
+    /// subtract exactly when the difference fits at the floor.
+    function testSubAtFloor() external pure {
+        int256 min = type(int256).min;
+        checkSub(1, min, -1, min, 2, min);
+        checkSub(1, min, 1, min, 0, min);
+        checkSub(1, min + 1, 1, min, 9, min);
+        checkSub(1, min, 1, min + 76, 1 - 1e76, min);
+    }
+
+    /// Near the floor, the difference is the difference of the same operands
+    /// shifted up by `-type(int256).min`, truncated to the floor.
+    function testSubNearFloorMatchesShifted(
+        int256 signedCoefficientA,
+        int256 signedCoefficientB,
+        uint256 headroomA,
+        uint256 headroomB
+    ) external pure {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentA = int256(bound(headroomA, 0, 80));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentB = int256(bound(headroomB, 0, 80));
+        (int256 expectedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        if (expectedExponent < 0) {
+            expectedCoefficient =
+                LibDecimalFloatImplementation.withTargetExponent(expectedCoefficient, expectedExponent, 0);
+            expectedExponent = 0;
+        }
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.sub(
+            signedCoefficientA, type(int256).min + exponentA, signedCoefficientB, type(int256).min + exponentB
+        );
+        assertTrue(
+            LibDecimalFloatImplementation.eq(
+                signedCoefficient, exponent - type(int256).min, expectedCoefficient, expectedExponent
+            ),
+            "shifted difference"
+        );
+    }
 }

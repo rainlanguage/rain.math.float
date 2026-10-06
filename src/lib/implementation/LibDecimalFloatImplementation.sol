@@ -40,21 +40,19 @@ uint256 constant POW_FIXED_ONE = 1e50;
 /// @dev ln(10) at the `POW_FIXED_ONE` scale, rounded to nearest.
 uint256 constant POW_FIXED_LN10 = 230258509299404568401799145468436420760110148862877;
 
-/// @dev 2 / ln(10) at the `POW_FIXED_ONE` scale, rounded to nearest.
-uint256 constant POW_FIXED_TWO_OVER_LN10 = 86858896380650365530225783783321016458879401160733;
+/// @dev Halvings of the exp10Fixed argument before its Taylor series.
+uint256 constant POW_EXP_HALVINGS = 8;
 
-/// @dev The inverse of 5^50 modulo 2^256, which divides a multiple of
-/// `POW_FIXED_ONE` by it once the factor 2^50 is shifted out.
-uint256 constant POW_FIXED_ONE_ODD_INVERSE =
-    32019276099673541610834237427944372346803171054071557274126404137164986125033;
-
-/// @dev Guard digits pow10 rounds away, so that its error stays below half a
-/// unit of the result and an exact power comes out exact.
+/// @dev Guard digits pow10 rounds away.
 uint256 constant POW_GUARD = 1e10;
 
-/// @dev The inverse of 5 modulo 2^256, so that its nth power divides an exact
-/// multiple of 5^n.
-uint256 constant FIVE_INVERSE = 92633671389852956338856788006950326282615987732512451231566067206330503711949;
+/// @dev The most, in units of 1e-50, that the true 10^m 1e50 can lie from
+/// pow10's fixed point power. See `pow10`.
+uint256 constant POW10_RAW_ERROR = 51662;
+
+/// @dev The most, in units of 1e-50, that the true log can lie from
+/// `log10Unrounded`. See `log10Unrounded`.
+uint256 constant LOG10_RAW_ERROR = 2245;
 
 /// @dev Library implementing core DecimalFloat operations using only stack
 /// variables.
@@ -185,7 +183,16 @@ library LibDecimalFloatImplementation {
             signedCoefficient = MAXIMIZED_ZERO_SIGNED_COEFFICIENT;
             exponent = MAXIMIZED_ZERO_EXPONENT;
         } else {
-            exponent = exponentA + exponentB;
+            if (exponentB < 0) {
+                unchecked {
+                    exponent = exponentA + exponentB;
+                }
+                if (exponent > exponentA) {
+                    return mulExponentBelowFloor(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                }
+            } else {
+                exponent = exponentA + exponentB;
+            }
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
@@ -225,9 +232,34 @@ library LibDecimalFloatImplementation {
             (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
                 signedCoefficientB,
-                mulDivPow10(signedCoefficientAAbs, signedCoefficientBAbs, adjustExponent),
+                mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
                 exponent
             );
+        }
+    }
+
+    /// `mul` for operands whose exponent sum is below `type(int256).min`. The
+    /// product is taken with each exponent 2^254 higher, then moved back down,
+    /// shedding the digits that do not fit above the floor.
+    function mulExponentBelowFloor(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) private pure returns (int256 signedCoefficient, int256 exponent) {
+        unchecked {
+            int256 shift = 2 ** 254;
+            (signedCoefficient, exponent) =
+                mul(signedCoefficientA, exponentA + shift, signedCoefficientB, exponentB + shift);
+            if (exponent >= 0) {
+                return (signedCoefficient, exponent + type(int256).min);
+            }
+            if (exponent < -76) {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            signedCoefficient /= int256(10 ** uint256(-exponent));
+            exponent = signedCoefficient == 0 ? MAXIMIZED_ZERO_EXPONENT : type(int256).min;
         }
     }
 
@@ -300,123 +332,35 @@ library LibDecimalFloatImplementation {
         } else {
             int256 signedCoefficient;
             int256 exponent;
-            bool fullA;
-            bool fullB;
+            int256 shortfallA;
+            int256 shortfallB;
             // Move both coefficients into the e75/e76 range, so that the result
             // of division will not cause a mulDiv overflow.
-            (signedCoefficientA, exponentA, fullA) = maximize(signedCoefficientA, exponentA);
-            (signedCoefficientB, exponentB, fullB) = maximize(signedCoefficientB, exponentB);
+            (signedCoefficientA, exponentA, shortfallA) = maximize(signedCoefficientA, exponentA);
+            (signedCoefficientB, exponentB, shortfallB) = maximize(signedCoefficientB, exponentB);
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
             uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
             uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
 
-            uint256 scale = 1e76;
-            int256 adjustExponent = 76;
-
             // We are going to scale the numerator up by the largest power of ten
-            // that is smaller than the denominator. This will always overflow
+            // that is not larger than the denominator. This will always overflow
             // internally to the mulDiv during the initial multiplication, in
             // 512 bits, but will subsequently always be reduced back down to
-            // fit in 256 bits by the division of a denominator that is larger
-            // than the scale up.
+            // fit in 256 bits by the division of a denominator that is not
+            // smaller than the scale up.
+            uint256 scale = 1e76;
+            int256 adjustExponent = 76;
             if (signedCoefficientBAbs < scale) {
-                if (fullB) {
-                    scale = 1e75;
-                    adjustExponent = 75;
-                } else {
-                    if (signedCoefficientBAbs < 1e38) {
-                        if (signedCoefficientBAbs < 1e19) {
-                            if (signedCoefficientBAbs < 1e10) {
-                                if (signedCoefficientBAbs < 1e5) {
-                                    scale = 1e5;
-                                    adjustExponent = 5;
-                                } else {
-                                    scale = 1e10;
-                                    adjustExponent = 10;
-                                }
-                            } else {
-                                if (signedCoefficientBAbs < 1e14) {
-                                    scale = 1e14;
-                                    adjustExponent = 14;
-                                } else {
-                                    scale = 1e19;
-                                    adjustExponent = 19;
-                                }
-                            }
-                        } else {
-                            if (signedCoefficientBAbs < 1e28) {
-                                if (signedCoefficientBAbs < 1e23) {
-                                    scale = 1e23;
-                                    adjustExponent = 23;
-                                } else {
-                                    scale = 1e28;
-                                    adjustExponent = 28;
-                                }
-                            } else {
-                                if (signedCoefficientBAbs < 1e33) {
-                                    scale = 1e33;
-                                    adjustExponent = 33;
-                                } else {
-                                    scale = 1e38;
-                                    adjustExponent = 38;
-                                }
-                            }
-                        }
-                    } else {
-                        if (signedCoefficientBAbs < 1e58) {
-                            if (signedCoefficientBAbs < 1e48) {
-                                if (signedCoefficientBAbs < 1e43) {
-                                    scale = 1e43;
-                                    adjustExponent = 43;
-                                } else {
-                                    scale = 1e48;
-                                    adjustExponent = 48;
-                                }
-                            } else {
-                                if (signedCoefficientBAbs < 1e53) {
-                                    scale = 1e53;
-                                    adjustExponent = 53;
-                                } else {
-                                    scale = 1e58;
-                                    adjustExponent = 58;
-                                }
-                            }
-                        } else {
-                            if (signedCoefficientBAbs < 1e68) {
-                                if (signedCoefficientBAbs < 1e63) {
-                                    scale = 1e63;
-                                    adjustExponent = 63;
-                                } else {
-                                    scale = 1e68;
-                                    adjustExponent = 68;
-                                }
-                            } else {
-                                if (signedCoefficientBAbs < 1e73) {
-                                    scale = 1e73;
-                                    adjustExponent = 73;
-                                } else {
-                                    // Noop as we already have a starting scale.
-                                }
-                            }
-                        }
-                    }
-
-                    // Finalize the scale after the binary search.
-                    while (signedCoefficientBAbs <= scale) {
-                        unchecked {
-                            scale /= 10;
-                            adjustExponent -= 1;
-                        }
-                    }
-                    if (scale == 0) {
-                        revert MaximizeOverflow(signedCoefficientB, exponentB);
-                    }
-                }
-                if (!fullA) {
-                    revert MaximizeOverflow(signedCoefficientA, exponentA);
-                }
+                scale = 1e75;
+                adjustExponent = 75;
+            }
+            // The shortfalls are the digits each exponent sits above its true
+            // value. The divisor's shortfall never exceeds the scale's digits,
+            // so the adjustment stays non-negative.
+            unchecked {
+                adjustExponent += shortfallA - shortfallB;
             }
 
             // Attempt to apply the exponent adjustment.
@@ -449,6 +393,10 @@ library LibDecimalFloatImplementation {
                 if (exponentA < 0 && exponentB > 0) {
                     int256 headroom = exponentA - type(int256).min;
                     underflowExponentBy = exponentB > headroom ? exponentB - headroom : int256(0);
+                }
+
+                if (exponentB < 0 && exponentA > type(int256).max + exponentB) {
+                    revert ExponentOverflow(signedCoefficientA, exponentA);
                 }
 
                 exponent = exponentA + underflowExponentBy - exponentB;
@@ -490,36 +438,6 @@ library LibDecimalFloatImplementation {
             let mm := mulmod(a, b, not(0))
             low := mul(a, b)
             high := sub(sub(mm, low), lt(mm, low))
-        }
-    }
-
-    /// mulDiv(x, y, POW_FIXED_ONE) for a quotient below 2^256.
-    function mulDivFixed(uint256 x, uint256 y) internal pure returns (uint256 result) {
-        uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
-        assembly ("memory-safe") {
-            let mm := mulmod(x, y, not(0))
-            let prod0 := mul(x, y)
-            let remainder := mulmod(x, y, 100000000000000000000000000000000000000000000000000)
-            let prod1 := sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0))
-            prod0 := sub(prod0, remainder)
-            result := mul(or(shr(50, prod0), shl(206, prod1)), inverse)
-        }
-    }
-
-    /// mulDiv(x, y, 10^n) for n in [0, 76] and a quotient below 2^256.
-    function mulDivPow10(uint256 x, uint256 y, uint256 n) internal pure returns (uint256 result) {
-        (uint256 prod1, uint256 prod0) = mul512(x, y);
-        if (prod1 == 0) {
-            unchecked {
-                return prod0 / 10 ** n;
-            }
-        }
-        uint256 inverse = FIVE_INVERSE;
-        assembly ("memory-safe") {
-            let remainder := mulmod(x, y, exp(10, n))
-            prod1 := sub(prod1, gt(remainder, prod0))
-            prod0 := sub(prod0, remainder)
-            result := mul(or(shr(n, prod0), shl(sub(256, n), prod1)), exp(inverse, n))
         }
     }
 
@@ -678,12 +596,16 @@ library LibDecimalFloatImplementation {
         // Maximizing A and B gives us similar coefficients, which simplifies
         // detecting when their exponents are too far apart to add without
         // simply ignoring one of them.
-        (signedCoefficientA, exponentA) = maximizeFull(signedCoefficientA, exponentA);
-        (signedCoefficientB, exponentB) = maximizeFull(signedCoefficientB, exponentB);
+        int256 shortfallA;
+        int256 shortfallB;
+        (signedCoefficientA, exponentA, shortfallA) = maximize(signedCoefficientA, exponentA);
+        (signedCoefficientB, exponentB, shortfallB) = maximize(signedCoefficientB, exponentB);
 
-        // We want A to represent the larger exponent. If this is not the case
-        // then swap them.
-        if (exponentB > exponentA) {
+        // We want A to represent the larger true exponent, which is the
+        // exponent less the shortfall. If this is not the case then swap them.
+        // A shortfall is only nonzero at the exponent floor, so comparing the
+        // shortfalls breaks the tie there.
+        if (exponentB > exponentA || shortfallB < shortfallA) {
             int256 tmp = signedCoefficientA;
             signedCoefficientA = signedCoefficientB;
             signedCoefficientB = tmp;
@@ -691,6 +613,10 @@ library LibDecimalFloatImplementation {
             tmp = exponentA;
             exponentA = exponentB;
             exponentB = tmp;
+
+            tmp = shortfallA;
+            shortfallA = shortfallB;
+            shortfallB = tmp;
         }
 
         // After maximization the signed coefficients are the same OOM in
@@ -704,15 +630,20 @@ library LibDecimalFloatImplementation {
             // uint256.
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 alignmentExponentDiff = uint256(exponentA - exponentB);
+            // shortfallB >= shortfallA after the swap, and both are at most 76.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 shortfallDiff = uint256(shortfallB - shortfallA);
             // The early return here allows us to do unchecked pow on the
-            // scaler and means we never revert due to overflow here.
-            if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF) {
+            // scaler and means we never revert due to overflow here. It is only
+            // reachable with shortfallA == 0, as a nonzero shortfallA puts both
+            // exponents at the floor.
+            if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF - shortfallDiff) {
                 return (signedCoefficientA, exponentA);
             }
-            // alignmentExponentDiff can't be greater than 76 so will pow
-            // without truncation.
+            // alignmentExponentDiff + shortfallDiff can't be greater than 76 so
+            // will pow without truncation.
             // forge-lint: disable-next-line(unsafe-typecast)
-            signedCoefficientB /= int256(10 ** alignmentExponentDiff);
+            signedCoefficientB /= int256(10 ** (alignmentExponentDiff + shortfallDiff));
         }
 
         // The actual addition step.
@@ -736,6 +667,16 @@ library LibDecimalFloatImplementation {
                 signedCoefficientA += signedCoefficientB;
             } else {
                 signedCoefficientA = c;
+            }
+
+            // The sum's true exponent is below the floor, so shed the digits
+            // the floor cannot hold. exponentA is the floor, or one above it
+            // after an overflow.
+            if (shortfallA != 0) {
+                // The shed is in [0, 76].
+                // forge-lint: disable-next-line(unsafe-typecast)
+                signedCoefficientA /= int256(10 ** uint256(shortfallA - (exponentA - type(int256).min)));
+                exponentA = type(int256).min;
             }
         }
         return (signedCoefficientA, exponentA);
@@ -822,261 +763,249 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// log10(x) for a float x.
+    /// log10(x) for a float x, rounded to nearest at 41 significant digits,
+    /// half away from zero, so within half a unit in the 41st digit plus
+    /// `LOG10_RAW_ERROR` units of 1e-50. log10(10^k) is exactly k.
     ///
-    /// `log10Reduce` takes the first 16 binary digits of the log and the atanh
-    /// series of the remainder closes the gap. Inputs within 1e-3 relative of
-    /// a power of ten skip the reduction, so a log near zero keeps its
-    /// relative precision. No tables are read.
-    ///
+    /// @param tablesDataContract The address of the log tables data contract.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function log10(address, int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        if (signedCoefficient <= 0) {
-            if (signedCoefficient == 0) {
-                revert Log10Zero();
-            } else {
-                revert Log10Negative(signedCoefficient, exponent);
+    function log10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
+        internal
+        view
+        returns (int256, int256)
+    {
+        (signedCoefficient, exponent) = log10Unrounded(tablesDataContract, signedCoefficient, exponent);
+        return roundSignificant(signedCoefficient, exponent);
+    }
+
+    /// Rounds a float to 41 significant digits, half away from zero. The
+    /// exponent rises by the digits shed and never falls, so it reverts only
+    /// `ExponentOverflow` when the rounded exponent passes int256.max.
+    /// @param signedCoefficient The signed coefficient of the float.
+    /// @param exponent The exponent of the float.
+    /// @return signedCoefficient The rounded signed coefficient.
+    /// @return exponent The rounded exponent.
+    function roundSignificant(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        if (signedCoefficient / 1e41 == 0) {
+            return (signedCoefficient, exponent);
+        }
+        int256 guard = 1;
+        int256 shed = 0;
+        unchecked {
+            // Binary search for the 10^shed that leaves 41 digits, shed in
+            // [1, 36] for a coefficient of 42 to 77 digits.
+            if (signedCoefficient / 1e72 != 0) {
+                guard = 1e32;
+                shed = 32;
+            }
+            if (signedCoefficient / guard / 1e56 != 0) {
+                guard *= 1e16;
+                shed += 16;
+            }
+            if (signedCoefficient / guard / 1e48 != 0) {
+                guard *= 1e8;
+                shed += 8;
+            }
+            if (signedCoefficient / guard / 1e44 != 0) {
+                guard *= 1e4;
+                shed += 4;
+            }
+            if (signedCoefficient / guard / 1e42 != 0) {
+                guard *= 1e2;
+                shed += 2;
+            }
+            if (signedCoefficient / guard / 1e41 != 0) {
+                guard *= 10;
+                shed += 1;
+            }
+            if (exponent > type(int256).max - shed) {
+                revert ExponentOverflow(signedCoefficient, exponent);
+            }
+            int256 rounded = signedCoefficient / guard;
+            int256 remainder = signedCoefficient % guard;
+            if (remainder >= guard / 2) {
+                rounded += 1;
+            } else if (remainder <= -guard / 2) {
+                rounded -= 1;
+            }
+            return (rounded, exponent + shed);
+        }
+    }
+
+    /// log10(x) for a float x, with the guard digits that `log10` rounds
+    /// away.
+    ///
+    /// The four figure log table gives a seed S and the atanh series of the
+    /// ratio between the input and E = exp10Fixed(S) closes the remaining gap.
+    /// Inputs within a table step of a power of ten take an exact seed, so a
+    /// log near zero keeps its relative precision.
+    ///
+    /// The error, from the bounds on `exp10Fixed` and `log10Ratio`, is within
+    /// `LOG10_RAW_ERROR` units of 1e-50 for a log below 1e25 in magnitude,
+    /// which includes every float:
+    /// - Within a table step of 1: E is exact and the result is the relative
+    ///   coefficient of `log10Ratio`, at least 4.34e48, so within 3.27e-49
+    ///   relative of a log below log10(1.001), under 1.5e-52.
+    /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. The
+    ///   log E lacks to be log10(10^S) is in [-2.24256e-47, 2.3e-51], from
+    ///   exp10Fixed's relative error in [-5.1637e-47, 5.2e-51]. With
+    ///   log10Ratio's 1.005 units the true log is within 2244 units, which
+    ///   rounds up to 2245.
+    /// - log10(10^k) is exactly k.
+    /// A characteristic of 1e25 or more is summed by `add`, which loses under
+    /// a unit of the sum's exponent, at least -50.
+    ///
+    /// @param tablesDataContract The address of the log tables data contract.
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
+    function log10Unrounded(address tablesDataContract, int256 signedCoefficient, int256 exponent)
+        internal
+        view
+        returns (int256, int256)
+    {
+        int256 shortfall;
+        {
+            int256 unmaximizedCoefficient = signedCoefficient;
+            int256 unmaximizedExponent = exponent;
+            (signedCoefficient, exponent, shortfall) = maximize(signedCoefficient, exponent);
+
+            if (signedCoefficient <= 0) {
+                if (signedCoefficient == 0) {
+                    revert Log10Zero();
+                } else {
+                    revert Log10Negative(unmaximizedCoefficient, unmaximizedExponent);
+                }
             }
         }
-        if (signedCoefficient < 1e75) {
-            (signedCoefficient, exponent) = exponent < type(int256).min + 75
-                ? maximizeFull(signedCoefficient, exponent)
-                : scaleUp(signedCoefficient, exponent);
-        }
+
         if (signedCoefficient >= 1e76) {
             signedCoefficient /= 10;
             exponent += 1;
         }
+        // The input is the coefficient at 10^(exponent - shortfall), and its
+        // log is at least int256.min, so the characteristic cannot overflow.
+        int256 characteristic = exponent + 75 - shortfall;
         if (signedCoefficient == 1e75) {
-            return (exponent + 75, 0);
+            return (characteristic, 0);
         }
 
         // log10(estimate / 1e75) = seed / 1e50
-        int256 seed;
+        int256 seed = 0;
         uint256 estimate;
         if (signedCoefficient < 1.001e75) {
             estimate = 1e75;
         } else if (signedCoefficient >= 9.999e75) {
-            seed = 1e50;
+            characteristic += 1;
             estimate = 1e76;
         } else {
-            estimate = 1e75;
-            // signedCoefficient is positive.
+            unchecked {
+                // signedCoefficient is in [1.001e75, 9.999e75) so idx is in
+                // [1, 8998] and the next entry exists.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                uint256 idx = uint256(signedCoefficient / 1e72 - 1000);
+                // forge-lint: disable-next-line(unsafe-typecast)
+                int256 y1 = int256(lookupLogTableVal(tablesDataContract, idx));
+                // forge-lint: disable-next-line(unsafe-typecast)
+                int256 y2 = int256(lookupLogTableVal(tablesDataContract, idx + 1));
+                seed = y1 * 1e46 + (signedCoefficient % 1e72) * (y2 - y1) / 1e26;
+            }
+            // seed is in (0, 1e50) and so is not negative.
             // forge-lint: disable-next-line(unsafe-typecast)
-            (uint256 reduced, uint256 reducedSeed) = log10Reduce(uint256(signedCoefficient));
-            // Both are below 1e76.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            (signedCoefficient, seed) = (int256(reduced), int256(reducedSeed));
+            estimate = exp10Fixed(uint256(seed)) * 1e25;
         }
 
+        // A log near zero is all correction, which keeps its relative
+        // precision. Anything else is summed at the 1e50 scale.
+        bool relative = characteristic == 0 && seed == 0;
         // signedCoefficient is positive.
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 correctionCoefficient, int256 correctionExponent) = log10Ratio(uint256(signedCoefficient), estimate);
-        exponent += 75;
-        if ((exponent == 0 && seed == 0) || (exponent == -1 && seed == 1e50)) {
+        uint256 input = uint256(signedCoefficient);
+        (int256 correctionCoefficient, int256 correctionExponent) = log10Ratio(input, estimate, relative);
+        if (relative) {
             return (correctionCoefficient, correctionExponent);
         }
-        // Otherwise the log is at least 2^-16, so 66 places keep more than the
-        // 48 digits the correction carries.
-        if (exponent > -1e10 && exponent < 1e10) {
-            int256 correction = withTargetExponent(correctionCoefficient, correctionExponent, -66);
-            return (exponent * 1e66 + seed * 1e16 + correction, -66);
+        correctionCoefficient += seed;
+        if (characteristic > -1e25 && characteristic < 1e25) {
+            return (characteristic * 1e50 + correctionCoefficient, -50);
         }
-        (int256 integerCoefficient, int256 integerExponent) = add(exponent, 0, seed, -50);
-        return add(integerCoefficient, integerExponent, correctionCoefficient, correctionExponent);
+        return add(characteristic, 0, correctionCoefficient, -50);
     }
 
     /// log10(a / b) as a float, by 2 atanh((a - b) / (a + b)) / ln(10), for
     /// a and b within a few parts in ten thousand of each other.
+    ///
+    /// Error, in units of 1e-50 unless stated, for z = |a - b| / (a + b) at
+    /// most 5.1e-4. That holds as |log10(a / b)| is at most log10(1.001) at a
+    /// table edge and 1.2e-4 inside the table, the shipped entries' worst error
+    /// plus 5.4e-8 of interpolation curvature.
+    /// - The floored z and z^2 make each power of z^2 at most 2.001 below its
+    ///   exact value, then at most 1.000001 once the floor dominates. Each
+    ///   term's divide floors a further unit. z^16 is below 1e-50, so the loop
+    ///   stops by the eighth power and the floored series is at most 8.4 below
+    ///   atanh(z) / z.
+    /// - Scaling by 2 / ln 10 floors a unit, and POW_FIXED_LN10 is 0.2976
+    ///   below ln 10 1e50, so the scaled series is within (-8.3, 1.3e-51
+    ///   relative] of 2 atanh(z) / (z ln 10).
+    /// - The last mulDiv multiplies that by z, or by z 10^k when `relative`,
+    ///   and floors a unit. Not relative, the result is within 1.005 units of
+    ///   the log. Relative, it is within the coefficient C times 9.6e-50, plus
+    ///   a unit, below and 1.3e-51 relative above, so within C / 1e49 + 2
+    ///   units of its exponent.
     /// @param a The numerator, at most 1e76.
     /// @param b The denominator, at most 1e76.
+    /// @param relative `true` for at least 48 significant digits however small
+    /// the log, `false` for a coefficient at the `POW_FIXED_ONE` scale.
     /// @return signedCoefficient The signed coefficient of the log.
     /// @return exponent The exponent of the log.
-    function log10Ratio(uint256 a, uint256 b) internal pure returns (int256, int256) {
+    function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
-        if (difference == 0) {
-            return (0, 0);
-        }
         uint256 sum = a + b;
         uint256 z = mulDiv(difference, POW_FIXED_ONE, sum);
-        uint256 zSquared = mulDivFixed(z, z);
+        uint256 zSquared = mulDiv(z, z, POW_FIXED_ONE);
         // atanh(z) / z
         uint256 series = POW_FIXED_ONE;
         uint256 term = POW_FIXED_ONE;
         for (uint256 k = 3; term > 0; k += 2) {
-            term = mulDivFixed(term, zSquared);
+            term = mulDiv(term, zSquared, POW_FIXED_ONE);
             series += term / k;
         }
-        // Scale the difference into [1e74, 1e76].
-        int256 differenceExponent = -52;
-        unchecked {
-            if (difference < 1e37) {
-                difference *= 1e37;
-                differenceExponent -= 37;
-            }
-            if (difference < 1e56) {
-                difference *= 1e19;
-                differenceExponent -= 19;
-            }
-            if (difference < 1e65) {
-                difference *= 1e10;
-                differenceExponent -= 10;
-            }
-            if (difference < 1e70) {
-                difference *= 1e5;
-                differenceExponent -= 5;
-            }
-            if (difference < 1e72) {
-                difference *= 1e3;
-                differenceExponent -= 3;
-            }
-            if (difference < 1e74) {
-                difference *= 1e2;
-                differenceExponent -= 2;
-            }
+        int256 exponent = -50;
+        if (relative) {
+            // difference is below 1e76 so it fits and maximizes in place.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            difference = uint256(differenceCoefficient);
+            exponent += differenceExponent;
         }
-        // The quotient is in (4e49, 5e52) and so fits.
+        // The quotient is below 1e53 and so fits.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 signedCoefficient = int256(mulDiv(difference, mulDivFixed(series, POW_FIXED_TWO_OVER_LN10) * 100, sum));
-        return (below ? -signedCoefficient : signedCoefficient, differenceExponent);
+        int256 signedCoefficient = int256(mulDiv(difference, mulDiv(series, 2 * POW_FIXED_ONE, POW_FIXED_LN10), sum));
+        return (below ? -signedCoefficient : signedCoefficient, exponent);
     }
 
-    /// Divides x out by 10^(2^-i) for each i in [1, 16] where x is at least
-    /// it, each by its reciprocal at the 2^256 scale, so x lands within a
-    /// factor 10^(2^-16) of 1e75 and the summed powers are the log of the
-    /// factor taken out.
-    /// @param x A value in [1e75, 1e76).
-    /// @return The reduced x.
-    /// @return seed The summed powers at the `POW_FIXED_ONE` scale.
-    function log10Reduce(uint256 x) internal pure returns (uint256, uint256 seed) {
-        assembly ("memory-safe") {
-            if iszero(lt(x, 3162277660168379331998893544432718533719555139325216826857504852792594438640)) {
-                let mm :=
-                    mulmod(x, 36616673701938843778068833497358723556965087776446405157389940026215161181517, not(0))
-                let low := mul(x, 36616673701938843778068833497358723556965087776446405157389940026215161181517)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 50000000000000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1778279410038922801225421195192684844735790526402255358011830722776301881540)) {
-                let mm :=
-                    mulmod(x, 65114676908271546481783089451486774924122586772716488419433647202158216225712, not(0))
-                let low := mul(x, 65114676908271546481783089451486774924122586772716488419433647202158216225712)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 25000000000000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1333521432163324025675931715295331092415667964764370993329549987162758943181)) {
-                let mm :=
-                    mulmod(x, 86831817205570396472488487376619414734776470364260362375271208847034186727869, not(0))
-                let low := mul(x, 86831817205570396472488487376619414734776470364260362375271208847034186727869)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 12500000000000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1154781984689458179666482887295508281566948041479611129977426848717929206981)) {
-                let mm :=
-                    mulmod(x, 100271818206840824917852211318445810475964718432762174250931870037200512150264, not(0))
-                let low := mul(x, 100271818206840824917852211318445810475964718432762174250931870037200512150264)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 6250000000000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1074607828321317497215941531964343594667198228375277635737525385456277680090)) {
-                let mm :=
-                    mulmod(x, 107752880805083163274215415406366939907498821726554665908884917759802168845149, not(0))
-                let low := mul(x, 107752880805083163274215415406366939907498821726554665908884917759802168845149)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 3125000000000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1036632928437697997291651724925344467708873031101004651184732490611638515681)) {
-                let mm :=
-                    mulmod(x, 111700184376571576959242954511464064493576035854940459532905296431575491590884, not(0))
-                let low := mul(x, 111700184376571576959242954511464064493576035854940459532905296431575491590884)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 1562500000000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1018151721718181841474226888578835347615879638667598311831418789512158676639)) {
-                let mm :=
-                    mulmod(x, 113727735039244707269314004292417912634116897559789282410115004998408115167755, not(0))
-                let low := mul(x, 113727735039244707269314004292417912634116897559789282410115004998408115167755)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 781250000000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1009035044841447437759254423906421331381168979588236162503174368256031811568)) {
-                let mm :=
-                    mulmod(x, 114755270225040536177195215467999502584020270197659510607710463068073932425995, not(0))
-                let low := mul(x, 114755270225040536177195215467999502584020270197659510607710463068073932425995)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 390625000000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1004507364254462515664794694341317664136965486448855489880346341316837480908)) {
-                let mm :=
-                    mulmod(x, 115272514028064070535758128409080922034070970152660607303989700309153489211414, not(0))
-                let low := mul(x, 115272514028064070535758128409080922034070970152660607303989700309153489211414)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 195312500000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1002251148292912915465673638866571192454241130208227099208420545124889760121)) {
-                let mm :=
-                    mulmod(x, 115532009551238127069034569024473762622767147147788687595329406319473705950071, not(0))
-                let low := mul(x, 115532009551238127069034569024473762622767147147788687595329406319473705950071)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 97656250000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1001124941399879875885426434365711773271338418873287617190761945242904872061)) {
-                let mm :=
-                    mulmod(x, 115661976291793632079080739461244514212109858454009171777232224145244584379146, not(0))
-                let low := mul(x, 115661976291793632079080739461244514212109858454009171777232224145244584379146)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 48828125000000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1000562312602208636618511367809636978696490479831100413718397439177031575557)) {
-                let mm :=
-                    mulmod(x, 115727014478658864191206019837644585076293120248274136969870782148370783742109, not(0))
-                let low := mul(x, 115727014478658864191206019837644585076293120248274136969870782148370783742109)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 24414062500000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1000281116787780132399257365769687045617010004075711462195816279315578112995)) {
-                let mm :=
-                    mulmod(x, 115759547285228489644640649073775386641395351335601881572150779206589155570705, not(0))
-                let low := mul(x, 115759547285228489644640649073775386641395351335601881572150779206589155570705)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 12207031250000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1000140548516947258162771187858928924807657707067732580839449098218983450057)) {
-                let mm :=
-                    mulmod(x, 115775817117921914513665754670628277870063336875992169054789846993299520681056, not(0))
-                let low := mul(x, 115775817117921914513665754670628277870063336875992169054789846993299520681056)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 6103515625000000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1000070271789411435538813638676535763208836739091941327682886747964405335251)) {
-                let mm :=
-                    mulmod(x, 115783952891761361996258436523111610648709418794355347035638479532448488583968, not(0))
-                let low := mul(x, 115783952891761361996258436523111610648709418794355347035638479532448488583968)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 3051757812500000000000000000000000000000000000)
-            }
-            if iszero(lt(x, 1000035135277461856608582335861556633189962147970549360011398536055919590052)) {
-                let mm :=
-                    mulmod(x, 115788020993071844566540918178001145605824617021039977012160767671253988218160, not(0))
-                let low := mul(x, 115788020993071844566540918178001145605824617021039977012160767671253988218160)
-                x := sub(sub(mm, low), lt(mm, low))
-                seed := add(seed, 1525878906250000000000000000000000000000000000)
-            }
-        }
-        return (x, seed);
-    }
-
-    /// 10^x for a float x.
+    /// 10^x for a float x, rounded to nearest at 41 significant digits, half
+    /// up. 10^k is exactly 10^k for an integer k.
     ///
-    /// The fractional part of x goes through `exp10Fixed` and the result is
-    /// rounded to 41 significant digits, so it is within half a unit in the
-    /// 41st digit of the true value and an exactly representable power such
-    /// as 10^2 is exact.
+    /// The fraction m of x, truncated to 1e-50, goes through `exp10Fixed`.
+    /// Truncation moves 10^m by under 2.3026e-50 relative either way, and with
+    /// exp10Fixed's bounds the true 10^m 1e50 is within 29 units below and
+    /// `POW10_RAW_ERROR` units above the fixed point power, for a power below
+    /// 1e51 units. A unit of the result is `POW_GUARD` of those, so the result
+    /// is within half a unit plus 5.1662e-6 of a unit, and under 5.0000517e-41
+    /// relative.
+    ///
+    /// A nonzero fraction that truncates to zero is under 1e-50 from an
+    /// integer, which puts 10^x within 2.4e-50 relative of the power of ten
+    /// that is returned, far inside half a unit.
     ///
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
@@ -1084,6 +1013,26 @@ library LibDecimalFloatImplementation {
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
     function pow10(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (signedCoefficient, exponent) = pow10Unrounded(signedCoefficient, exponent);
+        if (signedCoefficient == 1) {
+            return (1, exponent);
+        }
+        // POW_GUARD is 1e10 and so fits.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 guard = int256(POW_GUARD);
+        return ((signedCoefficient + guard / 2) / guard, exponent + 10);
+    }
+
+    /// 10^x for a float x, with the guard digits that `pow10` rounds away: an
+    /// exact 10^k as (1, k), otherwise the fixed point power of x's fraction
+    /// at exponent characteristic - 50.
+    ///
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
+    function pow10Unrounded(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (int256 integer, int256 frac) = intFrac(signedCoefficient, exponent);
         int256 characteristic = withTargetExponent(integer, exponent, 0);
         int256 mantissa = frac == 0 ? int256(0) : withTargetExponent(frac, exponent, -50);
@@ -1095,273 +1044,90 @@ library LibDecimalFloatImplementation {
         if (mantissa == 0) {
             return (1, characteristic);
         }
-        // mantissa is in (0, 1e50) and so is not negative, and the rounded
-        // power is at most 1e41 and so fits.
+        // mantissa is in (0, 1e50) and so is not negative, and the power is
+        // below 1e51 and so fits.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 power = int256((exp10Fixed(uint256(mantissa)) + POW_GUARD / 2) / POW_GUARD);
-        return (power, characteristic - 40);
+        return (int256(exp10Fixed(uint256(mantissa))), characteristic - 50);
     }
 
-    /// a^b for a positive a and a b in (0, 1), as `sqrt` when b is a half and
-    /// as 10^(b log10(a)) otherwise.
-    /// @param tablesDataContract The address of the log tables data contract.
-    /// @param signedCoefficientA The signed coefficient of a, positive.
-    /// @param exponentA The exponent of a.
-    /// @param signedCoefficientB The signed coefficient of b.
-    /// @param exponentB The exponent of b, negative.
-    /// @return signedCoefficient The signed coefficient of the result.
-    /// @return exponent The exponent of the result.
-    function powFraction(
-        address tablesDataContract,
-        int256 signedCoefficientA,
-        int256 exponentA,
-        int256 signedCoefficientB,
-        int256 exponentB
-    ) internal pure returns (int256, int256) {
-        bool half;
-        assembly ("memory-safe") {
-            half := and(sgt(exponentB, sub(0, 77)), eq(shl(1, signedCoefficientB), exp(10, sub(0, exponentB))))
-        }
-        if (half) {
-            return sqrt(signedCoefficientA, exponentA);
-        }
-        (int256 signedCoefficient, int256 exponent) = log10(tablesDataContract, signedCoefficientA, exponentA);
-        (signedCoefficient, exponent) = mul(signedCoefficient, exponent, signedCoefficientB, exponentB);
-        return pow10(signedCoefficient, exponent);
-    }
-
-    /// Scales a coefficient in (0, 1e75) up into [1e75, 1e76), with the
-    /// exponent at least 75 above its minimum.
-    /// @param signedCoefficient The signed coefficient, in (0, 1e75).
-    /// @param exponent The exponent.
-    /// @return signedCoefficient The scaled coefficient.
-    /// @return exponent The exponent of the scaled coefficient.
-    function scaleUp(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        unchecked {
-            if (signedCoefficient < 1e38) {
-                signedCoefficient *= 1e38;
-                exponent -= 38;
-            }
-            if (signedCoefficient < 1e57) {
-                signedCoefficient *= 1e19;
-                exponent -= 19;
-            }
-            if (signedCoefficient < 1e66) {
-                signedCoefficient *= 1e10;
-                exponent -= 10;
-            }
-            if (signedCoefficient < 1e71) {
-                signedCoefficient *= 1e5;
-                exponent -= 5;
-            }
-            if (signedCoefficient < 1e73) {
-                signedCoefficient *= 1e3;
-                exponent -= 3;
-            }
-            if (signedCoefficient < 1e74) {
-                signedCoefficient *= 1e2;
-                exponent -= 2;
-            }
-            if (signedCoefficient < 1e75) {
-                signedCoefficient *= 10;
-                exponent -= 1;
-            }
-            return (signedCoefficient, exponent);
-        }
-    }
-
-    /// The square root of a positive float, rounded to nearest at 41
-    /// significant digits.
-    /// @param signedCoefficient The signed coefficient, positive.
-    /// @param exponent The exponent.
-    /// @return signedCoefficient The root's coefficient, in [1e40, 1e41].
-    /// @return exponent The root's exponent.
-    function sqrt(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        unchecked {
-            if (signedCoefficient < 1e75) {
-                (signedCoefficient, exponent) = scaleUp(signedCoefficient, exponent);
-            }
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint256 coefficient = uint256(signedCoefficient);
-            // The root of coefficient * scale is in [1e40, 1e41], and the
-            // root of estimate * estimateScale^2 is within a part in 1e37 of it.
-            uint256 scale;
-            uint256 estimate;
-            uint256 estimateScale;
-            bool odd = exponent & 1 == 1;
-            if (coefficient < 1e76) {
-                (scale, estimate, estimateScale) = odd ? (1e5, coefficient / 10, 1e3) : (1e6, coefficient, 1e3);
-            } else {
-                (scale, estimate, estimateScale) = odd ? (1e5, coefficient / 10, 1e3) : (1e4, coefficient, 1e2);
-            }
-            exponent = (exponent - (odd ? int256(5) : (coefficient < 1e76 ? int256(6) : int256(4)))) / 2;
-            // At or above the root, and above it by at most 2 estimateScale, so
-            // one Newton step lands on the floor of the root or one above it.
-            uint256 root;
-            // estimate is in [1e74, 2^256), so one step from 2^125 is within a
-            // factor 3 above its root and 7 more reach the floor or one above.
-            assembly ("memory-safe") {
-                root := add(shr(1, shr(125, estimate)), shl(124, 1))
-                root := shr(1, add(root, div(estimate, root)))
-                root := shr(1, add(root, div(estimate, root)))
-                root := shr(1, add(root, div(estimate, root)))
-                root := shr(1, add(root, div(estimate, root)))
-                root := shr(1, add(root, div(estimate, root)))
-                root := shr(1, add(root, div(estimate, root)))
-                root := shr(1, add(root, div(estimate, root)))
-                root := sub(root, gt(root, div(estimate, root)))
-            }
-            root = (root + 2) * estimateScale;
-            root = (root + mulDiv(coefficient, scale, root)) >> 1;
-            (uint256 high, uint256 low) = mul512(coefficient, scale);
-            (uint256 rootHigh, uint256 rootLow) = mul512(root, root);
-            if (rootHigh > high || (rootHigh == high && rootLow > low)) {
-                root -= 1;
-                (rootHigh, rootLow) = mul512(root, root);
-            }
-            // Round up when coefficient * scale - root^2 > root.
-            assembly ("memory-safe") {
-                let differenceLow := sub(low, rootLow)
-                let differenceHigh := sub(sub(high, rootHigh), lt(low, rootLow))
-                root := add(root, or(gt(differenceHigh, 0), gt(differenceLow, root)))
-            }
-            // forge-lint: disable-next-line(unsafe-typecast)
-            return (int256(root), exponent);
-        }
-    }
-
-    /// 10^x at the `POW_FIXED_ONE` scale. Each of the first 16 binary digits of
-    /// x multiplies in 10^(2^-i), rounded to nearest. The remainder, below
-    /// 2^-16, goes through the degree 9 Taylor polynomial of e^(r ln 10), whose
-    /// truncation error is below 1e-51 relative.
+    /// 10^x at the `POW_FIXED_ONE` scale, by the Taylor series of e^(x ln 10).
+    /// The argument is halved `POW_EXP_HALVINGS` times so the series converges
+    /// in few terms, then the sum is squared back up.
+    ///
+    /// The result is within [-5.1637e-47, 5.2e-51] relative of 10^x:
+    /// - The reduced argument r is x ln 10 / 256, at most 0.0089945, floored a
+    ///   unit, and POW_FIXED_LN10 is 0.2976 units of 1e-50 below ln 10, so r
+    ///   is within (-1.002e-50, 2e-53] of exact.
+    /// - Term n floors once, losing under a unit plus r / n of term n - 1's
+    ///   loss. r^18 / 18! is under 0.0024 units, so at most 17 terms are
+    ///   nonzero, and those, the first zero term and the tail leave the
+    ///   series under 17.03 units below e^r. The sum is at least 1e50, so
+    ///   with r's error it is within [-1.8032e-49, 2e-53] relative.
+    /// - Each squaring doubles the relative error and floors under 1e-50
+    ///   relative, so the eight leave it at least 256 (-1.8032e-49) -
+    ///   255e-50 = -4.8712e-47 and at most 5.12e-51.
     /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1].
     /// @return The power at the `POW_FIXED_ONE` scale, in [1, 10].
     function exp10Fixed(uint256 x) internal pure returns (uint256) {
-        unchecked {
-            uint256 result = POW_FIXED_ONE;
-            if (x >= 50000000000000000000000000000000000000000000000000) {
-                x -= 50000000000000000000000000000000000000000000000000;
-                result = 316227766016837933199889354443271853371955513932522;
-            }
-            if (x >= 25000000000000000000000000000000000000000000000000) {
-                x -= 25000000000000000000000000000000000000000000000000;
-                result = mulDivFixed(result, 177827941003892280122542119519268484473579052640226);
-            }
-            if (x >= 12500000000000000000000000000000000000000000000000) {
-                x -= 12500000000000000000000000000000000000000000000000;
-                result = mulDivFixed(result, 133352143216332402567593171529533109241566796476437);
-            }
-            if (x >= 6250000000000000000000000000000000000000000000000) {
-                x -= 6250000000000000000000000000000000000000000000000;
-                result = mulDivFixed(result, 115478198468945817966648288729550828156694804147961);
-            }
-            if (x >= 3125000000000000000000000000000000000000000000000) {
-                x -= 3125000000000000000000000000000000000000000000000;
-                result = mulDivFixed(result, 107460782832131749721594153196434359466719822837528);
-            }
-            if (x >= 1562500000000000000000000000000000000000000000000) {
-                x -= 1562500000000000000000000000000000000000000000000;
-                result = mulDivFixed(result, 103663292843769799729165172492534446770887303110100);
-            }
-            if (x >= 781250000000000000000000000000000000000000000000) {
-                x -= 781250000000000000000000000000000000000000000000;
-                result = mulDivFixed(result, 101815172171818184147422688857883534761587963866760);
-            }
-            if (x >= 390625000000000000000000000000000000000000000000) {
-                x -= 390625000000000000000000000000000000000000000000;
-                result = mulDivFixed(result, 100903504484144743775925442390642133138116897958824);
-            }
-            if (x >= 195312500000000000000000000000000000000000000000) {
-                x -= 195312500000000000000000000000000000000000000000;
-                result = mulDivFixed(result, 100450736425446251566479469434131766413696548644886);
-            }
-            if (x >= 97656250000000000000000000000000000000000000000) {
-                x -= 97656250000000000000000000000000000000000000000;
-                result = mulDivFixed(result, 100225114829291291546567363886657119245424113020823);
-            }
-            if (x >= 48828125000000000000000000000000000000000000000) {
-                x -= 48828125000000000000000000000000000000000000000;
-                result = mulDivFixed(result, 100112494139987987588542643436571177327133841887329);
-            }
-            if (x >= 24414062500000000000000000000000000000000000000) {
-                x -= 24414062500000000000000000000000000000000000000;
-                result = mulDivFixed(result, 100056231260220863661851136780963697869649047983110);
-            }
-            if (x >= 12207031250000000000000000000000000000000000000) {
-                x -= 12207031250000000000000000000000000000000000000;
-                result = mulDivFixed(result, 100028111678778013239925736576968704561701000407571);
-            }
-            if (x >= 6103515625000000000000000000000000000000000000) {
-                x -= 6103515625000000000000000000000000000000000000;
-                result = mulDivFixed(result, 100014054851694725816277118785892892480765770706773);
-            }
-            if (x >= 3051757812500000000000000000000000000000000000) {
-                x -= 3051757812500000000000000000000000000000000000;
-                result = mulDivFixed(result, 100007027178941143553881363867653576320883673909194);
-            }
-            if (x >= 1525878906250000000000000000000000000000000000) {
-                x -= 1525878906250000000000000000000000000000000000;
-                result = mulDivFixed(result, 100003513527746185660858233586155663318996214797055);
-            }
-            if (x == 0) {
-                return result;
-            }
-            uint256 polynomial = 501392883377544009807090987164215453583108663278;
-            polynomial = 1959769462647852369682789087147690310674843760585 + mulDivFixed(polynomial, x);
-            polynomial = 6808936507443706236540404026537606122629959236393 + mulDivFixed(polynomial, x);
-            polynomial = 20699584869686809669966601589738494188245922773011 + mulDivFixed(polynomial, x);
-            polynomial = 53938292919558141019969155571017253478007614081814 + mulDivFixed(polynomial, x);
-            polynomial = 117125514891226696317825761603265234076100689858139 + mulDivFixed(polynomial, x);
-            polynomial = 203467859229347619683099119171381053024105502647772 + mulDivFixed(polynomial, x);
-            polynomial = 265094905523919900528083319429700884579872503956640 + mulDivFixed(polynomial, x);
-            polynomial = 230258509299404568401799145468436420760110148862877 + mulDivFixed(polynomial, x);
-            polynomial = 100000000000000000000000000000000000000000000000000 + mulDivFixed(polynomial, x);
-            return mulDivFixed(result, polynomial);
+        uint256 reduced = mulDiv(x, POW_FIXED_LN10, POW_FIXED_ONE << POW_EXP_HALVINGS);
+        uint256 sum = POW_FIXED_ONE;
+        uint256 term = POW_FIXED_ONE;
+        for (uint256 n = 1; term > 0; n++) {
+            term = mulDiv(term, reduced, POW_FIXED_ONE * n);
+            sum += term;
         }
+        for (uint256 i = 0; i < POW_EXP_HALVINGS; i++) {
+            sum = mulDiv(sum, sum, POW_FIXED_ONE);
+        }
+        return sum;
     }
 
     /// Maximizes a float's signed coefficient by increasing its magnitude
     /// and decreasing its exponent accordingly. Greatly simplified a lot of
     /// internal logic that involves comparing signed coefficients as integers,
     /// or wanting them to have comparable magnitudes.
+    ///
+    /// The coefficient is always fully maximized. Near `type(int256).min` the
+    /// exponent cannot take the whole shift, so it stops at the floor and the
+    /// digits it could not take are returned as the shortfall. The input value
+    /// is then `signedCoefficient * 10^(exponent - shortfall)`.
     /// @return signedCoefficient The maximized signed coefficient.
     /// @return exponent The maximized exponent.
-    /// @return full `true` if the result is fully maximized, `false` if it was
-    /// not possible to maximize without overflow.
-    function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, bool) {
+    /// @return shortfall The digits of shift the exponent could not take, in
+    /// [0, 76]. Nonzero only when the exponent is `type(int256).min`.
+    function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, int256) {
         unchecked {
             if (signedCoefficient == 0) {
-                // The literal is the bool this function returns, not a condition operand.
-                //forge-lint: disable-next-line(boolean-cst)
-                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT, true);
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT, 0);
             }
 
+            int256 maximizedExponent = exponent;
             // Check if already maximized before dropping into a block full of
             // jumps.
             if (signedCoefficient / 1e75 == 0) {
-                if (signedCoefficient / 1e38 == 0 && exponent >= type(int256).min + 38) {
+                if (signedCoefficient / 1e38 == 0) {
                     signedCoefficient *= 1e38;
-                    exponent -= 38;
+                    maximizedExponent -= 38;
                 }
 
-                if (signedCoefficient / 1e57 == 0 && exponent >= type(int256).min + 19) {
+                if (signedCoefficient / 1e57 == 0) {
                     signedCoefficient *= 1e19;
-                    exponent -= 19;
+                    maximizedExponent -= 19;
                 }
 
-                if (signedCoefficient / 1e66 == 0 && exponent >= type(int256).min + 10) {
+                if (signedCoefficient / 1e66 == 0) {
                     signedCoefficient *= 1e10;
-                    exponent -= 10;
+                    maximizedExponent -= 10;
                 }
 
-                while (signedCoefficient / 1e74 == 0 && exponent >= type(int256).min + 2) {
+                while (signedCoefficient / 1e74 == 0) {
                     signedCoefficient *= 1e2;
-                    exponent -= 2;
+                    maximizedExponent -= 2;
                 }
 
-                if (signedCoefficient / 1e75 == 0 && exponent >= type(int256).min + 1) {
+                if (signedCoefficient / 1e75 == 0) {
                     signedCoefficient *= 10;
-                    exponent -= 1;
+                    maximizedExponent -= 1;
                 }
             }
 
@@ -1369,24 +1135,30 @@ library LibDecimalFloatImplementation {
             // know until we try. This pushes us into [1e76,type(int256).max] and
             // [-type(int256).max,-1e76] ranges, if that's possible.
             int256 trySignedCoefficient = signedCoefficient * 10;
-            if (signedCoefficient == trySignedCoefficient / 10 && exponent >= type(int256).min + 1) {
+            if (signedCoefficient == trySignedCoefficient / 10) {
                 signedCoefficient = trySignedCoefficient;
-                exponent -= 1;
+                maximizedExponent -= 1;
             }
 
-            return (signedCoefficient, exponent, signedCoefficient / 1e75 != 0);
+            // The shift is at most 76, so the exponent wrapped past the floor
+            // exactly when it went up.
+            if (maximizedExponent > exponent) {
+                return (signedCoefficient, type(int256).min, type(int256).max - maximizedExponent + 1);
+            }
+            return (signedCoefficient, maximizedExponent, 0);
         }
     }
 
-    /// Maximizes a float as per `maximize` but errors if not fully maximized.
-    /// This is analogous to other functions in the lib that are "lossless".
+    /// Maximizes a float as per `maximize` but errors if the exponent cannot
+    /// take the whole shift. This is analogous to other functions in the lib
+    /// that are "lossless".
     /// @param signedCoefficient The signed coefficient.
     /// @param exponent The exponent.
     /// @return signedCoefficient The maximized signed coefficient.
     /// @return exponent The maximized exponent.
     function maximizeFull(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (int256 trySignedCoefficient, int256 tryExponent, bool full) = maximize(signedCoefficient, exponent);
-        if (!full) {
+        (int256 trySignedCoefficient, int256 tryExponent, int256 shortfall) = maximize(signedCoefficient, exponent);
+        if (shortfall != 0) {
             revert MaximizeOverflow(signedCoefficient, exponent);
         }
         return (trySignedCoefficient, tryExponent);

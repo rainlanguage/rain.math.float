@@ -2,9 +2,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation, LOG10_RAW_ERROR} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LogTest, console2} from "../../../abstract/LogTest.sol";
 import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
+import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
+import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibTestErrorBound} from "../../../lib/LibTestErrorBound.sol";
 
 contract LibDecimalFloatImplementationLog10Test is LogTest {
     function checkLog10(
@@ -55,29 +59,31 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         );
     }
 
-    /// Away from powers of ten the seed comes from the table and the error is
-    /// that of exp10Fixed, below 5e-47 relative, divided by ln(10).
+    /// Away from powers of ten the error is within `LOG10_RAW_ERROR` units of
+    /// 1e-50, and the 70 digit references are within 1e-67.
     function testLog10Accuracy() external {
         address tables = logTables();
         int256[4][] memory references = log10References();
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
-                LibDecimalFloatImplementation.log10(tables, references[i][0], references[i][1]);
-            assertErrorWithin(signedCoefficient, exponent, references[i], 2.5e76, -123);
+                LibDecimalFloatImplementation.log10Unrounded(tables, references[i][0], references[i][1]);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertErrorWithin(signedCoefficient, exponent, references[i], int256(LOG10_RAW_ERROR) * 1e17 + 1, -67);
         }
     }
 
     /// Within a table step of a power of ten the seed is exact, so the error
-    /// is relative to the log, which can be arbitrarily close to zero. The
-    /// correction quotient has at least 48 digits.
+    /// is relative to the log, which can be arbitrarily close to zero:
+    /// `log10Ratio`'s 9.6e-50 relative plus a unit of its quotient, which is at
+    /// least 1e75 (2 / ln 10) / 2e76, 4.34e48, so 3.27e-49 relative.
     function testLog10AccuracyNearPowersOfTen() external {
         address tables = logTables();
         int256[4][] memory references = log10NearPowerOfTenReferences();
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
-                LibDecimalFloatImplementation.log10(tables, references[i][0], references[i][1]);
+                LibDecimalFloatImplementation.log10Unrounded(tables, references[i][0], references[i][1]);
             (int256 boundCoefficient, int256 boundExponent) =
-                LibDecimalFloatImplementation.mul(references[i][2], references[i][3], 3, -49);
+                LibDecimalFloatImplementation.mul(references[i][2], references[i][3], 327, -51);
             if (boundCoefficient < 0) {
                 boundCoefficient = -boundCoefficient;
             }
@@ -93,10 +99,34 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         int256 signedCoefficient = int256(bound(coefficientSeed, 1, 1e41 - 1));
         exponent = bound(exponent, type(int32).min, type(int32).max - 41);
         (int256 logCoefficient, int256 logExponent) =
-            LibDecimalFloatImplementation.log10(logTables(), signedCoefficient, exponent);
+            LibDecimalFloatImplementation.log10Unrounded(logTables(), signedCoefficient, exponent);
         (int256 powerCoefficient, int256 powerExponent) =
             LibDecimalFloatImplementation.pow10(logCoefficient, logExponent);
         assertTrue(LibDecimalFloatImplementation.eq(powerCoefficient, powerExponent, signedCoefficient, exponent));
+    }
+
+    /// log10 is within its proven bound of the 70 digit reference, plus a
+    /// unit in the reference's last place.
+    function checkLog10WithinBound(int256[4][] memory references) internal {
+        address tables = logTables();
+        for (uint256 i = 0; i < references.length; i++) {
+            (int256 signedCoefficient, int256 exponent) =
+                LibDecimalFloatImplementation.log10(tables, references[i][0], references[i][1]);
+            (int256 boundCoefficient, int256 boundExponent) = LibDecimalFloat.unpack(
+                LibTestErrorBound.log10(LibDecimalFloat.packLossless(signedCoefficient, exponent))
+            );
+            (boundCoefficient, boundExponent) =
+                LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, references[i][3]);
+            assertErrorWithin(signedCoefficient, exponent, references[i], boundCoefficient, boundExponent);
+        }
+    }
+
+    function testLog10WithinBound() external {
+        checkLog10WithinBound(log10References());
+    }
+
+    function testLog10WithinBoundNearPowersOfTen() external {
+        checkLog10WithinBound(log10NearPowerOfTenReferences());
     }
 
     /// Inputs and their log10 to 70 significant digits from `bc -l` at scale
@@ -428,8 +458,6 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
 
     function testLog10NegativeReverts(int256 signedCoefficient, int256 exponent) external {
         signedCoefficient = bound(signedCoefficient, type(int256).min, -1);
-        // Bound exponent to avoid MaximizeOverflow before reaching the sign check.
-        exponent = bound(exponent, -1e18, 1e18);
         vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficient, exponent));
         this.log10External(signedCoefficient, exponent);
     }
@@ -443,5 +471,298 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
                 i *= 10;
             }
         }
+    }
+
+    function log10Either(address tables, int256 signedCoefficient, int256 exponent, bool rounded)
+        internal
+        view
+        returns (int256, int256)
+    {
+        return rounded
+            ? LibDecimalFloatImplementation.log10(tables, signedCoefficient, exponent)
+            : LibDecimalFloatImplementation.log10Unrounded(tables, signedCoefficient, exponent);
+    }
+
+    /// The exponent of a unit in the 41st significant digit of a nonzero
+    /// float.
+    function ulpExponent(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+        assertTrue(signedCoefficient != 0, "zero");
+        for (
+            int256 scaled = signedCoefficient < 0 ? -signedCoefficient : signedCoefficient;
+            scaled < 1e40;
+            scaled *= 10
+        ) {
+            exponent--;
+        }
+        return exponent;
+    }
+
+    /// |actual - expected| in billionths of a unit in the 41st significant
+    /// digit of actual.
+    function ulpBillionths(
+        int256 actualCoefficient,
+        int256 actualExponent,
+        int256 expectedCoefficient,
+        int256 expectedExponent
+    ) internal pure returns (uint256) {
+        (int256 errorCoefficient, int256 errorExponent) = LibDecimalFloatImplementation.sub(
+            actualCoefficient, actualExponent, expectedCoefficient, expectedExponent
+        );
+        int256 error = LibDecimalFloatImplementation.withTargetExponent(
+            errorCoefficient, errorExponent, ulpExponent(actualCoefficient, actualExponent) - 9
+        );
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return uint256(error < 0 ? -error : error);
+    }
+
+    function prime(uint256 primeSeed) internal pure returns (uint256) {
+        uint256[3] memory primes = [uint256(2), 3, 7];
+        return primes[primeSeed % 3];
+    }
+
+    /// |log10(x) - oracle| for x = prime^j (1 ± d / 10^p) 10^n, which spreads
+    /// the seed over the whole table. Unrounded, in units of 1e-70. Rounded,
+    /// in billionths of a unit in the result's last place, with n moved off 0
+    /// when j is 0, as a log within a table step of zero is finer than the
+    /// oracle's 1e-70. `log10NearOneUlpError` covers it.
+    function log10OracleError(uint256 primeSeed, uint256 j, uint256 p, uint256 d, bool negative, int256 n, bool rounded)
+        internal
+        returns (uint256)
+    {
+        uint256 base = prime(primeSeed);
+        j = bound(j, 0, LibTranscendentalOracle.maxPower(base));
+        p = bound(p, 3, 40);
+        d = bound(d, 0, 10 ** (p - 3));
+        n = bound(n, -1e6, 1e6);
+        if (rounded && j == 0 && n == 0) {
+            n = 1;
+        }
+        // Below 1e30 * 1.001e40, so it fits.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = int256(base ** j * (negative ? 10 ** p - d : 10 ** p + d));
+        (
+            int256 logCoefficient,
+            int256 logExponent
+            // forge-lint: disable-next-line(unsafe-typecast)
+        ) = log10Either(logTables(), signedCoefficient, n - int256(p), rounded);
+        int256 actual = logExponent >= -70
+            // forge-lint: disable-next-line(unsafe-typecast)
+            ? logCoefficient * int256(10 ** uint256(70 + logExponent))
+            // forge-lint: disable-next-line(unsafe-typecast)
+            : logCoefficient / int256(10 ** uint256(-70 - logExponent));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 expected = int256(j * LibTranscendentalOracle.log10Prime(base)) + n * int256(ORACLE_ONE)
+            + LibTranscendentalOracle.log10OnePlus(d, p, negative);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 error = uint256(actual > expected ? actual - expected : expected - actual);
+        if (!rounded) {
+            return error;
+        }
+        // The log is at least 3e-3 from zero, so its last place is above 1e-70.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return Math.mulDiv(error, 1e9, 10 ** uint256(70 + ulpExponent(logCoefficient, logExponent)));
+    }
+
+    /// Half a unit plus `LOG10_RAW_ERROR` units of 1e-50, which is 224500
+    /// billionths of a last place at least 1e-43. The oracle is within 101
+    /// units of 1e-70: each truncated prime log is under a unit low and
+    /// log10OnePlus is within 2. That is under 1e-16 billionths, and the
+    /// billionths are floored.
+    function testLog10OracleFuzz(uint256 primeSeed, uint256 j, uint256 p, uint256 d, bool negative, int256 n) external {
+        assertLe(
+            log10OracleError(primeSeed, j, p, d, negative, n, true), 500000000 + LOG10_RAW_ERROR * 100, "log10 error"
+        );
+    }
+
+    /// `LOG10_RAW_ERROR` units of 1e-50, plus the oracle's 101 units of 1e-70
+    /// and the unit the comparison truncates.
+    function testLog10UnroundedOracleFuzz(uint256 primeSeed, uint256 j, uint256 p, uint256 d, bool negative, int256 n)
+        external
+    {
+        assertLe(log10OracleError(primeSeed, j, p, d, negative, n, false), LOG10_RAW_ERROR * 1e20 + 102, "log10 error");
+    }
+
+    /// x = 1 ± d / 10^p, within a table step of 1, and log10(x) from the
+    /// oracle as a float.
+    function nearOne(uint256 p, uint256 d, bool negative)
+        internal
+        pure
+        returns (int256 signedCoefficient, int256 exponent, int256 expectedCoefficient, int256 expectedExponent)
+    {
+        p = bound(p, 4, 75);
+        d = bound(d, 1, negative ? 10 ** (p - 4) : 10 ** (p - 3) - 1);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        signedCoefficient = int256(negative ? 10 ** p - d : 10 ** p + d);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        exponent = -int256(p);
+        uint256 ratio = Math.mulDiv(LibTranscendentalOracle.lnOnePlusOverU(d, p, negative), ORACLE_ONE, ORACLE_LN10);
+        // d and ratio are below 1e72.
+        (expectedCoefficient, expectedExponent) = LibDecimalFloatImplementation.mul(
+            // forge-lint: disable-next-line(unsafe-typecast)
+            negative ? -int256(d) : int256(d),
+            exponent,
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256(ratio),
+            -70
+        );
+    }
+
+    /// |log10Unrounded(x) / oracle - 1| for x near 1, as a float.
+    function log10NearOneRelativeError(uint256 p, uint256 d, bool negative) internal returns (int256, int256) {
+        (int256 signedCoefficient, int256 exponent, int256 expectedCoefficient, int256 expectedExponent) =
+            nearOne(p, d, negative);
+        (int256 actualCoefficient, int256 actualExponent) =
+            LibDecimalFloatImplementation.log10Unrounded(logTables(), signedCoefficient, exponent);
+        (int256 errorCoefficient, int256 errorExponent) =
+            LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
+        (errorCoefficient, errorExponent) =
+            LibDecimalFloatImplementation.div(errorCoefficient, errorExponent, expectedCoefficient, expectedExponent);
+        return (errorCoefficient < 0 ? -errorCoefficient : errorCoefficient, errorExponent);
+    }
+
+    /// 3.27e-49 relative, as `testLog10AccuracyNearPowersOfTen`. The oracle is
+    /// within 5e-69 relative.
+    function testLog10UnroundedNearOneOracleFuzz(uint256 p, uint256 d, bool negative) external {
+        (int256 errorCoefficient, int256 errorExponent) = log10NearOneRelativeError(p, d, negative);
+        assertTrue(LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 327, -51), "log10 relative error");
+    }
+
+    /// |log10(x) - oracle| for x near 1, in billionths of a unit in the
+    /// result's last place.
+    function log10NearOneUlpError(uint256 p, uint256 d, bool negative) internal returns (uint256) {
+        (int256 signedCoefficient, int256 exponent, int256 expectedCoefficient, int256 expectedExponent) =
+            nearOne(p, d, negative);
+        (int256 actualCoefficient, int256 actualExponent) =
+            LibDecimalFloatImplementation.log10(logTables(), signedCoefficient, exponent);
+        return ulpBillionths(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
+    }
+
+    /// Half a unit plus 3.27e-49 relative, which is 32.7 billionths of a last
+    /// place at least 1e-41 relative. The oracle's 5e-69 relative is under
+    /// 1e-18 billionths, and the billionths are floored.
+    function testLog10NearOneOracleFuzz(uint256 p, uint256 d, bool negative) external {
+        assertLe(log10NearOneUlpError(p, d, negative), 500000032, "log10 error");
+    }
+
+    /// log10 is log10Unrounded rounded to nearest, so within half a unit.
+    function testLog10RoundsUnrounded(int256 signedCoefficient, int256 exponent) external {
+        signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
+        exponent = bound(exponent, -1e40, 1e40);
+        address tables = logTables();
+        (int256 unroundedCoefficient, int256 unroundedExponent) =
+            LibDecimalFloatImplementation.log10Unrounded(tables, signedCoefficient, exponent);
+        (int256 logCoefficient, int256 logExponent) =
+            LibDecimalFloatImplementation.log10(tables, signedCoefficient, exponent);
+        if (logCoefficient == 0) {
+            assertEq(unroundedCoefficient, 0, "zero");
+            return;
+        }
+        assertLe(ulpBillionths(logCoefficient, logExponent, unroundedCoefficient, unroundedExponent), 500000000, "half");
+    }
+
+    /// log10Unrounded(x 10^k) = log10Unrounded(x) + k exactly, as the
+    /// characteristic is summed as an integer, except that a log within a
+    /// table step of zero keeps digits below the 1e-50 its shift truncates
+    /// to.
+    function testLog10DecadeShift(int256 signedCoefficient, int256 exponent, int256 shift) external {
+        signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
+        exponent = bound(exponent, -1e18, 1e18);
+        shift = bound(shift, -1e18, 1e18);
+        address tables = logTables();
+        (int256 logCoefficient, int256 logExponent) =
+            LibDecimalFloatImplementation.log10Unrounded(tables, signedCoefficient, exponent);
+        (int256 shiftedCoefficient, int256 shiftedExponent) =
+            LibDecimalFloatImplementation.log10Unrounded(tables, signedCoefficient, exponent + shift);
+        (logCoefficient, logExponent) = LibDecimalFloatImplementation.add(logCoefficient, logExponent, shift, 0);
+        if (logExponent < -50 || shiftedExponent < -50) {
+            (int256 errorCoefficient, int256 errorExponent) =
+                LibDecimalFloatImplementation.sub(shiftedCoefficient, shiftedExponent, logCoefficient, logExponent);
+            assertTrue(
+                LibDecimalFloatImplementation.lt(
+                    errorCoefficient < 0 ? -errorCoefficient : errorCoefficient, errorExponent, 1, -50
+                ),
+                "near zero shift"
+            );
+        } else {
+            assertTrue(
+                LibDecimalFloatImplementation.eq(shiftedCoefficient, shiftedExponent, logCoefficient, logExponent),
+                "shift"
+            );
+        }
+    }
+
+    /// k <= log10(x) <= k + 1 for x in [10^k, 10^(k+1)), over every positive
+    /// coefficient and exponents past the 1e25 characteristic that leaves the
+    /// fixed point sum.
+    function testLog10Bracket(int256 signedCoefficient, int256 exponent) external {
+        signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
+        exponent = bound(exponent, -1e40, 1e40);
+        int256 characteristic = exponent;
+        for (int256 scaled = signedCoefficient / 10; scaled > 0; scaled /= 10) {
+            characteristic++;
+        }
+        (int256 logCoefficient, int256 logExponent) =
+            LibDecimalFloatImplementation.log10(logTables(), signedCoefficient, exponent);
+        assertTrue(LibDecimalFloatImplementation.gte(logCoefficient, logExponent, characteristic, 0), "floor");
+        assertTrue(LibDecimalFloatImplementation.lte(logCoefficient, logExponent, characteristic + 1, 0), "ceiling");
+    }
+
+    /// log10(10^k) = k exactly, written with any number of trailing zeros.
+    function testLog10PowersOfTenExact(uint256 zeros, int256 exponent) external {
+        zeros = bound(zeros, 0, 76);
+        exponent = bound(exponent, -1e40, 1e40);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = int256(10 ** zeros);
+        (int256 logCoefficient, int256 logExponent) =
+            LibDecimalFloatImplementation.log10(logTables(), signedCoefficient, exponent);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertTrue(LibDecimalFloatImplementation.eq(logCoefficient, logExponent, exponent + int256(zeros), 0));
+    }
+
+    /// x < y implies log10(x) <= log10(y) + 2E, down to adjacent 76 digit
+    /// coefficients, whose logs differ by far less than a unit in the last place.
+    function testLog10Monotone(int256 signedCoefficient, int256 gap, int256 exponent) external {
+        signedCoefficient = bound(signedCoefficient, 1e75, 1e76 - 1e3);
+        gap = bound(gap, 1, 1e3);
+        exponent = bound(exponent, -1e6, 1e6);
+        address tables = logTables();
+        (int256 lowCoefficient, int256 lowExponent) =
+            LibDecimalFloatImplementation.log10(tables, signedCoefficient, exponent);
+        (int256 highCoefficient, int256 highExponent) =
+            LibDecimalFloatImplementation.log10(tables, signedCoefficient + gap, exponent);
+        Float low = LibDecimalFloat.packLossless(lowCoefficient, lowExponent);
+        Float high = LibDecimalFloat.packLossless(highCoefficient, highExponent);
+        assertTrue(
+            LibTestErrorBound.monotoneAbsolute(low, high, LibTestErrorBound.log10(low), LibTestErrorBound.log10(high)),
+            "monotone"
+        );
+    }
+
+    /// Coefficients too small to take their full shift at the floor.
+    /// log10(c * 10^e) = log10(c) + e, which for e within 76 of int256.min
+    /// rounds at 41 digits to the same value as int256.min itself, from `bc`:
+    /// -57896044618658097711785492504343953926634|992332820282019728792003956564819968.
+    function testLog10AtFloor() external {
+        int256 min = type(int256).min;
+        int256 rounded = -57896044618658097711785492504343953926635;
+        checkLog10(1, min, rounded, 36);
+        checkLog10(10, min, rounded, 36);
+        checkLog10(1e75, min, rounded, 36);
+        checkLog10(1, min + 1, rounded, 36);
+        checkLog10(1, min + 75, rounded, 36);
+        checkLog10(2, min, rounded, 36);
+        checkLog10(2, min + 1, rounded, 36);
+        checkLog10(5e75, min, rounded, 36);
+    }
+
+    /// Near the floor, log10(c * 10^e) = log10(c) + e is in [min + 3, min + 61]
+    /// for c up to 1e10, and the 36 digits of int256.min below its 41st are
+    /// 992332820282019728792003956564819968, so every such log rounds at 41
+    /// digits to the same value as int256.min.
+    function testLog10NearFloorMatchesShifted(int256 signedCoefficient, uint256 headroom) external {
+        signedCoefficient = bound(signedCoefficient, 1, 1e10);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponent = type(int256).min + int256(bound(headroom, 3, 50));
+        checkLog10(signedCoefficient, exponent, -57896044618658097711785492504343953926635, 36);
     }
 }

@@ -6,6 +6,9 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibTranscendentalOracle, ORACLE_ONE} from "../../../lib/LibTranscendentalOracle.sol";
+import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
+import {LibTestErrorBound} from "../../../lib/LibTestErrorBound.sol";
 
 contract LibDecimalFloatImplementationPow10Test is Test {
     using LibDecimalFloat for Float;
@@ -32,9 +35,9 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         checkPow10(-20, -1, 1, -2);
     }
 
-    /// The result is rounded to 41 significant digits, so it is within half a
-    /// unit in the last place plus the 5e-47 relative error of exp10Fixed,
-    /// below 5e-6 of a unit.
+    /// The result is within half a unit plus `POW10_RAW_ERROR` units of 1e-50
+    /// over a unit of `POW_GUARD` of them, 5.1662e-6, and the 70 digit
+    /// reference is within 1e-29 of a unit.
     function testPow10Accuracy() external pure {
         int256[4][] memory references = pow10References();
         for (uint256 i = 0; i < references.length; i++) {
@@ -54,7 +57,8 @@ contract LibDecimalFloatImplementationPow10Test is Test {
                 exponent += 1;
             }
             assertTrue(
-                LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 500005, exponent - 6), "pow10 error"
+                LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 50000516621, exponent - 11),
+                "pow10 error"
             );
         }
     }
@@ -366,6 +370,21 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         LibDecimalFloatImplementation.pow10(x, exponent);
     }
 
+    /// Guard digits of exactly half a unit round up, and one below half
+    /// rounds down.
+    function testPow10RoundsHalfUp() external pure {
+        int256[2] memory xs = [
+            int256(264000000000000000000000000000000085554903744231), 1056000000000000000000000000000000342222419894399
+        ];
+        int256[2] memory remainders = [int256(5e9), 5e9 - 1];
+        int256[2] memory carries = [int256(1), 0];
+        for (uint256 i = 0; i < xs.length; i++) {
+            (int256 unrounded, int256 unroundedExponent) = LibDecimalFloatImplementation.pow10Unrounded(xs[i], -50);
+            assertEq(unrounded % 1e10, remainders[i], "remainder");
+            checkPow10(xs[i], -50, unrounded / 1e10 + carries[i], unroundedExponent + 10);
+        }
+    }
+
     function testPow10One() external pure {
         unchecked {
             int256 exponent = 0;
@@ -375,5 +394,89 @@ contract LibDecimalFloatImplementationPow10Test is Test {
                 i *= 10;
             }
         }
+    }
+
+    function prime(uint256 primeSeed) internal pure returns (uint256) {
+        uint256[3] memory primes = [uint256(2), 3, 7];
+        return primes[primeSeed % 3];
+    }
+
+    /// 10^(j log10(prime) + n) is prime^j 10^n exactly, as prime^j is below
+    /// 1e30 and so has fewer than the 41 digits pow10 keeps.
+    function testPow10PrimePowersExact(uint256 primeSeed, uint256 j, int256 n) external pure {
+        uint256 base = prime(primeSeed);
+        j = bound(j, 0, LibTranscendentalOracle.maxPower(base));
+        n = bound(n, -1e6, 1e6);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 x = int256(j * LibTranscendentalOracle.log10Prime(base)) + n * int256(ORACLE_ONE);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(x, -70);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertTrue(LibDecimalFloatImplementation.eq(signedCoefficient, exponent, int256(base ** j), n), "exact");
+    }
+
+    /// |pow10(x) - oracle| in billionths of a unit in the result's last place,
+    /// for x = j log10(prime) + d + n with |d| up to 1e-3, which spreads the
+    /// fraction over [0, 1).
+    function pow10OracleError(uint256 primeSeed, uint256 j, int256 d, int256 n) internal pure returns (uint256) {
+        uint256 base = prime(primeSeed);
+        j = bound(j, 0, LibTranscendentalOracle.maxPower(base));
+        d = bound(d, -1e67, 1e67);
+        n = bound(n, -1e6, 1e6);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 x = int256(j * LibTranscendentalOracle.log10Prime(base)) + d + n * int256(ORACLE_ONE);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(x, -70);
+        // The true value is base^j 10^d 10^n, and 10^(n - exponent + 9) scales
+        // it to billionths of the unit, below 1e51.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 scaled = base ** j * 10 ** uint256(n - exponent + 9);
+        uint256 expected = Math.mulDiv(scaled, LibTranscendentalOracle.exp10Small(d), ORACLE_ONE);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 actual = uint256(signedCoefficient) * 1e9;
+        return actual > expected ? actual - expected : expected - actual;
+    }
+
+    /// Half a unit plus 5166.2 billionths, pow10's bound, plus 2 for the
+    /// oracle: exp10Small is within a few units of 1e-70, under 1e-18 of
+    /// these billionths, and the expected value floors one.
+    function testPow10OracleFuzz(uint256 primeSeed, uint256 j, int256 d, int256 n) external pure {
+        assertLe(pow10OracleError(primeSeed, j, d, n), 500005168, "pow10 error");
+    }
+
+    /// pow10(x + k) is pow10(x) 10^k exactly for an integer k. x is at the
+    /// 1e-50 that pow10 truncates its fraction to, so the shift does not move
+    /// the truncation.
+    function testPow10DecadeShift(int256 x, int256 shift) external pure {
+        x = bound(x, -1e55, 1e55);
+        shift = bound(shift, -1e5, 1e5);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(x, -50);
+        (int256 shiftedCoefficient, int256 shiftedExponent) = LibDecimalFloatImplementation.pow10(x + shift * 1e50, -50);
+        assertEq(shiftedCoefficient, signedCoefficient, "coefficient");
+        assertEq(shiftedExponent, exponent + shift, "exponent");
+    }
+
+    /// pow10(k) is exactly 10^k for an integer k however it is written.
+    function testPow10IntegersExact(int256 k, uint256 zeros) external pure {
+        k = bound(k, -1e30, 1e30);
+        zeros = bound(zeros, 0, 40);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkPow10(k * int256(10 ** zeros), -int256(zeros), 1, k);
+    }
+
+    /// x < y implies pow10(x) <= pow10(y) + 2E, down to adjacent inputs at
+    /// 1e-70.
+    function testPow10Monotone(int256 x, int256 gap) external pure {
+        x = bound(x, -1e75, 1e75);
+        gap = bound(gap, 1, 1e3);
+        (int256 lowCoefficient, int256 lowExponent) = LibDecimalFloatImplementation.pow10(x, -70);
+        (int256 highCoefficient, int256 highExponent) = LibDecimalFloatImplementation.pow10(x + gap, -70);
+        assertTrue(
+            LibTestErrorBound.monotoneRelative(
+                LibDecimalFloat.packLossless(lowCoefficient, lowExponent),
+                LibDecimalFloat.packLossless(highCoefficient, highExponent),
+                LibTestErrorBound.pow10(),
+                LibTestErrorBound.pow10()
+            ),
+            "monotone"
+        );
     }
 }
