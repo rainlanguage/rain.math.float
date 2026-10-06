@@ -998,16 +998,7 @@ library LibDecimalFloat {
             }
             int256 integerB;
             (integerB, fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
-            // An integer part past int256 is over 5.7e76 and every a but 1 is
-            // at least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power
-            // is past the range, on the side a is of 1.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            if (exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)))) {
-                if (LibDecimalFloatImplementation.lt(signedCoefficientA, exponentA, 1, 0)) {
-                    revert ExponentUnderflow(signedCoefficientA, exponentA);
-                }
-                revert ExponentOverflow(signedCoefficientA, exponentA);
-            }
+            revertIfIntegerBPastInt256(signedCoefficientA, exponentA, integerB, exponentB);
             exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
         }
 
@@ -1064,6 +1055,22 @@ library LibDecimalFloat {
             return packArithmeticResult(signedCoefficient, exponent);
         }
         return packArithmeticResult(roundedCoefficient, roundedExponent);
+    }
+
+    /// An integer part of b past int256 is over 5.7e76 and every a but 1 is at
+    /// least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power is past
+    /// the range, on the side a is of 1.
+    function revertIfIntegerBPastInt256(int256 signedCoefficientA, int256 exponentA, int256 integerB, int256 exponentB)
+        private
+        pure
+    {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)))) {
+            if (LibDecimalFloatImplementation.lt(signedCoefficientA, exponentA, 1, 0)) {
+                revert ExponentUnderflow(signedCoefficientA, exponentA);
+            }
+            revert ExponentOverflow(signedCoefficientA, exponentA);
+        }
     }
 
     /// An exponent above int32 takes back as many digits as int224 allows, to

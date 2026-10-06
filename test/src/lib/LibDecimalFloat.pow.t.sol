@@ -378,16 +378,21 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(LibDecimalFloat.FLOAT_ZERO, b);
     }
 
-    /// a^1 is a rounded to 41 significant digits, for every a > 0 and however
-    /// 1 is written.
+    /// a^1 is a rounded to 41 significant digits, for every nonzero a of
+    /// either sign and however 1 is written.
     function testPowBOne(Float a) external {
         vm.assume(!a.isZero());
-        a = a.abs();
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 roundedCoefficient, int256 roundedExponent) =
             LibDecimalFloatImplementation.roundSignificant(signedCoefficientA, exponentA);
-        // A rounding that carries above the largest Float keeps a.
-        if (LibDecimalFloatImplementation.gt(roundedCoefficient, roundedExponent, type(int224).max, type(int32).max)) {
+        // A rounding that carries past the largest or most negative Float
+        // keeps a.
+        if (
+            LibDecimalFloatImplementation.gt(roundedCoefficient, roundedExponent, type(int224).max, type(int32).max)
+                || LibDecimalFloatImplementation.lt(
+                    roundedCoefficient, roundedExponent, type(int224).min, type(int32).max
+                )
+        ) {
             (roundedCoefficient, roundedExponent) = (signedCoefficientA, exponentA);
         }
         unchecked {
