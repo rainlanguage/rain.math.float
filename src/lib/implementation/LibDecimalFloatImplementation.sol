@@ -186,17 +186,25 @@ library LibDecimalFloatImplementation {
             unchecked {
                 exponent = exponentA + exponentB;
             }
-            if (exponentB < 0) {
-                if (exponent > exponentA) {
-                    return mulExponentBelowFloor(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-                }
-            } else if (exponent < exponentA) {
-                return mulExponentNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            // Both exponents in [-2^253, 2^253) cannot wrap the sum or reach
+            // the ceiling margin below, so packed operands pay one branch.
+            bool isWide;
+            assembly ("memory-safe") {
+                isWide := shr(254, or(add(exponentA, shl(253, 1)), add(exponentB, shl(253, 1))))
             }
-            // The lift below adds at most 77 and `unabsUnsignedMulOrDivLossy`
-            // at most 1.
-            if (exponent > type(int256).max - 78) {
-                return mulExponentNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            if (isWide) {
+                if (exponentB < 0) {
+                    if (exponent > exponentA) {
+                        return mulExponentBelowFloor(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                    }
+                } else if (exponent < exponentA) {
+                    return mulExponentNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                }
+                // The lift below adds at most 77 and
+                // `unabsUnsignedMulOrDivLossy` at most 1.
+                if (exponent > type(int256).max - 78) {
+                    return mulExponentNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                }
             }
 
             // mulDiv only works with unsigned integers, so get the absolute
