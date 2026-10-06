@@ -45,25 +45,63 @@ contract LibDecimalFloatImplementationDivTest is Test {
         LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
     }
 
+    /// Independent of the library: multiply by 10 until it would overflow.
+    function slowMaximize(int256 c) internal pure returns (int256, int256 shift) {
+        unchecked {
+            while ((c * 10) / 10 == c) {
+                c *= 10;
+                shift++;
+            }
+        }
+        return (c, shift);
+    }
+
     /// A ±1 divisor at the floor divides exactly when the quotient exponent
     /// fits in int256, and reverts `ExponentOverflow` when it does not.
     function testDivByOneAtFloor(int256 signedCoefficient, int256 exponent, bool negative) external {
         vm.assume(signedCoefficient != 0);
         int256 one = negative ? int256(-1) : int256(1);
-        (int256 maximized, int256 maximizedExponent, int256 shortfall) =
-            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
-        if (maximizedExponent < 0) {
-            (int256 expected, int256 expectedExponent) = (maximized, maximizedExponent - type(int256).min - shortfall);
-            if (negative) {
-                (expected, expectedExponent) = LibDecimalFloatImplementation.minus(expected, expectedExponent);
-            }
-            (int256 q, int256 qe) =
-                LibDecimalFloatImplementation.div(signedCoefficient, exponent, one, type(int256).min);
-            assertTrue(LibDecimalFloatImplementation.eq(q, qe, expected, expectedExponent), "a / 1 == a");
-        } else {
-            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, maximized, maximizedExponent));
+        // The quotient is ±m * 10^(exponent - shift - type(int256).min).
+        (int256 m, int256 shift) = slowMaximize(signedCoefficient);
+        if (exponent >= shift) {
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, m, exponent - shift));
             this.divExternal(signedCoefficient, exponent, one, type(int256).min);
+            return;
         }
+        int256 qe;
+        // qe is in [-76, type(int256).max], so the wrapping terms cancel.
+        unchecked {
+            qe = exponent - shift - type(int256).min;
+        }
+        if (negative) {
+            if (m == type(int256).min) {
+                // 2^255 does not fit, so it sheds a digit into the exponent.
+                if (qe == type(int256).max) {
+                    vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, m, exponent));
+                    this.divExternal(signedCoefficient, exponent, one, type(int256).min);
+                    return;
+                }
+                m /= 10;
+                qe++;
+            }
+            m = -m;
+        }
+        checkDiv(signedCoefficient, exponent, one, type(int256).min, m, qe);
+    }
+
+    /// #320: 2^255 * 10^type(int256).max has no representation.
+    function testDivMinByMinusOneAtFloorOverflows() external {
+        int256 min = type(int256).min;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, -1));
+        this.divExternal(min, -1, -1, min);
+    }
+
+    /// The neighbours of the #320 counterexample divide.
+    function testDivMinByOneAtFloorNearMax() external pure {
+        int256 min = type(int256).min;
+        checkDiv(min, -1, 1, min, min, type(int256).max);
+        checkDiv(min, -2, -1, min, -(min / 10), type(int256).max);
+        checkDiv(min, -2, 1, min, min, type(int256).max - 1);
     }
 
     function testDivOneByOneAtFloor() external pure {
