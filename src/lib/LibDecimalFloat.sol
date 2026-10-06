@@ -948,7 +948,7 @@ library LibDecimalFloat {
         returns (int256, int256)
     {
         if (b.isZero()) {
-            return (1, 0);
+            return FLOAT_ONE.unpack();
         } else if (signedCoefficientA <= 0) {
             if (signedCoefficientA == 0) {
                 if (b.lt(FLOAT_ZERO)) {
@@ -958,7 +958,7 @@ library LibDecimalFloat {
 
                 // If a is zero, then a^b is always zero, regardless of b.
                 // This is a special case because log10(0) is undefined.
-                return (0, 0);
+                return FLOAT_ZERO.unpack();
             } else {
                 // A negative base has a real power only for a whole exponent:
                 // (-a)^b is a^b, negated when b is odd.
@@ -974,8 +974,8 @@ library LibDecimalFloat {
             }
         }
         // 1^b is 1 for every b, including one too large for the integer leg.
-        else if (LibDecimalFloatImplementation.eq(signedCoefficientA, exponentA, 1, 0)) {
-            return (1, 0);
+        else if (isOne(signedCoefficientA, exponentA)) {
+            return FLOAT_ONE.unpack();
         }
         // Handle identity case for positive values of a, i.e. a^1.
         else if (b.eq(FLOAT_ONE)) {
@@ -1060,6 +1060,16 @@ library LibDecimalFloat {
         return packArithmeticResult(roundedCoefficient, roundedExponent);
     }
 
+    function isOne(int256 signedCoefficient, int256 exponent) private pure returns (bool) {
+        (int256 signedCoefficientOne, int256 exponentOne) = FLOAT_ONE.unpack();
+        return LibDecimalFloatImplementation.eq(signedCoefficient, exponent, signedCoefficientOne, exponentOne);
+    }
+
+    function isBelowOne(int256 signedCoefficient, int256 exponent) private pure returns (bool) {
+        (int256 signedCoefficientOne, int256 exponentOne) = FLOAT_ONE.unpack();
+        return LibDecimalFloatImplementation.lt(signedCoefficient, exponent, signedCoefficientOne, exponentOne);
+    }
+
     /// An integer part of b past int256 is over 5.7e76 and every a but 1 is at
     /// least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power is past
     /// the range, on the side a is of 1.
@@ -1069,7 +1079,7 @@ library LibDecimalFloat {
     {
         // forge-lint: disable-next-line(unsafe-typecast)
         if (exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)))) {
-            if (LibDecimalFloatImplementation.lt(signedCoefficientA, exponentA, 1, 0)) {
+            if (isBelowOne(signedCoefficientA, exponentA)) {
                 revert ExponentUnderflow(signedCoefficientA, exponentA);
             }
             revert ExponentOverflow(signedCoefficientA, exponentA);
