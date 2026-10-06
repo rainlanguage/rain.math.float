@@ -37,16 +37,14 @@ int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
 /// @dev Fixed point one for the log10 and pow10 series.
 uint256 constant POW_FIXED_ONE = 1e50;
 
-/// @dev ln(10) at the `POW_FIXED_ONE` scale, rounded to nearest.
+/// @dev ln(10) at the `POW_FIXED_ONE` scale, rounded down, 0.2976 units below,
+/// which is also nearest.
 uint256 constant POW_FIXED_LN10 = 230258509299404568401799145468436420760110148862877;
 
 /// @dev The inverse of 5^50 modulo 2^256, which divides a multiple of
 /// `POW_FIXED_ONE` by it once the factor 2^50 is shifted out.
 uint256 constant POW_FIXED_ONE_ODD_INVERSE =
     32019276099673541610834237427944372346803171054071557274126404137164986125033;
-
-/// @dev Halvings of the exp10Fixed argument before its Taylor series.
-uint256 constant POW_EXP_HALVINGS = 8;
 
 /// @dev The inverse of 5 modulo 2^256, so that its nth power divides an exact
 /// multiple of 5^n.
@@ -57,7 +55,7 @@ uint256 constant POW_GUARD = 1e10;
 
 /// @dev The most, in units of 1e-50, that the true 10^m 1e50 can lie from
 /// pow10's fixed point power. See `pow10`.
-uint256 constant POW10_RAW_ERROR = 51662;
+uint256 constant POW10_RAW_ERROR = 328;
 
 /// @dev The most, in units of 1e-50, that the true log can lie from
 /// `log10Unrounded`. See `log10Unrounded`.
@@ -1203,11 +1201,11 @@ library LibDecimalFloatImplementation {
     ///
     /// The fraction m of x, truncated to 1e-50, goes through `exp10Fixed`.
     /// Truncation moves 10^m by under 2.3026e-50 relative either way, and with
-    /// exp10Fixed's bounds the true 10^m 1e50 is within 29 units below and
-    /// `POW10_RAW_ERROR` units above the fixed point power, for a power below
-    /// 1e51 units. A unit of the result is `POW_GUARD` of those, so the result
-    /// is within half a unit plus 5.1662e-6 of a unit, and under 5.0000517e-41
-    /// relative.
+    /// exp10Fixed's bounds the true 10^x 1e50 is within 24 units below and
+    /// `POW10_RAW_ERROR` units, 304.71 plus 23.03 rounded up, above the fixed
+    /// point power, for a power below 1e51 units. A unit of the result is
+    /// `POW_GUARD` of those, so the result is within half a unit plus 3.28e-8
+    /// of a unit, and under 5.0000004e-41 relative.
     ///
     /// A nonzero fraction that truncates to zero is under 1e-50 from an
     /// integer, which puts 10^x within 2.4e-50 relative of the power of ten
@@ -1256,36 +1254,104 @@ library LibDecimalFloatImplementation {
         return (int256(exp10Fixed(uint256(mantissa))), characteristic - 50);
     }
 
-    /// 10^x at the `POW_FIXED_ONE` scale, by the Taylor series of e^(x ln 10).
-    /// The argument is halved `POW_EXP_HALVINGS` times so the series converges
-    /// in few terms, then the sum is squared back up.
+    /// 10^x at the `POW_FIXED_ONE` scale. Each binary digit 2^-i of x, for i
+    /// in [1, 16], multiplies in 10^(2^-i), and the r below 2^-16 that is left
+    /// goes through the Taylor series of 10^r to its ninth power by Horner's
+    /// rule. Every constant and every product is floored, so the result is
+    /// never above 10^x.
     ///
-    /// The result is within [-5.1637e-47, 5.2e-51] relative of 10^x:
-    /// - The reduced argument r is x ln 10 / 256, at most 0.0089945, floored a
-    ///   unit, and POW_FIXED_LN10 is 0.2976 units of 1e-50 below ln 10, so r
-    ///   is within (-1.002e-50, 2e-53] of exact.
-    /// - Term n floors once, losing under a unit plus r / n of term n - 1's
-    ///   loss. r^18 / 18! is under 0.0024 units, so at most 17 terms are
-    ///   nonzero, and those, the first zero term and the tail leave the
-    ///   series under 17.03 units below e^r. The sum is at least 1e50, so
-    ///   with r's error it is within [-1.8032e-49, 2e-53] relative.
-    /// - Each squaring doubles the relative error and floors under 1e-50
-    ///   relative, so the eight leave it at least 256 (-1.8032e-49) -
-    ///   255e-50 = -4.8712e-47 and at most 5.12e-51.
-    /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1].
-    /// @return The power at the `POW_FIXED_ONE` scale, in [1, 10].
-    function exp10Fixed(uint256 x) internal pure returns (uint256) {
-        uint256 reduced = mulDiv(x, POW_FIXED_LN10, POW_FIXED_ONE << POW_EXP_HALVINGS);
-        uint256 sum = POW_FIXED_ONE;
-        uint256 term = POW_FIXED_ONE;
-        for (uint256 n = 1; term > 0; n++) {
-            term = mulDiv(term, reduced, POW_FIXED_ONE * n);
-            sum += term;
+    /// The result is within [-3.048e-49, 0] relative of 10^x. In units of
+    /// 1e-50 relative:
+    /// - Each 10^(2^-i) constant is under a unit below 10^(2^-i) 1e50, and
+    ///   each multiply after the first floors under a unit of a product of at
+    ///   least 10^(2^-i) 1e50, so the digits lose under the sum of
+    ///   2 / 10^(2^-i) less the first multiply's, 28.392.
+    /// - The floored coefficients and steps leave the series under
+    ///   1 + 2r / (1 - r) below its nine terms, and the terms past the ninth
+    ///   sum under 0.079, so it is under 1.079 below 10^r, which is at least 1.
+    /// - The last multiply floors under a unit.
+    /// In all that is under 30.471.
+    /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1).
+    /// @return result The power at the `POW_FIXED_ONE` scale, in [1, 10).
+    function exp10Fixed(uint256 x) internal pure returns (uint256 result) {
+        unchecked {
+            result = POW_FIXED_ONE;
+            if (x >= 5e49) {
+                x -= 5e49;
+                result = 316227766016837933199889354443271853371955513932521;
+            }
+            if (x >= 2.5e49) {
+                x -= 2.5e49;
+                result = mulDivFixed(result, 177827941003892280122542119519268484473579052640225);
+            }
+            if (x >= 1.25e49) {
+                x -= 1.25e49;
+                result = mulDivFixed(result, 133352143216332402567593171529533109241566796476437);
+            }
+            if (x >= 6.25e48) {
+                x -= 6.25e48;
+                result = mulDivFixed(result, 115478198468945817966648288729550828156694804147961);
+            }
+            if (x >= 3.125e48) {
+                x -= 3.125e48;
+                result = mulDivFixed(result, 107460782832131749721594153196434359466719822837527);
+            }
+            if (x >= 1.5625e48) {
+                x -= 1.5625e48;
+                result = mulDivFixed(result, 103663292843769799729165172492534446770887303110100);
+            }
+            if (x >= 7.8125e47) {
+                x -= 7.8125e47;
+                result = mulDivFixed(result, 101815172171818184147422688857883534761587963866759);
+            }
+            if (x >= 3.90625e47) {
+                x -= 3.90625e47;
+                result = mulDivFixed(result, 100903504484144743775925442390642133138116897958823);
+            }
+            if (x >= 1.953125e47) {
+                x -= 1.953125e47;
+                result = mulDivFixed(result, 100450736425446251566479469434131766413696548644885);
+            }
+            if (x >= 9.765625e46) {
+                x -= 9.765625e46;
+                result = mulDivFixed(result, 100225114829291291546567363886657119245424113020822);
+            }
+            if (x >= 4.8828125e46) {
+                x -= 4.8828125e46;
+                result = mulDivFixed(result, 100112494139987987588542643436571177327133841887328);
+            }
+            if (x >= 2.44140625e46) {
+                x -= 2.44140625e46;
+                result = mulDivFixed(result, 100056231260220863661851136780963697869649047983110);
+            }
+            if (x >= 1.220703125e46) {
+                x -= 1.220703125e46;
+                result = mulDivFixed(result, 100028111678778013239925736576968704561701000407571);
+            }
+            if (x >= 6.103515625e45) {
+                x -= 6.103515625e45;
+                result = mulDivFixed(result, 100014054851694725816277118785892892480765770706773);
+            }
+            if (x >= 3.0517578125e45) {
+                x -= 3.0517578125e45;
+                result = mulDivFixed(result, 100007027178941143553881363867653576320883673909194);
+            }
+            if (x >= 1.52587890625e45) {
+                x -= 1.52587890625e45;
+                result = mulDivFixed(result, 100003513527746185660858233586155663318996214797054);
+            }
+            uint256 series = 501392883377544009807090987164215453583108663277;
+            series = 1959769462647852369682789087147690310674843760584 + mulDivFixed(series, x);
+            series = 6808936507443706236540404026537606122629959236393 + mulDivFixed(series, x);
+            series = 20699584869686809669966601589738494188245922773010 + mulDivFixed(series, x);
+            series = 53938292919558141019969155571017253478007614081814 + mulDivFixed(series, x);
+            series = 117125514891226696317825761603265234076100689858139 + mulDivFixed(series, x);
+            series = 203467859229347619683099119171381053024105502647771 + mulDivFixed(series, x);
+            series = 265094905523919900528083319429700884579872503956640 + mulDivFixed(series, x);
+            series = POW_FIXED_LN10 + mulDivFixed(series, x);
+            series = POW_FIXED_ONE + mulDivFixed(series, x);
+            result = mulDivFixed(result, series);
         }
-        for (uint256 i = 0; i < POW_EXP_HALVINGS; i++) {
-            sum = mulDiv(sum, sum, POW_FIXED_ONE);
-        }
-        return sum;
     }
 
     /// Maximizes a float's signed coefficient by increasing its magnitude
