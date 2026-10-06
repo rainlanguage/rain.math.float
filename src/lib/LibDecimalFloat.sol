@@ -891,7 +891,6 @@ library LibDecimalFloat {
             revert ExponentOverflow(signedCoefficient, exponent);
         }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
-        (signedCoefficient, exponent) = liftToTop(signedCoefficient, exponent);
         return packArithmeticResult(signedCoefficient, exponent);
     }
 
@@ -1073,17 +1072,21 @@ library LibDecimalFloat {
         return (signedCoefficientResult, exponentResult);
     }
 
-    /// Rounds to 41 significant digits and packs, lifted as `liftToTop` does.
-    /// A rounding that carries above the largest Float packs the unrounded
-    /// value instead.
+    /// Rounds to 41 significant digits and packs. A rounding that carries
+    /// above the largest Float packs the unrounded value instead.
     function packRoundedSignificant(int256 signedCoefficient, int256 exponent) private pure returns (Float) {
         (int256 roundedCoefficient, int256 roundedExponent) =
             LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
-        (roundedCoefficient, roundedExponent) = liftToTop(roundedCoefficient, roundedExponent);
         // Only a carry can leave the unrounded value packable, so a value that
         // int224 could not hold either way reports the rounded value.
-        if (roundedExponent > type(int32).max && roundedExponent - type(int32).max <= 67) {
-            return packArithmeticResult(signedCoefficient, exponent);
+        int256 excess = roundedExponent - type(int32).max;
+        if (excess > 0 && excess <= 67) {
+            // excess is in [1, 67] so the casts cannot truncate.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 scale = int256(10 ** uint256(excess));
+            if (roundedCoefficient > type(int224).max / scale || roundedCoefficient < type(int224).min / scale) {
+                return packArithmeticResult(signedCoefficient, exponent);
+            }
         }
         return packArithmeticResult(roundedCoefficient, roundedExponent);
     }
@@ -1112,23 +1115,6 @@ library LibDecimalFloat {
             }
             revert ExponentOverflow(signedCoefficientA, exponentA);
         }
-    }
-
-    /// An exponent above int32 takes back as many digits as int224 allows, to
-    /// keep a value at the top of the exponent range packable. Anything else
-    /// is returned as is.
-    function liftToTop(int256 signedCoefficient, int256 exponent) private pure returns (int256, int256) {
-        int256 excess = exponent - type(int32).max;
-        // An int224 coefficient has at most 68 digits.
-        if (excess > 0 && excess <= 67) {
-            // excess is in [1, 67] so the casts cannot truncate.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            int256 scale = int256(10 ** uint256(excess));
-            if (signedCoefficient <= type(int224).max / scale && signedCoefficient >= type(int224).min / scale) {
-                return (signedCoefficient * scale, type(int32).max);
-            }
-        }
-        return (signedCoefficient, exponent);
     }
 
     /// sqrt a = a ^ 0.5
