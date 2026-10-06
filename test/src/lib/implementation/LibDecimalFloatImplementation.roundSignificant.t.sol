@@ -2,12 +2,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {Test, stdError} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationRoundSignificantTest is Test {
-    /// 41 significant digits, half away from zero, by counting digits, so
-    /// independent of `maximize`.
+    /// 41 significant digits, half away from zero, by a digit loop, so
+    /// independent of the library's binary search.
     function expectedRounding(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 magnitude = signedCoefficient < 0 ? uint256(-(signedCoefficient + 1)) + 1 : uint256(signedCoefficient);
@@ -61,7 +61,7 @@ contract LibDecimalFloatImplementationRoundSignificantTest is Test {
         check(999999999999999999999999999999999999999994, 0, 99999999999999999999999999999999999999999, 1);
         check(999999999999999999999999999999999999999995, 0, 1e41, 1);
         check(-999999999999999999999999999999999999999995, 0, -1e41, 1);
-        // 76 digits, the guard at 1e35.
+        // 76 digits shed 35.
         check(
             9876543210987654321098765432109876543210950000000000000000000000000000000000,
             0,
@@ -88,8 +88,8 @@ contract LibDecimalFloatImplementationRoundSignificantTest is Test {
         );
     }
 
-    /// A coefficient that maximizes to 77 digits takes a guard of 1e36 and one
-    /// more on the exponent, and rounds the same as one that does not.
+    /// A 77 digit coefficient sheds 36 digits and rounds the same as a shorter
+    /// one.
     function testRoundSignificantSeventySevenDigits() external pure {
         check(
             12345678901234567890123456789012345678901500000000000000000000000000000000000,
@@ -112,14 +112,39 @@ contract LibDecimalFloatImplementationRoundSignificantTest is Test {
         check(type(int256).max, 0, 57896044618658097711785492504343953926635, 36);
         check(type(int256).min, 0, -57896044618658097711785492504343953926635, 36);
         check(type(int256).min + 1, -7, -57896044618658097711785492504343953926635, 29);
-        // 42 digits, maximized past 77 digits below 5.79e76 and only to 76
-        // digits above it.
+        // 42 digits shed one.
         check(123456789012345678901234567890123456789015, 3, 12345678901234567890123456789012345678902, 4);
         check(987654321098765432109876543210987654321095, 3, 98765432109876543210987654321098765432110, 4);
     }
 
+    /// Issue #314: the exponent only rises, so the int256 floor rounds, and
+    /// one that would pass int256.max panics instead of wrapping.
+    function testRoundSignificantExponentExtremes() external {
+        check(
+            123456789012345678901234567890123456789012345678901,
+            type(int256).min,
+            12345678901234567890123456789012345678901,
+            type(int256).min + 10
+        );
+        check(type(int256).min, type(int256).min, -57896044618658097711785492504343953926635, type(int256).min + 36);
+        check(type(int256).max, type(int256).max - 36, 57896044618658097711785492504343953926635, type(int256).max);
+        check(1e41 - 1, type(int256).max, 1e41 - 1, type(int256).max);
+        vm.expectRevert(stdError.arithmeticError);
+        this.roundSignificantExternal(type(int256).max, type(int256).max);
+        vm.expectRevert(stdError.arithmeticError);
+        this.roundSignificantExternal(1e41, type(int256).max);
+    }
+
+    function roundSignificantExternal(int256 signedCoefficient, int256 exponent)
+        external
+        pure
+        returns (int256, int256)
+    {
+        return LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
+    }
+
     function testRoundSignificantReference(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, type(int128).min, type(int128).max);
+        exponent = bound(exponent, type(int256).min, type(int256).max - 36);
         (int256 expectedCoefficient, int256 expectedExponent) = expectedRounding(signedCoefficient, exponent);
         check(signedCoefficient, exponent, expectedCoefficient, expectedExponent);
     }

@@ -847,7 +847,9 @@ library LibDecimalFloatImplementation {
         return roundSignificant(signedCoefficient, exponent);
     }
 
-    /// Rounds a float to 41 significant digits, half away from zero.
+    /// Rounds a float to 41 significant digits, half away from zero. The
+    /// exponent rises by the digits shed and never falls, so it reverts only
+    /// with an arithmetic panic when the rounded exponent passes int256.max.
     /// @param signedCoefficient The signed coefficient of the float.
     /// @param exponent The exponent of the float.
     /// @return signedCoefficient The rounded signed coefficient.
@@ -856,12 +858,34 @@ library LibDecimalFloatImplementation {
         if (signedCoefficient / 1e41 == 0) {
             return (signedCoefficient, exponent);
         }
-        (signedCoefficient, exponent) = maximizeFull(signedCoefficient, exponent);
+        int256 guard = 1;
+        int256 shed = 0;
         unchecked {
-            int256 guard = 1e35;
-            if (signedCoefficient / 1e76 != 0) {
-                guard = 1e36;
-                exponent += 1;
+            // Binary search for the 10^shed that leaves 41 digits, shed in
+            // [1, 36] for a coefficient of 42 to 77 digits.
+            if (signedCoefficient / 1e72 != 0) {
+                guard = 1e32;
+                shed = 32;
+            }
+            if (signedCoefficient / guard / 1e56 != 0) {
+                guard *= 1e16;
+                shed += 16;
+            }
+            if (signedCoefficient / guard / 1e48 != 0) {
+                guard *= 1e8;
+                shed += 8;
+            }
+            if (signedCoefficient / guard / 1e44 != 0) {
+                guard *= 1e4;
+                shed += 4;
+            }
+            if (signedCoefficient / guard / 1e42 != 0) {
+                guard *= 1e2;
+                shed += 2;
+            }
+            if (signedCoefficient / guard / 1e41 != 0) {
+                guard *= 10;
+                shed += 1;
             }
             int256 rounded = signedCoefficient / guard;
             int256 remainder = signedCoefficient % guard;
@@ -870,8 +894,9 @@ library LibDecimalFloatImplementation {
             } else if (remainder <= -guard / 2) {
                 rounded -= 1;
             }
-            return (rounded, exponent + 35);
+            signedCoefficient = rounded;
         }
+        return (signedCoefficient, exponent + shed);
     }
 
     /// log10(x) for a float x, with the guard digits that `log10` rounds
