@@ -130,6 +130,33 @@ The lossy version simply returns a bool alongside the packed `Float` that
 signifies whether the packing was lossy or not, to allow the caller to make
 additional judgement calls re: when precision loss is acceptable.
 
+#### log10, pow10, pow and sqrt
+
+These round their final result to nearest at 41 significant digits, `pow`
+including an integer power and `a^1`, within proven bounds of the true value:
+
+- `pow10`: half a unit in the 41st digit plus 5.1662e-6 of a unit, under
+  5.0000517e-41 relative.
+- `log10`: half a unit in the 41st digit plus 2.245e-47 absolute.
+- `pow`: 5.00006e-41 + 3N·1e-75 relative, for N the integer part of |b|.
+- `sqrt`: 5.00006e-41 relative.
+
+A `pow10` or `pow` result below 1e-2147483608 sheds digits to lift its exponent
+to the int32 floor, so its bound adds 1e-2147483648 absolute. Below
+1e-2147483648 it reverts `ExponentUnderflow`. A `pow` result that rounding would
+carry above the largest Float is truncated to int224 instead.
+
+They are monotone within rounding error, not strictly monotone. For a < b the
+order of the results can flip by exactly one unit in the last place, only when
+both true values lie within the larger raw error of the same rounding tie, and
+never by more. The raw error, before rounding, is 5.1662e-6 of a unit for
+`pow10`, 2.245e-47 for `log10`, and 5.69e-46 + 3N·1e-75 relative for `pow` and
+`sqrt`. Callers must not rely on strict ordering at one-ulp resolution.
+
+Exact results stay exact: powers of ten (`pow10(k)` is `10^k`, `log10(10^k)` is
+`k`), and integer and fractional powers, roots included, with at most 41
+significant digits.
+
 #### Fixed decimal conversions
 
 There are some convenience methods in the lib for converting to/from fixed
@@ -218,14 +245,19 @@ rather than simply return a bool, with a standard default error message.
 The log/pow calculations are not simply truncated on precision loss, they are
 inherently approximations in many cases.
 
-For example, `pow` will accurately calculate an integer exponent using the
-exponentiation by squaring method, but non-integer exponents use a hybrid lookup
-table to approximate the fractional component of the exponent calculation.
+`log10` takes a four figure log table value (from the tables deployed
+deterministically onchain as data contracts) as a seed and refines it with a
+fixed point series. Before rounding it is within 2.5e-47 of the true value, and
+within 3e-49 relative of it for an input within a table step of a power of ten,
+so a log near zero keeps its precision. The result is rounded to 41 significant
+digits, so it is within half a unit in the 41st digit plus 2.5e-47. A power of
+ten has an exact log.
 
-Log and antilog calculations don't even do the exponentiation by squaring, they
-simply use lookup tables directly.
+`pow10` reads no tables. It computes the power in fixed point and rounds it to
+41 significant digits, so it is within half a unit in the 41st digit and an
+exactly representable power such as `10^2` is exact.
 
-The approximation quality is inherently limited by both the size of the log
-tables (deployed deterministically onchain as data contracts) and the
-interpolation method between exact lookup hits. Currently we use a linear
-interpolation which is the least accurate option, but most gas efficient.
+`pow` calculates an integer exponent by squaring, and the fractional component
+of a non-integer exponent as `pow10(frac(b) * log10(a))` with its guard digits,
+then rounds the product to 41 significant digits, so it is within about 5e-41
+relative of the true value and a power such as `sqrt(4)` is exact.
