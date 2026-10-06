@@ -1002,23 +1002,24 @@ library LibDecimalFloat {
         return packRoundedSignificant(signedCoefficientResult, exponentResult);
     }
 
-    /// Rounds to 41 significant digits and packs. The rounded coefficient is
-    /// at most 1e41, so it takes back up to 27 digits, as int224 allows, to
-    /// keep a result at the top of the exponent range packable. A rounding
-    /// that carries above the largest Float packs the unrounded value instead.
+    /// Rounds to 41 significant digits and packs. A rounded exponent above
+    /// int32 takes back as many digits as int224 allows, to keep a result at
+    /// the top of the exponent range packable. A rounding that carries above
+    /// the largest Float packs the unrounded value instead.
     function packRoundedSignificant(int256 signedCoefficient, int256 exponent) private pure returns (Float) {
         (int256 roundedCoefficient, int256 roundedExponent) =
             LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
         int256 excess = roundedExponent - type(int32).max;
-        if (excess > 0 && excess <= 27) {
-            // excess is in [1, 27] so the casts cannot truncate.
+        // An int224 coefficient has at most 68 digits.
+        if (excess > 0 && excess <= 67) {
+            // excess is in [1, 67] so the casts cannot truncate.
             // forge-lint: disable-next-line(unsafe-typecast)
-            roundedCoefficient *= int256(10 ** uint256(excess));
-            roundedExponent = type(int32).max;
-            // forge-lint: disable-next-line(unsafe-typecast)
-            if (int224(roundedCoefficient) != roundedCoefficient) {
-                return packArithmeticResult(signedCoefficient, exponent);
+            int256 scale = int256(10 ** uint256(excess));
+            if (roundedCoefficient <= type(int224).max / scale && roundedCoefficient >= type(int224).min / scale) {
+                return packArithmeticResult(roundedCoefficient * scale, type(int32).max);
             }
+            // Only a carry can leave the unrounded value packable.
+            return packArithmeticResult(signedCoefficient, exponent);
         }
         return packArithmeticResult(roundedCoefficient, roundedExponent);
     }

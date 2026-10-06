@@ -386,6 +386,27 @@ contract LibDecimalFloatPowTest is LogTest {
         );
     }
 
+    /// A short coefficient takes back more digits than a 41 digit one can, up
+    /// to the 68 of int224.
+    function testPowShortCoefficientPastTheTop() external {
+        // (1e1073741850)^2 is 1e53 at the top exponent.
+        Float a = LibDecimalFloat.packLossless(1, 1073741850);
+        assertEq(
+            Float.unwrap(this.powExternal(a, LibDecimalFloat.packLossless(2, 0))),
+            Float.unwrap(LibDecimalFloat.packLossless(1e53, type(int32).max))
+        );
+        // (11e1073741856)^2 is 121e2147483712, 1.21e67 at the top exponent.
+        a = LibDecimalFloat.packLossless(11, 1073741856);
+        assertEq(
+            Float.unwrap(this.powExternal(a, LibDecimalFloat.packLossless(2, 0))),
+            Float.unwrap(LibDecimalFloat.packLossless(121e65, type(int32).max))
+        );
+        // (12e1073741856)^2 is 1.44e67, above the largest Float.
+        a = LibDecimalFloat.packLossless(12, 1073741856);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(144), int256(2147483712)));
+        this.powExternal(a, LibDecimalFloat.packLossless(2, 0));
+    }
+
     /// Issue #297 review: a^1 kept all 67 digits of a, and 2 - 1e-50 put a
     /// 51 digit product above a^2, a 41 digit leg times a.
     function testPowRoundsAtFortyOneDigits() external {
