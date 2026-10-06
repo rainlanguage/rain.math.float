@@ -78,12 +78,12 @@ library LibParseDecimalFloat {
 
                 // An all-zero fraction is the same literal as no fraction.
                 if (nonZeroCursor != fracStart) {
-                    (bytes4 fracErrorSelector, int256 fracValueTmp) =
+                    bytes4 fracErrorSelector;
+                    (fracErrorSelector, fracValue) =
                         LibParseDecimal.unsafeDecimalStringToSignedInt(fracStart, nonZeroCursor);
                     if (fracErrorSelector != 0) {
                         return (fracErrorSelector, cursor, 0, 0);
                     }
-                    fracValue = fracValueTmp;
                     // Frac value inherits its sign from the coefficient.
                     if (fracValue < 0) {
                         return (MalformedDecimalPoint.selector, cursor, 0, 0);
