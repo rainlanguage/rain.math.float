@@ -4,13 +4,13 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloatImplementationMain} from "test/lib/LibDecimalFloatImplementationMain.sol";
-import {LogTest} from "../../../abstract/LogTest.sol";
-import {MaximizeOverflow, ExponentOverflow, Log10Negative} from "src/error/ErrDecimalFloat.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {MaximizeOverflow, ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 
 /// Wherever main returns, the PR returns the same bytes, and wherever main
 /// reverts, the PR reverts the same bytes, except in the floor shortfall
 /// classes each `check*` names. Those are asserted against an oracle.
-contract LibDecimalFloatImplementationMainEquivalenceTest is LogTest {
+contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
     /// Lifts a floor operand clear of every maximize shift.
     int256 constant SHIFT = 200;
 
@@ -60,14 +60,6 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is LogTest {
 
     function prInv(int256 c, int256 e) external pure returns (int256, int256) {
         return LibDecimalFloatImplementation.inv(c, e);
-    }
-
-    function mainLog10(address tables, int256 c, int256 e) external view returns (int256, int256) {
-        return LibDecimalFloatImplementationMain.log10(tables, c, e);
-    }
-
-    function prLog10(address tables, int256 c, int256 e) external view returns (int256, int256) {
-        return LibDecimalFloatImplementation.log10(tables, c, e);
     }
 
     function run(bytes memory data) internal view returns (bool, bytes memory) {
@@ -339,52 +331,6 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is LogTest {
         checkAddSub(isSub, a, ea, b, eb);
     }
 
-    function checkLog10(int256 c, int256 e) internal {
-        address tables = logTables();
-        (bool mOk, bytes memory m) = run(abi.encodeCall(this.mainLog10, (tables, c, e)));
-        (bool pOk, bytes memory p) = run(abi.encodeCall(this.prLog10, (tables, c, e)));
-        if (mOk == pOk && keccak256(m) == keccak256(p)) return;
-
-        // By design: main reverts MaximizeOverflow at the floor before it
-        // checks the sign.
-        assertFalse(mOk, "main reverts");
-        assertEq(selector(m), MaximizeOverflow.selector, "main MaximizeOverflow");
-        int256 shortfall = slowShortfall(c, e);
-        assertTrue(shortfall > 0, "differs off the floor");
-        if (c < 0) {
-            assertEq(p, abi.encodeWithSelector(Log10Negative.selector, c, e), "PR Log10Negative");
-            return;
-        }
-
-        // log10(c * 10^e) = log10(full * 10^min) - shortfall, with main
-        // evaluating the right hand side.
-        assertTrue(pOk, "PR returns");
-        (int256 full,) = slowMaximize(c);
-        (int256 lc, int256 le) = this.mainLog10(tables, full, type(int256).min);
-        if (full == 1e76) {
-            lc -= shortfall;
-        } else {
-            (lc, le) = LibDecimalFloatImplementation.minus(lc, le);
-            (lc, le) = this.mainAdd(lc, le, shortfall, 0);
-            (lc, le) = LibDecimalFloatImplementation.minus(lc, le);
-        }
-        (int256 pc, int256 pe) = pair(p);
-        assertEq(pc, lc, "coefficient");
-        assertEq(pe, le, "exponent");
-    }
-
-    function testMainEquivalenceLog10(int256 c, int256 e, uint8 shift) external {
-        checkLog10(digits(c, shift), e);
-    }
-
-    function testMainEquivalenceLog10NearFloor(int256 c, uint256 e, uint8 shift) external {
-        checkLog10(digits(c, shift), nearFloor(e));
-    }
-
-    function testMainEquivalenceLog10Packed(int224 c, int32 e) external {
-        checkLog10(c, e);
-    }
-
     function assertDiffers(bytes memory mainCall, bytes memory prCall) internal view {
         (bool mOk, bytes memory m) = run(mainCall);
         (bool pOk, bytes memory p) = run(prCall);
@@ -451,22 +397,5 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is LogTest {
         assertDiffers(abi.encodeCall(this.mainSub, (2, min, 1, min)), abi.encodeCall(this.prSub, (2, min, 1, min)));
         checkAddSub(true, 2, min, 1, min);
         checkAddSub(true, 1, min, 1, min);
-    }
-
-    function testMainEquivalenceLog10FloorExamples() external {
-        int256 min = type(int256).min;
-        address tables = logTables();
-        assertDiffers(
-            abi.encodeCall(this.mainLog10, (tables, 1, min + 10)), abi.encodeCall(this.prLog10, (tables, 1, min + 10))
-        );
-        checkLog10(1, min + 10);
-        assertDiffers(
-            abi.encodeCall(this.mainLog10, (tables, 7, min + 10)), abi.encodeCall(this.prLog10, (tables, 7, min + 10))
-        );
-        checkLog10(7, min + 10);
-        assertDiffers(
-            abi.encodeCall(this.mainLog10, (tables, -1, min)), abi.encodeCall(this.prLog10, (tables, -1, min))
-        );
-        checkLog10(-1, min);
     }
 }

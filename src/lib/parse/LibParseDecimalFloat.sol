@@ -205,8 +205,11 @@ library LibParseDecimalFloat {
             if (cursor == end) {
                 // If we consumed the whole string, we can return the parsed value.
                 // packLossy handles the two exponent-overflow directions differently:
-                // - Positive exponent overflow (e.g. 1e2147483648) has no meaningful
-                //   approximation, so packLossy reverts with ExponentOverflow.
+                // - Positive exponent overflow is first met by lifting the
+                //   coefficient to lower the exponent to int32.max (e.g.
+                //   1e2147483648 is 10e2147483647). Only when the coefficient
+                //   has no headroom left does packLossy revert with
+                //   ExponentOverflow, as there is no meaningful approximation.
                 // - Negative exponent overflow is first met by shedding trailing
                 //   digits of the coefficient to lift the exponent to int32.min
                 //   (e.g. 10e-2147483649 is 1e-2147483648, which packs
