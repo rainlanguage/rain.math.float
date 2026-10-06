@@ -11,7 +11,6 @@ import {
     MaximizeOverflow
 } from "../../error/ErrDecimalFloat.sol";
 import {LOG_TABLE_SIZE_BYTES, LOG_TABLE_SIZE_BASE} from "../table/LibLogTable.sol";
-import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 /// @dev Thrown when attempting to rescale a coefficient to a target exponent
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
@@ -1177,7 +1176,21 @@ library LibDecimalFloatImplementation {
             exponent = (exponent - (odd ? int256(5) : (coefficient < 1e76 ? int256(6) : int256(4)))) / 2;
             // At or above the root, and above it by at most 2 estimateScale, so
             // one Newton step lands on the floor of the root or one above it.
-            uint256 root = (Math.sqrt(estimate) + 2) * estimateScale;
+            uint256 root;
+            // estimate is in [1e74, 2^256), so one step from 2^125 is within a
+            // factor 3 above its root and 7 more reach the floor or one above.
+            assembly ("memory-safe") {
+                root := add(shr(1, shr(125, estimate)), shl(124, 1))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := sub(root, gt(root, div(estimate, root)))
+            }
+            root = (root + 2) * estimateScale;
             root = (root + mulDiv(coefficient, scale, root)) >> 1;
             (uint256 high, uint256 low) = mul512(coefficient, scale);
             (uint256 rootHigh, uint256 rootLow) = mul512(root, root);
