@@ -1032,7 +1032,7 @@ library LibDecimalFloat {
         }
 
         // Exponentiation by squaring.
-        (int256 signedCoefficientResult, int256 exponentResult) = (1, 0);
+        (int256 signedCoefficientResult, int256 exponentResult) = FLOAT_ONE.unpack();
         {
             (int256 signedCoefficientBase, int256 exponentBase) = (signedCoefficientA, exponentA);
             while (exponentBInteger >= 1) {
@@ -1064,6 +1064,12 @@ library LibDecimalFloat {
                 LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
             (signedCoefficientC, exponentC) =
                 LibDecimalFloatImplementation.pow10Unrounded(signedCoefficientC, exponentC);
+            // A zero integer part leaves the result one, which the leg needs no
+            // multiply by.
+            (int256 signedCoefficientOne, int256 exponentOne) = FLOAT_ONE.unpack();
+            if (signedCoefficientResult == signedCoefficientOne && exponentResult == exponentOne) {
+                return (signedCoefficientC, exponentC);
+            }
             (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
                 signedCoefficientC, exponentC, signedCoefficientResult, exponentResult
             );
