@@ -1082,8 +1082,10 @@ library LibDecimalFloat {
     function packRoundedSignificant(int256 signedCoefficient, int256 exponent) private pure returns (Float) {
         (int256 roundedCoefficient, int256 roundedExponent) =
             LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
-        // Only a carry can leave the unrounded value packable, so a value that
-        // int224 could not hold either way reports the rounded value.
+        // Only a carry can leave the unrounded value packable. When the rounded
+        // value cannot lift, the unrounded one is packed, and if it cannot lift
+        // either its revert reports it. Past an excess of 67 neither can lift
+        // and the revert reports the rounded value.
         int256 excess = roundedExponent - type(int32).max;
         if (excess > 0 && excess <= 67) {
             // excess is in [1, 67] so the casts cannot truncate.
