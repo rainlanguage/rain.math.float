@@ -33,10 +33,15 @@ contract LibDecimalFloatImplementationExp10FixedTest is Test {
             LibDecimalFloatImplementation.exp10Fixed(12345678901234567890123456789012345678901234567890),
             132879133982907133325799753963302210145286380241964
         );
-        // The remainder alone, at its largest.
+        // The remainder alone, at its largest and where the result is exactly
+        // the truncated power.
         assertProvenBound(
             LibDecimalFloatImplementation.exp10Fixed(1.52587890625e45 - 1),
             100003513527746185660858233586155663318996214797052
+        );
+        assertProvenBound(
+            LibDecimalFloatImplementation.exp10Fixed(286622127933679969227965878450164870526176577),
+            100000659974016921256786164026392746149691811088958
         );
         assertProvenBound(
             LibDecimalFloatImplementation.exp10Fixed(1e47), 100230523807789967191540488932811055405366845354216

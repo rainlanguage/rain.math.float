@@ -84,6 +84,16 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
         checkExact(1e76, 1e30, 1e30 + 76);
     }
 
+    /// Within 75 of the floor the shift the exponent cannot take is the
+    /// shortfall, and the log is still exact.
+    function testLog10UnroundedPowersOfTenAtFloor() external {
+        int256 min = type(int256).min;
+        checkExact(1, min, min);
+        checkExact(10, min, min + 1);
+        checkExact(1, min + 74, min + 74);
+        checkExact(1, min + 75, min + 75);
+    }
+
     function testLog10UnroundedZero() external {
         vm.expectRevert(abi.encodeWithSelector(Log10Zero.selector));
         this.log10UnroundedExternal(0, 5);
