@@ -39,6 +39,13 @@ def dec(f):
     return Decimal(int(f[0])).scaleb(int(f[1]), EXACT)
 
 
+def literal(s):
+    # The exponent is read with int() because libmpdec turns an exponent of
+    # many digits into Infinity even when they are leading zeros.
+    mantissa, _, exp = s.lower().partition("e")
+    return Decimal(mantissa).scaleb(int(exp or "0"), EXACT)
+
+
 def out(x):
     sign, digits, exp = x.as_tuple()
     c = int("".join(map(str, digits)) or "0")
@@ -187,14 +194,14 @@ def handle(req):
         return {"ok": str(r)} if lossless else {"err": "LossyConversionFromFloat"}
     if op == "parse_value":
         # The value a literal denotes, packed losslessly or not at all.
-        p = pack(Decimal(req["s"]))
+        p = pack(literal(req["s"]))
         if isinstance(p, str):
             return {"err": "ExponentOverflow" if p == "ExponentOverflow" else "ParseDecimalPrecisionLoss"}
         if not p[1]:
             return {"err": "ParseDecimalPrecisionLoss"}
         return {"ok": out(p[0])}
     if op == "literal":
-        return {"ok": out(Decimal(req["s"]))}
+        return {"ok": out(literal(req["s"]))}
     raise ValueError(f"unknown op {op}")
 
 

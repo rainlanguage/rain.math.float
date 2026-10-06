@@ -601,3 +601,41 @@ proptest! {
     #[test]
     fn exact_parse(s in literal()) { check_parse(&s)?; }
 }
+
+/// Minimal repros of the fuzz findings, run every time rather than when the
+/// fuzzer reaches them.
+mod found {
+    use super::*;
+
+    fn run(r: Result<(), TestCaseError>) {
+        if let Err(e) = r {
+            panic!("{e}");
+        }
+    }
+
+    /// The product is `1e2147483648`, exactly `10e2147483647`.
+    #[test]
+    fn mul_at_the_exponent_ceiling() {
+        run(check_mul(&Dec::new(1, I32_MAX), &Dec::new(1, 1)));
+    }
+
+    #[test]
+    fn parse_at_the_exponent_ceiling() {
+        run(check_parse("1e2147483648"));
+    }
+
+    /// Fitting `1e68` into int224 sheds a zero, which takes the exponent
+    /// past int256.max.
+    #[test]
+    fn parse_sheds_past_the_int256_exponent() {
+        let int256_max = (BigInt::from(1) << 255usize) - 1u32;
+        run(check_parse(&format!("1{}e{int256_max}", "0".repeat(68))));
+    }
+
+    /// The default format's `abs` cannot hold `-int224.min` at int32.max, but
+    /// the value is formatted (or not) without taking its absolute value.
+    #[test]
+    fn format_int224_min_at_the_exponent_ceiling() {
+        run(check_format(&Dec::new(r::int224_min(), I32_MAX)));
+    }
+}

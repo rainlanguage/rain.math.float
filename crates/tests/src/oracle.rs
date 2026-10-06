@@ -43,19 +43,20 @@ thread_local! {
     static ORACLE: RefCell<Option<Oracle>> = const { RefCell::new(None) };
 }
 
-/// One request, one response; a dead or failing oracle panics.
+/// One request, one response. A failing oracle panics naming the request and
+/// is respawned for the next case, so proptest shrinks to the real input.
 pub fn ask(request: Value) -> Value {
     ORACLE.with(|cell| {
         let mut cell = cell.borrow_mut();
         let oracle = cell.get_or_insert_with(Oracle::spawn);
-        writeln!(oracle.stdin, "{request}").expect("write to oracle");
-        oracle.stdin.flush().expect("flush oracle");
         let mut line = String::new();
-        oracle
-            .stdout
-            .read_line(&mut line)
-            .expect("read from oracle");
-        assert!(!line.is_empty(), "oracle exited on {request}");
+        let answered = writeln!(oracle.stdin, "{request}")
+            .and_then(|()| oracle.stdin.flush())
+            .and_then(|()| oracle.stdout.read_line(&mut line));
+        if answered.is_err() || line.is_empty() {
+            *cell = None;
+            panic!("oracle failed on {request}: {answered:?}");
+        }
         serde_json::from_str(&line).expect("oracle response is JSON")
     })
 }
