@@ -1071,16 +1071,17 @@ library LibDecimalFloatImplementation {
     /// in few terms, then the sum is squared back up.
     ///
     /// The result is within [-5.1637e-47, 5.2e-51] relative of 10^x:
-    /// - The reduced argument r is x ln 10 / 256, at most 0.0089944, floored a
+    /// - The reduced argument r is x ln 10 / 256, at most 0.0089945, floored a
     ///   unit, and POW_FIXED_LN10 is 0.2976 units of 1e-50 below ln 10, so r
     ///   is within (-1.002e-50, 2e-53] of exact.
-    /// - Each term floors once, losing a unit plus 0.009 of the previous
-    ///   term's loss, under 1.00908 units. r^18 / 18! is below 1e-50, so at
-    ///   most 17 terms are nonzero and the floored series is at most 18.2
-    ///   units below e^r. With r's error, the sum is within [-1.9175e-49,
-    ///   2e-53] relative.
-    /// - Each squaring doubles the relative error and floors a unit, under
-    ///   1e-50 relative, which over eight squarings gives the bound.
+    /// - Term n floors once, losing under a unit plus r / n of term n - 1's
+    ///   loss. r^18 / 18! is under 0.0024 units, so at most 17 terms are
+    ///   nonzero, and those, the first zero term and the tail leave the
+    ///   series under 17.03 units below e^r. The sum is at least 1e50, so
+    ///   with r's error it is within [-1.8032e-49, 2e-53] relative.
+    /// - Each squaring doubles the relative error and floors under 1e-50
+    ///   relative, so the eight leave it at least 256 (-1.8032e-49) -
+    ///   255e-50 = -4.8712e-47 and at most 5.12e-51.
     /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1].
     /// @return The power at the `POW_FIXED_ONE` scale, in [1, 10].
     function exp10Fixed(uint256 x) internal pure returns (uint256) {
