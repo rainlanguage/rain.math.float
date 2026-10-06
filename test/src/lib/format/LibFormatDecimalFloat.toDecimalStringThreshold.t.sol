@@ -62,6 +62,8 @@ contract LibFormatDecimalFloatToDecimalStringThresholdTest is Test {
         concrete.format(a);
         vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, int256(type(int32).max)));
         concrete.format(a, MIN, MAX);
+        assertEq(concrete.format(LibDecimalFloat.packLossless(1000000001, 0)), "1.000000001e9");
+        assertEq(concrete.format(LibDecimalFloat.packLossless(-1, 9)), "-1000000000");
     }
 
     /// The magnitude is compared exactly. `abs` of int224.min sheds its last
