@@ -28,6 +28,7 @@ contract LibDecimalFloatPackLossyGasTest is Test {
 
     function check(string memory name, int256 c, int256 e, int256 expectedC, int256 expectedE, bool expectedLossless)
         internal
+        view
     {
         (Float float, bool lossless) = measure(name, c, e);
         (int256 actualC, int256 actualE) = LibDecimalFloat.unpack(float);
@@ -36,7 +37,7 @@ contract LibDecimalFloatPackLossyGasTest is Test {
         assertEq(lossless, expectedLossless, "lossless");
     }
 
-    function testPackLossyGasPacked() external {
+    function testPackLossyGasPacked() external view {
         check("packed 1e0", 1, 0, 1, 0, true);
         check("packed int224.max e-18", type(int224).max, -18, type(int224).max, -18, true);
         check("packed -5 at int32.max", -5, type(int32).max, -5, type(int32).max, true);
@@ -46,7 +47,7 @@ contract LibDecimalFloatPackLossyGasTest is Test {
         check("zero above the ceiling", 0, int256(type(int32).max) + 1, 0, 0, true);
     }
 
-    function testPackLossyGasLift() external {
+    function testPackLossyGasLift() external view {
         check("lift 1 by 1", 1, int256(type(int32).max) + 1, 10, type(int32).max, true);
         check("lift 1 by 67", 1, int256(type(int32).max) + 67, 1e67, type(int32).max, true);
         check(
@@ -60,7 +61,7 @@ contract LibDecimalFloatPackLossyGasTest is Test {
         );
     }
 
-    function testPackLossyGasShed() external {
+    function testPackLossyGasShed() external view {
         check("shed 1e70 + 1", 1e70 + 1, 0, 1e67, 3, false);
         check("shed int256.max", type(int256).max, 0, type(int256).max / 1e10, 10, false);
         check("shed to floor 15 at int32.min - 1", 15, int256(type(int32).min) - 1, 1, type(int32).min, false);
