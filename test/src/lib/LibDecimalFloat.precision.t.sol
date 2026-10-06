@@ -59,8 +59,9 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     function relativeError(Float actual, uint256 power, int256 exponent) internal pure returns (int256, int256) {
         (int256 signedCoefficient, int256 actualExponent) = actual.unpack();
         // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedPower = int256(power);
         (signedCoefficient, actualExponent) =
-            LibDecimalFloatImplementation.div(signedCoefficient, actualExponent, int256(power), exponent);
+            LibDecimalFloatImplementation.div(signedCoefficient, actualExponent, signedPower, exponent);
         return LibDecimalFloatImplementation.sub(signedCoefficient, actualExponent, 1, 0);
     }
 

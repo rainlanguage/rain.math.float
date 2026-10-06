@@ -29,13 +29,13 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedFraction = int256(fraction);
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.add(characteristic, 0, int256(fraction), -70);
+            LibDecimalFloatImplementation.add(characteristic, 0, signedFraction, -70);
         (int256 errorCoefficient, int256 errorExponent) =
             LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, characteristic, 0);
-        // forge-lint: disable-next-line(unsafe-typecast)
         (errorCoefficient, errorExponent) =
-            LibDecimalFloatImplementation.sub(errorCoefficient, errorExponent, int256(fraction), -70);
+            LibDecimalFloatImplementation.sub(errorCoefficient, errorExponent, signedFraction, -70);
         return (abs(errorCoefficient), errorExponent, expectedCoefficient, expectedExponent, actualExponent);
     }
 
