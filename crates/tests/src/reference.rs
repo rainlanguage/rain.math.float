@@ -31,6 +31,10 @@ pub enum RefError {
     UnformatableExponent,
     ParseDecimalPrecisionLoss,
     ParseDecimalOverflow,
+    Log10Zero,
+    Log10Negative,
+    ZeroNegativePower,
+    PowNegativeBase,
 }
 
 impl RefError {
@@ -47,6 +51,10 @@ impl RefError {
             Self::UnformatableExponent => "UnformatableExponent(int256)",
             Self::ParseDecimalPrecisionLoss => "ParseDecimalPrecisionLoss(uint256)",
             Self::ParseDecimalOverflow => "ParseDecimalOverflow(uint256)",
+            Self::Log10Zero => "Log10Zero()",
+            Self::Log10Negative => "Log10Negative(int256,int256)",
+            Self::ZeroNegativePower => "ZeroNegativePower(bytes32)",
+            Self::PowNegativeBase => "PowNegativeBase(int256,int256)",
         }
     }
 

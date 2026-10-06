@@ -12,6 +12,10 @@ mod float;
 #[cfg(test)]
 mod oracle;
 #[cfg(test)]
+mod precise;
+#[cfg(test)]
 mod reference;
 #[cfg(test)]
 mod tables;
+#[cfg(test)]
+mod transcendental;

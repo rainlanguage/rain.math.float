@@ -16,7 +16,7 @@ use rain_math_float::{Float, FloatError};
 use serde_json::{Value, json};
 
 /// Local runs set `PROPTEST_CASES` low; CI runs the default.
-fn config() -> ProptestConfig {
+pub(crate) fn config() -> ProptestConfig {
     let cases = std::env::var("PROPTEST_CASES")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -28,7 +28,7 @@ fn config() -> ProptestConfig {
 
 /// Every int224, weighted towards its ends, zero and one, powers of ten and
 /// digit-count boundaries.
-fn coefficient() -> BoxedStrategy<BigInt> {
+pub(crate) fn coefficient() -> BoxedStrategy<BigInt> {
     let sign = any::<bool>();
     prop_oneof![
         3 => any::<[u8; 28]>().prop_map(|b| BigInt::from_signed_bytes_be(&b)),
@@ -66,7 +66,7 @@ fn coefficient() -> BoxedStrategy<BigInt> {
 }
 
 /// Every int32, weighted towards both ends and the middle.
-fn exponent() -> BoxedStrategy<i64> {
+pub(crate) fn exponent() -> BoxedStrategy<i64> {
     prop_oneof![
         2 => any::<i32>().prop_map(i64::from),
         2 => I32_MIN..=I32_MIN + 160,
@@ -76,7 +76,7 @@ fn exponent() -> BoxedStrategy<i64> {
     .boxed()
 }
 
-fn float() -> BoxedStrategy<Dec> {
+pub(crate) fn float() -> BoxedStrategy<Dec> {
     prop_oneof![
         6 => (coefficient(), exponent()).prop_map(|(c, e)| Dec::new(c, e)),
         // Near one: 10^k ± d at exponent -k.
@@ -198,7 +198,7 @@ fn ask1(op: &str, a: &Dec) -> Value {
     ask(json!({"op": op, "a": oracle::float(a)}))
 }
 
-fn show(a: &Dec) -> String {
+pub(crate) fn show(a: &Dec) -> String {
     format!("{}e{}", a.c, a.e)
 }
 

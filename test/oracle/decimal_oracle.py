@@ -15,6 +15,7 @@ from decimal import (
     MIN_EMIN,
     ROUND_DOWN,
     ROUND_FLOOR,
+    ROUND_HALF_EVEN,
     Context,
     Decimal,
     Inexact,
@@ -33,6 +34,12 @@ UINT256_MAX = 2**256 - 1
 # truncated towards zero at this many digits, far past a Float's 68.
 EXACT = Context(prec=1000, rounding=ROUND_DOWN, Emax=MAX_EMAX, Emin=MIN_EMIN, traps=[])
 QUOTIENT = Context(prec=200, rounding=ROUND_DOWN, Emax=MAX_EMAX, Emin=MIN_EMIN, traps=[])
+# The true log10, 10^x and a^b, within 1e-250 relative: log10 and exp are
+# correctly rounded at 300 digits, and 10^y loses ln(10) |y| 1e-300 relative
+# for |y| at most RANGE.
+TRUE = Context(prec=300, rounding=ROUND_HALF_EVEN, Emax=MAX_EMAX, Emin=MIN_EMIN, traps=[])
+# Past this |log10| of a result, it is past every Float on its side.
+RANGE = Decimal(3000000000)
 
 
 def dec(f):
@@ -152,6 +159,50 @@ def to_fixed(x, decimals):
     return int(t), t == scaled
 
 
+def power_of_ten(y):
+    """10^y, or the error of a result past every Float."""
+    if abs(y) > RANGE:
+        return {"err": "ExponentOverflow" if y > 0 else "ExponentUnderflow"}
+    return {"ok": out(TRUE.power(Decimal(10), y))}
+
+
+def log10(a):
+    if a.is_zero():
+        return {"err": "Log10Zero"}
+    if a < 0:
+        return {"err": "Log10Negative"}
+    return {"ok": out(TRUE.log10(a))}
+
+
+def pow10(x):
+    if x.is_zero():
+        return {"ok": ["1", 0]}
+    return power_of_ten(x)
+
+
+def pow_(a, b):
+    """a^b as LibDecimalFloat.pow documents it: a^0 is 1, 0^b is 0 or
+    ZeroNegativePower, a negative a takes a whole b only and keeps its sign
+    for an odd b."""
+    if b.is_zero():
+        return {"ok": ["1", 0]}
+    if a.is_zero():
+        return {"err": "ZeroNegativePower"} if b < 0 else {"ok": ["0", 0]}
+    negate = False
+    if a < 0:
+        whole = b.normalize(EXACT)
+        if whole.as_tuple().exponent < 0:
+            return {"err": "PowNegativeBase"}
+        negate = whole.as_tuple().exponent == 0 and whole.as_tuple().digits[-1] % 2 == 1
+        a = EXACT.minus(a)
+    if a == 1:
+        return {"ok": ["-1" if negate else "1", 0]}
+    r = power_of_ten(TRUE.multiply(b, TRUE.log10(a)))
+    if negate and "ok" in r:
+        r["ok"][0] = str(-int(r["ok"][0]))
+    return r
+
+
 def handle(req):
     op = req["op"]
     a = dec(req["a"]) if "a" in req else None
@@ -206,6 +257,12 @@ def handle(req):
         return {"ok": out(p[0])}
     if op == "literal":
         return {"ok": out(literal(req["s"]))}
+    if op == "log10":
+        return log10(a)
+    if op == "pow10":
+        return pow10(a)
+    if op == "pow":
+        return pow_(a, b)
     raise ValueError(f"unknown op {op}")
 
 
