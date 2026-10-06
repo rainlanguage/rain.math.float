@@ -68,6 +68,8 @@ contract LibDecimalFloatPow10Test is LogTest {
         this.pow10External(LibDecimalFloat.packLossless(-1, 77));
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(58), int256(75)));
         this.pow10External(LibDecimalFloat.packLossless(58, 75));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(-58), int256(75)));
+        this.pow10External(LibDecimalFloat.packLossless(-58, 75));
     }
 
     /// 10^0 is 1 for a zero of any exponent. 0e77 reverted before.
