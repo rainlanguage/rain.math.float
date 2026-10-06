@@ -38,6 +38,16 @@ contract LibDecimalFloatMulTest is Test {
         this.mulExternal(a, b);
     }
 
+    /// A product that fits int224 one exponent above `int32.max` but has no
+    /// headroom to lift back down overflows with the unshed product:
+    /// `1e67 × 10^(int32.max + 1)` is `1e68 × 10^int32.max`.
+    function testMulOverflowPastLiftHeadroom() external {
+        assertTrue(LibTestExactDecimal.mulOverflows(1e67, type(int32).max, 1, 1), "product overflows");
+        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.mulParts(1e67, type(int32).max, 1, 1);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+        this.mulExternal(LibDecimalFloat.packLossless(1e67, type(int32).max), LibDecimalFloat.packLossless(1, 1));
+    }
+
     /// Reverts only where the exact product is beyond the largest Float of its
     /// sign or below the smallest positive Float, and otherwise agrees with the
     /// unpacked path.
