@@ -757,6 +757,45 @@ fn library_to_fixed_exponent_wrap() {
     }
 }
 
+/// `exponent + decimals` either side of 77, the last power of ten in a
+/// uint256, for coefficients a scale past it would and would not overflow.
+#[test]
+fn library_to_fixed_overflow_boundary() {
+    for c in [1i64, 2, 9, 11, 115, 116] {
+        for (e, decimals) in [
+            (76i64, 0u8),
+            (77, 0),
+            (78, 0),
+            (79, 0),
+            (0, 77),
+            (0, 78),
+            (60, 18),
+        ] {
+            run(check_to_fixed_unpacked(
+                &BigInt::from(c),
+                &BigInt::from(e),
+                decimals,
+            ));
+        }
+    }
+}
+
+/// A spread one to nine units past the absolute tolerance in the last digit
+/// of the alignment, and one the alignment sheds whole.
+#[test]
+fn library_agree_last_aligned_digit() {
+    for r in 1i64..=9 {
+        for e in [-74i64, -75, -76] {
+            run(check_agree(
+                &Dec::new(1, 0),
+                &Dec::zero(),
+                &Dec::new(-r, e),
+                &Dec::new(1, 0),
+            ));
+        }
+    }
+}
+
 /// A zero literal parses to exponent zero however it is written.
 #[test]
 fn library_parse_zero() {
@@ -918,6 +957,7 @@ mod checker {
         assert!(canonicalize_accepts(py(), want.clone(), want.clone()));
         // The same value in other bytes, from Solidity or python.
         assert!(!canonicalize_accepts(py(), one(), want.clone()));
+        assert!(!canonicalize_accepts(py(), one(), one()));
         assert!(!canonicalize_accepts(
             json!({"ok": ["1", 0]}),
             want.clone(),
