@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LogTest} from "../../abstract/LogTest.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
 
 contract LibDecimalFloatPow10Test is LogTest {
     using LibDecimalFloat for Float;
@@ -51,14 +52,41 @@ contract LibDecimalFloatPow10Test is LogTest {
         }
     }
 
+    /// An x whose integer part is past int256 reverts on the side of its sign.
+    /// It reverted `WithTargetExponentOverflow` before.
+    function testPow10HugeX() external {
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(77)));
+        this.pow10External(LibDecimalFloat.packLossless(1, 77));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(-1), int256(77)));
+        this.pow10External(LibDecimalFloat.packLossless(-1, 77));
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(58), int256(75)));
+        this.pow10External(LibDecimalFloat.packLossless(58, 75));
+    }
+
+    /// 10^0 is 1 for a zero of any exponent. 0e77 reverted before.
+    function testPow10ZeroAnyExponent(int32 exponent) external {
+        assertEq(
+            Float.unwrap(this.pow10External(LibDecimalFloat.packLossless(0, exponent))),
+            Float.unwrap(LibDecimalFloat.FLOAT_ONE)
+        );
+        assertEq(
+            Float.unwrap(this.pow10External(LibDecimalFloat.packLossless(0, 77))),
+            Float.unwrap(LibDecimalFloat.FLOAT_ONE)
+        );
+    }
+
     /// 10^(int32.max + 68) is 1e68 at int32.max, past int224.
     function testPow10PastInt32MaxOverflows() external {
         vm.expectPartialRevert(ExponentOverflow.selector);
         this.pow10External(LibDecimalFloat.packLossless(int256(type(int32).max) + 68, 0));
     }
 
+    /// pow10 matches its implementation packed. It reverts only for an x past
+    /// the range by more than twice pow10's relative bound, the slack it puts
+    /// on 10^x in log10, and returns for any x inside it by as much.
     function testPow10Packed(Float float) external {
         (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
+        PowRange range = LibTestPowRange.range(signedCoefficientFloat, exponentFloat, 11, -41);
         try this.pow10External(signedCoefficientFloat, exponentFloat) returns (
             int256 signedCoefficient, int256 exponent
         ) {
@@ -76,7 +104,9 @@ contract LibDecimalFloatPow10Test is LogTest {
                     (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = this.pow10External(float).unpack();
                     assertEq(signedCoefficientUnpacked, lifted);
                     assertEq(exponentUnpacked, type(int32).max);
+                    assertTrue(range != PowRange.Over, "returned past the range");
                 } else {
+                    assertTrue(range == PowRange.Over || range == PowRange.OverEdge, "overflow inside the range");
                     vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
                     this.pow10External(float);
                 }
@@ -84,6 +114,7 @@ contract LibDecimalFloatPow10Test is LogTest {
                 // Predict whether packArithmeticResult will revert on underflow.
                 (Float predicted, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
                 if (!lossless && Float.unwrap(predicted) == bytes32(0)) {
+                    assertTrue(range == PowRange.Under || range == PowRange.UnderEdge, "underflow inside the range");
                     vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
                     this.pow10External(float);
                 } else {
@@ -92,11 +123,27 @@ contract LibDecimalFloatPow10Test is LogTest {
                     (signedCoefficient, exponent) = predicted.unpack();
                     assertEq(signedCoefficient, signedCoefficientUnpacked);
                     assertEq(exponent, exponentUnpacked);
+                    assertTrue(range != PowRange.Over && range != PowRange.Under, "returned past the range");
                 }
             }
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            this.pow10External(float);
+        } catch {
+            // The implementation cannot rescale an integer part past int256,
+            // which for any nonzero x is far past the range.
+            if (signedCoefficientFloat == 0) {
+                assertEq(Float.unwrap(this.pow10External(float)), Float.unwrap(LibDecimalFloat.FLOAT_ONE));
+            } else {
+                assertTrue(
+                    range == PowRange.Over || range == PowRange.Under, "implementation reverted inside the range"
+                );
+                vm.expectRevert(
+                    abi.encodeWithSelector(
+                        range == PowRange.Over ? ExponentOverflow.selector : ExponentUnderflow.selector,
+                        signedCoefficientFloat,
+                        exponentFloat
+                    )
+                );
+                this.pow10External(float);
+            }
         }
     }
 }

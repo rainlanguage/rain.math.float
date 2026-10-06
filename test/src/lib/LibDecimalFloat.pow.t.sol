@@ -5,20 +5,11 @@ pragma solidity =0.8.25;
 import {LogTest} from "../../abstract/LogTest.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {
-    ZeroNegativePower,
-    PowNegativeBase,
-    ExponentOverflow,
-    ExponentUnderflow,
-    MaximizeOverflow,
-    MulDivOverflow
-} from "src/error/ErrDecimalFloat.sol";
-import {
-    LibDecimalFloatImplementation,
-    WithTargetExponentOverflow
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {ZeroNegativePower, PowNegativeBase, ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {console2} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
+import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
@@ -37,27 +28,103 @@ contract LibDecimalFloatPowTest is LogTest {
         Float first = legError(b).add(LibTestErrorBound.floor(c));
         Float second = legError(b.inv()).add(LibTestErrorBound.floor(roundTrip));
         if (b.lt(LibDecimalFloat.FLOAT_ZERO)) {
-            first = first.add(LibTestErrorBound.floor(a.abs().inv()));
-            second = second.add(LibTestErrorBound.floor(c.abs().inv()));
+            first = first.add(floorOfInverse(a));
+            second = second.add(floorOfInverse(c));
         }
         return first.div(b.abs()).add(second);
     }
 
+    /// `LibTestErrorBound.floor` of 1/x, unpacked, as 1/x need not pack.
+    function floorOfInverse(Float x) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = x.unpack();
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
+        return LibTestErrorBound.floor(signedCoefficient, exponent);
+    }
+
     function assertRoundTrip(Float a, Float b, Float c, Float roundTrip) internal {
         Float logError = roundTripLogError(a, b, c, roundTrip);
+        // |a / roundTrip|, as |a| does not pack for the most negative Float.
         if (logError.lte(LibDecimalFloat.FLOAT_ONE)) {
             // e^y - 1 <= y + y^2 for y <= 1.
-            Float diff = a.abs().div(roundTrip.abs()).sub(LibDecimalFloat.FLOAT_ONE).abs();
+            Float diff = a.div(roundTrip).abs().sub(LibDecimalFloat.FLOAT_ONE).abs();
             assertTrue(diff.lte(logError.add(logError.mul(logError))), "diff");
         } else {
-            // e^y < 3^ceil(y), and past the largest Float there is no bound.
-            try this.powExternal(LibDecimalFloat.packLossless(3, 0), logError.ceil()) returns (Float factor) {
-                assertTrue(a.abs().div(roundTrip.abs()).lte(factor), "ratio");
-                assertTrue(roundTrip.abs().div(a.abs()).lte(factor), "ratio");
-            } catch (bytes memory reason) {
-                //forge-lint: disable-next-line(unsafe-typecast)
-                assertEq(bytes4(reason), ExponentOverflow.selector);
+            // e^y < 10^ceil(y log10 e), log10 e under 0.4343, and past the
+            // largest Float there is no bound.
+            Float exponent = logError.mul(LibDecimalFloat.packLossless(4343, -4)).ceil();
+            if (exponent.lte(LibDecimalFloat.packLossless(type(int32).max, 0))) {
+                Float factor = this.pow10External(exponent);
+                assertTrue(a.div(roundTrip).abs().lte(factor), "ratio");
+                assertTrue(roundTrip.div(a).abs().lte(factor), "ratio");
             }
+        }
+    }
+
+    /// The one revert pow(a, b) may have, derived from the inputs: the exact
+    /// error, or only its selector where its arguments are pow's
+    /// intermediates, or empty where pow must return. `mayReturn` is false
+    /// where no result is representable.
+    function expectedPowError(Float a, Float b) internal pure returns (bool mayReturn, bytes memory err) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        if (b.isZero()) {
+            return (true, "");
+        } else if (signedCoefficientA == 0) {
+            return b.lt(LibDecimalFloat.FLOAT_ZERO)
+                ? (false, abi.encodeWithSelector(ZeroNegativePower.selector, b))
+                : (true, bytes(""));
+        } else if (signedCoefficientA < 0 && !b.frac().isZero()) {
+            return (false, abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA));
+        } else if (LibDecimalFloatImplementation.eq(
+                signedCoefficientA < 0 ? -signedCoefficientA : signedCoefficientA, exponentA, 1, 0
+            )) {
+            return (true, "");
+        }
+        PowRange range = powRange(a, b);
+        if (range == PowRange.Inside) {
+            return (true, "");
+        }
+        bool edge = range == PowRange.OverEdge || range == PowRange.UnderEdge;
+        bool over = range == PowRange.Over || range == PowRange.OverEdge;
+        return (edge, abi.encodePacked(over ? ExponentOverflow.selector : ExponentUnderflow.selector));
+    }
+
+    /// Where |a|^b lands, for a nonzero a other than +-1. L = b log10 |a| from
+    /// the oracle. pow's bound E is relative, but its integer leg truncates
+    /// multiplicatively, (1 - 1e-75)^(2N + 1), which moves L by under
+    /// (2N + 1) 1e-75 / ln 10; the leg and the rounding move it by under
+    /// 5.00006e-41. So E, with |b| for N, is a slack on L both ways.
+    function powRange(Float a, Float b) internal pure returns (PowRange) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        (int256 signedCoefficientL, int256 exponentL) = LibTestPowRange.log10Abs(signedCoefficientA, exponentA);
+        (signedCoefficientL, exponentL) =
+            LibDecimalFloatImplementation.mul(signedCoefficientL, exponentL, signedCoefficientB, exponentB);
+        (int256 slackCoefficient, int256 slackExponent) = LibDecimalFloatImplementation.mul(
+            signedCoefficientB < 0 ? -signedCoefficientB : signedCoefficientB, exponentB, 3, -75
+        );
+        (slackCoefficient, slackExponent) =
+            LibDecimalFloatImplementation.add(slackCoefficient, slackExponent, 500006, -46);
+        return LibTestPowRange.range(signedCoefficientL, exponentL, slackCoefficient, slackExponent);
+    }
+
+    /// pow(a, b), failing on any revert but the one `expectedPowError`
+    /// derives, and on a value where it derives none is representable.
+    function powChecked(Float a, Float b) internal returns (bool returned, Float c) {
+        (bool mayReturn, bytes memory err) = expectedPowError(a, b);
+        try this.powExternal(a, b) returns (Float result) {
+            assertTrue(mayReturn, "pow returned past the range");
+            // forge-lint: disable-next-line(boolean-cst)
+            return (true, result);
+        } catch (bytes memory reason) {
+            assertTrue(err.length > 0, "pow reverted inside the range");
+            if (err.length == 4) {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                assertEq(bytes4(reason), bytes4(err), "pow revert selector");
+            } else {
+                assertEq(reason, err, "pow revert");
+            }
+            // forge-lint: disable-next-line(boolean-cst)
+            return (false, c);
         }
     }
 
@@ -608,33 +675,28 @@ contract LibDecimalFloatPowTest is LogTest {
         Float a = LibDecimalFloat.packLossless(coefficientA, exponentA);
         Float b = LibDecimalFloat.packLossless(bound(coefficientB, 1, 1e9), bound(exponentB, -15, 0));
 
-        bool representable;
-        Float power;
-        Float expected;
-        try this.powExternal(a, b) returns (Float c) {
-            power = c;
-            try this.invExternal(c) returns (Float inverse) {
-                expected = inverse;
-                try this.mulExternal(inverse, LibDecimalFloat.packLossless(1, -2)) {
-                    try this.mulExternal(inverse, LibDecimalFloat.packLossless(1, 2)) {
-                        representable = true;
-                    } catch {}
-                } catch {}
-            } catch {}
-        } catch {}
-
-        if (representable) {
-            Float actual = this.powExternal(a, b.minus());
-            Float diff = actual.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs();
-            Float limit = legError(b).add(legError(b)).add(LibTestErrorBound.floor(power))
-                .add(LibTestErrorBound.floor(actual)).add(LibTestErrorBound.floor(expected));
-            assertTrue(diff.lte(limit), "diff");
-        } else {
-            try this.powExternal(a, b.minus()) {}
-            catch (bytes memory reason) {
-                assertExpectedPowError(reason);
-            }
+        (bool returned, Float power) = powChecked(a, b);
+        (bool returnedInverse, Float actual) = powChecked(a, b.minus());
+        if (returned && inverseRepresentable(power)) {
+            assertTrue(returnedInverse, "a^-b reverted");
+            assertInverse(b, power, actual);
         }
+    }
+
+    /// 1/x, unpacked, is two orders inside the range on both sides.
+    function inverseRepresentable(Float x) internal pure returns (bool) {
+        (int256 signedCoefficient, int256 exponent) = x.unpack();
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
+        return LibDecimalFloatImplementation.lte(signedCoefficient, exponent, type(int224).max, type(int32).max - 2)
+            && LibDecimalFloatImplementation.gte(signedCoefficient, exponent, 1, type(int32).min + 2);
+    }
+
+    function assertInverse(Float b, Float power, Float actual) internal pure {
+        Float expected = power.inv();
+        Float diff = actual.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs();
+        Float limit = legError(b).add(legError(b)).add(LibTestErrorBound.floor(power))
+            .add(LibTestErrorBound.floor(actual)).add(LibTestErrorBound.floor(expected));
+        assertTrue(diff.lte(limit), "diff");
     }
 
     /// `lastExponent` is the last e where (1e66 · 10^e)^b packs. The true
@@ -721,42 +783,6 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(a, b);
     }
 
-    /// The complete set of custom errors `pow` is designed to throw, derived by
-    /// reading the implementation. Each leg of the round trip is the same `pow`
-    /// call, so both legs share this set.
-    ///   - `ZeroNegativePower`: 0 raised to a negative power.
-    ///   - `PowNegativeBase`: negative base (unsupported).
-    ///   - `ExponentOverflow`: the result (or a `log10`/`pow10`/squaring
-    ///     intermediate) exceeds `int32` / `add` exponent range. This is the
-    ///     squaring-loop overflow pinned by `testPowIntegerExponentSquaringOverflow`.
-    ///   - `ExponentUnderflow`: an intermediate rescale produces a magnitude
-    ///     smaller than any representable Float (`packArithmeticResult`).
-    ///   - `WithTargetExponentOverflow`: `pow10` cannot rescale the
-    ///     characteristic to exponent 0 without overflowing the coefficient.
-    ///   - `MaximizeOverflow`: `maximizeFull` (inside `log10`/`div`) cannot
-    ///     maximize an intermediate coefficient.
-    ///   - `MulDivOverflow`: the 512-bit `mulDiv` inside `mul`/`div` overflows.
-    /// `DivisionByZero`, `Log10Zero` and `Log10Negative` are intentionally
-    /// excluded: `pow` only ever inverts/logs a strictly positive base, so they
-    /// are unreachable. A low-level `Panic` (e.g. `0x11` arithmetic overflow) is
-    /// also excluded by construction, so an unexpected revert is no longer
-    /// silently swallowed.
-    function assertExpectedPowError(bytes memory reason) internal pure {
-        // Casting to `bytes4` is intentional: a selector is the first four bytes of
-        // the revert reason, and the truncation is the extraction.
-        //forge-lint: disable-next-line(unsafe-typecast)
-        bytes4 selector = bytes4(reason);
-        bool expected = selector == ZeroNegativePower.selector || selector == PowNegativeBase.selector
-            || selector == ExponentOverflow.selector || selector == ExponentUnderflow.selector
-            || selector == WithTargetExponentOverflow.selector || selector == MaximizeOverflow.selector
-            || selector == MulDivOverflow.selector;
-        if (!expected) {
-            console2.log("unexpected pow revert selector:");
-            console2.logBytes4(selector);
-            assertTrue(false, "unexpected pow revert");
-        }
-    }
-
     /// The concrete counterexample surfaced by `testRoundTripFuzzPow`: a is 1,
     /// whose round trip leg `c.pow(b.inv())` reverted `WithTargetExponentOverflow`
     /// on an inverse with exponent 363177628, until 1^b returned 1 (#312).
@@ -769,49 +795,103 @@ contract LibDecimalFloatPowTest is LogTest {
         assertEq(Float.unwrap(this.powExternal(c, b.inv())), Float.unwrap(LibDecimalFloat.FLOAT_ONE));
     }
 
+    /// A b whose integer part is past int256 takes every a but 1 past the
+    /// range, on the side a is of 1 after b's sign inverts it. It reverted
+    /// `WithTargetExponentOverflow` before.
+    function testPowHugeExponentDirection() external {
+        Float b = LibDecimalFloat.packLossless(1, 77);
+        Float wide = LibDecimalFloat.packLossless(58, 75);
+        Float above = LibDecimalFloat.packLossless(1e67 + 1, -67);
+        Float below = LibDecimalFloat.packLossless(1e67 - 1, -67);
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2), int256(0)));
+        this.powExternal(LibDecimalFloat.packLossless(2, 0), b);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(5), int256(-1)));
+        this.powExternal(LibDecimalFloat.packLossless(5, -1), b);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e67 + 1), int256(-67)));
+        this.powExternal(above, wide);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e67 - 1), int256(-67)));
+        this.powExternal(below, wide);
+
+        // A negative b inverts a first.
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.inv(2, 0);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
+        this.powExternal(LibDecimalFloat.packLossless(2, 0), b.minus());
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(5, -1);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+        this.powExternal(LibDecimalFloat.packLossless(5, -1), b.minus());
+
+        // A whole b keeps a negative base, by its magnitude.
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2), int256(0)));
+        this.powExternal(LibDecimalFloat.packLossless(-2, 0), b);
+
+        // 5.7e76 still fits int256 and goes to the squaring loop.
+        vm.expectPartialRevert(ExponentOverflow.selector);
+        this.powExternal(above, LibDecimalFloat.packLossless(57, 75));
+    }
+
+    /// The most negative Float as b, or as a base with a whole b, does not
+    /// pack negated. It reverted `ExponentOverflow` whichever side of the range
+    /// the power is on.
+    function testPowMostNegativeFloat() external {
+        Float most = LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
+
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.inv(2, 0);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
+        this.powExternal(LibDecimalFloat.packLossless(2, 0), most);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(5, -1);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+        this.powExternal(LibDecimalFloat.packLossless(5, -1), most);
+
+        // most is -2^223 10^2147483647. From `bc -l`, 2^-223 and 2^446 rounded
+        // to 41 digits.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentUnderflow.selector, int256(74184123013748427714634705230952790267351), int256(-2147483755)
+            )
+        );
+        this.powExternal(most, LibDecimalFloat.packLossless(-1, 0));
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector, int256(18170968107902172263733095197200113358841), int256(4294967388)
+            )
+        );
+        this.powExternal(most, LibDecimalFloat.packLossless(2, 0));
+        assertEq(Float.unwrap(this.powExternal(most, LibDecimalFloat.FLOAT_ZERO)), Float.unwrap(LibDecimalFloat.FLOAT_ONE));
+    }
+
     function testRoundTripFuzzPow(Float a, Float b) external {
         roundTripFuzz(a, b);
     }
 
+    /// Each leg returns or reverts only as `powChecked` derives from its own
+    /// inputs.
     function roundTripFuzz(Float a, Float b) internal {
-        try this.powExternal(a, b) returns (Float c) {
-            // If C is 1 then either a == 1 or b == 0 (or b rounds to 0).
-            // The case where a is 1 should round trip, but all other cases won't.
-            if (a.eq(LibDecimalFloat.FLOAT_ONE) || !c.eq(LibDecimalFloat.FLOAT_ONE)) {
-                if (b.isZero()) {
-                    assertTrue(c.eq(LibDecimalFloat.FLOAT_ONE), "b is 0 so c should be 1");
-                } else if (!(c.isZero() && b.lt(LibDecimalFloat.FLOAT_ZERO))) {
-                    Float inv = b.inv();
-                    // The round-trip pow can still error on intermediate
-                    // overflow even when both legs of the original input
-                    // were well-formed (e.g. a tiny coefficient combined
-                    // with a large inverted exponent produces an
-                    // unrepresentable rescale target). Treat those the same
-                    // as the first leg: a revert is "we can't round-trip
-                    // this input", not a math regression.
-                    try this.powExternal(c, inv) returns (Float roundTrip) {
-                        if (!roundTrip.isZero()) {
-                            // An even power drops a negative base's sign and
-                            // the root returned is the positive one, while an
-                            // odd one keeps it, so magnitudes are compared.
-                            // testPowNegativeBaseWholeExponent pins the sign.
-                            assertRoundTrip(a, b, c, roundTrip);
-                        }
-                    } catch (bytes memory reason) {
-                        // Can't round trip something that errors, but only if it
-                        // errors with an error `pow` is designed to throw. An
-                        // unexpected revert (e.g. a low-level `Panic`) fails the
-                        // test rather than being silently swallowed.
-                        assertExpectedPowError(reason);
-                    }
-                }
+        (bool returned, Float c) = powChecked(a, b);
+        // If C is 1 then either a == 1 or b == 0 (or b rounds to 0).
+        // The case where a is 1 should round trip, but all other cases won't.
+        if (!returned || !(a.eq(LibDecimalFloat.FLOAT_ONE) || !c.eq(LibDecimalFloat.FLOAT_ONE))) {
+            return;
+        }
+        if (b.isZero()) {
+            assertTrue(c.eq(LibDecimalFloat.FLOAT_ONE), "b is 0 so c should be 1");
+        } else if (!(c.isZero() && b.lt(LibDecimalFloat.FLOAT_ZERO))) {
+            // 1/b underflows for a b near the top of the range, and then there
+            // is no round trip.
+            (int256 signedCoefficient, int256 exponent) = b.unpack();
+            (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
+            (Float inv,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+            if (inv.isZero()) {
+                return;
             }
-        } catch (bytes memory reason) {
-            // Can't round trip something that errors, but only if it errors with
-            // an error `pow` is designed to throw. An unexpected revert (e.g. a
-            // low-level `Panic`) fails the test rather than being silently
-            // swallowed.
-            assertExpectedPowError(reason);
+            (bool roundTripped, Float roundTrip) = powChecked(c, inv);
+            if (roundTripped && !roundTrip.isZero()) {
+                // An even power drops a negative base's sign and the root
+                // returned is the positive one, while an odd one keeps it, so
+                // magnitudes are compared. testPowNegativeBaseWholeExponent
+                // pins the sign.
+                assertRoundTrip(a, b, c, roundTrip);
+            }
         }
     }
 

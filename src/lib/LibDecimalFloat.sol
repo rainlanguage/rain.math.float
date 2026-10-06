@@ -999,6 +999,7 @@ library LibDecimalFloat {
             // An integer part past int256 is over 5.7e76 and every a but 1 is
             // at least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power
             // is past the range, on the side a is of 1.
+            // forge-lint: disable-next-line(unsafe-typecast)
             if (exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)))) {
                 if (LibDecimalFloatImplementation.lt(signedCoefficientA, exponentA, 1, 0)) {
                     revert ExponentUnderflow(signedCoefficientA, exponentA);

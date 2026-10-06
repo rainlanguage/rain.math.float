@@ -16,7 +16,7 @@ enum PowRange {
     UnderEdge
 }
 
-/// log10 of the largest Float, int224.max 10^int32.max, truncated, from `bc -l`
+/// @dev log10 of the largest Float, int224.max 10^int32.max, truncated, from `bc -l`
 /// at scale 60.
 int256 constant LOG10_MAX_COEFFICIENT = 2147483714129689033067806532663773523561944969;
 int256 constant LOG10_MAX_EXPONENT = -36;
@@ -72,8 +72,7 @@ library LibTestPowRange {
         (int256 lowCoefficient, int256 lowExponent) =
             LibDecimalFloatImplementation.sub(signedCoefficient, exponent, marginCoefficient, marginExponent);
 
-        if (LibDecimalFloatImplementation.gt(lowCoefficient, lowExponent, LOG10_MAX_COEFFICIENT, LOG10_MAX_EXPONENT))
-        {
+        if (LibDecimalFloatImplementation.gt(lowCoefficient, lowExponent, LOG10_MAX_COEFFICIENT, LOG10_MAX_EXPONENT)) {
             return PowRange.Over;
         } else if (LibDecimalFloatImplementation.lt(highCoefficient, highExponent, type(int32).min, 0)) {
             return PowRange.Under;
