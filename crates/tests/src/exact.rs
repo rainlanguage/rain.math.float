@@ -3,16 +3,16 @@
 //! All three must agree exactly: the same value, or the same single error.
 //! pow, pow10, log10 and sqrt are not here; #297 changes their contract.
 
+use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
 use crate::oracle::{self, ask};
 use crate::reference::{self as r, Dec, I32_MAX, I32_MIN, RefError, pow10};
-use alloy::primitives::U256;
+use alloy::primitives::{B256, Bytes, U256};
 use alloy::sol_types::SolInterface;
 use core::cmp::Ordering;
 use num_bigint::BigInt;
 use num_traits::Zero;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-use rain_math_float::{Float, FloatError};
 use serde_json::{Value, json};
 
 /// Local runs set `PROPTEST_CASES` low; CI runs the default.
@@ -139,21 +139,49 @@ fn pair() -> BoxedStrategy<(Dec, Dec)> {
 
 // ------------------------------------------------------------------ checking
 
-/// A Solidity error, as a selector or as the binding's name for it.
-fn sol_error(e: &FloatError) -> Option<([u8; 4], String)> {
+/// How a call failed: a revert, or the error selector `parse` returns.
+#[derive(Debug)]
+pub(crate) enum Fail {
+    Revert(Bytes),
+    Selector([u8; 4]),
+}
+
+/// A revert must decode as one of the concrete's errors.
+fn error_matches(e: &Fail, want: RefError) -> bool {
     match e {
-        FloatError::DecimalFloat(x) => Some((x.selector(), String::new())),
-        FloatError::DecimalFloatSelector(Ok(s)) => Some(([0; 4], format!("{s:?}"))),
-        FloatError::DecimalFloatSelector(Err(b)) => Some((b.0, String::new())),
-        _ => None,
+        Fail::Revert(out) => T::TestDecimalFloatErrors::abi_decode(out)
+            .is_ok_and(|x| x.selector() == want.selector()),
+        Fail::Selector(s) => *s == want.selector(),
     }
 }
 
-fn error_matches(e: &FloatError, want: RefError) -> bool {
-    match sol_error(e) {
-        Some((selector, name)) => selector == want.selector() || name == want.name(),
-        None => false,
+type Sol<V> = Result<V, Fail>;
+
+fn sol<V>(r: Result<V, Bytes>) -> Sol<V> {
+    r.map_err(Fail::Revert)
+}
+
+fn sol_float<C: alloy::sol_types::SolCall<Return = B256>>(c: C) -> Sol<Dec> {
+    sol(evm::float(c))
+}
+
+fn sol_bool<C: alloy::sol_types::SolCall<Return = bool>>(c: C) -> bool {
+    evm::concrete(c).unwrap()
+}
+
+fn sol_parse(s: &str) -> Sol<Dec> {
+    let r = sol(evm::concrete(T::parseCall { str: s.to_string() }))?;
+    if r._0 != [0u8; 4] {
+        return Err(Fail::Selector(r._0.0));
     }
+    Ok(Dec::from_bytes(r._1))
+}
+
+fn sol_format(a: &Dec, scientific: bool) -> Sol<String> {
+    sol(evm::concrete(T::formatCall {
+        a: a.to_bytes(),
+        scientific,
+    }))
 }
 
 /// The Python oracle's answer to a float-valued case.
@@ -167,7 +195,7 @@ fn py_float(v: &Value) -> Result<Dec, String> {
 
 fn check_float(
     case: &str,
-    sol: Result<Float, FloatError>,
+    sol: Sol<Dec>,
     want: Result<Dec, RefError>,
     py: Value,
 ) -> Result<(), TestCaseError> {
@@ -178,7 +206,6 @@ fn check_float(
     }
     match (sol, want) {
         (Ok(s), Ok(w)) => {
-            let s = Dec::from_float(s);
             prop_assert!(s.eq_value(&w), "{case}: solidity {s:?}, reference {w:?}");
         }
         (Err(s), Err(w)) => prop_assert!(
@@ -202,6 +229,20 @@ pub(crate) fn show(a: &Dec) -> String {
     format!("{}e{}", a.c, a.e)
 }
 
+fn sol_add(a: &Dec, b: &Dec) -> Sol<Dec> {
+    sol_float(T::addCall {
+        a: a.to_bytes(),
+        b: b.to_bytes(),
+    })
+}
+
+fn sol_sub(a: &Dec, b: &Dec) -> Sol<Dec> {
+    sol_float(T::subCall {
+        a: a.to_bytes(),
+        b: b.to_bytes(),
+    })
+}
+
 fn check_add(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let case = format!("add({}, {})", show(a), show(b));
     let want = r::add(a, b);
@@ -212,7 +253,7 @@ fn check_add(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
             "{case}: representable sum {exact:?}, reference {want:?}"
         );
     }
-    check_float(&case, a.to_float() + b.to_float(), want, ask2("add", a, b))
+    check_float(&case, sol_add(a, b), want, ask2("add", a, b))
 }
 
 fn check_sub(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
@@ -224,27 +265,25 @@ fn check_sub(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
             "{case}: representable difference {exact:?}, reference {want:?}"
         );
     }
-    check_float(&case, a.to_float() - b.to_float(), want, ask2("sub", a, b))
+    check_float(&case, sol_sub(a, b), want, ask2("sub", a, b))
 }
 
 fn check_mul(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let case = format!("mul({}, {})", show(a), show(b));
-    check_float(
-        &case,
-        a.to_float() * b.to_float(),
-        r::mul(a, b),
-        ask2("mul", a, b),
-    )
+    let sol = sol_float(T::mulCall {
+        a: a.to_bytes(),
+        b: b.to_bytes(),
+    });
+    check_float(&case, sol, r::mul(a, b), ask2("mul", a, b))
 }
 
 fn check_div(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let case = format!("div({}, {})", show(a), show(b));
-    check_float(
-        &case,
-        a.to_float() / b.to_float(),
-        r::div(a, b),
-        ask2("div", a, b),
-    )
+    let sol = sol_float(T::divCall {
+        a: a.to_bytes(),
+        b: b.to_bytes(),
+    });
+    check_float(&case, sol, r::div(a, b), ask2("div", a, b))
 }
 
 fn check_compare(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
@@ -252,34 +291,49 @@ fn check_compare(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let want = a.cmp_value(b);
     let py = ask2("cmp", a, b)["ok"].as_i64().unwrap();
     prop_assert_eq!(py, want as i64, "{}: python", case);
-    let (fa, fb) = (a.to_float(), b.to_float());
-    prop_assert_eq!(fa.lt(fb).unwrap(), want == Ordering::Less, "{}: lt", case);
+    let (fa, fb) = (a.to_bytes(), b.to_bytes());
     prop_assert_eq!(
-        fa.gt(fb).unwrap(),
+        sol_bool(T::ltCall { a: fa, b: fb }),
+        want == Ordering::Less,
+        "{}: lt",
+        case
+    );
+    prop_assert_eq!(
+        sol_bool(T::gtCall { a: fa, b: fb }),
         want == Ordering::Greater,
         "{}: gt",
         case
     );
-    prop_assert_eq!(fa.eq(fb).unwrap(), want == Ordering::Equal, "{}: eq", case);
     prop_assert_eq!(
-        fa.lte(fb).unwrap(),
+        sol_bool(T::eqCall { a: fa, b: fb }),
+        want == Ordering::Equal,
+        "{}: eq",
+        case
+    );
+    prop_assert_eq!(
+        sol_bool(T::lteCall { a: fa, b: fb }),
         want != Ordering::Greater,
         "{}: lte",
         case
     );
-    prop_assert_eq!(fa.gte(fb).unwrap(), want != Ordering::Less, "{}: gte", case);
+    prop_assert_eq!(
+        sol_bool(T::gteCall { a: fa, b: fb }),
+        want != Ordering::Less,
+        "{}: gte",
+        case
+    );
     // min and max return an operand as is: `a < b ? a : b`, `a > b ? a : b`.
     let min = if want == Ordering::Less { fa } else { fb };
     let max = if want == Ordering::Greater { fa } else { fb };
     prop_assert_eq!(
-        fa.min(fb).unwrap().get_inner(),
-        min.get_inner(),
+        evm::concrete(T::minCall { a: fa, b: fb }).unwrap(),
+        min,
         "{}: min",
         case
     );
     prop_assert_eq!(
-        fa.max(fb).unwrap().get_inner(),
-        max.get_inner(),
+        evm::concrete(T::maxCall { a: fa, b: fb }).unwrap(),
+        max,
         "{}: max",
         case
     );
@@ -287,48 +341,141 @@ fn check_compare(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
 }
 
 fn check_unary(a: &Dec) -> Result<(), TestCaseError> {
-    let f = a.to_float();
+    let f = a.to_bytes();
     let s = show(a);
-    check_float(&format!("minus({s})"), -f, r::minus(a), ask1("minus", a))?;
-    check_float(&format!("abs({s})"), f.abs(), r::abs(a), ask1("abs", a))?;
-    check_float(&format!("inv({s})"), f.inv(), r::inv(a), ask1("inv", a))?;
+    check_float(
+        &format!("minus({s})"),
+        sol_float(T::minusCall { a: f }),
+        r::minus(a),
+        ask1("minus", a),
+    )?;
+    check_float(
+        &format!("abs({s})"),
+        sol_float(T::absCall { a: f }),
+        r::abs(a),
+        ask1("abs", a),
+    )?;
+    check_float(
+        &format!("inv({s})"),
+        sol_float(T::invCall { a: f }),
+        r::inv(a),
+        ask1("inv", a),
+    )?;
     check_float(
         &format!("integer({s})"),
-        f.integer(),
+        sol_float(T::integerCall { a: f }),
         r::integer(a),
         ask1("integer", a),
     )?;
-    check_float(&format!("frac({s})"), f.frac(), r::frac(a), ask1("frac", a))?;
+    check_float(
+        &format!("frac({s})"),
+        sol_float(T::fracCall { a: f }),
+        r::frac(a),
+        ask1("frac", a),
+    )?;
     check_float(
         &format!("floor({s})"),
-        f.floor(),
+        sol_float(T::floorCall { a: f }),
         r::floor(a),
         ask1("floor", a),
     )?;
-    prop_assert_eq!(f.is_zero().unwrap(), a.is_zero(), "isZero({})", s);
+    check_float(
+        &format!("ceil({s})"),
+        sol_float(T::ceilCall { a: f }),
+        r::ceil(a),
+        ask1("ceil", a),
+    )?;
+    prop_assert_eq!(
+        sol_bool(T::isZeroCall { a: f }),
+        a.is_zero(),
+        "isZero({})",
+        s
+    );
+    Ok(())
+}
+
+/// The getters return the documented extremes exactly, and no Float lies
+/// past them.
+fn check_extremes(a: &Dec) -> Result<(), TestCaseError> {
+    let py = ask(json!({"op": "extremes"}))["ok"].clone();
+    let extremes = [
+        (
+            "maxPositiveValue",
+            evm::concrete(T::maxPositiveValueCall {}),
+            r::max_positive(),
+        ),
+        (
+            "minPositiveValue",
+            evm::concrete(T::minPositiveValueCall {}),
+            r::min_positive(),
+        ),
+        (
+            "maxNegativeValue",
+            evm::concrete(T::maxNegativeValueCall {}),
+            r::max_negative(),
+        ),
+        (
+            "minNegativeValue",
+            evm::concrete(T::minNegativeValueCall {}),
+            r::min_negative(),
+        ),
+    ];
+    for (i, (name, sol, want)) in extremes.iter().enumerate() {
+        let p = oracle::to_dec(&py[i]);
+        prop_assert!(p.eq_value(want), "{name}: python {p:?}, reference {want:?}");
+        prop_assert_eq!(
+            sol.as_ref().unwrap(),
+            &want.to_bytes(),
+            "{}: solidity, reference {:?}",
+            name,
+            want
+        );
+    }
+    let s = show(a);
+    prop_assert!(
+        r::min_negative().cmp_value(a) != Ordering::Greater
+            && a.cmp_value(&r::max_positive()) != Ordering::Greater,
+        "{s} is past an extreme"
+    );
+    if a.c.sign() == num_bigint::Sign::Plus {
+        prop_assert!(
+            a.cmp_value(&r::min_positive()) != Ordering::Less,
+            "{s} is below minPositiveValue"
+        );
+    }
+    if a.is_negative() {
+        prop_assert!(
+            a.cmp_value(&r::max_negative()) != Ordering::Greater,
+            "{s} is above maxNegativeValue"
+        );
+    }
     Ok(())
 }
 
 fn check_pack(a: &Dec) -> Result<(), TestCaseError> {
     let s = show(a);
     let c = alloy::primitives::aliases::I224::from_dec_str(&a.c.to_string()).unwrap();
-    let packed = Float::pack_lossless(c, a.e as i32).unwrap();
+    let packed = evm::harness(H::packLosslessCall {
+        coefficient: c,
+        exponent: a.e as i32,
+    })
+    .unwrap();
     // packLossless keeps the fields, except that zero packs as FLOAT_ZERO.
     let want = if a.is_zero() { Dec::zero() } else { a.clone() };
+    prop_assert_eq!(packed, want.to_bytes(), "pack({})", s);
+    let unpacked = evm::harness(H::unpackCall { float: packed }).unwrap();
     prop_assert_eq!(
-        packed.get_inner(),
-        want.to_float().get_inner(),
-        "pack({})",
-        s
-    );
-    let (uc, ue) = packed.unpack().unwrap();
-    prop_assert_eq!(
-        uc.to_string(),
+        unpacked._0.to_string(),
         want.c.to_string(),
         "unpack({}) coefficient",
         s
     );
-    prop_assert_eq!(ue.to_string(), want.e.to_string(), "unpack({}) exponent", s);
+    prop_assert_eq!(
+        unpacked._1.to_string(),
+        want.e.to_string(),
+        "unpack({}) exponent",
+        s
+    );
     Ok(())
 }
 
@@ -373,8 +520,8 @@ fn check_from_fixed(value: U256, decimals: u8) -> Result<(), TestCaseError> {
         "{}: python lossless",
         case
     );
-    let (sol, sol_lossless) = Float::from_fixed_decimal_lossy(value, decimals).unwrap();
-    let s = Dec::from_float(sol);
+    let lossy = evm::concrete(T::fromFixedDecimalLossyCall { value, decimals }).unwrap();
+    let (s, sol_lossless) = (Dec::from_bytes(lossy._0), lossy._1);
     prop_assert!(
         s.eq_value(&want),
         "{case}: solidity {s:?}, reference {want:?}"
@@ -385,7 +532,7 @@ fn check_from_fixed(value: U256, decimals: u8) -> Result<(), TestCaseError> {
         ask(json!({"op": "from_fixed_lossless", "value": value.to_string(), "decimals": decimals}));
     check_float(
         &format!("{case} lossless"),
-        Float::from_fixed_decimal(value, decimals),
+        sol_float(T::fromFixedDecimalLosslessCall { value, decimals }),
         r::from_fixed_decimal_lossless(value, decimals),
         py,
     )
@@ -393,7 +540,7 @@ fn check_from_fixed(value: U256, decimals: u8) -> Result<(), TestCaseError> {
 
 fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
     let case = format!("toFixedDecimal({}, {decimals})", show(a));
-    let f = a.to_float();
+    let float = a.to_bytes();
     let want = r::to_fixed_decimal_lossy(a, decimals);
     let py = ask(json!({"op": "to_fixed_lossy", "a": oracle::float(a), "decimals": decimals}));
     match (&want, &py["ok"], &py["err"]) {
@@ -404,7 +551,11 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
         (Err(w), _, Value::String(p)) => prop_assert_eq!(w.name(), p.as_str(), "{}: python", case),
         _ => prop_assert!(false, "{case}: reference {want:?}, python {py}"),
     }
-    match (f.to_fixed_decimal_lossy(decimals), want) {
+    let lossy = sol(evm::concrete(T::toFixedDecimalLossyCall {
+        float,
+        decimals,
+    }));
+    match (lossy.map(|r| (r._0, r._1)), want) {
         (Ok(s), Ok(w)) => prop_assert_eq!(s, w, "{}", case),
         (Err(s), Err(w)) => prop_assert!(
             error_matches(&s, w),
@@ -423,7 +574,11 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
         }
         _ => prop_assert!(false, "{case} lossless: reference {want:?}, python {py}"),
     }
-    match (f.to_fixed_decimal(decimals), want) {
+    let lossless = sol(evm::concrete(T::toFixedDecimalLosslessCall {
+        float,
+        decimals,
+    }));
+    match (lossless, want) {
         (Ok(s), Ok(w)) => prop_assert_eq!(s, w, "{} lossless", case),
         (Err(s), Err(w)) => prop_assert!(
             error_matches(&s, w),
@@ -439,7 +594,7 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
 fn check_format_one(
     case: &str,
     a: &Dec,
-    sol: Result<String, FloatError>,
+    sol: Sol<String>,
     want: Result<String, RefError>,
 ) -> Result<(), TestCaseError> {
     match (sol, want) {
@@ -447,9 +602,9 @@ fn check_format_one(
             prop_assert_eq!(&s, &w, "{}", case);
             let p = oracle::to_dec(&ask(json!({"op": "literal", "s": s}))["ok"]);
             prop_assert!(p.eq_value(a), "{case}: {s} is {p:?} to python");
-            let back = Float::parse(s.clone());
+            let back = sol_parse(&s);
             prop_assert!(
-                matches!(&back, Ok(b) if Dec::from_float(*b).eq_value(a)),
+                matches!(&back, Ok(b) if b.eq_value(a)),
                 "{case}: parse({s}) = {back:?}"
             );
         }
@@ -463,18 +618,17 @@ fn check_format_one(
 }
 
 fn check_format(a: &Dec) -> Result<(), TestCaseError> {
-    let f = a.to_float();
     let s = show(a);
     check_format_one(
         &format!("format({s}, true)"),
         a,
-        f.format_with_scientific(true),
+        sol_format(a, true),
         r::format_scientific(a),
     )?;
     check_format_one(
         &format!("format({s}, false)"),
         a,
-        f.format_with_scientific(false),
+        sol_format(a, false),
         r::format_plain(a),
     )
 }
@@ -546,9 +700,8 @@ fn check_parse(s: &str) -> Result<(), TestCaseError> {
             }
         }
     }
-    match (Float::parse(s.to_string()), want) {
+    match (sol_parse(s), want) {
         (Ok(f), Ok(w)) => {
-            let f = Dec::from_float(f);
             prop_assert!(f.eq_value(&w), "{case}: solidity {f:?}, reference {w:?}");
         }
         (Err(e), Err(w)) => prop_assert!(
@@ -583,6 +736,9 @@ proptest! {
 
     #[test]
     fn exact_pack_unpack(a in float()) { check_pack(&a)?; }
+
+    #[test]
+    fn exact_extremes(a in float()) { check_extremes(&a)?; }
 
     #[test]
     fn exact_from_fixed_decimal(value in u256(), decimals in any::<u8>()) {

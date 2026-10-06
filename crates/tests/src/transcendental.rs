@@ -15,123 +15,50 @@
 //! - sqrt: 5.00006e-41 relative.
 //! - pow10 and pow: a result below 1e-2147483608 adds 1e-2147483648.
 
+use crate::evm::{self, TestDecimalFloat as T};
 use crate::exact::{config, float, show};
 use crate::oracle::{self, ask};
 use crate::precise::{self, Approx, RANGE, order};
 use crate::reference::{self as r, Dec, I32_MAX, I32_MIN, Packed, RefError, pow10};
-use alloy::primitives::{Address, B256, Bytes, address};
+use alloy::primitives::B256;
 use alloy::sol_types::SolCall;
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_traits::{Signed, Zero};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
-use revm::context::result::{ExecutionResult, Output, SuccessReason};
-use revm::context::{BlockEnv, CfgEnv, TxEnv};
-use revm::database::InMemoryDB;
-use revm::state::{AccountInfo, Bytecode};
-use revm::{Context, DatabaseCommit, MainBuilder, MainContext, MainnetEvm, SystemCallEvm};
 use serde_json::{Value, json};
-use std::cell::RefCell;
 
 // ----------------------------------------------------------------- the EVM
-
-alloy::sol! {
-    interface Transcendental {
-        function pow10(bytes32 a) external view returns (bytes32);
-        function log10(bytes32 a) external view returns (bytes32);
-        function pow(bytes32 a, bytes32 b) external view returns (bytes32);
-        function sqrt(bytes32 a) external view returns (bytes32);
-    }
-}
-
-const CONCRETE: Address = address!("00000000000000000000000000000000000f10a4");
-
-type Evm = MainnetEvm<Context<BlockEnv, TxEnv, CfgEnv, InMemoryDB>>;
-
-fn put(db: &mut InMemoryDB, code: Bytes) {
-    db.insert_account_info(
-        CONCRETE,
-        AccountInfo::default().with_code(Bytecode::new_legacy(code)),
-    );
-}
-
-/// `TestDecimalFloat` compiled from this source, constructed so that it
-/// deploys its log tables, as the bindings do with `create`.
-fn build() -> Evm {
-    let path = std::env::var("RAIN_MATH_FLOAT_ARTIFACT").expect(".cargo/config.toml sets it");
-    let json: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-    let creation: Bytes = json["bytecode"]["object"]
-        .as_str()
-        .unwrap()
-        .parse()
-        .unwrap();
-    let mut db = InMemoryDB::default();
-    put(&mut db, creation);
-    let mut evm = Context::mainnet().with_db(db.clone()).build_mainnet();
-    let created = evm.system_call(CONCRETE, Bytes::new()).unwrap();
-    let ExecutionResult::Success {
-        output: Output::Call(runtime),
-        ..
-    } = created.result
-    else {
-        panic!("constructor: {:?}", created.result);
-    };
-    db.commit(created.state);
-    put(&mut db, runtime);
-    Context::mainnet().with_db(db).build_mainnet()
-}
-
-thread_local! {
-    static EVM: RefCell<Evm> = RefCell::new(build());
-}
 
 /// A result, or the selector of the error it reverted with.
 type Sol = Result<Dec, [u8; 4]>;
 
 fn call<C: SolCall<Return = B256>>(c: C) -> Sol {
-    let result = EVM.with(|evm| {
-        evm.borrow_mut()
-            .system_call(CONCRETE, c.abi_encode().into())
-            .unwrap()
-            .result
-    });
-    match result {
-        ExecutionResult::Success {
-            reason: SuccessReason::Return,
-            output: Output::Call(out),
-            ..
-        } => Ok(Dec::from_float(rain_math_float::Float::from_raw(
-            C::abi_decode_returns(&out).unwrap(),
-        ))),
-        ExecutionResult::Revert { output, .. } if output.len() >= 4 => {
-            Err(output[..4].try_into().unwrap())
-        }
-        other => panic!("{other:?}"),
-    }
+    evm::float(c).map_err(|output| output[..4].try_into().unwrap())
 }
 
 fn bytes(a: &Dec) -> B256 {
-    a.to_float().get_inner()
+    a.to_bytes()
 }
 
 fn sol_log10(a: &Dec) -> Sol {
-    call(Transcendental::log10Call { a: bytes(a) })
+    call(T::log10Call { a: bytes(a) })
 }
 
 fn sol_pow10(a: &Dec) -> Sol {
-    call(Transcendental::pow10Call { a: bytes(a) })
+    call(T::pow10Call { a: bytes(a) })
 }
 
 fn sol_pow(a: &Dec, b: &Dec) -> Sol {
-    call(Transcendental::powCall {
+    call(T::powCall {
         a: bytes(a),
         b: bytes(b),
     })
 }
 
 fn sol_sqrt(a: &Dec) -> Sol {
-    call(Transcendental::sqrtCall { a: bytes(a) })
+    call(T::sqrtCall { a: bytes(a) })
 }
 
 // ------------------------------------------------------------ the contract

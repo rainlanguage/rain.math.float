@@ -13,6 +13,7 @@ import sys
 from decimal import (
     MAX_EMAX,
     MIN_EMIN,
+    ROUND_CEILING,
     ROUND_DOWN,
     ROUND_FLOOR,
     ROUND_HALF_EVEN,
@@ -227,6 +228,10 @@ def handle(req):
         return arithmetic(EXACT.subtract(a, a.to_integral_value(ROUND_DOWN, EXACT)))
     if op == "floor":
         return arithmetic(a.to_integral_value(ROUND_FLOOR, EXACT))
+    if op == "ceil":
+        return arithmetic(a.to_integral_value(ROUND_CEILING, EXACT))
+    if op == "extremes":
+        return {"ok": [[str(INT224_MAX), INT32_MAX], ["1", INT32_MIN], ["-1", INT32_MIN], [str(INT224_MIN), INT32_MAX]]}
     if op == "cmp":
         return {"ok": int(a.compare(b, EXACT))}
     if op == "from_fixed_lossy":

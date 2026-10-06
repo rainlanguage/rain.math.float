@@ -10,6 +10,7 @@ description = "Tests of the library through the rain-math-float bindings, over c
 [dev-dependencies]
 alloy = { version = "1.0.9", default-features = false, features = [
   "sol-types",
+  "json",
   "arbitrary",
 ] }
 alloy-primitives = { version = "1.0.9", default-features = false }
@@ -22,6 +23,6 @@ rain-math-float = { version = "0.1.12", features = ["test-harness"] }
 # The high precision reference for log10, pow10, pow and sqrt: correctly
 # rounded arbitrary precision, in pure Rust so CI builds no C.
 astro-float = "0.9"
-# The bindings expose no transcendental call, so the tests run the concrete's
-# ABI in their own EVM, the same revm the bindings use.
+# The tests run the test concretes compiled from this source in their own
+# EVM, by the ABI forge writes, so they cover every call the source has.
 revm = { version = "36", default-features = false, features = ["std"] }

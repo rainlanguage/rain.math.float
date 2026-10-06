@@ -15,7 +15,6 @@ use alloy::primitives::{B256, U256};
 use core::cmp::Ordering;
 use num_bigint::{BigInt, Sign};
 use num_traits::{Signed, Zero};
-use rain_math_float::Float;
 
 /// A Solidity error the reference expects, by signature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -145,15 +144,15 @@ impl Dec {
     /// The unpacked fields of a packed Float, as `LibDecimalFloat.unpack`
     /// documents them: the low 224 bits sign extended, the high 32 bits
     /// arithmetic shifted.
-    pub fn from_float(f: Float) -> Self {
-        let bytes = f.get_inner().0;
+    pub fn from_bytes(f: B256) -> Self {
+        let bytes = f.0;
         let e = i32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as i64;
         let c = BigInt::from_signed_bytes_be(&bytes[4..]);
         Self { c, e }
     }
 
     /// The packed Float of an int224 coefficient and an int32 exponent.
-    pub fn to_float(&self) -> Float {
+    pub fn to_bytes(&self) -> B256 {
         assert!(fits_int224(&self.c), "coefficient {} is not int224", self.c);
         let e = i32::try_from(self.e).expect("exponent is not int32");
         let mut bytes = [0u8; 32];
@@ -162,7 +161,7 @@ impl Dec {
         let fill = if self.c.is_negative() { 0xff } else { 0 };
         bytes[4..32 - c.len()].fill(fill);
         bytes[32 - c.len()..].copy_from_slice(&c);
-        Float::from_raw(B256::from(bytes))
+        B256::from(bytes)
     }
 
     /// The same value with no trailing decimal zeros, zero as `0e0`.
@@ -425,6 +424,34 @@ pub fn floor(a: &Dec) -> Result<Dec, RefError> {
     } else {
         arithmetic(&t)
     }
+}
+
+pub fn ceil(a: &Dec) -> Result<Dec, RefError> {
+    let t = a.trunc();
+    if !a.is_negative() && !t.eq_value(a) {
+        arithmetic(&Dec::new(t.c + 1, 0))
+    } else {
+        arithmetic(&t)
+    }
+}
+
+/// The documented extremes: `type(int224).max`, `type(int32).max`; `1`,
+/// `type(int32).min`; `-1`, `type(int32).min`; `type(int224).min`,
+/// `type(int32).max`.
+pub fn max_positive() -> Dec {
+    Dec::new(int224_max(), I32_MAX)
+}
+
+pub fn min_positive() -> Dec {
+    Dec::new(1, I32_MIN)
+}
+
+pub fn max_negative() -> Dec {
+    Dec::new(-1, I32_MIN)
+}
+
+pub fn min_negative() -> Dec {
+    Dec::new(int224_min(), I32_MAX)
 }
 
 /// `fromFixedDecimalLossy`: `value × 10^-decimals`, truncated to fit, and
@@ -748,7 +775,7 @@ mod tests {
             (BigInt::from(-1), 0),
         ] {
             let d = Dec::new(c.clone(), e);
-            let back = Dec::from_float(d.to_float());
+            let back = Dec::from_bytes(d.to_bytes());
             assert_eq!((back.c, back.e), (c, e));
         }
     }
