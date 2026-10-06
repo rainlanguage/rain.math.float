@@ -75,8 +75,6 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
 
     function testLog10NegativeReverts(int256 signedCoefficient, int256 exponent) external {
         signedCoefficient = bound(signedCoefficient, type(int256).min, -1);
-        // Bound exponent to avoid MaximizeOverflow before reaching the sign check.
-        exponent = bound(exponent, -1e18, 1e18);
         vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficient, exponent));
         this.log10External(signedCoefficient, exponent);
     }

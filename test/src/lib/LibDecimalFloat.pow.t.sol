@@ -10,7 +10,6 @@ import {
     PowNegativeBase,
     ExponentOverflow,
     ExponentUnderflow,
-    MaximizeOverflow,
     MulDivOverflow
 } from "src/error/ErrDecimalFloat.sol";
 import {WithTargetExponentOverflow} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
@@ -438,8 +437,6 @@ contract LibDecimalFloatPowTest is LogTest {
     ///     smaller than any representable Float (`packArithmeticResult`).
     ///   - `WithTargetExponentOverflow`: `pow10` cannot rescale the
     ///     characteristic to exponent 0 without overflowing the coefficient.
-    ///   - `MaximizeOverflow`: `maximizeFull` (inside `log10`/`div`) cannot
-    ///     maximize an intermediate coefficient.
     ///   - `MulDivOverflow`: the 512-bit `mulDiv` inside `mul`/`div` overflows.
     /// `DivisionByZero`, `Log10Zero` and `Log10Negative` are intentionally
     /// excluded: `pow` only ever inverts/logs a strictly positive base, so they
@@ -453,8 +450,7 @@ contract LibDecimalFloatPowTest is LogTest {
         bytes4 selector = bytes4(reason);
         bool expected = selector == ZeroNegativePower.selector || selector == PowNegativeBase.selector
             || selector == ExponentOverflow.selector || selector == ExponentUnderflow.selector
-            || selector == WithTargetExponentOverflow.selector || selector == MaximizeOverflow.selector
-            || selector == MulDivOverflow.selector;
+            || selector == WithTargetExponentOverflow.selector || selector == MulDivOverflow.selector;
         if (!expected) {
             console2.log("unexpected pow revert selector:");
             console2.logBytes4(selector);
