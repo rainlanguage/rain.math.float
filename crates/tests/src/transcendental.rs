@@ -1026,6 +1026,11 @@ mod checker {
             &Bound::Pow10(I32_MAX + 100),
             Ok(largest(false))
         ));
+        // Straddling the top, either.
+        let top = near(largest(false));
+        let k = I32_MAX + 67;
+        assert!(accepts(&top, &Bound::Pow10(k), over()));
+        assert!(accepts(&top, &Bound::Pow10(k), Ok(largest(false))));
         // log10 never over- or underflows.
         assert!(!accepts(&ordinary, &Bound::Log10, under()));
         // The most negative Float is one further from zero than the largest.
