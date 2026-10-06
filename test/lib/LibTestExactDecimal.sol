@@ -318,8 +318,8 @@ library LibTestExactDecimal {
             shed++;
         }
         uint256 magnitude = Math.mulDiv(abs(ca), abs(cb), 10 ** shed);
-        // The product is below 2^446, so its high word is below 10^58 and shed
-        // is at most 58.
+        // The product is at most 2^510, so its high word is at most 2^254 and
+        // shed is at most 77.
         // forge-lint: disable-next-line(unsafe-typecast)
         return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(shed));
     }
