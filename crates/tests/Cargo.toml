@@ -5,7 +5,7 @@ publish = false
 edition.workspace = true
 license.workspace = true
 homepage.workspace = true
-description = "Tests of the library through the rain-math-float bindings, over concretes compiled from this source."
+description = "Tests of the library in revm, over concretes compiled from this source."
 
 [dev-dependencies]
 alloy = { version = "1.0.9", default-features = false, features = [
@@ -19,7 +19,6 @@ num-bigint = "0.4.6"
 num-integer = "0.1"
 num-traits = "0.2.19"
 serde_json = "1.0.140"
-rain-math-float = { version = "0.1.12", features = ["test-harness"] }
 # The high precision reference for log10, pow10, pow and sqrt: correctly
 # rounded arbitrary precision, in pure Rust so CI builds no C.
 astro-float = "0.9"

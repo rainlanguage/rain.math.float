@@ -1,7 +1,7 @@
 //! Tests of `test/concrete/TestDecimalFloat.sol` and
-//! `TestDecimalFloatHarness.sol` compiled from this source: by their ABI in
-//! revm (`evm.rs`) and through the `rain-math-float` bindings; and
-//! cross-references of the packed constants against values derived here.
+//! `TestDecimalFloatHarness.sol` compiled from this source, by their ABI in
+//! revm (`evm.rs`), and cross-references of the packed constants against
+//! values derived here.
 
 #[cfg(test)]
 mod constants;

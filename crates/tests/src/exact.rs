@@ -757,6 +757,116 @@ proptest! {
     fn exact_parse(s in literal()) { check_parse(&s)?; }
 }
 
+/// Every unary operation at each exponent near zero, where `ceil`, `floor`,
+/// `integer` and `frac` keep or shed a fraction, not only when the fuzzer
+/// reaches them.
+#[test]
+fn exact_unary_near_zero_exponents() {
+    for e in -3..=1 {
+        for c in -25..=25 {
+            if let Err(err) = check_unary(&Dec::new(c, e)) {
+                panic!("{err}");
+            }
+        }
+    }
+}
+
+/// `check_float` and `error_matches` reject wrong Solidity and Python results.
+mod checker {
+    use super::*;
+
+    fn one() -> Dec {
+        Dec::new(1, 0)
+    }
+
+    fn two() -> Dec {
+        Dec::new(2, 0)
+    }
+
+    fn div_by_zero() -> Sol<Dec> {
+        let r = sol_float(T::divCall {
+            a: one().to_bytes(),
+            b: Dec::zero().to_bytes(),
+        });
+        assert!(matches!(r, Err(Fail::Revert(_))), "{r:?}");
+        r
+    }
+
+    fn overflow() -> Sol<Dec> {
+        let max = Dec::new(1, I32_MAX);
+        let r = sol_float(T::mulCall {
+            a: max.to_bytes(),
+            b: max.to_bytes(),
+        });
+        assert!(matches!(r, Err(Fail::Revert(_))), "{r:?}");
+        r
+    }
+
+    fn py_ok(d: &Dec) -> Value {
+        json!({ "ok": oracle::float(d) })
+    }
+
+    fn py_err(e: RefError) -> Value {
+        json!({ "err": e.name() })
+    }
+
+    fn accepts(sol: Sol<Dec>, want: Result<Dec, RefError>, py: Value) -> bool {
+        check_float("checker", sol, want, py).is_ok()
+    }
+
+    #[test]
+    fn accepts_agreement() {
+        assert!(accepts(Ok(one()), Ok(one()), py_ok(&one())));
+        // The same value in another representation.
+        assert!(accepts(Ok(Dec::new(10, -1)), Ok(one()), py_ok(&one())));
+        let dz = RefError::DivisionByZero;
+        assert!(accepts(div_by_zero(), Err(dz), py_err(dz)));
+    }
+
+    #[test]
+    fn rejects_wrong_solidity() {
+        let dz = RefError::DivisionByZero;
+        assert!(!accepts(Ok(two()), Ok(one()), py_ok(&one())));
+        assert!(!accepts(overflow(), Err(dz), py_err(dz)));
+        assert!(!accepts(Ok(one()), Err(dz), py_err(dz)));
+        assert!(!accepts(div_by_zero(), Ok(one()), py_ok(&one())));
+    }
+
+    #[test]
+    fn rejects_wrong_python() {
+        let dz = RefError::DivisionByZero;
+        let eo = RefError::ExponentOverflow;
+        assert!(!accepts(Ok(one()), Ok(one()), py_ok(&two())));
+        assert!(!accepts(div_by_zero(), Err(dz), py_err(eo)));
+        assert!(!accepts(Ok(one()), Ok(one()), py_err(dz)));
+        assert!(!accepts(div_by_zero(), Err(dz), py_ok(&one())));
+    }
+
+    #[test]
+    fn error_matches_decodes_the_revert() {
+        let dz = RefError::DivisionByZero;
+        let Err(revert) = div_by_zero() else {
+            unreachable!()
+        };
+        assert!(error_matches(&revert, dz));
+        assert!(!error_matches(&revert, RefError::ExponentOverflow));
+        // The selector alone does not decode.
+        let bare = Fail::Revert(Bytes::from(dz.selector().to_vec()));
+        assert!(!error_matches(&bare, dz));
+    }
+
+    #[test]
+    fn error_matches_parse_selectors() {
+        let loss = RefError::ParseDecimalPrecisionLoss;
+        assert!(error_matches(&Fail::Selector(loss.selector()), loss));
+        assert!(!error_matches(
+            &Fail::Selector(loss.selector()),
+            RefError::ParseDecimalOverflow
+        ));
+        assert!(matches!(sol_parse("abc"), Err(Fail::Selector(_))));
+    }
+}
+
 /// Minimal repros of the fuzz findings, run every time rather than when the
 /// fuzzer reaches them.
 mod found {
