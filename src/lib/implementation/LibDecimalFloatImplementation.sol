@@ -43,6 +43,10 @@ uint256 constant POW_FIXED_LN10 = 2302585092994045684017991454684364207601101488
 /// @dev Halvings of the exp10Fixed argument before its Taylor series.
 uint256 constant POW_EXP_HALVINGS = 8;
 
+/// @dev The inverse of 5 modulo 2^256, so that its nth power divides an exact
+/// multiple of 5^n.
+uint256 constant FIVE_INVERSE = 92633671389852956338856788006950326282615987732512451231566067206330503711949;
+
 /// @dev Guard digits pow10 rounds away.
 uint256 constant POW_GUARD = 1e10;
 
@@ -232,7 +236,7 @@ library LibDecimalFloatImplementation {
             (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
                 signedCoefficientB,
-                mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
+                mulDivPow10(signedCoefficientAAbs, signedCoefficientBAbs, adjustExponent),
                 exponent
             );
         }
@@ -438,6 +442,25 @@ library LibDecimalFloatImplementation {
             let mm := mulmod(a, b, not(0))
             low := mul(a, b)
             high := sub(sub(mm, low), lt(mm, low))
+        }
+    }
+
+    /// mulDiv(x, y, 10^n) for n in [0, 76] and a quotient below 2^256. The
+    /// remainder is subtracted so 10^n divides the product exactly, the 2^n
+    /// is shifted out and the 5^n divided out by its inverse modulo 2^256.
+    function mulDivPow10(uint256 x, uint256 y, uint256 n) internal pure returns (uint256 result) {
+        (uint256 prod1, uint256 prod0) = mul512(x, y);
+        if (prod1 == 0) {
+            unchecked {
+                return prod0 / 10 ** n;
+            }
+        }
+        uint256 inverse = FIVE_INVERSE;
+        assembly ("memory-safe") {
+            let remainder := mulmod(x, y, exp(10, n))
+            prod1 := sub(prod1, gt(remainder, prod0))
+            prod0 := sub(prod0, remainder)
+            result := mul(or(shr(n, prod0), shl(sub(256, n), prod1)), exp(inverse, n))
         }
     }
 
