@@ -3,6 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LogTest} from "../../abstract/LogTest.sol";
 
@@ -21,17 +22,22 @@ contract LibDecimalFloatLog10Test is LogTest {
         return float.log10(logTables());
     }
 
+    /// log10 matches its implementation packed, and reverts only for 0 or a
+    /// negative, with the error that names it.
     function testLog10Packed(Float float) external {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
-        try this.log10External(signedCoefficient, exponent) returns (Float floatParts) {
-            (int256 signedCoefficientResult, int256 exponentResult) = floatParts.unpack();
-            Float floatLog10 = this.log10External(float);
-            (int256 signedCoefficientResultUnpacked, int256 exponentResultUnpacked) = floatLog10.unpack();
+        if (signedCoefficient == 0) {
+            vm.expectRevert(abi.encodeWithSelector(Log10Zero.selector));
+            this.log10External(float);
+        } else if (signedCoefficient < 0) {
+            vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficient, exponent));
+            this.log10External(float);
+        } else {
+            (int256 signedCoefficientResult, int256 exponentResult) =
+                this.log10External(signedCoefficient, exponent).unpack();
+            (int256 signedCoefficientResultUnpacked, int256 exponentResultUnpacked) = this.log10External(float).unpack();
             assertEq(signedCoefficientResultUnpacked, signedCoefficientResult);
             assertEq(exponentResultUnpacked, exponentResult);
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            this.log10External(float);
         }
     }
 }

@@ -840,17 +840,42 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    /// @param tablesDataContract The address of the contract containing the
-    /// logarithm tables.
-    /// @return The result of 10^float.
-    function pow10(Float float, address tablesDataContract) internal view returns (Float) {
+    /// The tables address is unused, and kept so that callers need not change.
+    /// @return The result of 10^float, rounded to nearest at 41 significant
+    /// digits, within half a unit in the 41st digit plus 5.1662e-6 of a unit,
+    /// under 5.0000517e-41 relative. A result below 1e-2147483608 sheds digits
+    /// to lift its exponent to the int32 floor, so its bound adds
+    /// 1e-2147483648 absolute, and below 1e-2147483648 it reverts
+    /// `ExponentUnderflow`. Monotone within rounding error: for
+    /// x < y the results can be out of order by exactly one unit in the last
+    /// place, only when both true values lie within the raw error of the same
+    /// rounding tie, and never by more. Callers must not rely on strict
+    /// ordering at one-ulp resolution. 10^k is exactly 10^k for an integer k.
+    function pow10(Float float, address) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
-        (signedCoefficient, exponent) =
-            LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficient, exponent);
-        // We don't care if power10 is lossy because it's an approximation
-        // anyway.
-        Float result = packArithmeticResult(signedCoefficient, exponent);
-        return result;
+        // A zero of any exponent, which the integer part below cannot rescale.
+        if (signedCoefficient == 0) {
+            return FLOAT_ONE;
+        }
+        // An integer part past int256 is over 5.7e76, far past the range on
+        // the side of its sign.
+        if (
+            exponent > 76
+                || (exponent > 0
+                    // exponent is in [1, 76] here, so 10 ** exponent fits int256.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    && (signedCoefficient > type(int256).max / int256(10 ** uint256(exponent))
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        || signedCoefficient < type(int256).min / int256(10 ** uint256(exponent))))
+        ) {
+            if (signedCoefficient < 0) {
+                revert ExponentUnderflow(signedCoefficient, exponent);
+            }
+            revert ExponentOverflow(signedCoefficient, exponent);
+        }
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = liftToTop(signedCoefficient, exponent);
+        return packArithmeticResult(signedCoefficient, exponent);
     }
 
     /// Same as log10, but accepts a Float struct instead of separate values.
@@ -859,7 +884,13 @@ library LibDecimalFloat {
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
     /// @param a The float to log10.
-    /// @return The base-10 logarithm of a.
+    /// @return The base-10 logarithm of a, rounded to nearest at 41
+    /// significant digits, within half a unit in the 41st digit plus 2.245e-47
+    /// absolute. Monotone within rounding error: for x < y the results can be
+    /// out of order by exactly one unit in the last place, only when both
+    /// true values lie within the raw error of the same rounding tie, and
+    /// never by more. Callers must not rely on strict ordering at one-ulp
+    /// resolution. log10(10^k) is exactly k.
     function log10(Float a, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         (signedCoefficient, exponent) =
@@ -869,12 +900,36 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// a^b = 10^(b * log10(a))
+    /// a^b = a^int(b) * 10^(frac(b) * log10(a))
     ///
-    /// Due to the inaccuraces of log10 and power10, this is not perfectly
-    /// accurate, a round trip like x^y^(1/y) will typically be within half a
-    /// percent or less of the original value, but this can vary depending on
-    /// the input values.
+    /// The integer part of `b` is exact, by squaring. The fractional part is
+    /// computed in fixed point from a log table seed rather than interpolated
+    /// from the tables.
+    ///
+    /// The final product, including a^1, is rounded to nearest at 41
+    /// significant digits, half away from zero. For N the integer part of
+    /// |b|, the result is within 5.00006e-41 + 3N 1e-75 relative of the true
+    /// value:
+    /// - The leg keeps pow10's guard digits. Their 5.1662e-46 relative, plus
+    ///   log10Unrounded's 2.245e-47 times a fraction below 1 and ln 10, puts
+    ///   it within 5.69e-46 relative of 10^(frac(b) log10(a)).
+    /// - Every multiply and the inverse truncate toward zero by under 1e-75,
+    ///   and squaring to the Nth power weights them by at most 2N in all, so
+    ///   the integer part is within 2N 1e-75 relative, and its product with
+    ///   the leg adds 1e-75 more. With N 1 the integer part is a itself.
+    /// - Rounding adds half a unit in the 41st digit, at most 5e-41 of the
+    ///   product. A product that rounding would carry above the largest
+    ///   Float is instead truncated to int224, under 1e-67 relative.
+    /// - A result below 1e-2147483608 sheds digits to lift its exponent to
+    ///   the int32 floor, so its bound adds 1e-2147483648 absolute. Below
+    ///   1e-2147483648 it reverts `ExponentUnderflow`.
+    /// Monotone within rounding error: for b < c, a^b and a^c can be out of
+    /// order by exactly one unit in the last place, only when both true
+    /// values lie within the larger raw error, 5.69e-46 + 3N 1e-75 relative,
+    /// of the same rounding tie, and never by more. Callers must not rely on
+    /// strict ordering at one-ulp resolution.
+    /// Exact results stay exact: a power with at most 41 significant digits,
+    /// integer or fractional such as 4^0.5.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
@@ -889,9 +944,20 @@ library LibDecimalFloat {
     /// @return The result of a^b.
     function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
+        return packRoundedSignificant(signedCoefficientA, exponentA);
+    }
 
+    /// `pow` before rounding and packing, so a negative base and an odd power
+    /// are negated unpacked: int224.min at int32.max has no packed negation.
+    function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b, address tablesDataContract)
+        private
+        view
+        returns (int256, int256)
+    {
         if (b.isZero()) {
-            return FLOAT_ONE;
+            (signedCoefficientA, exponentA) = FLOAT_ONE.unpack();
+            return (signedCoefficientA, exponentA);
         } else if (signedCoefficientA <= 0) {
             if (signedCoefficientA == 0) {
                 if (b.lt(FLOAT_ZERO)) {
@@ -901,82 +967,162 @@ library LibDecimalFloat {
 
                 // If a is zero, then a^b is always zero, regardless of b.
                 // This is a special case because log10(0) is undefined.
-                return FLOAT_ZERO;
+                (signedCoefficientA, exponentA) = FLOAT_ZERO.unpack();
+                return (signedCoefficientA, exponentA);
             } else {
                 // A negative base has a real power only for a whole exponent:
                 // (-a)^b is a^b, negated when b is odd.
                 if (!b.frac().isZero()) {
                     revert PowNegativeBase(signedCoefficientA, exponentA);
                 }
-                Float magnitude = pow(a.minus(), b, tablesDataContract);
-                return b.isOdd() ? magnitude.minus() : magnitude;
+                (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
+                (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
+                if (b.isOdd()) {
+                    (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
+                }
+                return (signedCoefficientA, exponentA);
             }
         }
+        // 1^b is 1 for every b, including one too large for the integer leg.
+        else if (isOne(signedCoefficientA, exponentA)) {
+            (signedCoefficientA, exponentA) = FLOAT_ONE.unpack();
+            return (signedCoefficientA, exponentA);
+        }
         // Handle identity case for positive values of a, i.e. a^1.
-        else if (b.eq(FLOAT_ONE) && a.gt(FLOAT_ZERO)) {
-            return a;
-        } else if (b.lt(FLOAT_ZERO)) {
-            // a^b is (1/a)^-b. The inverse stays unpacked: packed, the inverse
-            // of a value near the top of the range underflows even when the
-            // power is representable.
-            (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.inv(signedCoefficientA, exponentA);
-            b = b.minus();
+        else if (b.eq(FLOAT_ONE)) {
+            return (signedCoefficientA, exponentA);
         }
 
         // Uses LibDecimalFloatImplementation directly (rather than the packed
         // Float API) to avoid repeated pack/unpack overhead in the squaring
         // loop and to preserve unnormalized intermediates.
-        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (int256 integerB, int256 fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
-
-        uint256 exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
+        int256 exponentB;
+        int256 fractionB;
+        uint256 exponentBInteger;
+        {
+            int256 signedCoefficientB;
+            (signedCoefficientB, exponentB) = b.unpack();
+            if (signedCoefficientB < 0) {
+                // a^b is (1/a)^-b. The inverse stays unpacked: packed, the
+                // inverse of a value near the top of the range underflows even
+                // when the power is representable. -b stays unpacked too, as
+                // the most negative Float does not pack negated.
+                (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.inv(signedCoefficientA, exponentA);
+                signedCoefficientB = -signedCoefficientB;
+            }
+            int256 integerB;
+            (integerB, fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
+            revertIfIntegerBPastInt256(signedCoefficientA, exponentA, integerB, exponentB);
+            exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
+        }
 
         // Exponentiation by squaring.
         (int256 signedCoefficientResult, int256 exponentResult) = (1, 0);
-        (int256 signedCoefficientBase, int256 exponentBase) = (signedCoefficientA, exponentA);
-        while (exponentBInteger >= 1) {
-            if (exponentBInteger & 0x01 == 0x01) {
-                (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
-                    signedCoefficientResult, exponentResult, signedCoefficientBase, exponentBase
+        {
+            (int256 signedCoefficientBase, int256 exponentBase) = (signedCoefficientA, exponentA);
+            while (exponentBInteger >= 1) {
+                if (exponentBInteger & 0x01 == 0x01) {
+                    (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
+                        signedCoefficientResult, exponentResult, signedCoefficientBase, exponentBase
+                    );
+                }
+                exponentBInteger >>= 1;
+                (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
+                    signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
                 );
-            }
-            exponentBInteger >>= 1;
-            (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
-                signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
-            );
-            // Squaring doubles the exponent, so left unchecked it overflows
-            // int256 and panics. A base this far out means the result, which
-            // moves away from 1 with it, cannot be packed either.
-            if (exponentBase > type(int128).max) {
-                revert ExponentOverflow(signedCoefficientBase, exponentBase);
-            }
-            if (exponentBase < type(int128).min) {
-                revert ExponentUnderflow(signedCoefficientBase, exponentBase);
+                // Squaring doubles the exponent, so left unchecked it overflows
+                // int256 and panics. A base this far out means the result,
+                // which moves away from 1 with it, cannot be packed either.
+                if (exponentBase > type(int128).max) {
+                    revert ExponentOverflow(signedCoefficientBase, exponentBase);
+                }
+                if (exponentBase < type(int128).min) {
+                    revert ExponentUnderflow(signedCoefficientBase, exponentBase);
+                }
             }
         }
 
-        (int256 signedCoefficientC, int256 exponentC) =
-            LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficientA, exponentA);
+        if (fractionB != 0) {
+            (int256 signedCoefficientC, int256 exponentC) =
+                LibDecimalFloatImplementation.log10Unrounded(tablesDataContract, signedCoefficientA, exponentA);
+            (signedCoefficientC, exponentC) =
+                LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
+            (signedCoefficientC, exponentC) =
+                LibDecimalFloatImplementation.pow10Unrounded(signedCoefficientC, exponentC);
+            (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
+                signedCoefficientC, exponentC, signedCoefficientResult, exponentResult
+            );
+        }
+        return (signedCoefficientResult, exponentResult);
+    }
 
-        (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
+    /// Rounds to 41 significant digits and packs, lifted as `liftToTop` does.
+    /// A rounding that carries above the largest Float packs the unrounded
+    /// value instead.
+    function packRoundedSignificant(int256 signedCoefficient, int256 exponent) private pure returns (Float) {
+        (int256 roundedCoefficient, int256 roundedExponent) =
+            LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
+        (roundedCoefficient, roundedExponent) = liftToTop(roundedCoefficient, roundedExponent);
+        // Only a carry can leave the unrounded value packable, so a value that
+        // int224 could not hold either way reports the rounded value.
+        if (roundedExponent > type(int32).max && roundedExponent - type(int32).max <= 67) {
+            return packArithmeticResult(signedCoefficient, exponent);
+        }
+        return packArithmeticResult(roundedCoefficient, roundedExponent);
+    }
 
-        (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.pow10(tablesDataContract, signedCoefficientC, exponentC);
+    function isOne(int256 signedCoefficient, int256 exponent) private pure returns (bool) {
+        (int256 signedCoefficientOne, int256 exponentOne) = FLOAT_ONE.unpack();
+        return LibDecimalFloatImplementation.eq(signedCoefficient, exponent, signedCoefficientOne, exponentOne);
+    }
 
-        (signedCoefficientC, exponentC) =
-            LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, signedCoefficientResult, exponentResult);
-        // We don't care if power is lossy because it's an approximation anyway.
-        Float c = packArithmeticResult(signedCoefficientC, exponentC);
-        return c;
+    function isBelowOne(int256 signedCoefficient, int256 exponent) private pure returns (bool) {
+        (int256 signedCoefficientOne, int256 exponentOne) = FLOAT_ONE.unpack();
+        return LibDecimalFloatImplementation.lt(signedCoefficient, exponent, signedCoefficientOne, exponentOne);
+    }
+
+    /// An integer part of b past int256 is over 5.7e76 and every a but 1 is at
+    /// least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power is past
+    /// the range, on the side a is of 1.
+    function revertIfIntegerBPastInt256(int256 signedCoefficientA, int256 exponentA, int256 integerB, int256 exponentB)
+        private
+        pure
+    {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)))) {
+            if (isBelowOne(signedCoefficientA, exponentA)) {
+                revert ExponentUnderflow(signedCoefficientA, exponentA);
+            }
+            revert ExponentOverflow(signedCoefficientA, exponentA);
+        }
+    }
+
+    /// An exponent above int32 takes back as many digits as int224 allows, to
+    /// keep a value at the top of the exponent range packable. Anything else
+    /// is returned as is.
+    function liftToTop(int256 signedCoefficient, int256 exponent) private pure returns (int256, int256) {
+        int256 excess = exponent - type(int32).max;
+        // An int224 coefficient has at most 68 digits.
+        if (excess > 0 && excess <= 67) {
+            // excess is in [1, 67] so the casts cannot truncate.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 scale = int256(10 ** uint256(excess));
+            if (signedCoefficient <= type(int224).max / scale && signedCoefficient >= type(int224).min / scale) {
+                return (signedCoefficient * scale, type(int32).max);
+            }
+        }
+        return (signedCoefficient, exponent);
     }
 
     /// sqrt a = a ^ 0.5
     ///
-    /// Due to the inaccuracies of log10 and power10, this is not perfectly
-    /// accurate, a round trip like sqrt(x)^2 will typically be within half a
-    /// percent or less of the original value, but this can vary depending on
-    /// the input values.
+    /// As `pow`: within 5.00006e-41 relative of the true value, rounded to
+    /// nearest at 41 significant digits. Monotone within rounding error: for
+    /// x < y the roots can be out of order by exactly one unit in the last
+    /// place, only when both true values lie within the raw error of the same
+    /// rounding tie, and never by more. Callers must not rely on strict
+    /// ordering at one-ulp resolution. A perfect square whose root has at most
+    /// 41 significant digits has an exact root.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.

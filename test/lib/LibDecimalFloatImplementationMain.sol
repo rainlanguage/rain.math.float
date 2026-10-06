@@ -2,23 +2,15 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {
-    ExponentOverflow,
-    Log10Negative,
-    Log10Zero,
-    DivisionByZero,
-    MaximizeOverflow
-} from "src/error/ErrDecimalFloat.sol";
-import {LOG_MANTISSA_LAST_INDEX} from "src/lib/table/LibLogTable.sol";
+import {ExponentOverflow, DivisionByZero, MaximizeOverflow} from "src/error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
     ADD_MAX_EXPONENT_DIFF,
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
-    MAXIMIZED_ZERO_EXPONENT,
-    LOG10_Y_EXPONENT
+    MAXIMIZED_ZERO_EXPONENT
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
-/// `maximize`, `maximizeFull`, `div`, `add`, `sub`, `inv` and `log10` verbatim
+/// `maximize`, `maximizeFull`, `div`, `add`, `sub` and `inv` verbatim
 /// from `src/lib/implementation/LibDecimalFloatImplementation.sol` at main
 /// 2b19ed13b90420ffc74dcb528f9f67e9e71b315e, before `maximize` returned a
 /// shortfall. Every helper they call is unchanged since that commit, so it is
@@ -376,116 +368,5 @@ library LibDecimalFloatImplementationMain {
 
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         return div(1e76, -76, signedCoefficient, exponent);
-    }
-
-    function log10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
-        internal
-        view
-        returns (int256, int256)
-    {
-        {
-            int256 unmaximizedCoefficient = signedCoefficient;
-            int256 unmaximizedExponent = exponent;
-            (signedCoefficient, exponent) = maximizeFull(signedCoefficient, exponent);
-
-            if (signedCoefficient <= 0) {
-                if (signedCoefficient == 0) {
-                    revert Log10Zero();
-                } else {
-                    revert Log10Negative(unmaximizedCoefficient, unmaximizedExponent);
-                }
-            }
-        }
-
-        // all powers of 10 look like 1 with a different exponent
-        if (signedCoefficient == 1e76) {
-            return (exponent + 76, 0);
-        }
-        bool isAtLeastE76 = signedCoefficient >= 1e76;
-
-        // This is a positive log. i.e. log(x) where x >= 1.
-        if (exponent >= (isAtLeastE76 ? -76 : -75)) {
-            int256 y1Coefficient;
-            int256 y2Coefficient;
-            int256 x1Coefficient;
-            int256 x2Coefficient;
-            // exact powers of 10 are already caught above.
-            // but e.g. 20 would be 2e76, -75 and true for isAtLeastE76
-            // => adding exp 76 yields 1, which is the correct result.
-            // 200 would be 2e76, -74 and true for isAtLeastE76
-            // => adding exp 76 yields 2, which is the correct result.
-            // however 90 would be 9e75, -74 and false for isAtLeastE76
-            // => adding exp 75 yields 1, which is the correct result.
-            // 900 would be 9e75, -73 and false for isAtLeastE76
-            // => adding exp 75 yields 2, which is the correct result.
-            int256 powerOfTen = exponent + int256(isAtLeastE76 ? int256(76) : int256(75));
-
-            // Table lookup.
-            {
-                uint256 idx = 0;
-                unchecked {
-                    {
-                        uint256 scale = isAtLeastE76 ? 1e73 : 1e72;
-                        // Truncate the signed coefficient to what we can look
-                        // up in the table.
-                        // Slither false positive because the truncation is
-                        // deliberate here.
-                        //slither-disable-start divide-before-multiply
-                        // scale is one of two possible values so won't truncate
-                        // when cast.
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        x1Coefficient = signedCoefficient / int256(scale);
-                        // slither-disable-end divide-before-multiply
-                        // x1Coefficient is positive here so won't truncate when
-                        // cast.
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        idx = uint256(x1Coefficient - 1000);
-                        // scale is one of two possible values so won't truncate
-                        // when cast.
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        x1Coefficient = x1Coefficient * int256(scale);
-                        // Technically we only need to do this if we need to
-                        // interpolate but it's cheaper to just do an `add`
-                        // unconditionally than pay for an `if` and often also
-                        // do the `add`.
-                        // scale is one of two possible values so won't truncate
-                        // when cast.
-                        // forge-lint: disable-next-line(unsafe-typecast)
-                        x2Coefficient = x1Coefficient + int256(scale);
-                    }
-
-                    y1Coefficient =
-                        int256(1e72 * LibDecimalFloatImplementation.lookupLogTableVal(tablesDataContract, idx));
-                    y2Coefficient = y1Coefficient;
-                    // Only do the second lookup if we expect interpolation
-                    // to need it.
-                    if (x1Coefficient != signedCoefficient) {
-                        y2Coefficient = idx == LOG_MANTISSA_LAST_INDEX
-                            ? int256(1e76)
-                            : int256(
-                                1e72 * LibDecimalFloatImplementation.lookupLogTableVal(tablesDataContract, idx + 1)
-                            );
-                    }
-                }
-            }
-
-            (signedCoefficient, exponent) = LibDecimalFloatImplementation.unitLinearInterpolation(
-                x1Coefficient,
-                signedCoefficient,
-                x2Coefficient,
-                exponent,
-                y1Coefficient,
-                y2Coefficient,
-                LOG10_Y_EXPONENT
-            );
-            return add(signedCoefficient, exponent, powerOfTen, 0);
-        }
-        // This is a negative log. i.e. log(x) where 0 < x < 1.
-        // log(x) = -log(1/x)
-        else {
-            (signedCoefficient, exponent) = inv(signedCoefficient, exponent);
-            (signedCoefficient, exponent) = log10(tablesDataContract, signedCoefficient, exponent);
-            return LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
-        }
     }
 }
