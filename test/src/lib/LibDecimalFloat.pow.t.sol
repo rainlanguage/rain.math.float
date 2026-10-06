@@ -817,20 +817,39 @@ contract LibDecimalFloatPowTest is LogTest {
         assertTrue(LibTestErrorBound.monotoneRelative(low, high, legError(b), legError(b)), "monotone");
     }
 
-    /// b < c implies a^b <= a^c + 2E for a > 1, down to adjacent exponents.
-    function testPowMonotoneInExponent(int256 signedCoefficientA, int256 exponentA, int256 lowB, int256 gap) external {
-        signedCoefficientA = bound(signedCoefficientA, 1e40 + 1, 1e41 - 1);
-        exponentA = bound(exponentA, -40, 0);
-        lowB = bound(lowB, 1, 4e18);
-        gap = bound(gap, 1, 1e3);
+    /// One unit in the 41st significant digit of x.
+    function ulp(Float x) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = x.unpack();
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
+        int256 digits = signedCoefficient / 1e76 == 0 ? int256(76) : int256(77);
+        return LibDecimalFloat.packLossless(1, exponent + digits - 41);
+    }
+
+    /// b < c implies a^b <= a^c + 2E for a > 1, down to adjacent exponents,
+    /// and a flip is exactly one unit in the last place.
+    function testPowMonotoneInExponent(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 lowB,
+        int256 exponentB,
+        int256 gap
+    ) external {
+        signedCoefficientA = bound(signedCoefficientA, 1, 1e67);
+        exponentA = bound(exponentA, -67, 0);
         Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
-        Float b = LibDecimalFloat.packLossless(lowB, -18);
-        Float c = LibDecimalFloat.packLossless(lowB + gap, -18);
-        assertTrue(
-            LibTestErrorBound.monotoneRelative(
-                this.powExternal(a, b), this.powExternal(a, c), legError(b), legError(c)
-            ),
-            "monotone"
-        );
+        vm.assume(a.gt(LibDecimalFloat.FLOAT_ONE));
+        exponentB = bound(exponentB, -50, -18);
+        // b is at most 4.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        lowB = bound(lowB, 1, 4 * int256(10 ** uint256(-exponentB)));
+        gap = bound(gap, 1, 1e3);
+        Float b = LibDecimalFloat.packLossless(lowB, exponentB);
+        Float c = LibDecimalFloat.packLossless(lowB + gap, exponentB);
+        Float low = this.powExternal(a, b);
+        Float high = this.powExternal(a, c);
+        assertTrue(LibTestErrorBound.monotoneRelative(low, high, legError(b), legError(c)), "monotone");
+        if (high.lt(low)) {
+            assertTrue(low.eq(high.add(ulp(high))), "one ulp");
+        }
     }
 }

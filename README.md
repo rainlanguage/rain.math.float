@@ -143,8 +143,10 @@ including an integer power and `a^1`, within proven bounds of the true value:
 
 They are monotone within rounding error, not strictly monotone. For a < b the
 order of the results can flip by exactly one unit in the last place, only when
-both true values lie within the raw error of the same rounding tie, and never by
-more. Callers must not rely on strict ordering at one-ulp resolution.
+both true values lie within the larger raw error of the same rounding tie, and
+never by more. The raw error, before rounding, is 5.1662e-6 of a unit for
+`pow10`, 2.245e-47 for `log10`, and 5.69e-46 + 3N·1e-75 relative for `pow` and
+`sqrt`. Callers must not rely on strict ordering at one-ulp resolution.
 
 Exact results stay exact: powers of ten (`pow10(k)` is `10^k`, `log10(10^k)` is
 `k`), and integer and fractional powers, roots included, with at most 41

@@ -892,8 +892,8 @@ library LibDecimalFloat {
     ///   product.
     /// Monotone within rounding error: for b < c, a^b and a^c can be out of
     /// order by exactly one unit in the last place, only when both true
-    /// values lie within the raw error of the same rounding tie, and never by
-    /// more. Callers must not rely on strict ordering at one-ulp resolution.
+    /// values lie within the larger raw error, 5.69e-46 + 3N 1e-75 relative,
+    /// of the same rounding tie, and never by more. Callers must not rely on strict ordering at one-ulp resolution.
     /// Exact results stay exact: a power with at most 41 significant digits,
     /// integer or fractional such as 4^0.5.
     ///
