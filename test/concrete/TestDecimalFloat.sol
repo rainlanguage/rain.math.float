@@ -13,14 +13,6 @@ import {LibTestLogTables} from "test/lib/LibTestLogTables.sol";
 contract TestDecimalFloat {
     using LibDecimalFloat for Float;
 
-    // slither-disable-next-line too-many-digits
-    Float public constant FORMAT_DEFAULT_SCIENTIFIC_MIN =
-        Float.wrap(0xfffffffc00000000000000000000000000000000000000000000000000000001);
-
-    // slither-disable-next-line too-many-digits
-    Float public constant FORMAT_DEFAULT_SCIENTIFIC_MAX =
-        Float.wrap(0x0000000900000000000000000000000000000000000000000000000000000001);
-
     address immutable I_TABLES;
 
     constructor() {
@@ -56,16 +48,8 @@ contract TestDecimalFloat {
         return (errorSelector, parsed);
     }
 
-    function format(Float a, Float scientificMin, Float scientificMax) public pure returns (string memory) {
-        return LibFormatDecimalFloat.toDecimalString(a, scientificMin, scientificMax);
-    }
-
     function format(Float a, bool scientific) external pure returns (string memory) {
         return LibFormatDecimalFloat.toDecimalString(a, scientific);
-    }
-
-    function format(Float a) external pure returns (string memory) {
-        return format(a, FORMAT_DEFAULT_SCIENTIFIC_MIN, FORMAT_DEFAULT_SCIENTIFIC_MAX);
     }
 
     function add(Float a, Float b) external pure returns (Float) {

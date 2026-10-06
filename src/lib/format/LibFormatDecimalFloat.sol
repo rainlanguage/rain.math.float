@@ -6,7 +6,6 @@ import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
 import {UnformatableExponent} from "../../error/ErrFormat.sol";
-import {ScientificMinNotLessThanMax} from "../../error/ErrDecimalFloat.sol";
 
 /// @dev Library for formatting DecimalFloat values as strings.
 /// Not particularly efficient as it is intended for offchain use that doesn't
@@ -34,35 +33,6 @@ library LibFormatDecimalFloat {
             return _toScientific(signedCoefficient, exponent);
         }
         return _toNonScientific(signedCoefficient, exponent);
-    }
-
-    /// Format a decimal float as a string, scientific exactly when its magnitude
-    /// is below `scientificMin` or above `scientificMax`. The magnitude is
-    /// compared unpacked because `abs` cannot pack it for an int224.min
-    /// coefficient at the int32.max exponent.
-    /// @param float The decimal float to format.
-    /// @param scientificMin Magnitudes below this format scientifically.
-    /// @param scientificMax Magnitudes above this format scientifically.
-    /// @return The string representation of the decimal float.
-    function toDecimalString(Float float, Float scientificMin, Float scientificMax)
-        internal
-        pure
-        returns (string memory)
-    {
-        if (!LibDecimalFloat.lt(scientificMin, scientificMax)) {
-            revert ScientificMinNotLessThanMax(scientificMin, scientificMax);
-        }
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
-        if (signedCoefficient < 0) {
-            signedCoefficient = -signedCoefficient;
-        }
-        (int256 minCoefficient, int256 minExponent) = LibDecimalFloat.unpack(scientificMin);
-        (int256 maxCoefficient, int256 maxExponent) = LibDecimalFloat.unpack(scientificMax);
-        return toDecimalString(
-            float,
-            LibDecimalFloatImplementation.lt(signedCoefficient, exponent, minCoefficient, minExponent)
-                || LibDecimalFloatImplementation.gt(signedCoefficient, exponent, maxCoefficient, maxExponent)
-        );
     }
 
     /// Scientific notation: render as `d.dddeN` where the leading digit is the
