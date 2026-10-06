@@ -1,0 +1,23 @@
+[
+  {
+    "timestamp": "2026-10-06T13:54:41Z",
+    "commit": "d53c6af07b072e156242f09c621b17b59a41835d",
+    "testsAfterCommit": "08459989e07a924c814484e88733c46ccce4d5d0",
+    "publishedTag": "sol-v0.2.12",
+    "commitsAheadOfTag": 61,
+    "scope": "pr:297 src change: pow10 zero and past-int256 guard, pow -b unpacked and past-int256 directional guard (src/lib/LibDecimalFloat.sol)",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 17,
+      "killedBefore": 13,
+      "killedAfter": 1,
+      "equivalent": 3,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 649,
+      "testsAfter": 649,
+      "filed": []
+    }
+  }
+]

@@ -428,9 +428,9 @@ fn test_divide_by_zero_error() {
 #[test]
 fn test_mul_exponent_overflow_error() {
     let near_max_exp = Float::parse("1e2147483646".to_string()).unwrap();
-    let one_e_two = Float::parse("1e2".to_string()).unwrap();
+    let one_e_hundred = Float::parse("1e100".to_string()).unwrap();
 
-    let err = (near_max_exp * one_e_two).unwrap_err();
+    let err = (near_max_exp * one_e_hundred).unwrap_err();
     assert!(matches!(
         err,
         FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))

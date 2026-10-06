@@ -42,6 +42,10 @@ contract LibParseDecimalFloatTest is Test {
         (errorSelector, float) = LibParseDecimalFloat.parseDecimalFloat(data);
     }
 
+    function packLossyExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float, bool) {
+        return LibDecimalFloat.packLossy(signedCoefficient, exponent);
+    }
+
     /// Check that the packed version matches the inline version.
     function testParsePacked(string memory data) external {
         try this.parseDecimalFloatInlineExternal(data) returns (
@@ -54,33 +58,35 @@ contract LibParseDecimalFloatTest is Test {
                 errorSelector = ParseDecimalFloatExcessCharacters.selector;
                 signedCoefficient = 0;
                 exponent = 0;
-                // forge-lint: disable-next-line(unsafe-typecast)
-            } else if (exponent != int32(exponent) && exponent > 0 && signedCoefficient == int224(signedCoefficient)) {
-                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
-                signedCoefficient = 0;
-                exponent = 0;
             } else {
-                (Float packed, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-                if (!lossless) {
-                    errorSelector = ParseDecimalPrecisionLoss.selector;
+                try this.packLossyExternal(signedCoefficient, exponent) returns (Float packed, bool lossless) {
+                    if (!lossless) {
+                        errorSelector = ParseDecimalPrecisionLoss.selector;
+                        signedCoefficient = 0;
+                        exponent = 0;
+                    } else {
+                        // A lossless pack may still have shed trailing zeros,
+                        // to fit the coefficient in int224 or to lift the
+                        // exponent to int32.min, or lifted the coefficient to
+                        // lower the exponent to int32.max, so the
+                        // representation can differ from the inline parse. The
+                        // VALUE cannot, and that is asserted against the raw
+                        // inline values here; the representation comparison
+                        // below is then between the two packed paths.
+                        (int256 packedCoefficient, int256 packedExponent) = packed.unpack();
+                        assertTrue(
+                            LibDecimalFloatImplementation.eq(
+                                signedCoefficient, exponent, packedCoefficient, packedExponent
+                            ),
+                            "lossless pack changed the value"
+                        );
+                        signedCoefficient = packedCoefficient;
+                        exponent = packedExponent;
+                    }
+                } catch (bytes memory packErr) {
+                    vm.expectRevert(packErr);
                     signedCoefficient = 0;
                     exponent = 0;
-                } else {
-                    // A lossless pack may still have shed trailing zeros, to
-                    // fit the coefficient in int224 or to lift the exponent to
-                    // int32.min, so the representation can differ from the
-                    // inline parse. The VALUE cannot, and that is asserted
-                    // against the raw inline values here; the representation
-                    // comparison below is then between the two packed paths.
-                    (int256 packedCoefficient, int256 packedExponent) = packed.unpack();
-                    assertTrue(
-                        LibDecimalFloatImplementation.eq(
-                            signedCoefficient, exponent, packedCoefficient, packedExponent
-                        ),
-                        "lossless pack changed the value"
-                    );
-                    signedCoefficient = packedCoefficient;
-                    exponent = packedExponent;
                 }
             }
 
@@ -512,11 +518,19 @@ contract LibParseDecimalFloatTest is Test {
     }
 
     /// Exponent exceeds int32 range — packLossy reverts with ExponentOverflow
-    /// for positive exponents, returns soft error for negative. (A10-8)
+    /// for positive exponents the coefficient cannot lift, returns soft error
+    /// for negative. (A10-8)
     function testParseDecimalFloatExponentOverflowFromPackLossy() external {
-        // Positive exponent overflow reverts.
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(2147483648)));
-        this.parseDecimalFloatExternal("1e2147483648");
+        // Issue #285: 1e2147483648 is 10e2147483647, which is representable.
+        (bytes4 liftedErr, Float lifted) = this.parseDecimalFloatExternal("1e2147483648");
+        assertEq(liftedErr, bytes4(0));
+        (int256 liftedCoefficient, int256 liftedExponent) = lifted.unpack();
+        assertEq(liftedCoefficient, 10);
+        assertEq(liftedExponent, int256(type(int32).max));
+
+        // Past int224 headroom, positive exponent overflow reverts.
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(2147483715)));
+        this.parseDecimalFloatExternal("1e2147483715");
 
         // Negative exponent overflow is a very small number that rounds to
         // zero in packLossy, so the wrapper returns ParseDecimalPrecisionLoss

@@ -4,12 +4,13 @@ pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibLogTable, ALT_TABLE_FLAG} from "src/lib/table/LibLogTable.sol";
 import {LibTestLogTables} from "test/lib/LibTestLogTables.sol";
 import {LibTestTranscendental} from "test/lib/LibTestTranscendental.sol";
 import {LibTestPrecision} from "test/lib/LibTestPrecision.sol";
 
-/// `log10` over every four digit mantissa against the shipped tables, the
+/// The log table entry for every four digit mantissa in the shipped tables, the
 /// published reference tables, and variants with derived mean differences
 /// swapped in for the reference deviations (crates/tests/src/tables.rs).
 /// Errors are against log10 in 1e36 fixed point, which is exact to well under
@@ -246,10 +247,7 @@ contract LibDecimalFloatLog10TablesTest is Test {
         Stats memory stats;
         uint256[] memory errors = new uint256[](truth.length);
         for (uint256 i = 0; i < truth.length; i++) {
-            uint256 n = 1000 + i;
-            uint256 lookupError = absDiff(
-                toFixed(LibDecimalFloat.fromFixedDecimalLosslessPacked(n, 0).log10(tables)), 3 * ONE + truth[i]
-            );
+            uint256 lookupError = absDiff(LibDecimalFloatImplementation.lookupLogTableVal(tables, i) * 1e32, truth[i]);
             errors[i] = lookupError;
             stats.sumError += lookupError;
             if (lookupError > stats.maxError) {
