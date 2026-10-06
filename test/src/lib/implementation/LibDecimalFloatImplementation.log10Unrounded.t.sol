@@ -111,6 +111,13 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
         checkRelative(9.999e75, -76);
     }
 
+    /// 1.000878 has z about 4.39e-4, where the atanh series' z^14 term is
+    /// just under 1000 units of 1e-50 and still moves the log by more than its
+    /// relative bound.
+    function testLog10UnroundedRelativeSeriesTail() external {
+        checkRelative(1000878e69, -75);
+    }
+
     /// Either side of the 1e25 characteristic where `add` takes over, and
     /// past where the fixed point sum would overflow.
     function testLog10UnroundedLargeCharacteristic() external {

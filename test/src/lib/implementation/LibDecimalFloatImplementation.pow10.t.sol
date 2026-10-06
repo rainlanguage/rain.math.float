@@ -370,6 +370,21 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         LibDecimalFloatImplementation.pow10(x, exponent);
     }
 
+    /// Guard digits of exactly half a unit round up, and one below half
+    /// rounds down.
+    function testPow10RoundsHalfUp() external pure {
+        int256[2] memory xs = [
+            int256(264000000000000000000000000000000085554903744231), 1056000000000000000000000000000000342222419894399
+        ];
+        int256[2] memory remainders = [int256(5e9), 5e9 - 1];
+        int256[2] memory carries = [int256(1), 0];
+        for (uint256 i = 0; i < xs.length; i++) {
+            (int256 unrounded, int256 unroundedExponent) = LibDecimalFloatImplementation.pow10Unrounded(xs[i], -50);
+            assertEq(unrounded % 1e10, remainders[i], "remainder");
+            checkPow10(xs[i], -50, unrounded / 1e10 + carries[i], unroundedExponent + 10);
+        }
+    }
+
     function testPow10One() external pure {
         unchecked {
             int256 exponent = 0;
