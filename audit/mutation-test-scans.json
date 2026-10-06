@@ -110,7 +110,7 @@
     "testsAfterCommit": "61a58f2cb169d7f18d36b94db4f71583a5a5276c",
     "publishedTag": "sol-v0.2.18",
     "commitsAheadOfTag": 16,
-    "scope": "pr:318 crates/tests on revm over test/concrete: ceil and the extremes getters, the exact checkers (error matching, parse selectors, value and outcome checks), the library coverage per function (packLossy, packArithmeticResult, packLossless, canonicalize, agree, isOdd, from/toFixedDecimalLossy, parse) and its references. V25 (oracle isOdd ignores the fraction) is equivalent. L01 (ceil integer early return removed) survives: ceil(0e-k) then returns FLOAT_ZERO bytes, the same value in a representation the library does not document.",
+    "scope": "pr:318 library coverage on revm over test/concrete/TestDecimalFloatHarness: 26 mutants of the library functions it reaches (H: packLossy, packArithmeticResult, packLossless, canonicalize, agree, isOdd, from/toFixedDecimalLossy, parse) and 65 of their references, oracle and checkers (V). Probe suite: PROPTEST_CASES=64 cargo test -p rain-math-float-tests -- exact reference evm:: library::. V25 (oracle isOdd ignores the fraction) is equivalent.",
     "tool": "adversarial-mutation-test",
     "skillVersion": "0.35.0",
     "summary": {
