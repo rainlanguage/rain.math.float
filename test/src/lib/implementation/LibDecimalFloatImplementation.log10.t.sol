@@ -43,7 +43,8 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
         checkLog10(1.001e3, -3, 0.0004e76, -76);
 
         checkLog10(10.02e2, -2, 1.0009e76, -76);
-        checkLog10(10.99e2, -2, 1.0411e76, -76);
+        // log10(10.99) = 1.040997692... (bc -l).
+        checkLog10(10.99e2, -2, 1.041e76, -76);
 
         checkLog10(6566, 0, 3.8173e76, -76);
 
@@ -74,8 +75,6 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
 
     function testLog10NegativeReverts(int256 signedCoefficient, int256 exponent) external {
         signedCoefficient = bound(signedCoefficient, type(int256).min, -1);
-        // Bound exponent to avoid MaximizeOverflow before reaching the sign check.
-        exponent = bound(exponent, -1e18, 1e18);
         vm.expectRevert(abi.encodeWithSelector(Log10Negative.selector, signedCoefficient, exponent));
         this.log10External(signedCoefficient, exponent);
     }
@@ -89,5 +88,45 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
                 i *= 10;
             }
         }
+    }
+
+    function checkLog10Eq(int256 signedCoefficient, int256 exponent, int256 expected) internal {
+        (int256 actualSignedCoefficient, int256 actualExponent) =
+            LibDecimalFloatImplementation.log10(logTables(), signedCoefficient, exponent);
+        assertTrue(LibDecimalFloatImplementation.eq(actualSignedCoefficient, actualExponent, expected, 0), "log10");
+    }
+
+    /// Coefficients too small to take their full shift at the floor.
+    /// log10(c * 10^e) = log10(c) + e.
+    function testLog10AtFloor() external {
+        int256 min = type(int256).min;
+        checkLog10(1, min, min, 0);
+        checkLog10(10, min, min + 1, 0);
+        checkLog10(1e75, min, min + 75, 0);
+        checkLog10(1, min + 1, min + 1, 0);
+        checkLog10(1, min + 75, min + 75, 0);
+        // The result is an integer at this magnitude. log10(2) rounds up.
+        checkLog10Eq(2, min, min + 1);
+        checkLog10Eq(2, min + 1, min + 2);
+        checkLog10Eq(5e75, min, min + 76);
+    }
+
+    /// Near the floor, log10(c * 10^e) is log10(c) + e to within the integer
+    /// the result rounds to.
+    function testLog10NearFloorMatchesShifted(int256 signedCoefficient, uint256 headroom) external {
+        signedCoefficient = bound(signedCoefficient, 1, 1e10);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponent = type(int256).min + int256(bound(headroom, 3, 50));
+        address tables = logTables();
+        (int256 actualCoefficient, int256 actualExponent) =
+            LibDecimalFloatImplementation.log10(tables, signedCoefficient, exponent);
+        (int256 expectedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementation.log10(tables, signedCoefficient, 0);
+        (expectedCoefficient, expectedExponent) =
+            LibDecimalFloatImplementation.add(expectedCoefficient, expectedExponent, exponent, 0);
+        (int256 diffCoefficient, int256 diffExponent) =
+            LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
+        assertTrue(LibDecimalFloatImplementation.lt(diffCoefficient, diffExponent, 2, 0), "below");
+        assertTrue(LibDecimalFloatImplementation.gt(diffCoefficient, diffExponent, -2, 0), "above");
     }
 }
