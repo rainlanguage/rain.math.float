@@ -460,7 +460,11 @@ pub fn to_fixed_decimal_lossy(x: &Dec, decimals: u8) -> Result<(U256, bool), Ref
         return Err(RefError::FixedDecimalOverflow);
     }
     let t = scaled.trunc();
-    let int = if t.e > 0 { t.at_exponent(0) } else { t.c.clone() };
+    let int = if t.e > 0 {
+        t.at_exponent(0)
+    } else {
+        t.c.clone()
+    };
     if int > u256_to_big(U256::MAX) {
         return Err(RefError::FixedDecimalOverflow);
     }
