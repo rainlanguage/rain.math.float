@@ -329,4 +329,52 @@ contract LibDecimalFloatImplementationAddTest is Test {
         assertEq(signedCoefficientAddZero, expectedSignedCoefficient);
         assertEq(exponentAddZero, expectedExponent);
     }
+
+    /// Operands too close to `type(int256).min` to take their full shift add
+    /// exactly when the sum fits at the floor.
+    function testAddAtFloor() external pure {
+        int256 min = type(int256).min;
+        checkAdd(1, min, 1, min, 2, min);
+        checkAdd(1, min, -1, min, 0, min);
+        checkAdd(1, min, 1, min + 1, 11, min);
+        checkAdd(1, min + 1, 1, min, 11, min);
+        checkAdd(-1, min, 1, min + 76, 1e76 - 1, min);
+        // The sum overflows the maximized coefficients, so one digit fewer is
+        // shed.
+        checkAdd(5e75, min, 5e75, min, 1e76, min);
+        // The smaller operand's last digit lands on the 77th digit, then past
+        // it, where the larger operand is returned unchanged.
+        checkAdd(1e76, min, 1, min, 1e76 + 1, min);
+        checkAdd(1e76, min + 1, 1, min, 1e76, min + 1);
+    }
+
+    /// Near the floor, the sum is the sum of the same operands shifted up by
+    /// `-type(int256).min`, truncated to the floor.
+    function testAddNearFloorMatchesShifted(
+        int256 signedCoefficientA,
+        int256 signedCoefficientB,
+        uint256 headroomA,
+        uint256 headroomB
+    ) external pure {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentA = int256(bound(headroomA, 0, 80));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentB = int256(bound(headroomB, 0, 80));
+        (int256 expectedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        if (expectedExponent < 0) {
+            expectedCoefficient =
+                LibDecimalFloatImplementation.withTargetExponent(expectedCoefficient, expectedExponent, 0);
+            expectedExponent = 0;
+        }
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.add(
+            signedCoefficientA, type(int256).min + exponentA, signedCoefficientB, type(int256).min + exponentB
+        );
+        assertTrue(
+            LibDecimalFloatImplementation.eq(
+                signedCoefficient, exponent - type(int256).min, expectedCoefficient, expectedExponent
+            ),
+            "shifted sum"
+        );
+    }
 }
