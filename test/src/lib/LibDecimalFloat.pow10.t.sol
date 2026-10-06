@@ -22,7 +22,14 @@ contract LibDecimalFloatPow10Test is LogTest {
     /// `int32.min` reverts instead of silently producing `FLOAT_ZERO`.
     function testPow10RevertsOnExponentUnderflow() external {
         Float float = Float.wrap(0xffffffffffffffffffffff0000000000000000000000000000000000000000ff);
-        vm.expectPartialRevert(ExponentUnderflow.selector);
+        // 10^x for x = -3.74...160.1 is 10^-0.1 = 0.794328234724281502065918282836387932588960 from `bc -l`.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentUnderflow.selector,
+                int256(79432823472428150206591828283638793258896),
+                int256(-37414441915671114706014331717536845303191873100201)
+            )
+        );
         this.pow10External(float);
     }
 
@@ -77,7 +84,7 @@ contract LibDecimalFloatPow10Test is LogTest {
 
     /// 10^(int32.max + 68) is 1e68 at int32.max, past int224.
     function testPow10PastInt32MaxOverflows() external {
-        vm.expectPartialRevert(ExponentOverflow.selector);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(type(int32).max) + 68));
         this.pow10External(LibDecimalFloat.packLossless(int256(type(int32).max) + 68, 0));
     }
 

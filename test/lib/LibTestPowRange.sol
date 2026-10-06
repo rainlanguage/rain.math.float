@@ -34,7 +34,7 @@ library LibTestPowRange {
             uint256 unit = 10 ** uint256(-exponent);
             bool below = magnitude < unit;
             uint256 distance = below ? unit - magnitude : magnitude - unit;
-            if (distance * 1000 <= unit) {
+            if (distance <= unit / 1000) {
                 uint256 ratio = LibTranscendentalOracle.lnOnePlusOverRatio(distance, unit, below);
                 // distance is under 1e74 and ratio under 2e70, so both fit.
                 // forge-lint: disable-next-line(unsafe-typecast)

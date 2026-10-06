@@ -41,7 +41,7 @@ contract LibDecimalFloatPowTest is LogTest {
         return LibTestErrorBound.floor(signedCoefficient, exponent);
     }
 
-    function assertRoundTrip(Float a, Float b, Float c, Float roundTrip) internal {
+    function assertRoundTrip(Float a, Float b, Float c, Float roundTrip) internal view {
         Float logError = roundTripLogError(a, b, c, roundTrip);
         // |a / roundTrip|, as |a| does not pack for the most negative Float.
         if (logError.lte(LibDecimalFloat.FLOAT_ONE)) {
@@ -67,9 +67,11 @@ contract LibDecimalFloatPowTest is LogTest {
     function expectedPowError(Float a, Float b) internal pure returns (bool mayReturn, bytes memory err) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         if (b.isZero()) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (true, "");
         } else if (signedCoefficientA == 0) {
             return b.lt(LibDecimalFloat.FLOAT_ZERO)
+                // forge-lint: disable-next-line(boolean-cst)
                 ? (false, abi.encodeWithSelector(ZeroNegativePower.selector, b))
                 : (true, bytes(""));
         } else if (signedCoefficientA < 0 && !b.frac().isZero()) {
@@ -384,6 +386,10 @@ contract LibDecimalFloatPowTest is LogTest {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 roundedCoefficient, int256 roundedExponent) =
             LibDecimalFloatImplementation.roundSignificant(signedCoefficientA, exponentA);
+        // A rounding that carries above the largest Float keeps a.
+        if (LibDecimalFloatImplementation.gt(roundedCoefficient, roundedExponent, type(int224).max, type(int32).max)) {
+            (roundedCoefficient, roundedExponent) = (signedCoefficientA, exponentA);
+        }
         unchecked {
             int256 exponent = 0;
             for (int256 i = 1; exponent >= -67;) {
@@ -397,6 +403,23 @@ contract LibDecimalFloatPowTest is LogTest {
                 i *= 10;
             }
         }
+    }
+
+    /// int224.min at int32.max has no packed negation, so a negative base is
+    /// negated unpacked. To the first power, rounding to 41 digits carries
+    /// past int224, so it is itself.
+    function testPowInt224MinAtTop() external {
+        Float a = LibDecimalFloat.packLossless(type(int224).min, type(int32).max);
+        (int256 signedCoefficient, int256 exponent) = this.powExternal(a, LibDecimalFloat.FLOAT_ONE).unpack();
+        assertEq(signedCoefficient, type(int224).min);
+        assertEq(exponent, type(int32).max);
+        // 2^446 to 41 digits from `bc -l`.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector, int256(18170968107390172263733095197200113358841), int256(4294967388)
+            )
+        );
+        this.powExternal(a, LibDecimalFloat.packLossless(2, 0));
     }
 
     /// Rounding a 68 digit coefficient at the top exponent raises the exponent
@@ -826,7 +849,13 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(LibDecimalFloat.packLossless(-2, 0), b);
 
         // 5.7e76 still fits int256 and goes to the squaring loop.
-        vm.expectPartialRevert(ExponentOverflow.selector);
+        // `bc -l`: 7.0556238177305947296050112001e2475478546. The squaring
+        // loop agrees to 27 digits, inside no bound at this N.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector, int256(70556238177305947296050111997187013240152), int256(2475478506)
+            )
+        );
         this.powExternal(above, LibDecimalFloat.packLossless(57, 75));
     }
 
@@ -847,17 +876,19 @@ contract LibDecimalFloatPowTest is LogTest {
         // to 41 digits.
         vm.expectRevert(
             abi.encodeWithSelector(
-                ExponentUnderflow.selector, int256(74184123013748427714634705230952790267351), int256(-2147483755)
+                ExponentUnderflow.selector, int256(-74184123013748427714634705230952790267351), int256(-2147483755)
             )
         );
         this.powExternal(most, LibDecimalFloat.packLossless(-1, 0));
         vm.expectRevert(
             abi.encodeWithSelector(
-                ExponentOverflow.selector, int256(18170968107902172263733095197200113358841), int256(4294967388)
+                ExponentOverflow.selector, int256(18170968107390172263733095197200113358841), int256(4294967388)
             )
         );
         this.powExternal(most, LibDecimalFloat.packLossless(2, 0));
-        assertEq(Float.unwrap(this.powExternal(most, LibDecimalFloat.FLOAT_ZERO)), Float.unwrap(LibDecimalFloat.FLOAT_ONE));
+        assertEq(
+            Float.unwrap(this.powExternal(most, LibDecimalFloat.FLOAT_ZERO)), Float.unwrap(LibDecimalFloat.FLOAT_ONE)
+        );
     }
 
     function testRoundTripFuzzPow(Float a, Float b) external {
