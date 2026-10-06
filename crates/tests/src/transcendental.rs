@@ -948,6 +948,9 @@ mod checker {
         // Half a unit in the 41st digit of 2, plus 2.245e-47.
         let within = sum(&Dec::new(5, -41), &Dec::new(2245, -50));
         edge(&Dec::new(2, 0), &Bound::Log10, &within, &Dec::new(1, -310));
+        // A true value that may be just below one takes the 41st digit there.
+        let within = sum(&Dec::new(5, -42), &Dec::new(2245, -50));
+        edge(&Dec::new(1, 0), &Bound::Log10, &within, &Dec::new(1, -310));
     }
 
     #[test]
@@ -1084,6 +1087,14 @@ mod checker {
         assert!(check_python("p", &t, &py(&two)).is_ok());
         let off = format!("2{}1", "0".repeat(59));
         assert!(check_python("p", &t, &py(&off)).is_err());
+        // At 300 digits: 2 + 1e-250 + 1e-300 is the furthest Python may be.
+        let py300 = |s: String| json!({"ok": [s, -300]});
+        let at: BigInt = BigInt::from(2) * pow10(300) + pow10(50) + 1;
+        assert!(check_python("p", &t, &py300(at.to_string())).is_ok());
+        assert!(check_python("p", &t, &py300((at + 1u32).to_string())).is_err());
+        let zero = Truth::exact(Dec::zero());
+        assert!(check_python("p", &zero, &json!({"ok": ["0", 0]})).is_ok());
+        assert!(check_python("p", &zero, &json!({"ok": ["1", -400]})).is_err());
         let e = Truth::err(RefError::Log10Zero);
         assert!(check_python("p", &e, &json!({"err": "Log10Zero"})).is_ok());
         assert!(check_python("p", &e, &json!({"err": "Log10Negative"})).is_err());
@@ -1121,6 +1132,7 @@ mod checker {
         for (bound, raw) in [
             (Bound::Log10, Dec::new(2245, -50)),
             (Bound::Pow10(0), Dec::new(51_662, -50)),
+            (Bound::Pow10(3), Dec::new(51_662, -47)),
         ] {
             let at = sum(&raw, &fuzz);
             assert!(reorder(bound.clone(), &at).is_ok(), "{bound:?}");
@@ -1159,6 +1171,15 @@ mod checker {
             point(Dec::new(1, 0), mid, Bound::Log10),
         );
         assert!(two.is_err());
+        // The unit is the larger result's: 1 against 1 - 1e-40.
+        let below = Dec::new(pow10(40) - 1, -40);
+        let tie = sum(&Dec::new(1, 0), &Dec::new(-5, -41));
+        let across = check_monotone(
+            "m",
+            point(Dec::new(1, 0), tie.clone(), Bound::Log10),
+            point(below, tie, Bound::Log10),
+        );
+        assert!(across.is_ok());
         // In order is always fine.
         assert!(
             check_monotone(
