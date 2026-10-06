@@ -31,10 +31,11 @@ contract LibDecimalFloatMinusTest is Test {
         try this.minusExternal(signedCoefficientFloat, exponentFloat) returns (
             int256 signedCoefficient, int256 exponent
         ) {
+            // Negating int224.min leaves int224, so the packed result is the
+            // packing of the unpacked one, not the unpacked one itself.
+            (Float expected,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
             Float floatMinus = this.minusExternal(float);
-            (int256 signedCoefficientMinus, int256 exponentMinus) = floatMinus.unpack();
-            assertEq(signedCoefficient, signedCoefficientMinus);
-            assertEq(signedCoefficient == 0 ? int256(0) : exponent, exponentMinus);
+            assertEq(Float.unwrap(expected), Float.unwrap(floatMinus));
         } catch (bytes memory err) {
             vm.expectRevert(err);
             this.minusExternal(float);

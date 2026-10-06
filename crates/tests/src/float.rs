@@ -14,7 +14,7 @@ use std::ops::Neg;
 fn test_zero() {
     let zero = Float::zero().unwrap();
     assert!(zero.is_zero().unwrap());
-    assert_eq!(zero.format().unwrap(), "0");
+    assert_eq!(zero.format_with_scientific(false).unwrap(), "0");
 
     // Test that zero equals parsed zero
     let parsed_zero = Float::parse("0".to_string()).unwrap();
@@ -126,9 +126,9 @@ fn test_float_constants() {
 
 proptest! {
     #[test]
-    /// format() then parse() round-trips to an equal value.
-    fn test_format_parse(float in reasonable_float()) {
-        let formatted = float.format().unwrap();
+    /// Formatting in either notation then parsing round-trips to an equal value.
+    fn test_format_parse(float in reasonable_float(), scientific in any::<bool>()) {
+        let formatted = float.format_with_scientific(scientific).unwrap();
         let parsed = Float::parse(formatted.clone()).unwrap();
         prop_assert!(float.eq(parsed).unwrap());
     }
@@ -192,11 +192,11 @@ proptest! {
         let sum = (a + b).unwrap();
         let diff = (sum - b).unwrap();
         prop_assert_eq!(
-            a.format().unwrap(),
-            diff.format().unwrap(),
+            a.format_with_scientific(false).unwrap(),
+            diff.format_with_scientific(false).unwrap(),
             "a: {}, b: {}",
-            a.format().unwrap(),
-            b.format().unwrap(),
+            a.format_with_scientific(false).unwrap(),
+            b.format_with_scientific(false).unwrap(),
         );
     }
 }
@@ -266,17 +266,17 @@ proptest! {
 fn test_abs() {
     let float = Float::parse("-3613.1324123".to_string()).unwrap();
     let abs = float.abs().unwrap();
-    let formatted = abs.format().unwrap();
+    let formatted = abs.format_with_scientific(false).unwrap();
     assert_eq!(formatted, "3613.1324123");
 
     let float = Float::parse("3613.1324123".to_string()).unwrap();
     let abs = float.abs().unwrap();
-    let formatted = abs.format().unwrap();
+    let formatted = abs.format_with_scientific(false).unwrap();
     assert_eq!(formatted, "3613.1324123");
 
     let float = Float::parse("0".to_string()).unwrap();
     let abs = float.abs().unwrap();
-    let formatted = abs.format().unwrap();
+    let formatted = abs.format_with_scientific(false).unwrap();
     assert_eq!(formatted, "0");
 }
 
@@ -288,7 +288,8 @@ proptest! {
     }
 }
 
-/// Negating a negative produces positive format; negating zero stays "0".
+/// Negating a negative produces positive format in either notation; negating
+/// zero stays "0".
 #[test]
 fn test_minus_format() {
     let float = Float::parse("-123.1234234625468391".to_string()).unwrap();
@@ -297,9 +298,12 @@ fn test_minus_format() {
     let formatted_decimal = negated.format_with_scientific(false).unwrap();
     assert_eq!(formatted_decimal, "123.1234234625468391");
 
+    let formatted_scientific = negated.format_with_scientific(true).unwrap();
+    assert_eq!(formatted_scientific, "1.231234234625468391e2");
+
     let float = Float::parse("0".to_string()).unwrap();
     let negated = float.neg().unwrap();
-    let formatted = negated.format().unwrap();
+    let formatted = negated.format_with_scientific(false).unwrap();
     assert_eq!(formatted, "0");
 }
 
@@ -350,7 +354,7 @@ proptest! {
     /// abs() never produces a string starting with "-".
     fn test_abs_no_minus_sign(float in reasonable_float()) {
         let abs = float.abs().unwrap();
-        let formatted = abs.format().unwrap();
+        let formatted = abs.format_with_scientific(false).unwrap();
         prop_assert!(!formatted.starts_with("-"));
     }
 
@@ -428,9 +432,9 @@ fn test_divide_by_zero_error() {
 #[test]
 fn test_mul_exponent_overflow_error() {
     let near_max_exp = Float::parse("1e2147483646".to_string()).unwrap();
-    let one_e_two = Float::parse("1e2".to_string()).unwrap();
+    let one_e_hundred = Float::parse("1e100".to_string()).unwrap();
 
-    let err = (near_max_exp * one_e_two).unwrap_err();
+    let err = (near_max_exp * one_e_hundred).unwrap_err();
     assert!(matches!(
         err,
         FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
