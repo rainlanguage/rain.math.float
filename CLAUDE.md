@@ -17,10 +17,9 @@ on-chain deploy pins/snapshot, the deploy scripts/tests, and the Rust/WASM/npm
 bindings live in `rain.math.float.deploy` and publish from there. The one Rust
 crate here, `crates/tests`, is test-only and never published. It calls the
 concretes in `test/concrete/` compiled from this source by their own ABI in
-revm, fuzzed against exact references (`exact.rs`, `transcendental.rs`); runs
-the bindings' library tests over the same concretes (`.cargo/config.toml` points
-the bindings at the artifacts and runs their constructors); and cross-references
-the packed constants against values derived in integer arithmetic.
+revm, fuzzed against exact references (`exact.rs`, `transcendental.rs`), and
+cross-references the packed constants and log tables against values derived
+independently.
 
 ## Architecture
 
