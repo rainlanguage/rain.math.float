@@ -6,13 +6,13 @@
 //! error the documented contract gives.
 //! Neighbouring inputs may give results out of order only as the NatSpec
 //! allows: by one unit in the last place, with both true values within the
-//! raw error of the tie between them.
+//! raw error of the tie between them; sqrt never.
 //!
 //! The bounds, as documented:
-//! - pow10: half a unit in the 41st digit plus 5.1662e-6 of a unit.
-//! - log10: half a unit in the 41st digit plus 2.245e-47 absolute.
-//! - pow: 5.00006e-41 + 3N 1e-75 relative, N the integer part of |b|.
-//! - sqrt: 5.00006e-41 relative.
+//! - pow10: half a unit in the 41st digit plus 3.28e-8 of a unit.
+//! - log10: half a unit in the 41st digit plus 2e-50 absolute.
+//! - pow: 5.0000004e-41 + 3N 1e-75 relative, N the integer part of |b|.
+//! - sqrt: correctly rounded, half a unit in the 41st digit.
 //! - pow10 and pow: a result below 1e-2147483608 adds 1e-2147483648.
 
 use crate::evm::{self, TestDecimalFloat as T};
@@ -301,6 +301,7 @@ pub enum Bound {
     Pow10(i64),
     /// pow with N the integer part of |b|.
     Pow(BigInt),
+    Sqrt,
 }
 
 fn sum(a: &Dec, b: &Dec) -> Dec {
@@ -364,17 +365,15 @@ fn check_sol(case: &str, sol: Sol, truth: &Truth, bound: &Bound) -> Result<(), T
     }
     let err = t.err_dec();
     let magnitude = t.value.abs();
+    // The unit of the true value's 41st digit, the smaller one if the
+    // reference's error straddles a power of ten.
+    let half_unit = Dec::new(5, order(&sum(&magnitude, &err.neg())) - 41);
     let (within, carve) = match bound {
-        Bound::Log10 => {
-            // The unit of the true value's 41st digit, the smaller one if the
-            // reference's error straddles a power of ten.
-            let lowest = sum(&magnitude, &err.neg());
-            let half_unit = Dec::new(5, order(&lowest) - 41);
-            (sum(&half_unit, &Dec::new(2245, -50)), Dec::zero())
-        }
-        Bound::Pow10(k) => (Dec::new(5_000_051_662i64, k - 50), Dec::new(1, I32_MIN)),
+        Bound::Log10 => (sum(&half_unit, &Dec::new(2, -50)), Dec::zero()),
+        Bound::Sqrt => (half_unit, Dec::zero()),
+        Bound::Pow10(k) => (Dec::new(5_000_000_328i64, k - 50), Dec::new(1, I32_MIN)),
         Bound::Pow(n) => {
-            let relative = Dec::new(BigInt::from(500_006) * pow10(29) + n * 3, -75);
+            let relative = Dec::new(BigInt::from(50_000_004) * pow10(27) + n * 3, -75);
             (
                 relative.mul_exact(&sum(&magnitude, &err.neg())),
                 Dec::new(1, I32_MIN),
@@ -388,14 +387,12 @@ fn check_sol(case: &str, sol: Sol, truth: &Truth, bound: &Bound) -> Result<(), T
     } else {
         floor_carve(&lowest)
     };
-    let below = matches!(bound, Bound::Log10)
-        .then_some(false)
-        .unwrap_or_else(|| lowest.cmp_value(&Dec::new(1, I32_MIN)).is_lt());
-    let above = !matches!(bound, Bound::Log10)
-        && highest.cmp_value(&largest(t.value.is_negative())).is_gt();
-    let under = !matches!(bound, Bound::Log10) && highest.cmp_value(&Dec::new(1, I32_MIN)).is_lt();
-    let over =
-        !matches!(bound, Bound::Log10) && lowest.cmp_value(&largest(t.value.is_negative())).is_gt();
+    // Only pow10 and pow reach past every Float.
+    let ranged = matches!(bound, Bound::Pow10(_) | Bound::Pow(_));
+    let below = ranged && lowest.cmp_value(&Dec::new(1, I32_MIN)).is_lt();
+    let above = ranged && highest.cmp_value(&largest(t.value.is_negative())).is_gt();
+    let under = ranged && highest.cmp_value(&Dec::new(1, I32_MIN)).is_lt();
+    let over = ranged && lowest.cmp_value(&largest(t.value.is_negative())).is_gt();
     match &sol {
         Ok(s) => {
             prop_assert!(
@@ -486,7 +483,7 @@ pub fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
     let truth = truth_pow(a, &half);
     let py = ask(json!({"op": "pow", "a": float_json(a), "b": float_json(&half)}));
     check_python(&case, &truth, &py)?;
-    check_sol(&case, sol_sqrt(a), &truth, &Bound::Pow(BigInt::zero()))
+    check_sol(&case, sol_sqrt(a), &truth, &Bound::Sqrt)
 }
 
 // ------------------------------------------------------------ monotonicity
@@ -495,11 +492,13 @@ pub fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
 /// tie within which two results can come out in the wrong order.
 fn raw(bound: &Bound, t: &Approx) -> Dec {
     match bound {
-        Bound::Log10 => Dec::new(2245, -50),
-        Bound::Pow10(k) => Dec::new(51_662, k - 50),
+        Bound::Log10 => Dec::new(2, -50),
+        Bound::Pow10(k) => Dec::new(328, k - 50),
         Bound::Pow(n) => {
-            Dec::new(BigInt::from(569) * pow10(27) + n * 3, -75).mul_exact(&t.value.abs())
+            Dec::new(BigInt::from(333) * pow10(25) + n * 3, -75).mul_exact(&t.value.abs())
         }
+        // Correctly rounded: never out of order, which check_monotone asserts.
+        Bound::Sqrt => Dec::zero(),
     }
 }
 
@@ -525,6 +524,10 @@ fn check_monotone(case: &str, lower: Point, upper: Point) -> Result<(), TestCase
     if !a.cmp_value(b).is_gt() {
         return Ok(());
     }
+    prop_assert!(
+        !matches!(lower.bound, Bound::Sqrt),
+        "{case}: {a:?} > {b:?}, and sqrt is monotone"
+    );
     let larger = if a.abs().cmp_value(&b.abs()).is_gt() {
         a.abs()
     } else {
@@ -589,7 +592,7 @@ fn point_sqrt(a: &Dec) -> Point {
     Point {
         sol: sol_sqrt(a),
         truth: truth_pow(a, &Dec::new(5, -1)),
-        bound: Bound::Pow(BigInt::zero()),
+        bound: Bound::Sqrt,
     }
 }
 
@@ -872,18 +875,38 @@ mod checker {
 
     #[test]
     fn log10_bound() {
-        // Half a unit in the 41st digit of 2, plus 2.245e-47.
-        let within = sum(&Dec::new(5, -41), &Dec::new(2245, -50));
+        // Half a unit in the 41st digit of 2, plus 2e-50.
+        let within = sum(&Dec::new(5, -41), &Dec::new(2, -50));
         edge(&Dec::new(2, 0), &Bound::Log10, &within, &Dec::new(1, -310));
         // A true value that may be just below one takes the 41st digit there.
-        let within = sum(&Dec::new(5, -42), &Dec::new(2245, -50));
+        let within = sum(&Dec::new(5, -42), &Dec::new(2, -50));
         edge(&Dec::new(1, 0), &Bound::Log10, &within, &Dec::new(1, -310));
     }
 
     #[test]
+    fn sqrt_bound() {
+        // Half a unit in the 41st digit, nothing more.
+        edge(
+            &Dec::new(2, 0),
+            &Bound::Sqrt,
+            &Dec::new(5, -41),
+            &Dec::new(1, -310),
+        );
+        edge(
+            &Dec::new(1, 0),
+            &Bound::Sqrt,
+            &Dec::new(5, -42),
+            &Dec::new(1, -310),
+        );
+        // Never past every Float.
+        let under = || -> Sol { Err(RefError::ExponentUnderflow.selector()) };
+        assert!(!accepts(&near(Dec::new(1, I32_MIN)), &Bound::Sqrt, under()));
+    }
+
+    #[test]
     fn pow10_bound() {
-        // 3.5 has integer part 0: half a unit plus 5.1662e-6 of one, 1e-40.
-        let within = Dec::new(5_000_051_662i64, -50);
+        // 3.5 has integer part 0: half a unit plus 3.28e-8 of one, 1e-40.
+        let within = Dec::new(5_000_000_328i64, -50);
         edge(
             &Dec::new(35, -1),
             &Bound::Pow10(0),
@@ -894,9 +917,9 @@ mod checker {
 
     #[test]
     fn pow_bound() {
-        // N = 7: 5.00006e-41 + 21e-75 relative to the true value.
+        // N = 7: 5.0000004e-41 + 21e-75 relative to the true value.
         let v = Dec::new(2, 0);
-        let relative = sum(&Dec::new(500_006, -46), &Dec::new(21, -75));
+        let relative = sum(&Dec::new(50_000_004, -48), &Dec::new(21, -75));
         let within = relative.mul_exact(&sum(&v, &Dec::new(-1, -300)));
         edge(
             &v,
@@ -911,11 +934,11 @@ mod checker {
     #[test]
     fn floor_carve_out() {
         let k = -2147483608;
-        let within = Dec::new(5_000_051_662i64, k - 50);
+        let within = Dec::new(5_000_000_328i64, k - 50);
         let step = Dec::new(1, I32_MIN - 12);
         edge(&Dec::new(5, k), &Bound::Pow10(k), &within, &step);
         let k = -2147483620;
-        let within = sum(&Dec::new(5_000_051_662i64, k - 50), &Dec::new(1, I32_MIN));
+        let within = sum(&Dec::new(5_000_000_328i64, k - 50), &Dec::new(1, I32_MIN));
         edge(&Dec::new(5, k), &Bound::Pow10(k), &within, &step);
     }
 
@@ -1062,9 +1085,9 @@ mod checker {
         let fuzz = Dec::new(1, -300);
         let step = Dec::new(1, -310);
         for (bound, raw) in [
-            (Bound::Log10, Dec::new(2245, -50)),
-            (Bound::Pow10(0), Dec::new(51_662, -50)),
-            (Bound::Pow10(3), Dec::new(51_662, -47)),
+            (Bound::Log10, Dec::new(2, -50)),
+            (Bound::Pow10(0), Dec::new(328, -50)),
+            (Bound::Pow10(3), Dec::new(328, -47)),
         ] {
             let at = sum(&raw, &fuzz);
             assert!(reorder(bound.clone(), &at).is_ok(), "{bound:?}");
@@ -1073,9 +1096,11 @@ mod checker {
                 "{bound:?}"
             );
         }
-        // pow: 5.69e-46 relative to the larger true value, the lower point's.
+        // sqrt: never, even with both true values at the tie.
+        assert!(reorder(Bound::Sqrt, &Dec::zero()).is_err());
+        // pow: 3.33e-48 relative to the larger true value, the lower point's.
         let tie = Dec::new(BigInt::from(2) * pow10(40) + 1, -40).mul_exact(&Dec::new(5, -1));
-        let raw = Dec::new(569, -48);
+        let raw = Dec::new(333, -50);
         let pow = |d: &Dec| {
             let hi = Dec::new(BigInt::from(1) * pow10(40) + 1, -40);
             check_monotone(
