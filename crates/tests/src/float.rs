@@ -288,7 +288,8 @@ proptest! {
     }
 }
 
-/// Negating a negative produces positive format; negating zero stays "0".
+/// Negating a negative produces positive format in either notation; negating
+/// zero stays "0".
 #[test]
 fn test_minus_format() {
     let float = Float::parse("-123.1234234625468391".to_string()).unwrap();
@@ -296,6 +297,9 @@ fn test_minus_format() {
 
     let formatted_decimal = negated.format_with_scientific(false).unwrap();
     assert_eq!(formatted_decimal, "123.1234234625468391");
+
+    let formatted_scientific = negated.format_with_scientific(true).unwrap();
+    assert_eq!(formatted_scientific, "1.231234234625468391e2");
 
     let float = Float::parse("0".to_string()).unwrap();
     let negated = float.neg().unwrap();
