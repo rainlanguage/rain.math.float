@@ -19,5 +19,28 @@
       "testsAfter": 649,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-06T18:01:07Z",
+    "commit": "fe9fe46dc5953b98b0b47896d4cbb6571c6631f2",
+    "testsAfterCommit": "6886990717ab26369f1e341f6d15a486ba7d331b",
+    "publishedTag": "sol-v0.2.14",
+    "commitsAheadOfTag": 1,
+    "scope": "pr:323 src change: div ExponentOverflow guard for type(int256).min over a negative power of ten at int256.max (src/lib/implementation/LibDecimalFloatImplementation.sol)",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 10,
+      "killedBefore": 9,
+      "killedAfter": 1,
+      "equivalent": 0,
+      "candidates": 1,
+      "confirmed": 0,
+      "testsBefore": 681,
+      "testsAfter": 682,
+      "filed": [
+        325
+      ]
+    }
   }
 ]
