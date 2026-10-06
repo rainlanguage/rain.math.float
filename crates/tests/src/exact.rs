@@ -125,7 +125,7 @@ impl Dec {
     }
 }
 
-fn pair() -> BoxedStrategy<(Dec, Dec)> {
+pub(crate) fn pair() -> BoxedStrategy<(Dec, Dec)> {
     prop_oneof![
         1 => (float(), float()),
         1 => (float(), coefficient(), -90i64..=90, 0u8..6)
@@ -139,29 +139,33 @@ fn pair() -> BoxedStrategy<(Dec, Dec)> {
 
 // ------------------------------------------------------------------ checking
 
-/// How a call failed: a revert, or the error selector `parse` returns.
+/// How a call failed: a revert of the concrete or of the harness, or the
+/// error selector `parse` returns.
 #[derive(Debug)]
 pub(crate) enum Fail {
     Revert(Bytes),
+    Harness(Bytes),
     Selector([u8; 4]),
 }
 
-/// A revert must decode as one of the concrete's errors.
-fn error_matches(e: &Fail, want: RefError) -> bool {
+/// A revert must decode as one of the errors of the contract that reverted.
+pub(crate) fn error_matches(e: &Fail, want: RefError) -> bool {
     match e {
         Fail::Revert(out) => T::TestDecimalFloatErrors::abi_decode(out)
+            .is_ok_and(|x| x.selector() == want.selector()),
+        Fail::Harness(out) => H::TestDecimalFloatHarnessErrors::abi_decode(out)
             .is_ok_and(|x| x.selector() == want.selector()),
         Fail::Selector(s) => *s == want.selector(),
     }
 }
 
-type Sol<V> = Result<V, Fail>;
+pub(crate) type Sol<V> = Result<V, Fail>;
 
 fn sol<V>(r: Result<V, Bytes>) -> Sol<V> {
     r.map_err(Fail::Revert)
 }
 
-fn sol_float<C: alloy::sol_types::SolCall<Return = B256>>(c: C) -> Sol<Dec> {
+pub(crate) fn sol_float<C: alloy::sol_types::SolCall<Return = B256>>(c: C) -> Sol<Dec> {
     sol(evm::float(c))
 }
 
@@ -169,7 +173,7 @@ fn sol_bool<C: alloy::sol_types::SolCall<Return = bool>>(c: C) -> bool {
     evm::concrete(c).unwrap()
 }
 
-fn sol_parse(s: &str) -> Sol<Dec> {
+pub(crate) fn sol_parse(s: &str) -> Sol<Dec> {
     let r = sol(evm::concrete(T::parseCall { str: s.to_string() }))?;
     if r._0 != [0u8; 4] {
         return Err(Fail::Selector(r._0.0));
@@ -177,7 +181,7 @@ fn sol_parse(s: &str) -> Sol<Dec> {
     Ok(Dec::from_bytes(r._1))
 }
 
-fn sol_format(a: &Dec, scientific: bool) -> Sol<String> {
+pub(crate) fn sol_format(a: &Dec, scientific: bool) -> Sol<String> {
     sol(evm::concrete(T::formatCall {
         a: a.to_bytes(),
         scientific,
@@ -185,7 +189,7 @@ fn sol_format(a: &Dec, scientific: bool) -> Sol<String> {
 }
 
 /// The Python oracle's answer to a float-valued case.
-fn py_float(v: &Value) -> Result<Dec, String> {
+pub(crate) fn py_float(v: &Value) -> Result<Dec, String> {
     match (&v["ok"], &v["err"]) {
         (Value::Array(_), _) => Ok(oracle::to_dec(&v["ok"])),
         (_, Value::String(e)) => Err(e.clone()),
@@ -193,7 +197,7 @@ fn py_float(v: &Value) -> Result<Dec, String> {
     }
 }
 
-fn check_float(
+pub(crate) fn check_float(
     case: &str,
     sol: Sol<Dec>,
     want: Result<Dec, RefError>,
@@ -456,10 +460,9 @@ fn check_extremes_with(
 
 fn check_pack(a: &Dec) -> Result<(), TestCaseError> {
     let s = show(a);
-    let c = alloy::primitives::aliases::I224::from_dec_str(&a.c.to_string()).unwrap();
     let packed = evm::harness(H::packLosslessCall {
-        coefficient: c,
-        exponent: a.e as i32,
+        signedCoefficient: alloy::primitives::I256::from_dec_str(&a.c.to_string()).unwrap(),
+        exponent: alloy::primitives::I256::try_from(a.e).unwrap(),
     })
     .unwrap();
     // packLossless keeps the fields, except that zero packs as FLOAT_ZERO.
@@ -481,7 +484,7 @@ fn check_pack(a: &Dec) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn u256() -> BoxedStrategy<U256> {
+pub(crate) fn u256() -> BoxedStrategy<U256> {
     let int256_max = U256::MAX >> 1usize;
     prop_oneof![
         2 => any::<[u8; 32]>().prop_map(U256::from_be_bytes),
@@ -603,7 +606,7 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
 
 /// A formatted string must be the documented string, denote the float's
 /// value exactly (python reads it independently) and parse back to it.
-fn check_format_one(
+pub(crate) fn check_format_one(
     case: &str,
     a: &Dec,
     sol: Sol<String>,
@@ -657,7 +660,7 @@ fn digit_string(max: usize) -> BoxedStrategy<String> {
 
 /// Well formed literals: digit counts past every limit the parser has, and
 /// exponents near int32 and int256 bounds.
-fn literal() -> BoxedStrategy<String> {
+pub(crate) fn literal() -> BoxedStrategy<String> {
     let exponent_digits = prop_oneof![
         2 => digit_string(80),
         2 => (-200i64..=200).prop_map(|d| (I32_MAX + d).unsigned_abs().to_string()),
@@ -690,7 +693,7 @@ fn literal() -> BoxedStrategy<String> {
         .boxed()
 }
 
-fn check_parse(s: &str) -> Result<(), TestCaseError> {
+pub(crate) fn check_parse(s: &str) -> Result<(), TestCaseError> {
     let case = format!("parse({s})");
     let want = r::parse(s);
     // The digit limits before packing are the parser's own; past them python

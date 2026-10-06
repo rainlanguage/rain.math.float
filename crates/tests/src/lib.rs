@@ -12,6 +12,8 @@ mod exact;
 #[cfg(test)]
 mod float;
 #[cfg(test)]
+mod library;
+#[cfg(test)]
 mod oracle;
 #[cfg(test)]
 mod precise;

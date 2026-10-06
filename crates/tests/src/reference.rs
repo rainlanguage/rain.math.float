@@ -34,6 +34,9 @@ pub enum RefError {
     Log10Negative,
     ZeroNegativePower,
     PowNegativeBase,
+    AgreeToleranceNegative,
+    AgreeNoPositiveTolerance,
+    ParseDecimalFloatExcessCharacters,
 }
 
 impl RefError {
@@ -54,6 +57,9 @@ impl RefError {
             Self::Log10Negative => "Log10Negative(int256,int256)",
             Self::ZeroNegativePower => "ZeroNegativePower(bytes32)",
             Self::PowNegativeBase => "PowNegativeBase(int256,int256)",
+            Self::AgreeToleranceNegative => "AgreeToleranceNegative(bytes32,bytes32)",
+            Self::AgreeNoPositiveTolerance => "AgreeNoPositiveTolerance(bytes32,bytes32)",
+            Self::ParseDecimalFloatExcessCharacters => "ParseDecimalFloatExcessCharacters()",
         }
     }
 
@@ -83,11 +89,11 @@ pub fn int224_max() -> BigInt {
     (BigInt::from(1) << 223usize) - 1
 }
 
-fn int256_min() -> BigInt {
+pub fn int256_min() -> BigInt {
     -(BigInt::from(1) << 255usize)
 }
 
-fn int256_max() -> BigInt {
+pub fn int256_max() -> BigInt {
     (BigInt::from(1) << 255usize) - 1
 }
 
@@ -95,7 +101,7 @@ pub fn fits_int224(c: &BigInt) -> bool {
     *c >= int224_min() && *c <= int224_max()
 }
 
-fn fits_int256(c: &BigInt) -> bool {
+pub fn fits_int256(c: &BigInt) -> bool {
     *c >= int256_min() && *c <= int256_max()
 }
 
@@ -518,6 +524,135 @@ pub fn u256_to_big(v: U256) -> BigInt {
     BigInt::from_bytes_be(Sign::Plus, &v.to_be_bytes::<32>())
 }
 
+/// `packLossy` over any int256 coefficient and exponent: the value as
+/// `pack` fits it and whether that was exact, `FLOAT_ZERO` and lossy when
+/// every digit is shed, `ExponentOverflow` past every Float.
+pub fn pack_lossy(c: &BigInt, e: &BigInt) -> Result<(Dec, bool), RefError> {
+    match pack(&Dec::new(c.clone(), pin(e))) {
+        Packed::Value(v, lossless) => Ok((v, lossless)),
+        Packed::Underflow => Ok((Dec::zero(), false)),
+        Packed::Overflow => Err(RefError::ExponentOverflow),
+    }
+}
+
+/// `packLossless`: `packLossy`, with any lost digit `CoefficientOverflow`.
+pub fn pack_lossless(c: &BigInt, e: &BigInt) -> Result<Dec, RefError> {
+    match pack_lossy(c, e)? {
+        (v, true) => Ok(v),
+        (_, false) => Err(RefError::CoefficientOverflow),
+    }
+}
+
+/// `packArithmeticResult`: truncation tolerated, every digit shed is
+/// `ExponentUnderflow`.
+pub fn pack_arithmetic(c: &BigInt, e: &BigInt) -> Result<Dec, RefError> {
+    arithmetic(&Dec::new(c.clone(), pin(e)))
+}
+
+/// `canonicalize`: zero as `FLOAT_ZERO`, otherwise the largest `|c|` that
+/// fits int224 with the exponent at or above int32.min, the same value.
+pub fn canonicalize(x: &Dec) -> Dec {
+    if x.is_zero() {
+        return Dec::zero();
+    }
+    let (mut c, mut e) = (x.c.clone(), x.e);
+    while e > I32_MIN && fits_int224(&(&c * 10)) {
+        c *= 10;
+        e -= 1;
+    }
+    Dec::new(c, e)
+}
+
+/// `agree`, as its NatSpec states it: a negative tolerance is
+/// `AgreeToleranceNegative`, neither positive `AgreeNoPositiveTolerance`;
+/// otherwise `highest - lowest <= max(absolute, proportional * max(|lowest|,
+/// |highest|))`, the spread aligned as `sub` aligns it and nothing packed.
+pub fn agree(absolute: &Dec, proportional: &Dec, lowest: &Dec, highest: &Dec) -> Result<bool, RefError> {
+    if absolute.is_negative() || proportional.is_negative() {
+        return Err(RefError::AgreeToleranceNegative);
+    }
+    if absolute.is_zero() && proportional.is_zero() {
+        return Err(RefError::AgreeNoPositiveTolerance);
+    }
+    let spread = aligned_sum(highest, &lowest.neg());
+    let anchor = if lowest.abs().cmp_value(&highest.abs()) == Ordering::Greater {
+        lowest.abs()
+    } else {
+        highest.abs()
+    };
+    let scaled = proportional.mul_exact(&anchor);
+    let limit = if absolute.cmp_value(&scaled) == Ordering::Greater {
+        absolute.clone()
+    } else {
+        scaled
+    };
+    Ok(spread.cmp_value(&limit) != Ordering::Greater)
+}
+
+/// The sum under `add`'s documented alignment, before packing.
+fn aligned_sum(a: &Dec, b: &Dec) -> Dec {
+    if a.is_zero() {
+        return b.clone();
+    }
+    if b.is_zero() {
+        return a.clone();
+    }
+    let (mut big, mut small) = (maximize(a), maximize(b));
+    if small.e > big.e {
+        core::mem::swap(&mut big, &mut small);
+    }
+    let gap = (big.e - small.e) as u64;
+    Dec::new(&big.c + shed(&small.c, gap), big.e)
+}
+
+/// `isOdd`: an odd whole number.
+pub fn is_odd(x: &Dec) -> bool {
+    let t = x.trunc();
+    let n = t.normalized();
+    t.eq_value(x) && n.e == 0 && !(&n.c % 2u32).is_zero()
+}
+
+/// `fromFixedDecimalLossy` unpacked: `value × 10^-decimals` as an int256
+/// coefficient, shedding the one digit a value past int256.max has too many,
+/// and whether that was exact.
+pub fn from_fixed_decimal_lossy_unpacked(value: U256, decimals: u8) -> (Dec, bool) {
+    let v = u256_to_big(value);
+    let e = -(decimals as i64);
+    if fits_int256(&v) {
+        (Dec::new(v, e), true)
+    } else {
+        let lossless = (&v % 10u32).is_zero();
+        (Dec::new(v / 10u32, e + 1), lossless)
+    }
+}
+
+pub fn from_fixed_decimal_lossless_unpacked(value: U256, decimals: u8) -> Result<Dec, RefError> {
+    match from_fixed_decimal_lossy_unpacked(value, decimals) {
+        (v, true) => Ok(v),
+        (_, false) => Err(RefError::LossyConversionToFloat),
+    }
+}
+
+/// `toFixedDecimalLossy` over any int256 coefficient and exponent:
+/// `exponent + decimals` past int256.max is `ExponentOverflow`, otherwise as
+/// `to_fixed_decimal_lossy`.
+pub fn to_fixed_decimal_lossy_unpacked(c: &BigInt, e: &BigInt, decimals: u8) -> Result<(U256, bool), RefError> {
+    if c.is_negative() {
+        return Err(RefError::NegativeFixedDecimalConversion);
+    }
+    if !c.is_zero() && !fits_int256(&(e + decimals)) {
+        return Err(RefError::ExponentOverflow);
+    }
+    to_fixed_decimal_lossy(&Dec::new(c.clone(), pin(e)), decimals)
+}
+
+pub fn to_fixed_decimal_lossless_unpacked(c: &BigInt, e: &BigInt, decimals: u8) -> Result<U256, RefError> {
+    match to_fixed_decimal_lossy_unpacked(c, e, decimals)? {
+        (v, true) => Ok(v),
+        (_, false) => Err(RefError::LossyConversionFromFloat),
+    }
+}
+
 /// The documented string of `toDecimalString(x, true)`: one integral digit,
 /// the remaining significant digits after a point, and the exponent unless
 /// it is zero.
@@ -646,6 +781,25 @@ pub fn parse_packed(x: &Dec) -> Result<Dec, RefError> {
 
 /// The parser's limits before packing; the value it hands to packing.
 pub fn parse_unpacked(s: &str) -> Result<Dec, RefError> {
+    let (c, e) = parse_inline(s)?;
+    Ok(Dec::new(c, pin(&e)))
+}
+
+/// An int256 exponent past a quarter of i64 is past int32 by billions of
+/// digits, so pinning it there leaves what packing and conversion decide
+/// unchanged, with room for their exponent arithmetic.
+pub fn pin(e: &BigInt) -> i64 {
+    i64::try_from(e).ok().filter(|v| v.abs() < i64::MAX / 4).unwrap_or(if e.is_negative() {
+        i64::MIN / 4
+    } else {
+        i64::MAX / 4
+    })
+}
+
+/// `parseDecimalFloatInline` over a whole well formed literal: the
+/// coefficient and int256 exponent `parse_unpacked` describes, zero at
+/// exponent zero.
+pub fn parse_inline(s: &str) -> Result<(BigInt, BigInt), RefError> {
     let (mantissa, exp_str) = match s.find(['e', 'E']) {
         Some(i) => (&s[..i], Some(&s[i + 1..])),
         None => (s, None),
@@ -706,16 +860,9 @@ pub fn parse_unpacked(s: &str) -> Result<Dec, RefError> {
         }
     }
     if c.is_zero() {
-        return Ok(Dec::zero());
+        return Ok((BigInt::zero(), BigInt::zero()));
     }
-    // An int256 exponent past i64 is past int32 by billions of digits, so
-    // pinning it at a quarter of i64 leaves what packing decides unchanged.
-    let e = i64::try_from(&e).unwrap_or(if e.is_negative() {
-        i64::MIN / 4
-    } else {
-        i64::MAX / 4
-    });
-    Ok(Dec::new(c, e))
+    Ok((c, e))
 }
 
 #[cfg(test)]

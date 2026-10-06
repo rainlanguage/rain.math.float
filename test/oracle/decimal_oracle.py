@@ -160,6 +160,53 @@ def to_fixed(x, decimals):
     return int(t), t == scaled
 
 
+def coefficient_exponent(f):
+    return int(f[0]), int(f[1])
+
+
+def canonical(f):
+    """The largest |c| that fits int224 with the exponent at or above
+    int32.min, for the same value."""
+    c, e = coefficient_exponent(f)
+    if c == 0:
+        return ["0", 0]
+    while e > INT32_MIN and fits224(c * 10):
+        c, e = c * 10, e - 1
+    return [str(c), e]
+
+
+def aligned_sum(a, b):
+    """add's documented alignment, before packing."""
+    if a.is_zero():
+        return b
+    if b.is_zero():
+        return a
+    (ca, ea), (cb, eb) = maximize(a), maximize(b)
+    if eb > ea:
+        (ca, ea), (cb, eb) = (cb, eb), (ca, ea)
+    unit = Decimal(1).scaleb(ea, EXACT)
+    aligned = EXACT.divide(Decimal(cb).scaleb(eb, EXACT), unit).to_integral_value(ROUND_DOWN, EXACT)
+    return EXACT.multiply(EXACT.add(Decimal(ca), aligned), unit)
+
+
+def agree(absolute, proportional, lowest, highest):
+    if absolute < 0 or proportional < 0:
+        return {"err": "AgreeToleranceNegative"}
+    if not absolute > 0 and not proportional > 0:
+        return {"err": "AgreeNoPositiveTolerance"}
+    spread = aligned_sum(highest, EXACT.minus(lowest))
+    anchor = max(EXACT.abs(lowest), EXACT.abs(highest))
+    limit = max(absolute, EXACT.multiply(proportional, anchor))
+    return {"ok": spread <= limit}
+
+
+def is_odd(x):
+    if x.is_zero() or x != x.to_integral_value(ROUND_DOWN, EXACT):
+        return False
+    _, digits, exp = x.normalize(EXACT).as_tuple()
+    return exp == 0 and digits[-1] % 2 == 1
+
+
 def power_of_ten(y):
     """10^y, or the error of a result past every Float."""
     if abs(y) > RANGE:
@@ -268,6 +315,31 @@ def handle(req):
         return pow10(a)
     if op == "pow":
         return pow_(a, b)
+    if op == "pack":
+        p = pack(a)
+        if isinstance(p, str):
+            return {"err": p}
+        return {"ok": [out(p[0]), p[1]]}
+    if op == "pack_lossless":
+        p = pack(a)
+        if p == "ExponentOverflow":
+            return {"err": p}
+        if isinstance(p, str) or not p[1]:
+            return {"err": "CoefficientOverflow"}
+        return {"ok": out(p[0])}
+    if op == "pack_arithmetic":
+        return arithmetic(a)
+    if op == "canonical":
+        return {"ok": canonical(req["a"])}
+    if op == "agree":
+        return agree(dec(req["absolute"]), dec(req["proportional"]), a, b)
+    if op == "is_odd":
+        return {"ok": is_odd(a)}
+    if op == "from_fixed_unpacked":
+        value, decimals = int(req["value"]), req["decimals"]
+        if value > INT256_MAX:
+            return {"ok": [[str(value // 10), 1 - decimals], value % 10 == 0]}
+        return {"ok": [[str(value), -decimals], True]}
     raise ValueError(f"unknown op {op}")
 
 

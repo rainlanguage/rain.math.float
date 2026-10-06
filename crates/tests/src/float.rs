@@ -6,6 +6,7 @@ use crate::exact::show;
 use crate::reference::Dec;
 use T::TestDecimalFloatErrors as Errors;
 use alloy::primitives::aliases::I224;
+use alloy::primitives::I256;
 use alloy::primitives::{B256, Bytes, FixedBytes, U256, fixed_bytes};
 use alloy::sol_types::{SolCall, SolInterface};
 use core::str::FromStr;
@@ -63,8 +64,8 @@ impl Float {
 
     fn pack_lossless(coefficient: I224, exponent: i32) -> R<Float> {
         evm::harness(H::packLosslessCall {
-            coefficient,
-            exponent,
+            signedCoefficient: I256::from_dec_str(&coefficient.to_string()).unwrap(),
+            exponent: I256::try_from(exponent).unwrap(),
         })
         .map(Float)
         .map_err(|out| Fail::Revert(Errors::abi_decode(&out).unwrap()))
