@@ -883,7 +883,7 @@ library LibDecimalFloat {
     /// true values lie within the raw error of the same rounding tie, and
     /// never by more. Callers must not rely on strict ordering at one-ulp
     /// resolution. log10(10^k) is exactly k.
-    function log10(Float a, address tablesDataContract) internal view returns (Float) {
+    function log10(Float a, address tablesDataContract) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         (signedCoefficient, exponent) =
             LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficient, exponent);
@@ -934,7 +934,7 @@ library LibDecimalFloat {
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
     /// @return The result of a^b.
-    function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
+    function pow(Float a, Float b, address tablesDataContract) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
         return packRoundedSignificant(signedCoefficientA, exponentA);
@@ -944,7 +944,7 @@ library LibDecimalFloat {
     /// are negated unpacked: int224.min at int32.max has no packed negation.
     function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b, address tablesDataContract)
         private
-        view
+        pure
         returns (int256, int256)
     {
         if (b.isZero()) {
@@ -1122,7 +1122,7 @@ library LibDecimalFloat {
     /// @param tablesDataContract The address of the contract containing the
     /// logarithm tables.
     /// @return The square root of a.
-    function sqrt(Float a, address tablesDataContract) internal view returns (Float) {
+    function sqrt(Float a, address tablesDataContract) internal pure returns (Float) {
         return pow(a, FLOAT_HALF, tablesDataContract);
     }
 
