@@ -8,7 +8,7 @@
 
 use crate::reference::{Dec, digits, pow10};
 use astro_float::{BigFloat, Consts, Radix, RoundingMode, Sign as AfSign, WORD_BIT_SIZE};
-use num_bigint::{BigInt, Sign};
+use num_bigint::BigInt;
 use num_traits::{Signed, Zero};
 use std::cell::RefCell;
 
@@ -73,7 +73,15 @@ fn ok(x: BigFloat) -> BigFloat {
 /// A decimal into binary, correctly rounded (exact for an integer of at most
 /// P bits).
 pub fn to_bf(d: &Dec) -> BigFloat {
-    with_cc(|cc| ok(BigFloat::parse(&format!("{}e{}", d.c, d.e), Radix::Dec, P, RM, cc)))
+    with_cc(|cc| {
+        ok(BigFloat::parse(
+            &format!("{}e{}", d.c, d.e),
+            Radix::Dec,
+            P,
+            RM,
+            cc,
+        ))
+    })
 }
 
 fn from_i64(i: i64) -> BigFloat {
@@ -99,7 +107,11 @@ pub fn to_dec_exact(x: &BigFloat) -> Dec {
     }
     // m / 2^s = m 5^s / 10^s, exactly.
     let s = (-shift) as u64;
-    Dec::new(m * num_traits::pow(BigInt::from(5), s as usize), -(s as i64)).normalized()
+    Dec::new(
+        m * num_traits::pow(BigInt::from(5), s as usize),
+        -(s as i64),
+    )
+    .normalized()
 }
 
 /// A decimal truncated towards zero to KEEP significant digits, and the
@@ -130,7 +142,8 @@ fn log10_bf(a: &Dec) -> (BigFloat, i64) {
     assert!(a.c.is_positive());
     // log10(c) for c of at most 68 digits is within 70 of zero, and rounds
     // once; adding e rounds once more on a sum under |e| + 70.
-    let lc = with_cc(|cc| ok(to_bf(&Dec::new(a.c.clone(), 0)).log10(P, RM, cc)));
+    let c = to_bf(&Dec::new(a.c.clone(), 0));
+    let lc = with_cc(|cc| ok(c.log10(P, RM, cc)));
     let l = ok(lc.add(&from_i64(a.e), P, RM));
     let scale = (a.e.unsigned_abs() + 140) as u128;
     let err = scale.to_string().len() as i64 - REL;
@@ -146,7 +159,11 @@ pub fn log10(a: &Dec) -> Approx {
     }
     let (l, err) = log10_bf(a);
     let (value, cut) = shorten(&to_dec_exact(&l));
-    Approx { value, err: Some(add_err(err, cut)) }.checked()
+    Approx {
+        value,
+        err: Some(add_err(err, cut)),
+    }
+    .checked()
 }
 
 /// `floor(x)` and `x - floor(x)`, exactly.
@@ -185,17 +202,27 @@ fn pow10_fraction(f: &Dec, shift: i64) -> Approx {
     // f parses within 2^-P of f < 1, which moves 10^f < 10 by under
     // 10 · 2.31 · 2^-P; the power rounds once more, under 10 · 2^-P. Together
     // under 10^(3 - REL).
-    let m = with_cc(|cc| ok(from_i64(10).pow(&to_bf(f), P, RM, cc)));
+    let f = to_bf(f);
+    let m = with_cc(|cc| ok(from_i64(10).pow(&f, P, RM, cc)));
     let (value, cut) = shorten(&to_dec_exact(&m));
     Approx {
         value: Dec::new(value.c, value.e + shift),
-        err: Some(add_err(shift + 3 - REL, cut + shift)),
+        err: Some(add_err(shift + 3 - REL, cut.saturating_add(shift))),
     }
     .checked()
 }
 
 /// 10^x for |x| <= RANGE, x nonzero. Exact for an integer x.
 pub fn pow10_true(x: &Dec) -> Approx {
+    // |10^x - 1| < 2.31 |x| 1.01 < 1e-328, and an exact split of x would
+    // need |x.e| digits.
+    if order(x) < -330 {
+        return Approx {
+            value: Dec::new(1, 0),
+            err: Some(-328),
+        }
+        .checked();
+    }
     let (k, f) = split(x);
     pow10_fraction(&f, k)
 }
@@ -262,7 +289,7 @@ mod tests {
         assert!(to_dec_exact(&to_bf(&Dec::new(c.clone(), 0))).eq_value(&Dec::new(c, 0)));
     }
 
-    /// Spot values from their definitions, checked to 60 digits.
+    /// Spot values from `bc -l` at scale 70, checked to 60 digits.
     #[test]
     fn known_values() {
         let near = |a: &Approx, want: &str| {
@@ -275,19 +302,19 @@ mod tests {
         };
         near(
             &log10(&Dec::new(2, 0)),
-            "0.301029995663981195213738894724493026768189881462108541310430",
+            "0.3010299956639811952137388947244930267681898814621085413104274611271081",
         );
         near(
             &pow10_true(&Dec::new(5, -1)),
-            "3.16227766016837933199889354443271853371955513932521682685750",
+            "3.1622776601683793319988935444327185337195551393252168268575048527925944",
         );
         near(
             &pow_true(&Dec::new(2, 0), &Dec::new(5, -1)).unwrap(),
-            "1.41421356237309504880168872420969807856967187537694807317667",
+            "1.4142135623730950488016887242096980785696718753769480731766797379907324",
         );
         near(
             &pow_true(&Dec::new(10, 0), &Dec::new(-25, -1)).unwrap(),
-            "0.00316227766016837933199889354443271853371955513932521682685750",
+            "0.0031622776601683793319988935444327185337195551393252168268575048527925",
         );
         assert!(log10(&Dec::new(1000, -5)).value.eq_value(&Dec::new(-2, 0)));
         assert!(log10(&Dec::new(1000, -5)).err.is_none());

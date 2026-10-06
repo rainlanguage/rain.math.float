@@ -2486,6 +2486,7 @@ dependencies = [
  "alloy-primitives",
  "astro-float",
  "num-bigint",
+ "num-integer",
  "num-traits",
  "proptest",
  "rain-math-float",

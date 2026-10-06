@@ -4,6 +4,9 @@
 //! proves (README "log10, pow10, pow and sqrt", and the NatSpec), with no
 //! tolerance added; an exact result must be exact; an error must be the one
 //! error the documented contract gives.
+//! Neighbouring inputs may give results out of order only as the NatSpec
+//! allows: by one unit in the last place, with both true values within the
+//! raw error of the tie between them.
 //!
 //! The bounds, as documented:
 //! - pow10: half a unit in the 41st digit plus 5.1662e-6 of a unit.
@@ -20,7 +23,7 @@ use alloy::primitives::{Address, B256, Bytes, address};
 use alloy::sol_types::SolCall;
 use num_bigint::BigInt;
 use num_integer::Integer;
-use num_traits::{One, Signed, Zero};
+use num_traits::{Signed, Zero};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use revm::context::result::{ExecutionResult, Output, SuccessReason};
@@ -58,7 +61,11 @@ fn put(db: &mut InMemoryDB, code: Bytes) {
 fn build() -> Evm {
     let path = std::env::var("RAIN_MATH_FLOAT_ARTIFACT").expect(".cargo/config.toml sets it");
     let json: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-    let creation: Bytes = json["bytecode"]["object"].as_str().unwrap().parse().unwrap();
+    let creation: Bytes = json["bytecode"]["object"]
+        .as_str()
+        .unwrap()
+        .parse()
+        .unwrap();
     let mut db = InMemoryDB::default();
     put(&mut db, creation);
     let mut evm = Context::mainnet().with_db(db.clone()).build_mainnet();
@@ -257,9 +264,6 @@ fn power(d: &Dec, k: u32) -> Dec {
 /// is a small ratio p/q: g = round41(approx) is exact iff g^q = a^p.
 fn exact_power(a: &Dec, b: &Dec, t: &Approx) -> Option<Dec> {
     let (p, q) = small_ratio(b)?;
-    if r::digits(&a.c) as u64 * p.magnitude().to_u64_digits().first().copied().unwrap_or(0) > 20_000 {
-        return None;
-    }
     let g = round41(&t.value).normalized();
     let pa = u32::try_from(p.magnitude()).unwrap();
     let lhs = power(&g, q);
@@ -303,6 +307,25 @@ pub fn truth_pow(a: &Dec, b: &Dec) -> Truth {
             value: Ok(Approx::exact(a.clone())),
             exact: Some(pack_rounded(a).expect("a Float packs")),
         };
+    }
+    // (10^j)^b is 10^(jb) exactly, a power with one significant digit when jb
+    // is an integer.
+    let n = base.normalized();
+    if n.c == BigInt::from(1) {
+        let y = Dec::new(&b.c * n.e, b.e);
+        if y.abs().cmp_value(&Dec::new(RANGE, 0)).is_gt() {
+            return Truth::err(past(y.c.is_positive()));
+        }
+        if is_integer(&y) {
+            let k = y.normalized();
+            let k = i64::try_from(&(&k.c * pow10(k.e as u64))).expect("|y| <= RANGE");
+            return Truth::exact(sign(Dec::new(1, k)));
+        }
+        let t = precise::pow10_true(&y);
+        return Truth::near(Approx {
+            value: sign(t.value),
+            err: t.err,
+        });
     }
     match precise::pow_true(&base, b) {
         Err(rising) => Truth::err(past(rising)),
@@ -354,7 +377,8 @@ pub enum Bound {
 }
 
 fn sum(a: &Dec, b: &Dec) -> Dec {
-    a.add_exact(b).expect("terms within 400 digits of each other")
+    a.add_exact(b)
+        .expect("terms within 400 digits of each other")
 }
 
 fn largest(negative: bool) -> Dec {
@@ -376,7 +400,7 @@ fn floor_carve(lowest: &Dec) -> Dec {
 }
 
 fn check_sol(case: &str, sol: Sol, truth: &Truth, bound: &Bound) -> Result<(), TestCaseError> {
-    let reverted = |e: RefError| sol == Err(e.selector());
+    let reverted = |e: RefError| matches!(&sol, Err(s) if *s == e.selector());
     let t = match &truth.value {
         Err(e) => {
             prop_assert!(reverted(*e), "{case}: solidity {sol:?}, want {e:?}");
@@ -394,11 +418,17 @@ fn check_sol(case: &str, sol: Sol, truth: &Truth, bound: &Bound) -> Result<(), T
                 return Ok(());
             }
             Packed::Overflow => {
-                prop_assert!(reverted(RefError::ExponentOverflow), "{case}: solidity {sol:?}, want overflow");
+                prop_assert!(
+                    reverted(RefError::ExponentOverflow),
+                    "{case}: solidity {sol:?}, want overflow"
+                );
                 return Ok(());
             }
             Packed::Underflow => {
-                prop_assert!(reverted(RefError::ExponentUnderflow), "{case}: solidity {sol:?}, want underflow");
+                prop_assert!(
+                    reverted(RefError::ExponentUnderflow),
+                    "{case}: solidity {sol:?}, want underflow"
+                );
                 return Ok(());
             }
             // Shed at the exponent floor: the bound, with its carve-out.
@@ -418,19 +448,33 @@ fn check_sol(case: &str, sol: Sol, truth: &Truth, bound: &Bound) -> Result<(), T
         Bound::Pow10(k) => (Dec::new(5_000_051_662i64, k - 50), Dec::new(1, I32_MIN)),
         Bound::Pow(n) => {
             let relative = Dec::new(BigInt::from(500_006) * pow10(29) + n * 3, -75);
-            (relative.mul_exact(&sum(&magnitude, &err.neg())), Dec::new(1, I32_MIN))
+            (
+                relative.mul_exact(&sum(&magnitude, &err.neg())),
+                Dec::new(1, I32_MIN),
+            )
         }
     };
     let lowest = sum(&sum(&magnitude, &err.neg()), &within.neg());
     let highest = sum(&sum(&magnitude, &err), &within);
-    let carve = if carve.is_zero() { carve } else { floor_carve(&lowest) };
-    let below = matches!(bound, Bound::Log10).then_some(false).unwrap_or_else(|| lowest.cmp_value(&Dec::new(1, I32_MIN)).is_lt());
-    let above = !matches!(bound, Bound::Log10) && highest.cmp_value(&largest(t.value.is_negative())).is_gt();
+    let carve = if carve.is_zero() {
+        carve
+    } else {
+        floor_carve(&lowest)
+    };
+    let below = matches!(bound, Bound::Log10)
+        .then_some(false)
+        .unwrap_or_else(|| lowest.cmp_value(&Dec::new(1, I32_MIN)).is_lt());
+    let above = !matches!(bound, Bound::Log10)
+        && highest.cmp_value(&largest(t.value.is_negative())).is_gt();
     let under = !matches!(bound, Bound::Log10) && highest.cmp_value(&Dec::new(1, I32_MIN)).is_lt();
-    let over = !matches!(bound, Bound::Log10) && lowest.cmp_value(&largest(t.value.is_negative())).is_gt();
+    let over =
+        !matches!(bound, Bound::Log10) && lowest.cmp_value(&largest(t.value.is_negative())).is_gt();
     match &sol {
         Ok(s) => {
-            prop_assert!(!under && !over, "{case}: solidity {s:?}, true {t:?} is past every Float");
+            prop_assert!(
+                !under && !over,
+                "{case}: solidity {s:?}, true {t:?} is past every Float"
+            );
             let gap = s.add_exact(&t.value.neg()).map(|d| sum(&d.abs(), &err));
             let allowed = sum(&within, &carve);
             prop_assert!(
@@ -452,19 +496,46 @@ fn float_json(a: &Dec) -> Value {
 pub fn check_log10(a: &Dec) -> Result<(), TestCaseError> {
     let case = format!("log10({})", show(a));
     let truth = truth_log10(a);
-    check_python(&case, &truth, &ask(json!({"op": "log10", "a": float_json(a)})))?;
+    check_python(
+        &case,
+        &truth,
+        &ask(json!({"op": "log10", "a": float_json(a)})),
+    )?;
     check_sol(&case, sol_log10(a), &truth, &Bound::Log10)
+}
+
+/// floor(x) for |x| at most RANGE. Past it the truth is an error and the
+/// bound is unused.
+fn floor_in_range(x: &Dec) -> i64 {
+    if x.abs().cmp_value(&Dec::new(RANGE, 0)).is_gt() {
+        return 0;
+    }
+    let f = r::floor(x).expect("|x| <= RANGE packs");
+    i64::try_from(&(&f.c * pow10(f.e as u64))).expect("|x| <= RANGE")
 }
 
 pub fn check_pow10(x: &Dec) -> Result<(), TestCaseError> {
     let case = format!("pow10({})", show(x));
     let truth = truth_pow10(x);
-    check_python(&case, &truth, &ask(json!({"op": "pow10", "a": float_json(x)})))?;
-    let k = r::floor(x).ok().and_then(|f| i64::try_from(&(&f.c * pow10(f.e.max(0) as u64))).ok());
-    check_sol(&case, sol_pow10(x), &truth, &Bound::Pow10(k.unwrap_or(0)))
+    check_python(
+        &case,
+        &truth,
+        &ask(json!({"op": "pow10", "a": float_json(x)})),
+    )?;
+    check_sol(
+        &case,
+        sol_pow10(x),
+        &truth,
+        &Bound::Pow10(floor_in_range(x)),
+    )
 }
 
+/// The integer part of |b|, for |b| below 1e90: past that every power of a
+/// base other than one is past every Float, and the bound is unused.
 fn integer_part(b: &Dec) -> BigInt {
+    if order(b) >= 90 {
+        return BigInt::zero();
+    }
     let t = b.abs().trunc();
     &t.c * pow10(t.e.max(0) as u64)
 }
@@ -474,7 +545,11 @@ pub fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let truth = truth_pow(a, b);
     let py = ask(json!({"op": "pow", "a": float_json(a), "b": float_json(b)}));
     check_python(&case, &truth, &py)?;
-    let n = if truth.value.is_ok() { integer_part(b) } else { BigInt::zero() };
+    let n = if truth.value.is_ok() {
+        integer_part(b)
+    } else {
+        BigInt::zero()
+    };
     check_sol(&case, sol_pow(a, b), &truth, &Bound::Pow(n))
 }
 
@@ -485,6 +560,158 @@ pub fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
     let py = ask(json!({"op": "pow", "a": float_json(a), "b": float_json(&half)}));
     check_python(&case, &truth, &py)?;
     check_sol(&case, sol_sqrt(a), &truth, &Bound::Pow(BigInt::zero()))
+}
+
+// ------------------------------------------------------------ monotonicity
+
+/// The raw error before rounding, as documented: the distance from a rounding
+/// tie within which two results can come out in the wrong order.
+fn raw(bound: &Bound, t: &Approx) -> Dec {
+    match bound {
+        Bound::Log10 => Dec::new(2245, -50),
+        Bound::Pow10(k) => Dec::new(51_662, k - 50),
+        Bound::Pow(n) => {
+            Dec::new(BigInt::from(569) * pow10(27) + n * 3, -75).mul_exact(&t.value.abs())
+        }
+    }
+}
+
+/// One call of a pair whose true values are in order.
+struct Point {
+    sol: Sol,
+    truth: Truth,
+    bound: Bound,
+}
+
+/// `lower`'s true value is below `upper`'s. Their results may be out of order
+/// only by exactly one unit in the last place, and only when both true values
+/// lie within the larger raw error of the tie between the two results.
+fn check_monotone(case: &str, lower: Point, upper: Point) -> Result<(), TestCaseError> {
+    let (Ok(a), Ok(b), Ok(ta), Ok(tb)) = (
+        &lower.sol,
+        &upper.sol,
+        &lower.truth.value,
+        &upper.truth.value,
+    ) else {
+        return Ok(());
+    };
+    if !a.cmp_value(b).is_gt() {
+        return Ok(());
+    }
+    let larger = if a.abs().cmp_value(&b.abs()).is_gt() {
+        a.abs()
+    } else {
+        b.abs()
+    };
+    let ulp = Dec::new(1, order(&larger) - 40);
+    let gap = sum(a, &b.neg());
+    prop_assert!(
+        !gap.cmp_value(&ulp).is_gt(),
+        "{case}: {a:?} > {b:?} by more than {ulp:?}"
+    );
+    let tie = sum(a, b).mul_exact(&Dec::new(5, -1));
+    let (ra, rb) = (raw(&lower.bound, ta), raw(&upper.bound, tb));
+    let most = if ra.cmp_value(&rb).is_gt() { ra } else { rb };
+    for t in [ta, tb] {
+        let off = sum(&sum(&t.value, &tie.neg()).abs(), &t.err_dec().neg());
+        prop_assert!(
+            !off.cmp_value(&most).is_gt(),
+            "{case}: {a:?} > {b:?}, true {t:?} is {off:?} from the tie {tie:?}"
+        );
+    }
+    Ok(())
+}
+
+/// The next Float up at the same exponent.
+fn next(a: &Dec) -> Option<Dec> {
+    let c = &a.c + 1;
+    r::fits_int224(&c).then(|| Dec::new(c, a.e))
+}
+
+fn point_log10(a: &Dec) -> Point {
+    Point {
+        sol: sol_log10(a),
+        truth: truth_log10(a),
+        bound: Bound::Log10,
+    }
+}
+
+fn point_pow10(x: &Dec) -> Point {
+    Point {
+        sol: sol_pow10(x),
+        truth: truth_pow10(x),
+        bound: Bound::Pow10(floor_in_range(x)),
+    }
+}
+
+fn point_pow(a: &Dec, b: &Dec) -> Point {
+    let truth = truth_pow(a, b);
+    let n = if truth.value.is_ok() {
+        integer_part(b)
+    } else {
+        BigInt::zero()
+    };
+    Point {
+        sol: sol_pow(a, b),
+        truth,
+        bound: Bound::Pow(n),
+    }
+}
+
+fn point_sqrt(a: &Dec) -> Point {
+    Point {
+        sol: sol_sqrt(a),
+        truth: truth_pow(a, &Dec::new(5, -1)),
+        bound: Bound::Pow(BigInt::zero()),
+    }
+}
+
+pub fn monotone_log10(a: &Dec) -> Result<(), TestCaseError> {
+    let a = a.abs();
+    let Some(b) = next(&a).filter(|_| !a.is_zero()) else {
+        return Ok(());
+    };
+    check_monotone(
+        &format!("log10({}) and log10({})", show(&a), show(&b)),
+        point_log10(&a),
+        point_log10(&b),
+    )
+}
+
+pub fn monotone_pow10(x: &Dec) -> Result<(), TestCaseError> {
+    let Some(y) = next(x) else { return Ok(()) };
+    check_monotone(
+        &format!("pow10({}) and pow10({})", show(x), show(&y)),
+        point_pow10(x),
+        point_pow10(&y),
+    )
+}
+
+/// a^b against a^b' for the next b' up: rising in b for a above one, falling
+/// below.
+pub fn monotone_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
+    let Some(c) = next(b) else { return Ok(()) };
+    let case = format!(
+        "pow({0}, {1}) and pow({0}, {2})",
+        show(a),
+        show(b),
+        show(&c)
+    );
+    if a.cmp_value(&Dec::new(1, 0)).is_gt() {
+        check_monotone(&case, point_pow(a, b), point_pow(a, &c))
+    } else {
+        check_monotone(&case, point_pow(a, &c), point_pow(a, b))
+    }
+}
+
+pub fn monotone_sqrt(a: &Dec) -> Result<(), TestCaseError> {
+    let a = a.abs();
+    let Some(b) = next(&a) else { return Ok(()) };
+    check_monotone(
+        &format!("sqrt({}) and sqrt({})", show(&a), show(&b)),
+        point_sqrt(&a),
+        point_sqrt(&b),
+    )
 }
 
 // -------------------------------------------------------------- strategies
@@ -499,7 +726,8 @@ fn digits_below(n: u32) -> BoxedStrategy<BigInt> {
 fn with_fraction(k: BoxedStrategy<i64>, max_frac: u32) -> BoxedStrategy<Dec> {
     (k, 0..=max_frac)
         .prop_flat_map(|(k, n)| {
-            digits_below(n).prop_map(move |f| Dec::new(BigInt::from(k) * pow10(n as u64) + f, -(n as i64)))
+            digits_below(n)
+                .prop_map(move |f| Dec::new(BigInt::from(k) * pow10(n as u64) + f, -(n as i64)))
         })
         .prop_filter("int224", |d| r::fits_int224(&d.c))
         .boxed()
@@ -591,19 +819,27 @@ fn edge_pow() -> BoxedStrategy<(Dec, Dec)> {
         .boxed()
 }
 
-/// g^k and 1/k, whose power is exactly g.
+/// g^k and 1/k, whose power is exactly g, for every g whose g^k fits.
 fn root_anchor() -> BoxedStrategy<(Dec, Dec)> {
-    (
-        1u64..=100_000_000,
-        -5i64..=5,
-        prop_oneof![Just(2u32), Just(4), Just(5), Just(8), Just(10), Just(16), Just(20), Just(25)],
-    )
-        .prop_filter_map("int224", |(g, e, k)| {
+    prop_oneof![
+        Just(2u32),
+        Just(4),
+        Just(5),
+        Just(8),
+        Just(10),
+        Just(16),
+        Just(20),
+        Just(25)
+    ]
+    .prop_flat_map(|k| {
+        // g below 10^(66 / k) keeps g^k under 1e66, inside int224.
+        let most = 10u64.pow((66 / k).min(19));
+        (1..most, -5i64..=5).prop_map(move |(g, e)| {
             let a = power(&Dec::new(g, e), k);
-            let inv = Dec::new(BigInt::from(10u64.pow(4) / k as u64), -4);
-            r::fits_int224(&a.c).then_some((a, inv))
+            (a, Dec::new(BigInt::from(10_000 / k), -4))
         })
-        .boxed()
+    })
+    .boxed()
 }
 
 fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
@@ -631,9 +867,12 @@ fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
 fn a_sqrt() -> BoxedStrategy<Dec> {
     prop_oneof![
         3 => float(),
-        // Perfect squares, whose root is exact.
-        2 => (crate::exact::coefficient(), -1_000_000_000i64..=1_000_000_000).prop_filter_map("33 digits", |(c, e)| {
-            (r::digits(&c) <= 33).then(|| Dec::new(&c * &c, 2 * e))
+        // Perfect squares of up to 33 digits, whose root is exact.
+        2 => (1u32..=33, -1_000_000_000i64..=1_000_000_000).prop_flat_map(|(n, e)| {
+            digits_below(n).prop_map(move |c| {
+                let c = if c.is_zero() { BigInt::from(1) } else { c };
+                Dec::new(&c * &c, 2 * e)
+            })
         }),
     ]
     .boxed()
@@ -653,6 +892,18 @@ proptest! {
 
     #[test]
     fn exact_sqrt(a in a_sqrt()) { check_sqrt(&a)?; }
+
+    #[test]
+    fn monotone_log10_neighbours(a in a_log10()) { monotone_log10(&a)?; }
+
+    #[test]
+    fn monotone_pow10_neighbours(x in x_pow10()) { monotone_pow10(&x)?; }
+
+    #[test]
+    fn monotone_pow_neighbours((a, b) in (moderate(), small_b())) { monotone_pow(&a, &b)?; }
+
+    #[test]
+    fn monotone_sqrt_neighbours(a in a_sqrt()) { monotone_sqrt(&a)?; }
 }
 
 /// The documented anchors, each checked against the reference's own answer
@@ -680,20 +931,36 @@ mod anchors {
 
     #[test]
     fn pow10_of_an_integer_is_exact() {
-        for k in ["0", "1", "-1", "41", "-2147483648", "2147483647", "2147483713"] {
+        for k in [
+            "0",
+            "1",
+            "-1",
+            "41",
+            "-2147483648",
+            "2147483647",
+            "2147483713",
+            "2147483714",
+        ] {
             exactly(truth_pow10(&d(k)), &format!("1e{k}"));
             run(check_pow10(&d(k)));
         }
         run(check_pow10(&Dec::new(20, -1)));
-        // Past the ceiling with 68 digits, and below the floor.
-        run(check_pow10(&d("2147483714")));
+        // 1e2147483714 is 1e67 at the ceiling; one more is 68 digits, past
+        // every Float. Below the floor.
+        run(check_pow10(&d("2147483715")));
         run(check_pow10(&d("-2147483649")));
-        assert!(matches!(truth_pow10(&d("-2147483649")).exact, Some(_)));
+        assert!(truth_pow10(&d("-2147483649")).exact.is_some());
     }
 
     #[test]
     fn log10_of_a_power_of_ten_is_exact() {
-        for (a, k) in [("1", "0"), ("1000", "3"), ("0.001", "-3"), ("1e-2147483648", "-2147483648"), ("1e2147483647", "2147483647")] {
+        for (a, k) in [
+            ("1", "0"),
+            ("1000", "3"),
+            ("0.001", "-3"),
+            ("1e-2147483648", "-2147483648"),
+            ("1e2147483647", "2147483647"),
+        ] {
             exactly(truth_log10(&d(a)), k);
             run(check_log10(&d(a)));
         }
@@ -721,7 +988,10 @@ mod anchors {
             exactly(truth_pow(&d(a), &d(b)), want);
             run(check_pow(&d(a), &d(b)));
         }
-        exactly(truth_pow(&d("152415787532388367501905199875019052100"), &d("0.5")), "12345678901234567890");
+        exactly(
+            truth_pow(&d("152415787532388367501905199875019052100"), &d("0.5")),
+            "12345678901234567890",
+        );
         run(check_sqrt(&d("152415787532388367501905199875019052100")));
         run(check_sqrt(&d("4")));
         run(check_sqrt(&d("0")));
@@ -738,6 +1008,20 @@ mod anchors {
         run(check_pow(&a.neg(), &d("1")));
     }
 
+    /// The one error the contract gives: the truth's, or the exact result's
+    /// when it is past every Float.
+    fn contract_error(t: &Truth) -> Option<RefError> {
+        match (&t.value, &t.exact) {
+            (Err(e), _) => Some(*e),
+            (Ok(_), Some(x)) => match r::pack(x) {
+                Packed::Overflow => Some(RefError::ExponentOverflow),
+                Packed::Underflow => Some(RefError::ExponentUnderflow),
+                Packed::Value(..) => None,
+            },
+            (Ok(_), None) => None,
+        }
+    }
+
     #[test]
     fn errors() {
         for (a, b, e) in [
@@ -746,13 +1030,19 @@ mod anchors {
             ("2", "1e100", RefError::ExponentOverflow),
             ("2", "-1e100", RefError::ExponentUnderflow),
             ("0.5", "1e100", RefError::ExponentUnderflow),
-            ("10", "2147483714", RefError::ExponentOverflow),
+            ("10", "2147483715", RefError::ExponentOverflow),
         ] {
-            assert!(matches!(truth_pow(&d(a), &d(b)).value, Err(x) if x == e), "{a}^{b}");
+            assert_eq!(contract_error(&truth_pow(&d(a), &d(b))), Some(e), "{a}^{b}");
             run(check_pow(&d(a), &d(b)));
         }
-        assert!(matches!(truth_log10(&d("0")).value, Err(RefError::Log10Zero)));
-        assert!(matches!(truth_log10(&d("-1")).value, Err(RefError::Log10Negative)));
+        assert!(matches!(
+            truth_log10(&d("0")).value,
+            Err(RefError::Log10Zero)
+        ));
+        assert!(matches!(
+            truth_log10(&d("-1")).value,
+            Err(RefError::Log10Negative)
+        ));
         run(check_log10(&d("0")));
         run(check_log10(&d("-1")));
         run(check_sqrt(&d("-4")));
