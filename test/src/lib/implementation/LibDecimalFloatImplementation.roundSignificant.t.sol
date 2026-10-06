@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test, stdError} from "forge-std-1.17.0/src/Test.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationRoundSignificantTest is Test {
@@ -118,7 +119,8 @@ contract LibDecimalFloatImplementationRoundSignificantTest is Test {
     }
 
     /// Issue #314: the exponent only rises, so the int256 floor rounds, and
-    /// one that would pass int256.max panics instead of wrapping.
+    /// one that would pass int256.max reverts `ExponentOverflow` instead of
+    /// wrapping, from one past.
     function testRoundSignificantExponentExtremes() external {
         check(
             123456789012345678901234567890123456789012345678901,
@@ -129,9 +131,11 @@ contract LibDecimalFloatImplementationRoundSignificantTest is Test {
         check(type(int256).min, type(int256).min, -57896044618658097711785492504343953926635, type(int256).min + 36);
         check(type(int256).max, type(int256).max - 36, 57896044618658097711785492504343953926635, type(int256).max);
         check(1e41 - 1, type(int256).max, 1e41 - 1, type(int256).max);
-        vm.expectRevert(stdError.arithmeticError);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, type(int256).max, type(int256).max - 35));
+        this.roundSignificantExternal(type(int256).max, type(int256).max - 35);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, type(int256).max, type(int256).max));
         this.roundSignificantExternal(type(int256).max, type(int256).max);
-        vm.expectRevert(stdError.arithmeticError);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e41, type(int256).max));
         this.roundSignificantExternal(1e41, type(int256).max);
     }
 

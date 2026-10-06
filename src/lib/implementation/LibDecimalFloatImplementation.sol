@@ -849,7 +849,7 @@ library LibDecimalFloatImplementation {
 
     /// Rounds a float to 41 significant digits, half away from zero. The
     /// exponent rises by the digits shed and never falls, so it reverts only
-    /// with an arithmetic panic when the rounded exponent passes int256.max.
+    /// `ExponentOverflow` when the rounded exponent passes int256.max.
     /// @param signedCoefficient The signed coefficient of the float.
     /// @param exponent The exponent of the float.
     /// @return signedCoefficient The rounded signed coefficient.
@@ -887,6 +887,9 @@ library LibDecimalFloatImplementation {
                 guard *= 10;
                 shed += 1;
             }
+            if (exponent > type(int256).max - shed) {
+                revert ExponentOverflow(signedCoefficient, exponent);
+            }
             int256 rounded = signedCoefficient / guard;
             int256 remainder = signedCoefficient % guard;
             if (remainder >= guard / 2) {
@@ -894,9 +897,8 @@ library LibDecimalFloatImplementation {
             } else if (remainder <= -guard / 2) {
                 rounded -= 1;
             }
-            signedCoefficient = rounded;
+            return (rounded, exponent + shed);
         }
-        return (signedCoefficient, exponent + shed);
     }
 
     /// log10(x) for a float x, with the guard digits that `log10` rounds
