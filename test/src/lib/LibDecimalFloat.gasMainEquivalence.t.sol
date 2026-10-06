@@ -68,9 +68,7 @@ contract LibDecimalFloatGasMainEquivalenceTest is Test {
     function checkPack(int256 c, int256 e) internal view {
         same(abi.encodeCall(this.mainPackLossy, (c, e)), abi.encodeCall(this.prPackLossy, (c, e)));
         same(abi.encodeCall(this.mainPackLossless, (c, e)), abi.encodeCall(this.prPackLossless, (c, e)));
-        same(
-            abi.encodeCall(this.mainPackArithmeticResult, (c, e)), abi.encodeCall(this.prPackArithmeticResult, (c, e))
-        );
+        same(abi.encodeCall(this.mainPackArithmeticResult, (c, e)), abi.encodeCall(this.prPackArithmeticResult, (c, e)));
     }
 
     /// A coefficient of `d` digits in [1, 77], either sign, `x` choosing where
