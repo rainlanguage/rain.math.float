@@ -941,6 +941,10 @@ library LibDecimalFloat {
                 return b.isOdd() ? magnitude.minus() : magnitude;
             }
         }
+        // 1^b is 1 for every b, including one too large for the integer leg.
+        else if (a.eq(FLOAT_ONE)) {
+            return FLOAT_ONE;
+        }
         // Handle identity case for positive values of a, i.e. a^1.
         else if (b.eq(FLOAT_ONE) && a.gt(FLOAT_ZERO)) {
             return packRoundedSignificant(signedCoefficientA, exponentA);

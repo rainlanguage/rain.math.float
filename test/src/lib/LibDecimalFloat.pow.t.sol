@@ -259,6 +259,29 @@ contract LibDecimalFloatPowTest is LogTest {
         assertNegativeBaseWholeExponent(a, b, integerB % 2 != 0);
     }
 
+    /// 1^b is 1 and (-1)^b is 1 or -1 by the parity of a whole b, for a b too
+    /// large for the integer leg.
+    function testPowOneHugeExponent() external {
+        Float one = LibDecimalFloat.packLossless(1, 0);
+        Float minusOne = LibDecimalFloat.packLossless(-1, 0);
+        Float oneWide = LibDecimalFloat.packLossless(1e66, -66);
+        Float[5] memory exponents = [
+            LibDecimalFloat.packLossless(1, 77),
+            LibDecimalFloat.packLossless(1, 100),
+            LibDecimalFloat.packLossless(-1, 100),
+            LibDecimalFloat.packLossless(15, 99),
+            LibDecimalFloat.packLossless(1, type(int32).max)
+        ];
+        for (uint256 i = 0; i < exponents.length; i++) {
+            assertEq(Float.unwrap(this.powExternal(one, exponents[i])), Float.unwrap(LibDecimalFloat.FLOAT_ONE));
+            assertEq(Float.unwrap(this.powExternal(oneWide, exponents[i])), Float.unwrap(LibDecimalFloat.FLOAT_ONE));
+            assertEq(Float.unwrap(this.powExternal(minusOne, exponents[i])), Float.unwrap(LibDecimalFloat.FLOAT_ONE));
+        }
+        // The largest odd b packs with exponent 0, below the integer leg's
+        // limit, and keeps the sign.
+        assertTrue(this.powExternal(minusOne, LibDecimalFloat.packLossless(type(int224).max, 0)).eq(minusOne));
+    }
+
     /// a^0 = 1 for all a including 0^0.
     function testPowBZero(Float a, int32 exponentB) external {
         Float b = LibDecimalFloat.packLossless(0, exponentB);
