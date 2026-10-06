@@ -9,7 +9,7 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 contract LibDecimalFloatPow10Test is LogTest {
     using LibDecimalFloat for Float;
 
-    function pow10External(int256 signedCoefficient, int256 exponent) external returns (int256, int256) {
+    function pow10External(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
         return LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
     }
 
