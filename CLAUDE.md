@@ -61,11 +61,12 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
   the coefficient in int224 AND to lift an exponent below int32.min back to the
   floor. `ExponentUnderflow` is only the case where every digit has been shed.
   The pow10 and pow bounds add 1e-2147483648 absolute there.
-- log10 refines a log table seed in 1e50 fixed point; pow10 reads no tables.
-- log10, pow10, pow and sqrt are monotone within rounding error, not correctly
-  rounded: order can flip by one ulp at a shared rounding tie, never more. Exact
-  results stay exact. Bounds and contract: README; tests assert them via
-  `test/lib/LibTestErrorBound.sol`.
+- log10 and pow10 read no tables; both work in 1e50 fixed point. Their tables
+  parameters are kept, unused.
+- sqrt is correctly rounded, so monotone. log10, pow10 and pow are monotone
+  within rounding error, not correctly rounded: order can flip by one ulp at a
+  shared rounding tie, never more. Exact results stay exact. Bounds and
+  contract: README; tests assert them via `test/lib/LibTestErrorBound.sol`.
 - Three packing modes:
   - `packLossless`: reverts on any precision loss.
   - `packLossy`: surfaces the `lossless` flag, returns `FLOAT_ZERO` on exponent

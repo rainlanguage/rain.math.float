@@ -36,7 +36,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
     }
 
     /// The result is within half a unit plus `POW10_RAW_ERROR` units of 1e-50
-    /// over a unit of `POW_GUARD` of them, 5.1662e-6, and the 70 digit
+    /// over a unit of `POW_GUARD` of them, 3.28e-8, and the 70 digit
     /// reference is within 1e-29 of a unit.
     function testPow10Accuracy() external pure {
         int256[4][] memory references = pow10References();
@@ -57,7 +57,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
                 exponent += 1;
             }
             assertTrue(
-                LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 50000516621, exponent - 11),
+                LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 50000003281, exponent - 11),
                 "pow10 error"
             );
         }
@@ -373,11 +373,14 @@ contract LibDecimalFloatImplementationPow10Test is Test {
     /// Guard digits of exactly half a unit round up, and one below half
     /// rounds down.
     function testPow10RoundsHalfUp() external pure {
-        int256[2] memory xs = [
-            int256(264000000000000000000000000000000085554903744231), 1056000000000000000000000000000000342222419894399
+        int256[4] memory xs = [
+            int256(10857362048),
+            67315644695,
+            52839762350034614138096464404871856380432525744962,
+            62876337819492131669053461917963730523385842721800
         ];
-        int256[2] memory remainders = [int256(5e9), 5e9 - 1];
-        int256[2] memory carries = [int256(1), 0];
+        int256[4] memory remainders = [int256(5e9), 5e9 - 1, 5e9, 5e9 - 1];
+        int256[4] memory carries = [int256(1), 0, 1, 0];
         for (uint256 i = 0; i < xs.length; i++) {
             (int256 unrounded, int256 unroundedExponent) = LibDecimalFloatImplementation.pow10Unrounded(xs[i], -50);
             assertEq(unrounded % 1e10, remainders[i], "remainder");
@@ -435,11 +438,11 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         return actual > expected ? actual - expected : expected - actual;
     }
 
-    /// Half a unit plus 5166.2 billionths, pow10's bound, plus 2 for the
+    /// Half a unit plus 32.8 billionths, pow10's bound, plus 2 for the
     /// oracle: exp10Small is within a few units of 1e-70, under 1e-18 of
     /// these billionths, and the expected value floors one.
     function testPow10OracleFuzz(uint256 primeSeed, uint256 j, int256 d, int256 n) external pure {
-        assertLe(pow10OracleError(primeSeed, j, d, n), 500005168, "pow10 error");
+        assertLe(pow10OracleError(primeSeed, j, d, n), 500000034, "pow10 error");
     }
 
     /// pow10(x + k) is pow10(x) 10^k exactly for an integer k. x is at the

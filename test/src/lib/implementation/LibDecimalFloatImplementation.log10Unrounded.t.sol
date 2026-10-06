@@ -54,7 +54,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
         );
     }
 
-    /// Within a table step of 1 the log is all correction and the error is
+    /// Within a factor 1.001 of 1 the log is all correction and the error is
     /// under 3.27e-49 of it.
     function checkRelative(int256 signedCoefficient, int256 exponent) internal {
         (int256 errorCoefficient, int256 errorExponent, int256 expectedCoefficient, int256 expectedExponent) =
@@ -84,6 +84,16 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
         checkExact(1e76, 1e30, 1e30 + 76);
     }
 
+    /// Within 75 of the floor the shift the exponent cannot take is the
+    /// shortfall, and the log is still exact.
+    function testLog10UnroundedPowersOfTenAtFloor() external {
+        int256 min = type(int256).min;
+        checkExact(1, min, min);
+        checkExact(10, min, min + 1);
+        checkExact(1, min + 74, min + 74);
+        checkExact(1, min + 75, min + 75);
+    }
+
     function testLog10UnroundedZero() external {
         vm.expectRevert(abi.encodeWithSelector(Log10Zero.selector));
         this.log10UnroundedExternal(0, 5);
@@ -97,7 +107,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
         this.log10UnroundedExternal(-1e70, -2);
     }
 
-    /// Either side of each table edge, near 1 where the seed is exact and
+    /// Either side of each 1.001 edge, near 1 where the seed is exact and
     /// with a characteristic where it is not.
     function testLog10UnroundedTableEdges() external {
         int256[4] memory edges = [int256(1.001e75 - 1), 1.001e75, 9.999e75 - 1, 9.999e75];
