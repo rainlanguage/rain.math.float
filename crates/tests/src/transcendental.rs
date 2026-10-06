@@ -906,6 +906,282 @@ proptest! {
     fn monotone_sqrt_neighbours(a in a_sqrt()) { monotone_sqrt(&a)?; }
 }
 
+/// The checks themselves, on made-up results: each accepts a result at
+/// exactly the documented bound and rejects one a step past it, so the bounds
+/// are the NatSpec's with no margin, with the reference's own error taken off.
+mod checker {
+    use super::*;
+
+    /// A reference value within 300 digits below its leading one.
+    fn near(value: Dec) -> Truth {
+        let err = Some(order(&value) - 300);
+        Truth::near(Approx { value, err })
+    }
+
+    fn accepts(truth: &Truth, bound: &Bound, sol: Sol) -> bool {
+        check_sol("checker", sol, truth, bound).is_ok()
+    }
+
+    /// `v + within - err` is the furthest result the bound admits, and a
+    /// step of `step` further is past it.
+    fn edge(v: &Dec, bound: &Bound, within: &Dec, step: &Dec) {
+        let truth = near(v.clone());
+        let err = Dec::new(1, order(v) - 300);
+        let at = sum(&sum(v, within), &err.neg());
+        assert!(accepts(&truth, bound, Ok(at.clone())), "{at:?} for {v:?}");
+        let past = sum(&at, step);
+        assert!(
+            !accepts(&truth, bound, Ok(past.clone())),
+            "{past:?} for {v:?}"
+        );
+        let low = sum(&sum(v, &within.neg()), &err);
+        assert!(accepts(&truth, bound, Ok(low.clone())), "{low:?} for {v:?}");
+        let below = sum(&low, &step.neg());
+        assert!(
+            !accepts(&truth, bound, Ok(below.clone())),
+            "{below:?} for {v:?}"
+        );
+    }
+
+    #[test]
+    fn log10_bound() {
+        // Half a unit in the 41st digit of 2, plus 2.245e-47.
+        let within = sum(&Dec::new(5, -41), &Dec::new(2245, -50));
+        edge(&Dec::new(2, 0), &Bound::Log10, &within, &Dec::new(1, -310));
+    }
+
+    #[test]
+    fn pow10_bound() {
+        // 3.5 has integer part 0: half a unit plus 5.1662e-6 of one, 1e-40.
+        let within = Dec::new(5_000_051_662i64, -50);
+        edge(
+            &Dec::new(35, -1),
+            &Bound::Pow10(0),
+            &within,
+            &Dec::new(1, -310),
+        );
+    }
+
+    #[test]
+    fn pow_bound() {
+        // N = 7: 5.00006e-41 + 21e-75 relative to the true value.
+        let v = Dec::new(2, 0);
+        let relative = sum(&Dec::new(500_006, -46), &Dec::new(21, -75));
+        let within = relative.mul_exact(&sum(&v, &Dec::new(-1, -300)));
+        edge(
+            &v,
+            &Bound::Pow(BigInt::from(7)),
+            &within,
+            &Dec::new(1, -310),
+        );
+    }
+
+    /// At or above 1e-2147483608 the bound has no carve-out; below it, it adds
+    /// 1e-2147483648.
+    #[test]
+    fn floor_carve_out() {
+        let k = -2147483608;
+        let within = Dec::new(5_000_051_662i64, k - 50);
+        let step = Dec::new(1, I32_MIN - 12);
+        edge(&Dec::new(5, k), &Bound::Pow10(k), &within, &step);
+        let k = -2147483620;
+        let within = sum(&Dec::new(5_000_051_662i64, k - 50), &Dec::new(1, I32_MIN));
+        edge(&Dec::new(5, k), &Bound::Pow10(k), &within, &step);
+    }
+
+    /// A revert is accepted only where the bound reaches past every Float.
+    #[test]
+    fn reverts() {
+        let under = || -> Sol { Err(RefError::ExponentUnderflow.selector()) };
+        let over = || -> Sol { Err(RefError::ExponentOverflow.selector()) };
+        let ordinary = near(Dec::new(5, -100));
+        assert!(!accepts(&ordinary, &Bound::Pow(BigInt::zero()), under()));
+        assert!(!accepts(&ordinary, &Bound::Pow(BigInt::zero()), over()));
+        // 5e-2147483648 is a Float: no underflow for it.
+        let lowest = near(Dec::new(5, I32_MIN));
+        assert!(!accepts(&lowest, &Bound::Pow10(I32_MIN), under()));
+        // Straddling the floor, either.
+        let straddle = near(Dec::new(1, I32_MIN));
+        assert!(accepts(&straddle, &Bound::Pow10(I32_MIN), under()));
+        assert!(accepts(
+            &straddle,
+            &Bound::Pow10(I32_MIN),
+            Ok(Dec::new(1, I32_MIN))
+        ));
+        // Past every Float: only the error.
+        let tiny = near(Dec::new(1, I32_MIN - 100));
+        assert!(accepts(&tiny, &Bound::Pow10(I32_MIN - 100), under()));
+        assert!(!accepts(
+            &tiny,
+            &Bound::Pow10(I32_MIN - 100),
+            Ok(Dec::new(1, I32_MIN))
+        ));
+        let huge = near(Dec::new(1, I32_MAX + 100));
+        assert!(accepts(&huge, &Bound::Pow10(I32_MAX + 100), over()));
+        assert!(!accepts(
+            &huge,
+            &Bound::Pow10(I32_MAX + 100),
+            Ok(largest(false))
+        ));
+        // log10 never over- or underflows.
+        assert!(!accepts(&ordinary, &Bound::Log10, under()));
+        // The most negative Float is one further from zero than the largest.
+        assert!(largest(true).eq_value(&Dec::new(-r::int224_min(), I32_MAX)));
+        assert!(largest(false).eq_value(&Dec::new(r::int224_max(), I32_MAX)));
+    }
+
+    #[test]
+    fn exact_and_errors() {
+        let two = Truth::exact(Dec::new(2, 0));
+        assert!(accepts(&two, &Bound::Log10, Ok(Dec::new(20, -1))));
+        assert!(!accepts(
+            &two,
+            &Bound::Log10,
+            Ok(sum(&Dec::new(2, 0), &Dec::new(1, -50)))
+        ));
+        let past = Truth::exact(Dec::new(1, I32_MAX + 68));
+        assert!(accepts(
+            &past,
+            &Bound::Pow10(0),
+            Err(RefError::ExponentOverflow.selector())
+        ));
+        assert!(!accepts(
+            &past,
+            &Bound::Pow10(0),
+            Err(RefError::ExponentUnderflow.selector())
+        ));
+        let gone = Truth::exact(Dec::new(1, I32_MIN - 1));
+        assert!(accepts(
+            &gone,
+            &Bound::Pow10(0),
+            Err(RefError::ExponentUnderflow.selector())
+        ));
+        assert!(!accepts(
+            &gone,
+            &Bound::Pow10(0),
+            Err(RefError::ExponentOverflow.selector())
+        ));
+        let e = Truth::err(RefError::Log10Zero);
+        assert!(accepts(
+            &e,
+            &Bound::Log10,
+            Err(RefError::Log10Zero.selector())
+        ));
+        assert!(!accepts(
+            &e,
+            &Bound::Log10,
+            Err(RefError::Log10Negative.selector())
+        ));
+        assert!(!accepts(&e, &Bound::Log10, Ok(Dec::zero())));
+    }
+
+    #[test]
+    fn python_check() {
+        let t = near(Dec::new(2, 0));
+        let py = |s: &str| json!({"ok": [s, -60]});
+        // Within 1e-250 + 1e-300 of 2 at 60 digits is only 2 itself.
+        let two = format!("2{}", "0".repeat(60));
+        assert!(check_python("p", &t, &py(&two)).is_ok());
+        let off = format!("2{}1", "0".repeat(59));
+        assert!(check_python("p", &t, &py(&off)).is_err());
+        let e = Truth::err(RefError::Log10Zero);
+        assert!(check_python("p", &e, &json!({"err": "Log10Zero"})).is_ok());
+        assert!(check_python("p", &e, &json!({"err": "Log10Negative"})).is_err());
+        assert!(check_python("p", &e, &json!({"ok": ["0", 0]})).is_err());
+    }
+
+    fn point(sol: Dec, value: Dec, bound: Bound) -> Point {
+        Point {
+            sol: Ok(sol),
+            truth: near(value),
+            bound,
+        }
+    }
+
+    /// Results one unit out of order, with the true values at `d` either side
+    /// of the tie between them.
+    fn reorder(bound: Bound, d: &Dec) -> Result<(), TestCaseError> {
+        let (a, b) = (
+            Dec::new(BigInt::from(1) * pow10(40) + 1, -40),
+            Dec::new(1, 0),
+        );
+        let tie = Dec::new(BigInt::from(2) * pow10(40) + 1, -40).mul_exact(&Dec::new(5, -1));
+        check_monotone(
+            "m",
+            point(a, sum(&tie, &d.neg()), bound.clone()),
+            point(b, sum(&tie, d), bound),
+        )
+    }
+
+    /// Out of order by one unit only within the raw error of the tie.
+    #[test]
+    fn monotone() {
+        let fuzz = Dec::new(1, -300);
+        let step = Dec::new(1, -310);
+        for (bound, raw) in [
+            (Bound::Log10, Dec::new(2245, -50)),
+            (Bound::Pow10(0), Dec::new(51_662, -50)),
+        ] {
+            let at = sum(&raw, &fuzz);
+            assert!(reorder(bound.clone(), &at).is_ok(), "{bound:?}");
+            assert!(
+                reorder(bound.clone(), &sum(&at, &step)).is_err(),
+                "{bound:?}"
+            );
+        }
+        // pow: 5.69e-46 relative to the larger true value, the lower point's.
+        let tie = Dec::new(BigInt::from(2) * pow10(40) + 1, -40).mul_exact(&Dec::new(5, -1));
+        let raw = Dec::new(569, -48);
+        let pow = |d: &Dec| {
+            let hi = Dec::new(BigInt::from(1) * pow10(40) + 1, -40);
+            check_monotone(
+                "m",
+                point(hi, tie.clone(), Bound::Pow(BigInt::zero())),
+                point(
+                    Dec::new(1, 0),
+                    sum(&tie, &d.neg()),
+                    Bound::Pow(BigInt::zero()),
+                ),
+            )
+        };
+        let at = sum(&raw.mul_exact(&tie), &fuzz);
+        assert!(pow(&at).is_ok());
+        assert!(pow(&sum(&at, &step)).is_err());
+        // Two units out of order, even with both true values at the tie.
+        let mid = Dec::new(BigInt::from(1) * pow10(40) + 1, -40);
+        let two = check_monotone(
+            "m",
+            point(
+                Dec::new(BigInt::from(1) * pow10(40) + 2, -40),
+                mid.clone(),
+                Bound::Log10,
+            ),
+            point(Dec::new(1, 0), mid, Bound::Log10),
+        );
+        assert!(two.is_err());
+        // In order is always fine.
+        assert!(
+            check_monotone(
+                "m",
+                point(Dec::new(1, 0), Dec::new(1, 0), Bound::Log10),
+                point(Dec::new(5, 0), Dec::new(5, 0), Bound::Log10),
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn integer_parts() {
+        assert_eq!(floor_in_range(&Dec::new(-25, -1)), -3);
+        assert_eq!(floor_in_range(&Dec::new(25, -1)), 2);
+        assert_eq!(floor_in_range(&Dec::new(3, 1)), 30);
+        assert_eq!(floor_in_range(&Dec::new(1, 100)), 0);
+        assert_eq!(integer_part(&Dec::new(-75, -1)), BigInt::from(7));
+        assert_eq!(integer_part(&Dec::new(12, 1)), BigInt::from(120));
+        assert_eq!(integer_part(&Dec::new(1, 95)), BigInt::zero());
+    }
+}
+
 /// The documented anchors, each checked against the reference's own answer
 /// and then through the same checks as the fuzz.
 mod anchors {
@@ -982,6 +1258,9 @@ mod anchors {
             ("0", "0", "1"),
             ("0", "2", "0"),
             ("-1", "1e10", "1"),
+            ("-1", "3", "-1"),
+            ("-10", "3", "-1000"),
+            ("-0.1", "-3", "-1000"),
             ("7", "0", "1"),
             ("1", "1e100", "1"),
         ] {
@@ -1008,6 +1287,16 @@ mod anchors {
         run(check_pow(&a.neg(), &d("1")));
     }
 
+    /// At the exponent ceiling, a rounding that carries past int224 packs the
+    /// unrounded a instead.
+    #[test]
+    fn pow_one_at_the_ceiling() {
+        let a = Dec::new(r::int224_max(), I32_MAX);
+        let t = truth_pow(&a, &d("1"));
+        assert!(t.exact.as_ref().unwrap().eq_value(&a), "{t:?}");
+        run(check_pow(&a, &d("1")));
+    }
+
     /// The one error the contract gives: the truth's, or the exact result's
     /// when it is past every Float.
     fn contract_error(t: &Truth) -> Option<RefError> {
@@ -1031,6 +1320,8 @@ mod anchors {
             ("2", "-1e100", RefError::ExponentUnderflow),
             ("0.5", "1e100", RefError::ExponentUnderflow),
             ("10", "2147483715", RefError::ExponentOverflow),
+            ("10", "1e10", RefError::ExponentOverflow),
+            ("0.1", "1e10", RefError::ExponentUnderflow),
         ] {
             assert_eq!(contract_error(&truth_pow(&d(a), &d(b))), Some(e), "{a}^{b}");
             run(check_pow(&d(a), &d(b)));
