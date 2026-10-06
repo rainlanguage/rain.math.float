@@ -130,6 +130,8 @@ def fixed_lossy(value, decimals):
 def to_fixed(x, decimals):
     if x < 0:
         return "NegativeFixedDecimalConversion", None
+    if x.is_zero():
+        return 0, True
     scaled = x.scaleb(decimals, EXACT)
     if scaled.adjusted() > 80:
         return "FixedDecimalOverflow", None

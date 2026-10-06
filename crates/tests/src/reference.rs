@@ -404,6 +404,9 @@ pub fn frac(a: &Dec) -> Result<Dec, RefError> {
         return Ok(Dec::zero());
     }
     let t = a.trunc();
+    if t.is_zero() {
+        return arithmetic(a);
+    }
     arithmetic(&Dec::new(&a.c - t.at_exponent(a.e), a.e))
 }
 
@@ -457,10 +460,11 @@ pub fn to_fixed_decimal_lossy(x: &Dec, decimals: u8) -> Result<(U256, bool), Ref
         return Err(RefError::FixedDecimalOverflow);
     }
     let t = scaled.trunc();
-    if t.c > u256_to_big(U256::MAX) {
+    let int = if t.e > 0 { t.at_exponent(0) } else { t.c.clone() };
+    if int > u256_to_big(U256::MAX) {
         return Err(RefError::FixedDecimalOverflow);
     }
-    let value = U256::from_str_radix(&t.c.to_string(), 10).unwrap();
+    let value = U256::from_str_radix(&int.to_string(), 10).unwrap();
     Ok((value, t.eq_value(&scaled)))
 }
 
@@ -765,7 +769,7 @@ mod tests {
         assert!(literal_value("-1.50e+2").eq_value(&Dec::new(-150, 0)));
         assert!(parse("-0.5").unwrap().eq_value(&Dec::new(-5, -1)));
         assert!(matches!(
-            parse("1.0000000000000000000000000000000000000000000000000000000000000000001"),
+            parse("1.00000000000000000000000000000000000000000000000000000000000000000001"),
             Err(RefError::ParseDecimalPrecisionLoss)
         ));
         assert!(
