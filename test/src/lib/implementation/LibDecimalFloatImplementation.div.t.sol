@@ -104,6 +104,19 @@ contract LibDecimalFloatImplementationDivTest is Test {
         checkDiv(min, -2, 1, min, min, type(int256).max - 1);
     }
 
+    /// A negative divisor that is not a power of ten leaves a quotient under
+    /// 2^255, so the exponent can be exactly `type(int256).max`.
+    function testDivMinByNegativeNonPowerOfTenAtMax() external pure {
+        checkDiv(
+            type(int256).min,
+            type(int256).max,
+            -3,
+            0,
+            19298681539552699237261830834781317975544997444273427339909597334652188273322,
+            type(int256).max
+        );
+    }
+
     function testDivOneByOneAtFloor() external pure {
         int256 min = type(int256).min;
         checkDiv(1, min, 1, min, 1e76, -76);
