@@ -523,12 +523,7 @@ fn check_from_fixed(value: U256, decimals: u8) -> Result<(), TestCaseError> {
         case
     );
     let lossy = evm::concrete(T::fromFixedDecimalLossyCall { value, decimals }).unwrap();
-    let (s, sol_lossless) = (Dec::from_bytes(lossy._0), lossy._1);
-    prop_assert!(
-        s.eq_value(&want),
-        "{case}: solidity {s:?}, reference {want:?}"
-    );
-    prop_assert_eq!(sol_lossless, want_lossless, "{}: lossless", case);
+    check_from_fixed_lossy(&case, lossy, &want, want_lossless)?;
 
     let py =
         ask(json!({"op": "from_fixed_lossless", "value": value.to_string(), "decimals": decimals}));
@@ -538,6 +533,21 @@ fn check_from_fixed(value: U256, decimals: u8) -> Result<(), TestCaseError> {
         r::from_fixed_decimal_lossless(value, decimals),
         py,
     )
+}
+
+fn check_from_fixed_lossy(
+    case: &str,
+    lossy: T::fromFixedDecimalLossyReturn,
+    want: &Dec,
+    want_lossless: bool,
+) -> Result<(), TestCaseError> {
+    let (s, sol_lossless) = (Dec::from_bytes(lossy._0), lossy._1);
+    prop_assert!(
+        s.eq_value(want),
+        "{case}: solidity {s:?}, reference {want:?}"
+    );
+    prop_assert_eq!(sol_lossless, want_lossless, "{}: lossless", case);
+    Ok(())
 }
 
 fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
@@ -907,6 +917,22 @@ mod checker {
                 "{past:?}"
             );
         }
+    }
+
+    fn from_fixed_accepts(value: Dec, lossless: bool) -> bool {
+        let lossy = T::fromFixedDecimalLossyReturn {
+            _0: value.to_bytes(),
+            _1: lossless,
+        };
+        check_from_fixed_lossy("checker", lossy, &one(), true).is_ok()
+    }
+
+    #[test]
+    fn from_fixed_lossy_rejects_wrong_solidity() {
+        assert!(from_fixed_accepts(one(), true));
+        assert!(from_fixed_accepts(Dec::new(10, -1), true));
+        assert!(!from_fixed_accepts(two(), true));
+        assert!(!from_fixed_accepts(one(), false));
     }
 
     #[test]
