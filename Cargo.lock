@@ -2444,8 +2444,11 @@ version = "0.0.0"
 dependencies = [
  "alloy",
  "alloy-primitives",
+ "num-bigint",
+ "num-traits",
  "proptest",
  "rain-math-float",
+ "serde_json",
 ]
 
 [[package]]

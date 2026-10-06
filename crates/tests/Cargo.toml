@@ -14,4 +14,7 @@ alloy = { version = "1.0.9", default-features = false, features = [
 ] }
 alloy-primitives = { version = "1.0.9", default-features = false }
 proptest = "1.7.0"
+num-bigint = "0.4.6"
+num-traits = "0.2.19"
+serde_json = "1.0.140"
 rain-math-float = { version = "0.1.12", features = ["test-harness"] }

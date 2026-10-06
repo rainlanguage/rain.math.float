@@ -6,8 +6,12 @@
 #[cfg(test)]
 mod constants;
 #[cfg(test)]
+mod exact;
+#[cfg(test)]
 mod float;
 #[cfg(test)]
-mod fuzz_ops;
+mod oracle;
+#[cfg(test)]
+mod reference;
 #[cfg(test)]
 mod tables;
