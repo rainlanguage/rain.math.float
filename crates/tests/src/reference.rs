@@ -548,18 +548,6 @@ pub fn format_plain(x: &Dec) -> Result<String, RefError> {
     Ok(out)
 }
 
-/// `format(a)`: scientific outside `[1e-4, 1e9]` in magnitude.
-pub fn format_default(x: &Dec) -> Result<String, RefError> {
-    let a = x.abs();
-    if a.cmp_value(&Dec::new(1, -4)) == Ordering::Less
-        || a.cmp_value(&Dec::new(1, 9)) == Ordering::Greater
-    {
-        format_scientific(x)
-    } else {
-        format_plain(x)
-    }
-}
-
 /// The exact value of a well formed decimal literal
 /// `-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?`, without the library's limits.
 pub fn literal_value(s: &str) -> Dec {

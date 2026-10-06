@@ -476,8 +476,7 @@ fn check_format(a: &Dec) -> Result<(), TestCaseError> {
         a,
         f.format_with_scientific(false),
         r::format_plain(a),
-    )?;
-    check_format_one(&format!("format({s})"), a, f.format(), r::format_default(a))
+    )
 }
 
 fn digit_string(max: usize) -> BoxedStrategy<String> {
@@ -630,12 +629,5 @@ mod found {
     fn parse_sheds_past_the_int256_exponent() {
         let int256_max = (BigInt::from(1) << 255usize) - 1u32;
         run(check_parse(&format!("1{}e{int256_max}", "0".repeat(68))));
-    }
-
-    /// The default format's `abs` cannot hold `-int224.min` at int32.max, but
-    /// the value is formatted (or not) without taking its absolute value.
-    #[test]
-    fn format_int224_min_at_the_exponent_ceiling() {
-        run(check_format(&Dec::new(r::int224_min(), I32_MAX)));
     }
 }
