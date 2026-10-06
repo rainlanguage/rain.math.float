@@ -1116,14 +1116,9 @@ library LibDecimalFloat {
         }
     }
 
-    /// sqrt a = a ^ 0.5
-    ///
-    /// As `pow`: within 5.0000004e-41 relative of the true value, rounded to
-    /// nearest at 41 significant digits. Monotone within rounding error: for
-    /// x < y the roots can be out of order by exactly one unit in the last
-    /// place, only when both true values lie within the raw error of the same
-    /// rounding tie, and never by more. Callers must not rely on strict
-    /// ordering at one-ulp resolution. A perfect square whose root has at most
+    /// sqrt a = a ^ 0.5, correctly rounded to nearest at 41 significant
+    /// digits, so within half a unit in the 41st digit of the true root, under
+    /// 5e-41 relative, and monotone. A perfect square whose root has at most
     /// 41 significant digits has an exact root.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
@@ -1133,7 +1128,77 @@ library LibDecimalFloat {
     /// change.
     /// @return The square root of a.
     function sqrt(Float a, address tablesDataContract) internal pure returns (Float) {
-        return pow(a, FLOAT_HALF, tablesDataContract);
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficient, int256 exponent) =
+            powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF, tablesDataContract);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
+        if (signedCoefficient > 0) {
+            (signedCoefficient, exponent) = roundRoot(signedCoefficientA, exponentA, signedCoefficient, exponent);
+        }
+        return packArithmeticResult(signedCoefficient, exponent);
+    }
+
+    /// The root of a positive a correctly rounded at 41 significant digits,
+    /// from pow's root r rounded at 41 digits.
+    ///
+    /// r is within half a unit plus 3.6e-8 of a unit of the true root: pow10's
+    /// 3.28e-8 and the 2.3e-9 of half log10Unrounded's error. So the correctly
+    /// rounded root is r or a neighbour, and the midpoint m between them
+    /// decides which: the true root is past m exactly when a is past m^2. a is
+    /// never m^2, as 4 A 10^(f - 2e) below is even and (2c +- 1)^2 odd.
+    ///
+    /// With r = c 10^e for c in [1e40, 1e41) and a = A 10^f for A in
+    /// [1e75, 1e76), m^2 = (2c +- 1)^2 10^(2e) / 4, so a is past it as 4 A
+    /// 10^(f - 2e) is past (2c +- 1)^2. c^2 10^(2e) is within 1e-39 relative
+    /// of a, so 10^(f - 2e) is within that of c^2 / A, in (1e4, 1e7), and
+    /// f - 2e is in [4, 7]. At c = 1e40 r rounded up from at least
+    /// 1e41 - 0.5 units of the exponent below, so the neighbour below is
+    /// 1e41 - 1 at exponent e - 1 and the midpoint (2e41 - 1) 10^(e - 1) / 2,
+    /// compared at f - 2e + 2, at most 7 as c^2 / A is then at most 1e5.
+    /// @return signedCoefficient r, or the neighbour the root rounds to.
+    /// @return exponent Its exponent.
+    function roundRoot(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficient, int256 exponent)
+        private
+        pure
+        returns (int256, int256)
+    {
+        // A packed coefficient is below 1e75 and a packed exponent is an int32.
+        (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.scaleUp(signedCoefficientA, exponentA);
+        int256 c = signedCoefficient;
+        int256 e = exponent;
+        if (c == 1e41) {
+            c = 1e40;
+            e += 1;
+        }
+        while (c < 1e40) {
+            c *= 10;
+            e -= 1;
+        }
+        // All in range as above.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 scaledA = uint256(signedCoefficientA) * 4;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 k = uint256(exponentA - 2 * e);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 m = uint256(2 * c + 1);
+        if (above(scaledA, k, m)) {
+            return (c + 1, e);
+        }
+        if (c == 1e40) {
+            if (!above(scaledA, k + 2, 2e41 - 1)) {
+                return (1e41 - 1, e - 1);
+            }
+        } else if (!above(scaledA, k, m - 2)) {
+            return (c - 1, e);
+        }
+        return (signedCoefficient, exponent);
+    }
+
+    /// x 10^k > m^2, for k in [0, 77].
+    function above(uint256 x, uint256 k, uint256 m) private pure returns (bool) {
+        (uint256 xHigh, uint256 xLow) = LibDecimalFloatImplementation.mul512(x, 10 ** k);
+        (uint256 mHigh, uint256 mLow) = LibDecimalFloatImplementation.mul512(m, m);
+        return xHigh > mHigh || (xHigh == mHigh && xLow > mLow);
     }
 
     /// Returns the minimum of two values.

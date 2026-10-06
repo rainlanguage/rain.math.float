@@ -49,6 +49,12 @@ library LibTestErrorBound {
             LibDecimalFloat.packLossless(50000004, -48).add(b.abs().integer().mul(LibDecimalFloat.packLossless(3, -75)));
     }
 
+    /// sqrt, relative: correctly rounded, so half a unit in the 41st digit of
+    /// a root of at least 1e40 units.
+    function sqrt() internal pure returns (Float) {
+        return LibDecimalFloat.packLossless(5, -41);
+    }
+
     /// For x < y, an absolute bound gives f(x) - f(y) <= E(x) + E(y).
     function monotoneAbsolute(Float low, Float high, Float lowError, Float highError) internal pure returns (bool) {
         return low.sub(high).lte(lowError.add(highError));

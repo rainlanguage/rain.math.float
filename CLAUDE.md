@@ -64,10 +64,10 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
   The pow10 and pow bounds add 1e-2147483648 absolute there.
 - log10 and pow10 read no tables; both work in 1e50 fixed point. The tables
   address parameters are unused and kept so that callers need not change.
-- log10, pow10, pow and sqrt are monotone within rounding error, not correctly
-  rounded: order can flip by one ulp at a shared rounding tie, never more. Exact
-  results stay exact. Bounds and contract: README; tests assert them via
-  `test/lib/LibTestErrorBound.sol`.
+- sqrt is correctly rounded, so monotone. log10, pow10 and pow are monotone
+  within rounding error, not correctly rounded: order can flip by one ulp at a
+  shared rounding tie, never more. Exact results stay exact. Bounds and
+  contract: README; tests assert them via `test/lib/LibTestErrorBound.sol`.
 - Three packing modes:
   - `packLossless`: reverts on any precision loss.
   - `packLossy`: surfaces the `lossless` flag, returns `FLOAT_ZERO` on exponent
