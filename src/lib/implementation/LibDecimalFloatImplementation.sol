@@ -52,6 +52,26 @@ int256 constant LOG10_Y_EXPONENT = -76;
 /// abstractions for some more gas and less range of the operations due to
 /// packing and unpacking having fundamental bit size limitations.
 library LibDecimalFloatImplementation {
+    /// Inline assembly takes only literal constants.
+    uint256 private constant E4 = 1e4;
+    uint256 private constant E9 = 1e9;
+    uint256 private constant E10 = 1e10;
+    uint256 private constant E18 = 1e18;
+    uint256 private constant E19 = 1e19;
+    uint256 private constant E37 = 1e37;
+    uint256 private constant E38 = 1e38;
+    uint256 private constant E57 = 1e57;
+    uint256 private constant E66 = 1e66;
+    uint256 private constant E74 = 1e74;
+    uint256 private constant E75 = 1e75;
+    /// `type(int256).max / 10`. A coefficient times ten fits int256 iff its
+    /// magnitude is at most this.
+    uint256 private constant TIMES_TEN_MAX =
+        5789604461865809771178549250434395392663499233282028201972879200395656481996;
+    /// `2 * TIMES_TEN_MAX + 1`.
+    uint256 private constant TIMES_TEN_SPAN =
+        11579208923731619542357098500868790785326998466564056403945758400791312963993;
+
     /// Negates a float.
     /// Equivalent to `0 - x`.
     ///
@@ -190,40 +210,53 @@ library LibDecimalFloatImplementation {
             uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
             uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
 
-            (uint256 prod1,) = mul512(signedCoefficientAAbs, signedCoefficientBAbs);
+            (uint256 prod1, uint256 prod0) = mul512(signedCoefficientAAbs, signedCoefficientBAbs);
 
+            if (prod1 == 0) {
+                return unabsUnsignedMulOrDivLossy(signedCoefficientA, signedCoefficientB, prod0, exponent);
+            }
+
+            // Scale the product down by 10 to the digit count of `prod1`, the
+            // least power of ten that brings it into 256 bits.
             uint256 adjustExponent = 0;
-            unchecked {
-                if (prod1 > 1e37) {
-                    prod1 /= 1e37;
-                    adjustExponent += 37;
+            uint256 scale = 1;
+            assembly ("memory-safe") {
+                let remaining := prod1
+                if gt(remaining, E37) {
+                    remaining := div(remaining, E37)
+                    adjustExponent := 37
+                    scale := E37
                 }
-                if (prod1 > 1e18) {
-                    prod1 /= 1e18;
-                    adjustExponent += 18;
+                if gt(remaining, E18) {
+                    remaining := div(remaining, E18)
+                    adjustExponent := add(adjustExponent, 18)
+                    scale := mul(scale, E18)
                 }
-                if (prod1 > 1e9) {
-                    prod1 /= 1e9;
-                    adjustExponent += 9;
+                if gt(remaining, E9) {
+                    remaining := div(remaining, E9)
+                    adjustExponent := add(adjustExponent, 9)
+                    scale := mul(scale, E9)
                 }
-                if (prod1 > 1e4) {
-                    prod1 /= 1e4;
-                    adjustExponent += 4;
+                if gt(remaining, E4) {
+                    remaining := div(remaining, E4)
+                    adjustExponent := add(adjustExponent, 4)
+                    scale := mul(scale, E4)
                 }
-                while (prod1 > 0) {
-                    prod1 /= 10;
-                    adjustExponent++;
+                for {} remaining {} {
+                    remaining := div(remaining, 10)
+                    adjustExponent := add(adjustExponent, 1)
+                    scale := mul(scale, 10)
                 }
             }
 
-            // adjustExponent [0, 76]
+            // adjustExponent [1, 77]
             // forge-lint: disable-next-line(unsafe-typecast)
             exponent += int256(adjustExponent);
 
             (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
                 signedCoefficientB,
-                mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
+                mulDiv512(signedCoefficientAAbs, signedCoefficientBAbs, scale, prod1, prod0),
                 exponent
             );
         }
@@ -508,6 +541,49 @@ library LibDecimalFloatImplementation {
             // This will give us the correct result modulo 2^256. Since the preconditions guarantee that the outcome is
             // less than 2^256, this is the final result. We don't need to compute the high bits of the result and prod1
             // is no longer required.
+            result = prod0 * inverse;
+        }
+    }
+
+    /// The 512 by 256 division at the end of `mulDiv`, for `mul`, which
+    /// already has the product `[prod1 prod0]` of `x` and `y`. Requires
+    /// `0 < prod1 < denominator`. Calling it from `mulDiv` instead of
+    /// repeating it there costs `div` an extra internal call.
+    function mulDiv512(uint256 x, uint256 y, uint256 denominator, uint256 prod1, uint256 prod0)
+        private
+        pure
+        returns (uint256 result)
+    {
+        uint256 remainder;
+        assembly ("memory-safe") {
+            remainder := mulmod(x, y, denominator)
+            prod1 := sub(prod1, gt(remainder, prod0))
+            prod0 := sub(prod0, remainder)
+        }
+
+        unchecked {
+            uint256 lpotdod = denominator & (~denominator + 1);
+            uint256 flippedLpotdod;
+
+            assembly ("memory-safe") {
+                // slither-disable-next-line divide-before-multiply
+                denominator := div(denominator, lpotdod)
+                // slither-disable-next-line divide-before-multiply
+                prod0 := div(prod0, lpotdod)
+                flippedLpotdod := add(div(sub(0, lpotdod), lpotdod), 1)
+            }
+
+            prod0 |= prod1 * flippedLpotdod;
+
+            // slither-disable-next-line incorrect-exp
+            uint256 inverse = (3 * denominator) ^ 2;
+            inverse *= 2 - denominator * inverse;
+            inverse *= 2 - denominator * inverse;
+            inverse *= 2 - denominator * inverse;
+            inverse *= 2 - denominator * inverse;
+            inverse *= 2 - denominator * inverse;
+            inverse *= 2 - denominator * inverse;
+
             result = prod0 * inverse;
         }
     }
@@ -958,42 +1034,39 @@ library LibDecimalFloatImplementation {
             }
 
             int256 maximizedExponent = exponent;
-            // Check if already maximized before dropping into a block full of
-            // jumps.
-            if (signedCoefficient / 1e75 == 0) {
-                if (signedCoefficient / 1e38 == 0) {
-                    signedCoefficient *= 1e38;
-                    maximizedExponent -= 38;
+            assembly ("memory-safe") {
+                // Check if already maximized before dropping into a block full
+                // of jumps.
+                if iszero(sdiv(signedCoefficient, E75)) {
+                    if iszero(sdiv(signedCoefficient, E38)) {
+                        signedCoefficient := mul(signedCoefficient, E38)
+                        maximizedExponent := sub(maximizedExponent, 38)
+                    }
+                    if iszero(sdiv(signedCoefficient, E57)) {
+                        signedCoefficient := mul(signedCoefficient, E19)
+                        maximizedExponent := sub(maximizedExponent, 19)
+                    }
+                    if iszero(sdiv(signedCoefficient, E66)) {
+                        signedCoefficient := mul(signedCoefficient, E10)
+                        maximizedExponent := sub(maximizedExponent, 10)
+                    }
+                    for {} iszero(sdiv(signedCoefficient, E74)) {} {
+                        signedCoefficient := mul(signedCoefficient, 100)
+                        maximizedExponent := sub(maximizedExponent, 2)
+                    }
+                    if iszero(sdiv(signedCoefficient, E75)) {
+                        signedCoefficient := mul(signedCoefficient, 10)
+                        maximizedExponent := sub(maximizedExponent, 1)
+                    }
                 }
-
-                if (signedCoefficient / 1e57 == 0) {
-                    signedCoefficient *= 1e19;
-                    maximizedExponent -= 19;
+                // Maybe we can fit in one more OOM without overflow, but we
+                // won't know until we try. This pushes us into
+                // [1e76,type(int256).max] and [-type(int256).max,-1e76] ranges,
+                // if that's possible.
+                if lt(add(signedCoefficient, TIMES_TEN_MAX), TIMES_TEN_SPAN) {
+                    signedCoefficient := mul(signedCoefficient, 10)
+                    maximizedExponent := sub(maximizedExponent, 1)
                 }
-
-                if (signedCoefficient / 1e66 == 0) {
-                    signedCoefficient *= 1e10;
-                    maximizedExponent -= 10;
-                }
-
-                while (signedCoefficient / 1e74 == 0) {
-                    signedCoefficient *= 1e2;
-                    maximizedExponent -= 2;
-                }
-
-                if (signedCoefficient / 1e75 == 0) {
-                    signedCoefficient *= 10;
-                    maximizedExponent -= 1;
-                }
-            }
-
-            // Maybe we can fit in one more OOM without overflow, but we won't
-            // know until we try. This pushes us into [1e76,type(int256).max] and
-            // [-type(int256).max,-1e76] ranges, if that's possible.
-            int256 trySignedCoefficient = signedCoefficient * 10;
-            if (signedCoefficient == trySignedCoefficient / 10) {
-                signedCoefficient = trySignedCoefficient;
-                maximizedExponent -= 1;
             }
 
             // The shift is at most 76, so the exponent wrapped past the floor

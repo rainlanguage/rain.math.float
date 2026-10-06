@@ -387,9 +387,17 @@ library LibDecimalFloat {
             // digits) long before it could raise a wrapped exponent back into
             // range, so the result is the underflow zero.
             if (!fits) {
+                // Truncating divisions compose, so shedding in bulk no more
+                // digits than must go matches shedding them one at a time. At
+                // least 5 must go from 73 digits and at least 8 from 76.
                 if (signedCoefficient / 1e72 != 0) {
-                    signedCoefficient /= 1e5;
-                    exponent += 5;
+                    if (signedCoefficient / 1e75 != 0) {
+                        signedCoefficient /= 1e8;
+                        exponent += 8;
+                    } else {
+                        signedCoefficient /= 1e5;
+                        exponent += 5;
+                    }
                 }
 
                 // truncation here is intentional if it happens as that is what we
