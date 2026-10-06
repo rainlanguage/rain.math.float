@@ -60,5 +60,26 @@
       "testsAfter": 134,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-06T18:36:55Z",
+    "commit": "a6dc37cdebdf81bc1e3ffee7a1ca9797d1e42ad4",
+    "testsAfterCommit": "f0e062438b64d421ca78d7b765b02b12e3f1aff0",
+    "publishedTag": "sol-v0.2.16",
+    "commitsAheadOfTag": 10,
+    "scope": "pr:318 transcendental exact reference: crates/tests/src/precise.rs (astro-float truth and its error bounds), crates/tests/src/transcendental.rs (truth functions and the bound, error, exact and monotone checks), test/oracle/decimal_oracle.py (log10/pow10/pow). 85 mutants probed against the pre-existing suite; 12 more from the re-survey probed only after the new tests.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 97,
+      "killedBefore": 44,
+      "killedAfter": 52,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 16,
+      "testsAfter": 28,
+      "filed": []
+    }
   }
 ]
