@@ -916,9 +916,19 @@ library LibDecimalFloat {
     /// @return The result of a^b.
     function pow(Float a, Float b, address tablesDataContract) internal view returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
+        return packRoundedSignificant(signedCoefficientA, exponentA);
+    }
 
+    /// `pow` before rounding and packing, so a negative base and an odd power
+    /// are negated unpacked: int224.min at int32.max has no packed negation.
+    function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b, address tablesDataContract)
+        private
+        view
+        returns (int256, int256)
+    {
         if (b.isZero()) {
-            return FLOAT_ONE;
+            return (1, 0);
         } else if (signedCoefficientA <= 0) {
             if (signedCoefficientA == 0) {
                 if (b.lt(FLOAT_ZERO)) {
@@ -928,24 +938,27 @@ library LibDecimalFloat {
 
                 // If a is zero, then a^b is always zero, regardless of b.
                 // This is a special case because log10(0) is undefined.
-                return FLOAT_ZERO;
+                return (0, 0);
             } else {
                 // A negative base has a real power only for a whole exponent:
                 // (-a)^b is a^b, negated when b is odd.
                 if (!b.frac().isZero()) {
                     revert PowNegativeBase(signedCoefficientA, exponentA);
                 }
-                Float magnitude = pow(a.minus(), b, tablesDataContract);
-                return b.isOdd() ? magnitude.minus() : magnitude;
+                (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
+                (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
+                return b.isOdd()
+                    ? LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA)
+                    : (signedCoefficientA, exponentA);
             }
         }
         // 1^b is 1 for every b, including one too large for the integer leg.
-        else if (a.eq(FLOAT_ONE)) {
-            return FLOAT_ONE;
+        else if (LibDecimalFloatImplementation.eq(signedCoefficientA, exponentA, 1, 0)) {
+            return (1, 0);
         }
         // Handle identity case for positive values of a, i.e. a^1.
-        else if (b.eq(FLOAT_ONE) && a.gt(FLOAT_ZERO)) {
-            return packRoundedSignificant(signedCoefficientA, exponentA);
+        else if (b.eq(FLOAT_ONE)) {
+            return (signedCoefficientA, exponentA);
         } else if (b.lt(FLOAT_ZERO)) {
             // a^b is (1/a)^-b. The inverse stays unpacked: packed, the inverse
             // of a value near the top of the range underflows even when the
@@ -957,32 +970,40 @@ library LibDecimalFloat {
         // Uses LibDecimalFloatImplementation directly (rather than the packed
         // Float API) to avoid repeated pack/unpack overhead in the squaring
         // loop and to preserve unnormalized intermediates.
-        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (int256 integerB, int256 fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
-
-        uint256 exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
+        int256 exponentB;
+        int256 fractionB;
+        uint256 exponentBInteger;
+        {
+            int256 signedCoefficientB;
+            (signedCoefficientB, exponentB) = b.unpack();
+            int256 integerB;
+            (integerB, fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
+            exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
+        }
 
         // Exponentiation by squaring.
         (int256 signedCoefficientResult, int256 exponentResult) = (1, 0);
-        (int256 signedCoefficientBase, int256 exponentBase) = (signedCoefficientA, exponentA);
-        while (exponentBInteger >= 1) {
-            if (exponentBInteger & 0x01 == 0x01) {
-                (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
-                    signedCoefficientResult, exponentResult, signedCoefficientBase, exponentBase
+        {
+            (int256 signedCoefficientBase, int256 exponentBase) = (signedCoefficientA, exponentA);
+            while (exponentBInteger >= 1) {
+                if (exponentBInteger & 0x01 == 0x01) {
+                    (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
+                        signedCoefficientResult, exponentResult, signedCoefficientBase, exponentBase
+                    );
+                }
+                exponentBInteger >>= 1;
+                (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
+                    signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
                 );
-            }
-            exponentBInteger >>= 1;
-            (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
-                signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
-            );
-            // Squaring doubles the exponent, so left unchecked it overflows
-            // int256 and panics. A base this far out means the result, which
-            // moves away from 1 with it, cannot be packed either.
-            if (exponentBase > type(int128).max) {
-                revert ExponentOverflow(signedCoefficientBase, exponentBase);
-            }
-            if (exponentBase < type(int128).min) {
-                revert ExponentUnderflow(signedCoefficientBase, exponentBase);
+                // Squaring doubles the exponent, so left unchecked it overflows
+                // int256 and panics. A base this far out means the result,
+                // which moves away from 1 with it, cannot be packed either.
+                if (exponentBase > type(int128).max) {
+                    revert ExponentOverflow(signedCoefficientBase, exponentBase);
+                }
+                if (exponentBase < type(int128).min) {
+                    revert ExponentUnderflow(signedCoefficientBase, exponentBase);
+                }
             }
         }
 
@@ -997,7 +1018,7 @@ library LibDecimalFloat {
                 signedCoefficientC, exponentC, signedCoefficientResult, exponentResult
             );
         }
-        return packRoundedSignificant(signedCoefficientResult, exponentResult);
+        return (signedCoefficientResult, exponentResult);
     }
 
     /// Rounds to 41 significant digits and packs, lifted as `liftToTop` does.
@@ -1007,8 +1028,9 @@ library LibDecimalFloat {
         (int256 roundedCoefficient, int256 roundedExponent) =
             LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
         (roundedCoefficient, roundedExponent) = liftToTop(roundedCoefficient, roundedExponent);
-        // Only a carry can leave the unrounded value packable.
-        if (roundedExponent > type(int32).max) {
+        // Only a carry can leave the unrounded value packable, so a value that
+        // int224 could not hold either way reports the rounded value.
+        if (roundedExponent > type(int32).max && roundedExponent - type(int32).max <= 67) {
             return packArithmeticResult(signedCoefficient, exponent);
         }
         return packArithmeticResult(roundedCoefficient, roundedExponent);

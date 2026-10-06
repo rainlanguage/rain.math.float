@@ -332,6 +332,18 @@ contract LibDecimalFloatPowTest is LogTest {
         }
     }
 
+    /// int224.min at int32.max has no packed negation, so a negative base is
+    /// negated unpacked. To the first power, rounding to 41 digits carries
+    /// past int224, so it is itself.
+    function testPowInt224MinAtTop() external {
+        Float a = LibDecimalFloat.packLossless(type(int224).min, type(int32).max);
+        (int256 signedCoefficient, int256 exponent) = this.powExternal(a, LibDecimalFloat.FLOAT_ONE).unpack();
+        assertEq(signedCoefficient, type(int224).min);
+        assertEq(exponent, type(int32).max);
+        vm.expectPartialRevert(ExponentOverflow.selector);
+        this.powExternal(a, LibDecimalFloat.packLossless(2, 0));
+    }
+
     /// Rounding a 68 digit coefficient at the top exponent raises the exponent
     /// past int32, and pow packs it back with a wider coefficient. A rounding
     /// that carries above the largest Float keeps the unrounded value, and
