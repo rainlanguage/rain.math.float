@@ -13,10 +13,13 @@ import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 contract LibDecimalFloatSqrtTest is LogTest {
     using LibDecimalFloat for Float;
 
-    /// Squaring doubles the root's half unit in the 41st digit, plus 2% for the
-    /// fixed point series and packing under it.
+    /// The root is within E of sqrt a and its square, rounded, within E2 of
+    /// the root squared, so a over the square is within 2E + E2 of 1, plus
+    /// higher orders and the quotient's packing, under 1e-65.
     function diffLimit() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(102, -42);
+        Float error = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_HALF);
+        return error.add(error).add(LibTestErrorBound.pow(LibDecimalFloat.FLOAT_TWO))
+            .add(LibDecimalFloat.packLossless(1, -65));
     }
 
     function sqrtExternal(Float a, address tables) external view returns (Float) {

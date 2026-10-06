@@ -1048,6 +1048,23 @@ library LibDecimalFloatImplementation {
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
     function pow10(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (signedCoefficient, exponent) = pow10Unrounded(signedCoefficient, exponent);
+        if (signedCoefficient == 1) {
+            return (1, exponent);
+        }
+        return ((signedCoefficient + int256(POW_GUARD / 2)) / int256(POW_GUARD), exponent + 10);
+    }
+
+    /// 10^x for a float x, with the guard digits that `pow10` rounds away: an
+    /// exact 10^k as (1, k), otherwise the fixed point power of x's fraction
+    /// at exponent characteristic - 50.
+    ///
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// number.
+    /// @param exponent The exponent of the floating point number.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
+    function pow10Unrounded(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (int256 integer, int256 frac) = intFrac(signedCoefficient, exponent);
         int256 characteristic = withTargetExponent(integer, exponent, 0);
         int256 mantissa = frac == 0 ? int256(0) : withTargetExponent(frac, exponent, -50);
@@ -1059,11 +1076,10 @@ library LibDecimalFloatImplementation {
         if (mantissa == 0) {
             return (1, characteristic);
         }
-        // mantissa is in (0, 1e50) and so is not negative, and the rounded
-        // power is at most 1e41 and so fits.
+        // mantissa is in (0, 1e50) and so is not negative, and the power is
+        // below 1e51 and so fits.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 power = int256((exp10Fixed(uint256(mantissa)) + POW_GUARD / 2) / POW_GUARD);
-        return (power, characteristic - 40);
+        return (int256(exp10Fixed(uint256(mantissa))), characteristic - 50);
     }
 
     /// 10^x at the `POW_FIXED_ONE` scale, by the Taylor series of e^(x ln 10).

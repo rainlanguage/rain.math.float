@@ -877,14 +877,25 @@ library LibDecimalFloat {
     /// computed in fixed point from a log table seed rather than interpolated
     /// from the tables.
     ///
-    /// For N the integer part of |b|, the result is within 5.00006e-41 +
-    /// 3N 1e-75 relative of the true value, rounded to nearest at 41
-    /// significant digits. Monotone within rounding error: for b < c, a^b and
-    /// a^c can be out of order by exactly one unit in the last place, only
-    /// when both true values lie within the raw error of the same rounding
-    /// tie, and never by more. Callers must not rely on strict ordering at
-    /// one-ulp resolution. Exact results stay exact: an integer power, and a
-    /// fractional power with at most 41 significant digits such as 4^0.5.
+    /// The final product, including a^1, is rounded to nearest at 41
+    /// significant digits, half away from zero. For N the integer part of
+    /// |b|, the result is within 5.00006e-41 + 3N 1e-75 relative of the true
+    /// value:
+    /// - The leg keeps pow10's guard digits. Their 5.1662e-46 relative, plus
+    ///   log10Unrounded's 2.245e-47 times a fraction below 1 and ln 10, puts
+    ///   it within 5.69e-46 relative of 10^(frac(b) log10(a)).
+    /// - Every multiply and the inverse truncate toward zero by under 1e-75,
+    ///   and squaring to the Nth power weights them by at most 2N in all, so
+    ///   the integer part is within 2N 1e-75 relative, and its product with
+    ///   the leg adds 1e-75 more. With N 1 the integer part is a itself.
+    /// - Rounding adds half a unit in the 41st digit, at most 5e-41 of the
+    ///   product.
+    /// Monotone within rounding error: for b < c, a^b and a^c can be out of
+    /// order by exactly one unit in the last place, only when both true
+    /// values lie within the raw error of the same rounding tie, and never by
+    /// more. Callers must not rely on strict ordering at one-ulp resolution.
+    /// Exact results stay exact: a power with at most 41 significant digits,
+    /// integer or fractional such as 4^0.5.
     ///
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
@@ -924,7 +935,7 @@ library LibDecimalFloat {
         }
         // Handle identity case for positive values of a, i.e. a^1.
         else if (b.eq(FLOAT_ONE) && a.gt(FLOAT_ZERO)) {
-            return a;
+            return packRoundedSignificant(signedCoefficientA, exponentA);
         } else if (b.lt(FLOAT_ZERO)) {
             // a^b is (1/a)^-b. The inverse stays unpacked: packed, the inverse
             // of a value near the top of the range underflows even when the
@@ -970,14 +981,28 @@ library LibDecimalFloat {
                 LibDecimalFloatImplementation.log10Unrounded(tablesDataContract, signedCoefficientA, exponentA);
             (signedCoefficientC, exponentC) =
                 LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
-            (signedCoefficientC, exponentC) = LibDecimalFloatImplementation.pow10(signedCoefficientC, exponentC);
+            (signedCoefficientC, exponentC) =
+                LibDecimalFloatImplementation.pow10Unrounded(signedCoefficientC, exponentC);
             (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
                 signedCoefficientC, exponentC, signedCoefficientResult, exponentResult
             );
         }
-        // We don't care if power is lossy because it's an approximation anyway.
-        Float c = packArithmeticResult(signedCoefficientResult, exponentResult);
-        return c;
+        return packRoundedSignificant(signedCoefficientResult, exponentResult);
+    }
+
+    /// Rounds to 41 significant digits and packs. The rounded coefficient is
+    /// at most 1e41, so it takes back up to 27 digits, as int224 allows, to
+    /// keep a result at the top of the exponent range packable.
+    function packRoundedSignificant(int256 signedCoefficient, int256 exponent) private pure returns (Float) {
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
+        int256 excess = exponent - type(int32).max;
+        if (excess > 0 && excess <= 27) {
+            // excess is in [1, 27] so the casts cannot truncate.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            signedCoefficient *= int256(10 ** uint256(excess));
+            exponent = type(int32).max;
+        }
+        return packArithmeticResult(signedCoefficient, exponent);
     }
 
     /// sqrt a = a ^ 0.5
