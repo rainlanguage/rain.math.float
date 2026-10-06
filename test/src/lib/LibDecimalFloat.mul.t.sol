@@ -29,11 +29,12 @@ contract LibDecimalFloatMulTest is Test {
     /// `mul` of two operands whose exponents sum below `int32.min` reverts
     /// instead of silently producing `FLOAT_ZERO`. Without this, downstream
     /// code that branches on `result == 0` would mistake a tiny magnitude
-    /// for an exact zero.
+    /// for an exact zero. The product `1 × 1` needs no digit shed, so the
+    /// error carries it at the exponent sum.
     function testMulRevertsOnExponentUnderflow() external {
         Float a = LibDecimalFloat.packLossless(1, type(int32).min);
         Float b = LibDecimalFloat.packLossless(1, type(int32).min);
-        vm.expectPartialRevert(ExponentUnderflow.selector);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(-4294967296)));
         this.mulExternal(a, b);
     }
 
@@ -48,7 +49,7 @@ contract LibDecimalFloatMulTest is Test {
             LibTestExactDecimal.mulUnderflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         if (overflows || underflows) {
             (int256 signedCoefficient, int256 exponent) =
-                LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                LibTestExactDecimal.mulParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             vm.expectRevert(
                 abi.encodeWithSelector(
                     overflows ? ExponentOverflow.selector : ExponentUnderflow.selector, signedCoefficient, exponent

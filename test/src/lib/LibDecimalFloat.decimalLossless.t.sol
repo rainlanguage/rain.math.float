@@ -46,14 +46,9 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         assertEq(Float.unwrap(result), bytes32(value));
     }
 
-    function testFromFixedDecimalLosslessMem(uint256 value, uint8 decimals) external {
+    /// A value that fits int224 converts exactly, so neither path reverts.
+    function testFromFixedDecimalLosslessMem(uint256 value, uint8 decimals) external pure {
         value = bound(value, 0, uint256(int256(type(int224).max)));
-        (,, bool losslessPreflight) = LibDecimalFloat.fromFixedDecimalLossy(value, decimals);
-        if (!losslessPreflight) {
-            vm.expectRevert(
-                abi.encodeWithSelector(LossyConversionToFloat.selector, value / 10, 1 - int256(uint256(decimals)))
-            );
-        }
         Float float = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, decimals);
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.fromFixedDecimalLossless(value, decimals);
         (int256 signedCoefficientPacked, int256 exponentPacked) = float.unpack();

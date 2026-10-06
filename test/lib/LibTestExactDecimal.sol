@@ -253,6 +253,147 @@ library LibTestExactDecimal {
         }
     }
 
+    /// `signedCoefficient × 10^exponent` with the largest coefficient magnitude
+    /// int256 holds: it multiplies by ten until the next multiply would
+    /// overflow, then lowers the exponent by that shift, stopping at
+    /// `type(int256).min` and returning what is left as the shortfall. Zero is
+    /// `(0, 0, 0)`.
+    function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, int256) {
+        if (signedCoefficient == 0) {
+            return (0, 0, 0);
+        }
+        int256 shift = 0;
+        while (true) {
+            int256 next;
+            unchecked {
+                next = signedCoefficient * 10;
+            }
+            if (next / 10 != signedCoefficient) {
+                break;
+            }
+            signedCoefficient = next;
+            ++shift;
+        }
+        if (exponent < type(int256).min + shift) {
+            return (signedCoefficient, type(int256).min, shift - (exponent - type(int256).min));
+        }
+        return (signedCoefficient, exponent - shift, 0);
+    }
+
+    /// `maximize` of a Float's parts, which never reaches the int256 floor.
+    function maximizeFloat(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (int256 maximized, int256 maximizedExponent, int256 shortfall) = maximize(signedCoefficient, exponent);
+        require(shortfall == 0, "Float maximize shortfall");
+        return (maximized, maximizedExponent);
+    }
+
+    /// A non-negative magnitude and a sign as int256 parts. A magnitude past
+    /// int256 sheds one digit and raises the exponent, except `2^255` negative,
+    /// which is `type(int256).min` exactly.
+    function signedParts(bool negative, uint256 magnitude, int256 exponent) internal pure returns (int256, int256) {
+        if (negative && magnitude == uint256(type(int256).max) + 1) {
+            return (type(int256).min, exponent);
+        }
+        if (magnitude > uint256(type(int256).max)) {
+            magnitude /= 10;
+            exponent += 1;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedMagnitude = int256(magnitude);
+        return (negative ? -signedMagnitude : signedMagnitude, exponent);
+    }
+
+    /// The parts `mul` of two Floats hands to packing, which are what its
+    /// `ExponentOverflow` and `ExponentUnderflow` carry: the exact product
+    /// floored to the fewest digits shed that fit 256 bits, as `signedParts`.
+    /// The 512 bit product is below `10^k × 2^256` iff its high word is below
+    /// `10^k`.
+    function mulParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        if (ca == 0 || cb == 0) {
+            return (0, 0);
+        }
+        U512 memory product = mul(abs(ca), abs(cb));
+        uint256 shed = 0;
+        while (product.hi >= 10 ** shed) {
+            shed++;
+        }
+        uint256 magnitude = Math.mulDiv(abs(ca), abs(cb), 10 ** shed);
+        // The product is below 2^446, so its high word is below 10^58 and shed
+        // is at most 58.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(shed));
+    }
+
+    /// The parts `div` of two Floats hands to packing, for a non-zero `cb`:
+    /// both operands maximized, the dividend's magnitude scaled by the largest
+    /// power of ten not above the divisor's and floor divided by it, as
+    /// `signedParts`.
+    function divParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        if (ca == 0) {
+            return (0, 0);
+        }
+        (int256 maximizedA, int256 exponentA) = maximizeFloat(ca, ea);
+        (int256 maximizedB, int256 exponentB) = maximizeFloat(cb, eb);
+        uint256 magnitudeB = abs(maximizedB);
+        uint256 scaleDigits = 0;
+        while (10 ** (scaleDigits + 1) <= magnitudeB) {
+            scaleDigits++;
+        }
+        uint256 magnitude = Math.mulDiv(abs(maximizedA), 10 ** scaleDigits, magnitudeB);
+        // scaleDigits is at most 76.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return signedParts((ca < 0) != (cb < 0), magnitude, exponentA - int256(scaleDigits) - exponentB);
+    }
+
+    /// The parts `inv` of a non-zero Float hands to packing: `1e76 × 10^-76`
+    /// divided by it.
+    function invParts(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        return divParts(1e76, -76, signedCoefficient, exponent);
+    }
+
+    /// The parts `add` of two Floats hands to packing. Both operands are
+    /// maximized and the one at the lower exponent is truncated towards zero
+    /// to the other's, or dropped 77 or more digits below it. A sum past int256
+    /// has each addend shed a digit before summing, at one exponent higher.
+    function addParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        if (ca == 0) {
+            return (cb, eb);
+        }
+        if (cb == 0) {
+            return (ca, ea);
+        }
+        (int256 a, int256 exponentA) = maximizeFloat(ca, ea);
+        (int256 b, int256 exponentB) = maximizeFloat(cb, eb);
+        if (exponentB > exponentA) {
+            (a, exponentA, b, exponentB) = (b, exponentB, a, exponentA);
+        }
+        int256 gap = exponentA - exponentB;
+        if (gap > 76) {
+            return (a, exponentA);
+        }
+        // gap is in [0, 76].
+        // forge-lint: disable-next-line(unsafe-typecast)
+        b /= int256(10 ** uint256(gap));
+        bool sumOverflows = (a > 0 && b > 0 && a > type(int256).max - b) || (a < 0 && b < 0 && a < type(int256).min - b);
+        if (sumOverflows) {
+            return (a / 10 + b / 10, exponentA + 1);
+        }
+        return (a + b, exponentA);
+    }
+
+    /// Whether a Float's parts are a whole number. Below `10^-67` every
+    /// non-zero int224 coefficient leaves a fraction.
+    function isWhole(int256 signedCoefficient, int256 exponent) internal pure returns (bool) {
+        if (exponent >= 0 || signedCoefficient == 0) {
+            return true;
+        }
+        if (exponent < -67) {
+            return false;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return signedCoefficient % int256(10 ** uint256(-exponent)) == 0;
+    }
+
     /// Exact numeric equality of two Floats' parts.
     function eq(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
         if (ca == 0 || cb == 0) {

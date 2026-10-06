@@ -49,10 +49,12 @@ contract LibDecimalFloatInvTest is Test {
     /// representable Float reverts `ExponentUnderflow` instead of silently
     /// producing `FLOAT_ZERO`. `1e67` at the exponent ceiling inverts to
     /// `1e-67` at `-int32.max`, i.e. `1` at `int32.min - 66`: every digit would
-    /// have to be shed to reach the floor, so the magnitude is gone.
+    /// have to be shed to reach the floor, so the magnitude is gone. `1e76 ×
+    /// 10^-76` over `1e67` maximized to `1e76 × 10^(int32.max - 9)`, scaled by
+    /// `1e76`, is `1e76 × 10^(-76 - 76 - (int32.max - 9))`.
     function testInvRevertsOnExponentUnderflow() external {
         Float float = LibDecimalFloat.packLossless(1e67, int256(type(int32).max));
-        vm.expectPartialRevert(ExponentUnderflow.selector);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e76), int256(-2147483790)));
         this.invExternal(float);
     }
 
@@ -70,7 +72,7 @@ contract LibDecimalFloatInvTest is Test {
         assertFalse(LibTestExactDecimal.divOverflows(1, 0, signedCoefficient, exponent), "inverse overflows");
         if (LibTestExactDecimal.divUnderflows(1, 0, signedCoefficient, exponent)) {
             (int256 signedCoefficientInv, int256 exponentInv) =
-                LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
+                LibTestExactDecimal.invParts(signedCoefficient, exponent);
             vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficientInv, exponentInv));
             this.invExternal(float);
             return;

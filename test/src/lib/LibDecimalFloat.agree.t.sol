@@ -516,10 +516,11 @@ contract LibDecimalFloatAgreeTest is Test {
     function testAgreeGuardHoldsForArbitraryTolerances(bytes32 absoluteRaw, bytes32 proportionalRaw) external {
         Float absolute = Float.wrap(absoluteRaw);
         Float proportional = Float.wrap(proportionalRaw);
-        Float zero = f(0, 0);
+        (int256 signedCoefficientAbsolute,) = absolute.unpack();
+        (int256 signedCoefficientProportional,) = proportional.unpack();
 
-        bool anyNegative = absolute.lt(zero) || proportional.lt(zero);
-        bool nonePositive = !absolute.gt(zero) && !proportional.gt(zero);
+        bool anyNegative = signedCoefficientAbsolute < 0 || signedCoefficientProportional < 0;
+        bool nonePositive = signedCoefficientAbsolute <= 0 && signedCoefficientProportional <= 0;
 
         if (anyNegative) {
             vm.expectRevert(abi.encodeWithSelector(AgreeToleranceNegative.selector, absolute, proportional));

@@ -515,11 +515,19 @@ contract LibParseDecimalFloatTest is Test {
     }
 
     /// Exponent exceeds int32 range — packLossy reverts with ExponentOverflow
-    /// for positive exponents, returns soft error for negative. (A10-8)
+    /// for positive exponents the coefficient cannot lift, returns soft error
+    /// for negative. (A10-8)
     function testParseDecimalFloatExponentOverflowFromPackLossy() external {
-        // Positive exponent overflow reverts.
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(2147483648)));
-        this.parseDecimalFloatExternal("1e2147483648");
+        // Issue #285: 1e2147483648 is 10e2147483647, which is representable.
+        (bytes4 liftedErr, Float lifted) = this.parseDecimalFloatExternal("1e2147483648");
+        assertEq(liftedErr, bytes4(0));
+        (int256 liftedCoefficient, int256 liftedExponent) = lifted.unpack();
+        assertEq(liftedCoefficient, 10);
+        assertEq(liftedExponent, int256(type(int32).max));
+
+        // Past int224 headroom, positive exponent overflow reverts.
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(2147483715)));
+        this.parseDecimalFloatExternal("1e2147483715");
 
         // Negative exponent overflow is a very small number that rounds to
         // zero in packLossy, so the wrapper returns ParseDecimalPrecisionLoss

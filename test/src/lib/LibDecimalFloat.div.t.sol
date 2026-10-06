@@ -29,11 +29,13 @@ contract LibDecimalFloatDivTest is Test {
 
     /// `div` whose result exponent (`expA - expB`) falls below `int32.min`
     /// reverts instead of silently producing `FLOAT_ZERO`. Constructed by
-    /// numerator at the minimum exponent and denominator at the maximum.
+    /// numerator at the minimum exponent and denominator at the maximum. Both
+    /// maximize to `1e76`, 76 below their exponents, and the quotient scales by
+    /// `1e76`: `1e76 × 10^(int32.min - 76 - 76 - (int32.max - 76))`.
     function testDivRevertsOnExponentUnderflow() external {
         Float a = LibDecimalFloat.packLossless(1, type(int32).min);
         Float b = LibDecimalFloat.packLossless(1, type(int32).max);
-        vm.expectPartialRevert(ExponentUnderflow.selector);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e76), int256(-4294967371)));
         this.divExternal(a, b);
     }
 
@@ -53,7 +55,7 @@ contract LibDecimalFloatDivTest is Test {
             LibTestExactDecimal.divUnderflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         if (overflows || underflows) {
             (int256 signedCoefficient, int256 exponent) =
-                LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                LibTestExactDecimal.divParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             vm.expectRevert(
                 abi.encodeWithSelector(
                     overflows ? ExponentOverflow.selector : ExponentUnderflow.selector, signedCoefficient, exponent

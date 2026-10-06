@@ -72,14 +72,18 @@ contract LibDecimalFloatSubTest is Test {
     function testSubPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (int256 signedCoefficient, int256 exponent) =
-            this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         // a - b is a + (-b), and -b of an int224 coefficient is exact in int256.
         if (LibTestExactDecimal.addOverflows(signedCoefficientA, exponentA, -signedCoefficientB, exponentB)) {
-            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+            (int256 signedCoefficientDifference, int256 exponentDifference) =
+                LibTestExactDecimal.addParts(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
+            vm.expectRevert(
+                abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientDifference, exponentDifference)
+            );
             this.subExternal(a, b);
             return;
         }
+        (int256 signedCoefficient, int256 exponent) =
+            this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (Float float,) = this.packLossyExternal(signedCoefficient, exponent);
         Float floatImplementation = this.subExternal(a, b);
         assertTrue(float.eq(floatImplementation));

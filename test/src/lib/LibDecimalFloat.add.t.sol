@@ -33,7 +33,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
         (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloat.unpack(b);
         if (LibTestExactDecimal.addOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB)) {
             (int256 signedCoefficientSum, int256 exponentSum) =
-                LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                LibTestExactDecimal.addParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientSum, exponentSum));
             this.addExternal(a, b);
             return;

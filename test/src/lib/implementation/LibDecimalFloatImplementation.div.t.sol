@@ -11,6 +11,7 @@ import {
     ExponentOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationDivTest is Test {
     function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -51,7 +52,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         vm.assume(signedCoefficient != 0);
         int256 one = negative ? int256(-1) : int256(1);
         (int256 maximized, int256 maximizedExponent, int256 shortfall) =
-            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+            LibTestExactDecimal.maximize(signedCoefficient, exponent);
         if (maximizedExponent < 0) {
             (int256 expected, int256 expectedExponent) = (maximized, maximizedExponent - type(int256).min - shortfall);
             if (negative) {
