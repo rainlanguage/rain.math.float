@@ -964,9 +964,10 @@ library LibDecimalFloat {
                 }
                 (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
                 (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
-                return b.isOdd()
-                    ? LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA)
-                    : (signedCoefficientA, exponentA);
+                if (b.isOdd()) {
+                    (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
+                }
+                return (signedCoefficientA, exponentA);
             }
         }
         // 1^b is 1 for every b, including one too large for the integer leg.
