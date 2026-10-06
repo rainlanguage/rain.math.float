@@ -1052,7 +1052,10 @@ library LibDecimalFloatImplementation {
         if (signedCoefficient == 1) {
             return (1, exponent);
         }
-        return ((signedCoefficient + int256(POW_GUARD / 2)) / int256(POW_GUARD), exponent + 10);
+        // POW_GUARD is 1e10 and so fits.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 guard = int256(POW_GUARD);
+        return ((signedCoefficient + guard / 2) / guard, exponent + 10);
     }
 
     /// 10^x for a float x, with the guard digits that `pow10` rounds away: an

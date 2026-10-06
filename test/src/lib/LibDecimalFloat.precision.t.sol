@@ -447,9 +447,10 @@ contract LibDecimalFloatPrecisionTest is LogTest {
             (uint256 power, int256 powerExponent) = oraclePow(a, b);
             // The oracle's power is below 1e71 and so fits.
             // forge-lint: disable-next-line(unsafe-typecast)
+            int256 signedPower = int256(power);
             assertTrue(
                 LibDecimalFloatImplementation.lt(
-                    int256(power), powerExponent, 100000000000000000000000000000000000000001, -2147483688
+                    signedPower, powerExponent, 100000000000000000000000000000000000000001, -2147483688
                 ),
                 "underflow below the floor"
             );
