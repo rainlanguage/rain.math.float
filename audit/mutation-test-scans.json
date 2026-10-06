@@ -19,5 +19,25 @@
       "testsAfter": 649,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-06T16:40:51Z",
+    "commit": "304d6ae6e7fe57cc862b052d1a6d713d45d5a435",
+    "testsAfterCommit": "59fed153d3072cb784558a9f6f6cfce87d78b6ad",
+    "publishedTag": "sol-v0.2.15",
+    "commitsAheadOfTag": 6,
+    "scope": "pr:322 threshold format removal: TestDecimalFloat.format(Float, bool) as the only format, and its crates/tests callers",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 3,
+      "killedBefore": 2,
+      "killedAfter": 3,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 77,
+      "testsAfter": 77,
+      "filed": []
+    }
   }
 ]
