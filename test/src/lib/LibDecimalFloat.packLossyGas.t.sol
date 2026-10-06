@@ -14,14 +14,15 @@ contract LibDecimalFloatPackLossyGasTest is Test {
         gasUsed = before - gasleft();
     }
 
-    function measure(string memory name, int256 c, int256 e) internal returns (Float, bool) {
+    function measure(string memory name, int256 c, int256 e) internal view returns (Float, bool) {
         uint256 before = gasleft();
         try this.packLossyGas(c, e) returns (Float float, bool lossless, uint256 gasUsed) {
             console2.log(name, gasUsed);
             return (float, lossless);
         } catch {
             console2.log(name, "reverts, external call gas", before - gasleft());
-            return (Float.wrap(0), false);
+            // forge-lint: disable-next-line(boolean-cst)
+            return (LibDecimalFloat.FLOAT_ZERO, false);
         }
     }
 
@@ -52,6 +53,7 @@ contract LibDecimalFloatPackLossyGasTest is Test {
             "lift int224.max/10 by 1",
             type(int224).max / 10,
             int256(type(int32).max) + 1,
+            // forge-lint: disable-next-line(divide-before-multiply)
             (type(int224).max / 10) * 10,
             type(int32).max,
             true
@@ -65,7 +67,7 @@ contract LibDecimalFloatPackLossyGasTest is Test {
         check("underflow 1 at int32.min - 1", 1, int256(type(int32).min) - 1, 0, 0, false);
     }
 
-    function testPackLossyGasReverts() external {
+    function testPackLossyGasReverts() external view {
         measure("revert int224.max by 1", type(int224).max, int256(type(int32).max) + 1);
         measure("revert 1 by 68", 1, int256(type(int32).max) + 68);
         measure("revert shed past ceiling", type(int256).max, type(int32).max);

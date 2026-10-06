@@ -40,14 +40,17 @@ contract LibDecimalFloatPackLossyLiftFirstEquivalenceTest is Test {
     function testPackLossyLiftFirstEquivalenceHeadroomEdge(uint256 excess, int256 delta, bool negative) external view {
         excess = bound(excess, 0, 70);
         delta = bound(delta, -3, 3);
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 scale = int256(10 ** excess);
         int256 edge = (negative ? int256(type(int224).min) : int256(type(int224).max)) / scale;
+        // forge-lint: disable-next-line(unsafe-typecast)
         check(edge + delta, int256(type(int32).max) + int256(excess));
     }
 
     /// Coefficients that must shed, with exponents where shedding meets the
     /// ceiling or wraps through int256.max.
     function testPackLossyLiftFirstEquivalenceShedAtTheEdges(int256 c, int256 offset, bool top) external view {
+        // forge-lint: disable-next-line(unsafe-typecast)
         if (int224(c) == c) {
             c = c >= 0 ? int256(type(int224).max) + 1 + c % 1e60 : int256(type(int224).min) - 1 + c % 1e60;
         }
