@@ -19,5 +19,26 @@
       "testsAfter": 649,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-06T16:52:17Z",
+    "commit": "0aab0620f2d358a9c51e166266af4302e5b8ebcd",
+    "testsAfterCommit": "121247d25de2e005d5a12a2ddb84dbd11ae077f2",
+    "publishedTag": "sol-v0.2.15",
+    "commitsAheadOfTag": 0,
+    "scope": "pr:304 changes after 4d2d1e8 (git diff 4d2d1e8 0aab062 -- src): packLossy ceiling lift inside the int32 range branch, liftToTop deleted so pow10 packs through packLossy and packRoundedSignificant keeps only its headroom check. Probe suite: forge test over the pack, packLossy, pow, pow10 and parse test files; test counts are that suite.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 39,
+      "killedBefore": 29,
+      "killedAfter": 4,
+      "equivalent": 6,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 132,
+      "testsAfter": 134,
+      "filed": []
+    }
   }
 ]
