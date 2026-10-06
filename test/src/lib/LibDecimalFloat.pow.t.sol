@@ -491,6 +491,56 @@ contract LibDecimalFloatPowTest is LogTest {
         );
     }
 
+    /// A rounded coefficient exactly at the headroom bound for its excess lifts
+    /// to the top exponent, rather than falling back to the unrounded value.
+    function testPowRoundedAtTheHeadroomBound() external {
+        // int224.max / 1e27, the widest 41 digit coefficient that lifts 27
+        // digits, followed by 27 digits that round down.
+        int256 bound = 13479973333575319897333507543509815336818;
+        int256 a = bound * 1e27 + 499999999999999999999999999;
+        assertEq(bound, type(int224).max / 1e27);
+        assertEq(-bound, type(int224).min / 1e27);
+
+        assertEq(
+            Float.unwrap(this.powExternal(LibDecimalFloat.packLossless(a, type(int32).max), LibDecimalFloat.FLOAT_ONE)),
+            Float.unwrap(LibDecimalFloat.packLossless(bound * 1e27, type(int32).max))
+        );
+        assertEq(
+            Float.unwrap(
+                this.powExternal(LibDecimalFloat.packLossless(-a, type(int32).max), LibDecimalFloat.FLOAT_ONE)
+            ),
+            Float.unwrap(LibDecimalFloat.packLossless(-bound * 1e27, type(int32).max))
+        );
+    }
+
+    /// A rounded power without the headroom to lift reverts with the unrounded
+    /// value up to an excess of 67, and with the rounded value past it.
+    function testPowRoundedPastTheTopRevertValue() external {
+        // (3000000000000000000001e1073741856)^2 is
+        // 9000000000000000000006000000000000000000001e2147483712, rounded to
+        // 90000000000000000000060000000000000000000e2147483714, excess 67.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector, int256(9000000000000000000006000000000000000000001), int256(2147483712)
+            )
+        );
+        this.powExternal(
+            LibDecimalFloat.packLossless(3000000000000000000001, 1073741856), LibDecimalFloat.packLossless(2, 0)
+        );
+
+        // (999999999999999999999e1073741857)^2 is
+        // 999999999999999999998000000000000000000001e2147483714, rounded to
+        // 99999999999999999999800000000000000000000e2147483715, excess 68.
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                ExponentOverflow.selector, int256(99999999999999999999800000000000000000000), int256(2147483715)
+            )
+        );
+        this.powExternal(
+            LibDecimalFloat.packLossless(999999999999999999999, 1073741857), LibDecimalFloat.packLossless(2, 0)
+        );
+    }
+
     /// A short coefficient takes back more digits than a 41 digit one can, up
     /// to the 68 of int224.
     function testPowShortCoefficientPastTheTop() external {
