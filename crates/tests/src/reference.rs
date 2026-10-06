@@ -567,7 +567,12 @@ pub fn canonicalize(x: &Dec) -> Dec {
 /// `AgreeToleranceNegative`, neither positive `AgreeNoPositiveTolerance`;
 /// otherwise `highest - lowest <= max(absolute, proportional * max(|lowest|,
 /// |highest|))`, the spread aligned as `sub` aligns it and nothing packed.
-pub fn agree(absolute: &Dec, proportional: &Dec, lowest: &Dec, highest: &Dec) -> Result<bool, RefError> {
+pub fn agree(
+    absolute: &Dec,
+    proportional: &Dec,
+    lowest: &Dec,
+    highest: &Dec,
+) -> Result<bool, RefError> {
     if absolute.is_negative() || proportional.is_negative() {
         return Err(RefError::AgreeToleranceNegative);
     }
@@ -636,7 +641,11 @@ pub fn from_fixed_decimal_lossless_unpacked(value: U256, decimals: u8) -> Result
 /// `toFixedDecimalLossy` over any int256 coefficient and exponent:
 /// `exponent + decimals` past int256.max is `ExponentOverflow`, otherwise as
 /// `to_fixed_decimal_lossy`.
-pub fn to_fixed_decimal_lossy_unpacked(c: &BigInt, e: &BigInt, decimals: u8) -> Result<(U256, bool), RefError> {
+pub fn to_fixed_decimal_lossy_unpacked(
+    c: &BigInt,
+    e: &BigInt,
+    decimals: u8,
+) -> Result<(U256, bool), RefError> {
     if c.is_negative() {
         return Err(RefError::NegativeFixedDecimalConversion);
     }
@@ -646,7 +655,11 @@ pub fn to_fixed_decimal_lossy_unpacked(c: &BigInt, e: &BigInt, decimals: u8) -> 
     to_fixed_decimal_lossy(&Dec::new(c.clone(), pin(e)), decimals)
 }
 
-pub fn to_fixed_decimal_lossless_unpacked(c: &BigInt, e: &BigInt, decimals: u8) -> Result<U256, RefError> {
+pub fn to_fixed_decimal_lossless_unpacked(
+    c: &BigInt,
+    e: &BigInt,
+    decimals: u8,
+) -> Result<U256, RefError> {
     match to_fixed_decimal_lossy_unpacked(c, e, decimals)? {
         (v, true) => Ok(v),
         (_, false) => Err(RefError::LossyConversionFromFloat),
@@ -789,11 +802,14 @@ pub fn parse_unpacked(s: &str) -> Result<Dec, RefError> {
 /// digits, so pinning it there leaves what packing and conversion decide
 /// unchanged, with room for their exponent arithmetic.
 pub fn pin(e: &BigInt) -> i64 {
-    i64::try_from(e).ok().filter(|v| v.abs() < i64::MAX / 4).unwrap_or(if e.is_negative() {
-        i64::MIN / 4
-    } else {
-        i64::MAX / 4
-    })
+    i64::try_from(e)
+        .ok()
+        .filter(|v| v.abs() < i64::MAX / 4)
+        .unwrap_or(if e.is_negative() {
+            i64::MIN / 4
+        } else {
+            i64::MAX / 4
+        })
 }
 
 /// `parseDecimalFloatInline` over a whole well formed literal: the

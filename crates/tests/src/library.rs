@@ -10,7 +10,7 @@ use crate::reference::{self as r, Dec, I32_MAX, I32_MIN, RefError, pow10};
 use alloy::primitives::{I256, U256};
 use alloy::sol_types::SolCall;
 use num_bigint::BigInt;
-use num_traits::{Signed, Zero};
+use num_traits::Signed;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde_json::{Value, json};
@@ -107,6 +107,30 @@ fn agree_args() -> BoxedStrategy<(Dec, Dec, Dec, Dec)> {
             };
             (absolute, Dec::zero(), l, h)
         }),
+        // A 67-digit proportional within a unit of spread / anchor, so the
+        // limit's coefficient product passes 256 bits and `mul` truncates it.
+        2 => (x::pair(), -1i64..=1).prop_map(|((l, h), d)| {
+            let (l, h) = if l.cmp_value(&h).is_gt() { (h, l) } else { (l, h) };
+            let anchor = if l.abs().cmp_value(&h.abs()).is_gt() { l.abs() } else { h.abs() };
+            let fallback = (Dec::zero(), Dec::new(1, 0), l.clone(), h.clone());
+            let Some(s) = h.add_exact(&l.neg()) else { return fallback };
+            if s.is_zero() || anchor.is_zero() {
+                return fallback;
+            }
+            let digits = |v: &BigInt| v.abs().to_string().len() as i64;
+            let k = 66 - (digits(&s.c) - digits(&anchor.c));
+            let (num, den) = if k >= 0 {
+                (&s.c * pow10(k as u64), anchor.c.clone())
+            } else {
+                (s.c.clone(), &anchor.c * pow10(k.unsigned_abs()))
+            };
+            let p = Dec::new(num / den + d, s.e - anchor.e - k);
+            if r::fits_int224(&p.c) && p.c.is_positive() && (I32_MIN..=I32_MAX).contains(&p.e) {
+                (Dec::zero(), p, l, h)
+            } else {
+                fallback
+            }
+        }),
         // spread = proportional × anchor: (0, h, 1) and (-h, h, 2).
         1 => (x::float(), any::<bool>(), -1i64..=1).prop_map(|(h, both, d)| {
             let h = h.abs();
@@ -133,6 +157,55 @@ fn suffix() -> BoxedStrategy<String> {
 }
 
 // ------------------------------------------------------------------ checking
+//
+// Each check takes what Solidity and python answered, so `checker` can show
+// it rejects wrong answers.
+
+/// The same value, or the same single error.
+fn judge<V: PartialEq + std::fmt::Debug>(
+    case: &str,
+    sol: Sol<V>,
+    want: Result<V, RefError>,
+) -> Result<(), TestCaseError> {
+    match (sol, want) {
+        (Ok(s), Ok(w)) => prop_assert_eq!(s, w, "{}", case),
+        (Err(s), Err(w)) => prop_assert!(
+            error_matches(&s, w),
+            "{case}: solidity {s:?}, reference {w:?}"
+        ),
+        (s, w) => prop_assert!(false, "{case}: solidity {s:?}, reference {w:?}"),
+    }
+    Ok(())
+}
+
+/// Python's answer: the same value, or an error of the same name.
+fn judge_py<V: PartialEq + std::fmt::Debug>(
+    case: &str,
+    py: Result<V, String>,
+    want: &Result<V, RefError>,
+) -> Result<(), TestCaseError> {
+    match (py, want) {
+        (Ok(p), Ok(w)) => prop_assert_eq!(&p, w, "{}: python", case),
+        (Err(p), Err(w)) => prop_assert_eq!(p.as_str(), w.name(), "{}: python", case),
+        (p, w) => prop_assert!(false, "{case}: python {p:?}, reference {w:?}"),
+    }
+    Ok(())
+}
+
+fn py_result<V>(py: &Value, ok: impl Fn(&Value) -> V) -> Result<V, String> {
+    match (&py["ok"], py["err"].as_str()) {
+        (_, Some(e)) => Err(e.to_string()),
+        (Value::Null, None) => panic!("oracle response {py}"),
+        (v, None) => Ok(ok(v)),
+    }
+}
+
+/// A value's fields with every trailing zero shed, which equal iff the
+/// values do.
+fn norm(d: &Dec) -> (BigInt, i64) {
+    let n = d.normalized();
+    (n.c, n.e)
+}
 
 fn py_pack(c: &BigInt, e: &BigInt, op: &str) -> Option<Value> {
     in_python_range(e).then(|| ask(json!({"op": op, "a": py_pair(c, e)})))
@@ -140,37 +213,46 @@ fn py_pack(c: &BigInt, e: &BigInt, op: &str) -> Option<Value> {
 
 /// `packLossy`: the bytes `pack` fits, the flag, or `ExponentOverflow`.
 fn check_pack_lossy(c: &BigInt, e: &BigInt) -> Result<(), TestCaseError> {
-    let case = format!("packLossy({c}, {e})");
-    let want = r::pack_lossy(c, e);
-    if let Some(py) = py_pack(c, e, "pack") {
-        match (&want, &py["ok"], py["err"].as_str()) {
-            (Ok((w, l)), Value::Array(p), _) => {
-                let v = oracle::to_dec(&p[0]);
-                prop_assert!(w.eq_value(&v), "{case}: reference {w:?}, python {v:?}");
-                prop_assert_eq!(p[1].as_bool().unwrap(), *l, "{}: python lossless", case);
-            }
-            (Ok((w, false)), _, Some("ExponentUnderflow")) if w.is_zero() => {}
-            (Err(w), _, Some(p)) => prop_assert_eq!(w.name(), p, "{}: python", case),
-            _ => prop_assert!(false, "{case}: reference {want:?}, python {py}"),
-        }
-    }
     let sol = harness(H::packLossyCall {
         signedCoefficient: i256(c),
         exponent: i256(e),
     });
-    match (sol, want) {
-        (Ok(s), Ok((w, l))) => {
-            prop_assert_eq!(s._0, w.to_bytes(), "{}: reference {:?}", case, w);
-            prop_assert_eq!(s._1, l, "{}: lossless", case);
-        }
-        (Err(s), Err(w)) => prop_assert!(error_matches(&s, w), "{case}: solidity {s:?}, reference {w:?}"),
-        (s, w) => prop_assert!(false, "{case}: solidity {s:?}, reference {w:?}"),
+    check_pack_lossy_with(c, e, py_pack(c, e, "pack"), sol)
+}
+
+fn check_pack_lossy_with(
+    c: &BigInt,
+    e: &BigInt,
+    py: Option<Value>,
+    sol: Sol<H::packLossyReturn>,
+) -> Result<(), TestCaseError> {
+    let case = format!("packLossy({c}, {e})");
+    let want = r::pack_lossy(c, e);
+    if let Some(py) = py {
+        // Python reports a value every digit is shed from as the
+        // underflow, where `packLossy` returns zero, lossy.
+        let py = match py_result(&py, |p| {
+            (norm(&oracle::to_dec(&p[0])), p[1].as_bool().unwrap())
+        }) {
+            Err(u) if u == "ExponentUnderflow" => Ok((norm(&Dec::zero()), false)),
+            p => p,
+        };
+        judge_py(&case, py, &want.clone().map(|(w, l)| (norm(&w), l)))?;
     }
-    Ok(())
+    judge(
+        &case,
+        sol.map(|s| (s._0, s._1)),
+        want.map(|(w, l)| (w.to_bytes(), l)),
+    )
 }
 
 /// A packed result must be the reference's bytes, not only its value.
-fn check_packed(case: &str, sol: Sol<alloy::primitives::B256>, want: Result<Dec, RefError>, py: Option<Value>) -> Result<(), TestCaseError> {
+fn check_packed(
+    case: &str,
+    sol: Sol<alloy::primitives::B256>,
+    want: Result<Dec, RefError>,
+    py: Option<Value>,
+) -> Result<(), TestCaseError> {
     if let (Ok(s), Ok(w)) = (&sol, &want) {
         prop_assert_eq!(*s, w.to_bytes(), "{}: reference {:?}", case, w);
     }
@@ -212,27 +294,42 @@ fn check_pack_arithmetic(c: &BigInt, e: &BigInt) -> Result<(), TestCaseError> {
     )
 }
 
+fn canonical(a: alloy::primitives::B256) -> Sol<alloy::primitives::B256> {
+    harness(H::canonicalizeCall { float: a })
+}
+
 /// `canonicalize`: the reference's bytes, the same value, idempotent.
 fn check_canonicalize(a: &Dec) -> Result<(), TestCaseError> {
+    let py = ask(json!({"op": "canonical", "a": oracle::float(a)}));
+    check_canonicalize_with(a, py, canonical(a.to_bytes()), canonical)
+}
+
+fn check_canonicalize_with(
+    a: &Dec,
+    py: Value,
+    sol: Sol<alloy::primitives::B256>,
+    again: impl Fn(alloy::primitives::B256) -> Sol<alloy::primitives::B256>,
+) -> Result<(), TestCaseError> {
     let case = format!("canonicalize({})", show(a));
     let want = r::canonicalize(a);
-    let p = oracle::to_dec(&ask(json!({"op": "canonical", "a": oracle::float(a)}))["ok"]);
     prop_assert!(
-        p.c == want.c && p.e == want.e,
-        "{case}: reference {want:?}, python {p:?}"
+        want.eq_value(a),
+        "{case}: reference {want:?} changed the value"
     );
-    prop_assert!(want.eq_value(a), "{case}: reference {want:?} changed the value");
-    let sol = harness(H::canonicalizeCall { float: a.to_bytes() }).unwrap();
-    prop_assert_eq!(sol, want.to_bytes(), "{}: reference {:?}", case, want);
-    let again = harness(H::canonicalizeCall { float: sol }).unwrap();
-    prop_assert_eq!(again, sol, "{}: not idempotent", case);
+    let p = oracle::to_dec(&py["ok"]);
+    judge_py(&case, Ok((p.c, p.e)), &Ok((want.c.clone(), want.e)))?;
+    let bytes = sol.as_ref().ok().copied();
+    judge(&case, sol, Ok(want.to_bytes()))?;
+    if let Some(b) = bytes {
+        judge(&format!("{case}: again"), again(b), Ok(b))?;
+    }
     Ok(())
 }
 
 /// Two floats canonicalize to the same bytes iff they are equal.
 fn check_canonical_pair(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
-    let ca = harness(H::canonicalizeCall { float: a.to_bytes() }).unwrap();
-    let cb = harness(H::canonicalizeCall { float: b.to_bytes() }).unwrap();
+    let ca = canonical(a.to_bytes()).unwrap();
+    let cb = canonical(b.to_bytes()).unwrap();
     prop_assert_eq!(
         ca == cb,
         a.eq_value(b),
@@ -245,7 +342,30 @@ fn check_canonical_pair(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     Ok(())
 }
 
-fn check_agree(absolute: &Dec, proportional: &Dec, lowest: &Dec, highest: &Dec) -> Result<(), TestCaseError> {
+fn check_agree(
+    absolute: &Dec,
+    proportional: &Dec,
+    lowest: &Dec,
+    highest: &Dec,
+) -> Result<(), TestCaseError> {
+    let py = ask(json!({
+        "op": "agree",
+        "absolute": oracle::float(absolute),
+        "proportional": oracle::float(proportional),
+        "a": oracle::float(lowest),
+        "b": oracle::float(highest),
+    }));
+    let sol = harness(H::agreeCall {
+        absolute: absolute.to_bytes(),
+        proportional: proportional.to_bytes(),
+        lowest: lowest.to_bytes(),
+        highest: highest.to_bytes(),
+    });
+    check_agree_with([absolute, proportional, lowest, highest], py, sol)
+}
+
+fn check_agree_with(args: [&Dec; 4], py: Value, sol: Sol<bool>) -> Result<(), TestCaseError> {
+    let [absolute, proportional, lowest, highest] = args;
     let case = format!(
         "agree({}, {}, {}, {})",
         show(absolute),
@@ -254,108 +374,103 @@ fn check_agree(absolute: &Dec, proportional: &Dec, lowest: &Dec, highest: &Dec) 
         show(highest)
     );
     let want = r::agree(absolute, proportional, lowest, highest);
-    let py = ask(json!({
-        "op": "agree",
-        "absolute": oracle::float(absolute),
-        "proportional": oracle::float(proportional),
-        "a": oracle::float(lowest),
-        "b": oracle::float(highest),
-    }));
-    match (&want, &py["ok"], py["err"].as_str()) {
-        (Ok(w), Value::Bool(p), _) => prop_assert_eq!(w, p, "{}: python", case),
-        (Err(w), _, Some(p)) => prop_assert_eq!(w.name(), p, "{}: python", case),
-        _ => prop_assert!(false, "{case}: reference {want:?}, python {py}"),
-    }
-    let sol = harness(H::agreeCall {
-        absolute: absolute.to_bytes(),
-        proportional: proportional.to_bytes(),
-        lowest: lowest.to_bytes(),
-        highest: highest.to_bytes(),
-    });
-    match (sol, want) {
-        (Ok(s), Ok(w)) => prop_assert_eq!(s, w, "{}", case),
-        (Err(s), Err(w)) => prop_assert!(error_matches(&s, w), "{case}: solidity {s:?}, reference {w:?}"),
-        (s, w) => prop_assert!(false, "{case}: solidity {s:?}, reference {w:?}"),
-    }
-    Ok(())
+    judge_py(&case, py_result(&py, |p| p.as_bool().unwrap()), &want)?;
+    judge(&case, sol, want)
 }
 
 fn check_is_odd(a: &Dec) -> Result<(), TestCaseError> {
+    let py = ask(json!({"op": "is_odd", "a": oracle::float(a)}));
+    check_is_odd_with(
+        a,
+        py,
+        harness(H::isOddCall {
+            float: a.to_bytes(),
+        }),
+    )
+}
+
+fn check_is_odd_with(a: &Dec, py: Value, sol: Sol<bool>) -> Result<(), TestCaseError> {
     let case = format!("isOdd({})", show(a));
-    let want = r::is_odd(a);
-    let py = ask(json!({"op": "is_odd", "a": oracle::float(a)}))["ok"].as_bool().unwrap();
-    prop_assert_eq!(py, want, "{}: python", case);
-    let sol = harness(H::isOddCall { float: a.to_bytes() }).unwrap();
-    prop_assert_eq!(sol, want, "{}", case);
-    Ok(())
+    let want = Ok(r::is_odd(a));
+    judge_py(&case, py_result(&py, |p| p.as_bool().unwrap()), &want)?;
+    judge(&case, sol, want)
 }
 
 /// The unpacked conversions: the exact coefficient and exponent.
 fn check_from_fixed_unpacked(value: U256, decimals: u8) -> Result<(), TestCaseError> {
+    let py =
+        ask(json!({"op": "from_fixed_unpacked", "value": value.to_string(), "decimals": decimals}));
+    let lossy = harness(H::fromFixedDecimalLossyCall { value, decimals });
+    let lossless = harness(H::fromFixedDecimalLosslessCall { value, decimals });
+    check_from_fixed_unpacked_with(value, decimals, py, lossy, lossless)
+}
+
+fn check_from_fixed_unpacked_with(
+    value: U256,
+    decimals: u8,
+    py: Value,
+    lossy: Sol<H::fromFixedDecimalLossyReturn>,
+    lossless: Sol<H::fromFixedDecimalLosslessReturn>,
+) -> Result<(), TestCaseError> {
     let case = format!("fromFixedDecimalLossy({value}, {decimals}) unpacked");
-    let (want, lossless) = r::from_fixed_decimal_lossy_unpacked(value, decimals);
-    let py = ask(json!({"op": "from_fixed_unpacked", "value": value.to_string(), "decimals": decimals}));
-    let p = oracle::to_dec(&py["ok"][0]);
-    prop_assert!(p.c == want.c && p.e == want.e, "{case}: reference {want:?}, python {p:?}");
-    prop_assert_eq!(py["ok"][1].as_bool().unwrap(), lossless, "{}: python lossless", case);
-    let sol = harness(H::fromFixedDecimalLossyCall { value, decimals }).unwrap();
-    prop_assert_eq!(
-        (big(sol._0), big(sol._1), sol._2),
-        (want.c.clone(), BigInt::from(want.e), lossless),
-        "{}",
-        case
-    );
-    let want = r::from_fixed_decimal_lossless_unpacked(value, decimals);
-    let sol = harness(H::fromFixedDecimalLosslessCall { value, decimals });
-    match (sol, want) {
-        (Ok(s), Ok(w)) => prop_assert_eq!(
-            (big(s._0), big(s._1)),
-            (w.c, BigInt::from(w.e)),
-            "{} lossless",
-            case
-        ),
-        (Err(s), Err(w)) => prop_assert!(error_matches(&s, w), "{case} lossless: solidity {s:?}, reference {w:?}"),
-        (s, w) => prop_assert!(false, "{case} lossless: solidity {s:?}, reference {w:?}"),
-    }
-    Ok(())
+    let (w, l) = r::from_fixed_decimal_lossy_unpacked(value, decimals);
+    let want = Ok((w.c, BigInt::from(w.e), l));
+    let py = py_result(&py, |p| {
+        let d = oracle::to_dec(&p[0]);
+        (d.c, BigInt::from(d.e), p[1].as_bool().unwrap())
+    });
+    judge_py(&case, py, &want)?;
+    judge(&case, lossy.map(|s| (big(s._0), big(s._1), s._2)), want)?;
+    let want =
+        r::from_fixed_decimal_lossless_unpacked(value, decimals).map(|w| (w.c, BigInt::from(w.e)));
+    judge(
+        &format!("{case} lossless"),
+        lossless.map(|s| (big(s._0), big(s._1))),
+        want,
+    )
 }
 
 fn check_to_fixed_unpacked(c: &BigInt, e: &BigInt, decimals: u8) -> Result<(), TestCaseError> {
+    let py = in_python_range(e)
+        .then(|| ask(json!({"op": "to_fixed_lossy", "a": py_pair(c, e), "decimals": decimals})));
+    let lossy = harness(H::toFixedDecimalLossyCall {
+        signedCoefficient: i256(c),
+        exponent: i256(e),
+        decimals,
+    });
+    let lossless = harness(H::toFixedDecimalLosslessCall {
+        signedCoefficient: i256(c),
+        exponent: i256(e),
+        decimals,
+    });
+    check_to_fixed_unpacked_with(c, e, decimals, py, lossy, lossless)
+}
+
+fn check_to_fixed_unpacked_with(
+    c: &BigInt,
+    e: &BigInt,
+    decimals: u8,
+    py: Option<Value>,
+    lossy: Sol<H::toFixedDecimalLossyReturn>,
+    lossless: Sol<U256>,
+) -> Result<(), TestCaseError> {
     let case = format!("toFixedDecimalLossy({c}, {e}, {decimals})");
     let want = r::to_fixed_decimal_lossy_unpacked(c, e, decimals);
-    if in_python_range(e) {
-        let py = ask(json!({"op": "to_fixed_lossy", "a": py_pair(c, e), "decimals": decimals}));
-        match (&want, &py["ok"], py["err"].as_str()) {
-            (Ok((v, l)), Value::Array(p), _) => {
-                prop_assert_eq!(p[0].as_str().unwrap(), v.to_string(), "{}: python", case);
-                prop_assert_eq!(p[1].as_bool().unwrap(), *l, "{}: python lossless", case);
-            }
-            (Err(w), _, Some(p)) => prop_assert_eq!(w.name(), p, "{}: python", case),
-            _ => prop_assert!(false, "{case}: reference {want:?}, python {py}"),
-        }
+    if let Some(py) = py {
+        let py = py_result(&py, |p| {
+            (
+                U256::from_str_radix(p[0].as_str().unwrap(), 10).unwrap(),
+                p[1].as_bool().unwrap(),
+            )
+        });
+        judge_py(&case, py, &want)?;
     }
-    let sol = harness(H::toFixedDecimalLossyCall {
-        signedCoefficient: i256(c),
-        exponent: i256(e),
-        decimals,
-    });
-    match (sol.map(|s| (s._0, s._1)), want) {
-        (Ok(s), Ok(w)) => prop_assert_eq!(s, w, "{}", case),
-        (Err(s), Err(w)) => prop_assert!(error_matches(&s, w), "{case}: solidity {s:?}, reference {w:?}"),
-        (s, w) => prop_assert!(false, "{case}: solidity {s:?}, reference {w:?}"),
-    }
-    let want = r::to_fixed_decimal_lossless_unpacked(c, e, decimals);
-    let sol = harness(H::toFixedDecimalLosslessCall {
-        signedCoefficient: i256(c),
-        exponent: i256(e),
-        decimals,
-    });
-    match (sol, want) {
-        (Ok(s), Ok(w)) => prop_assert_eq!(s, w, "{} lossless", case),
-        (Err(s), Err(w)) => prop_assert!(error_matches(&s, w), "{case} lossless: solidity {s:?}, reference {w:?}"),
-        (s, w) => prop_assert!(false, "{case} lossless: solidity {s:?}, reference {w:?}"),
-    }
-    Ok(())
+    judge(&case, lossy.map(|s| (s._0, s._1)), want)?;
+    judge(
+        &format!("{case} lossless"),
+        lossless,
+        r::to_fixed_decimal_lossless_unpacked(c, e, decimals),
+    )
 }
 
 /// `toDecimalString` by its own name: the documented string, which the
@@ -363,7 +478,10 @@ fn check_to_fixed_unpacked(c: &BigInt, e: &BigInt, decimals: u8) -> Result<(), T
 fn check_to_decimal_string(a: &Dec) -> Result<(), TestCaseError> {
     for (scientific, want) in [(true, r::format_scientific(a)), (false, r::format_plain(a))] {
         let case = format!("toDecimalString({}, {scientific})", show(a));
-        let sol = harness(H::toDecimalStringCall { float: a.to_bytes(), scientific });
+        let sol = harness(H::toDecimalStringCall {
+            float: a.to_bytes(),
+            scientific,
+        });
         if let (Ok(h), Ok(c)) = (&sol, &x::sol_format(a, scientific)) {
             prop_assert_eq!(h, c, "{}: harness and concrete", case);
         }
@@ -376,51 +494,76 @@ fn check_to_decimal_string(a: &Dec) -> Result<(), TestCaseError> {
 /// `parseDecimalFloat`, which takes the whole string or reports the excess.
 fn check_parse_entry_points(lit: &str, suffix: &str) -> Result<(), TestCaseError> {
     let s = format!("{lit}{suffix}");
+    let py = match r::parse_inline(lit) {
+        Ok((_, e)) if in_python_range(&e) => Some(ask(json!({"op": "literal", "s": lit}))),
+        _ => None,
+    };
+    let inline = harness(H::parseDecimalFloatInlineCall { str: s.clone() });
+    let whole = harness(H::parseDecimalFloatCall { str: s.clone() });
+    let concrete = evm::concrete(T::parseCall { str: s });
+    check_parse_entry_points_with(lit, suffix, py, inline, whole, concrete)
+}
+
+fn check_parse_entry_points_with(
+    lit: &str,
+    suffix: &str,
+    py: Option<Value>,
+    inline: Sol<H::parseDecimalFloatInlineReturn>,
+    whole: Sol<H::parseDecimalFloatReturn>,
+    concrete: Result<T::parseReturn, alloy::primitives::Bytes>,
+) -> Result<(), TestCaseError> {
+    let s = format!("{lit}{suffix}");
     let case = format!("parseDecimalFloatInline({s:?})");
     let want = r::parse_inline(lit);
-    if let Ok((c, e)) = &want
-        && in_python_range(e)
-    {
-        let p = py_float(&ask(json!({"op": "literal", "s": lit}))).unwrap();
+    if let (Ok((c, e)), Some(py)) = (&want, py) {
+        let p = py_float(&py);
+        let w = Dec::new(c.clone(), r::pin(e));
         prop_assert!(
-            p.eq_value(&Dec::new(c.clone(), r::pin(e))),
+            p.as_ref().is_ok_and(|p| p.eq_value(&w)),
             "{case}: reference {c}e{e}, python {p:?}"
         );
     }
-    let sol = harness(H::parseDecimalFloatInlineCall { str: s.clone() }).unwrap();
-    match want {
-        Ok((c, e)) => {
-            prop_assert_eq!(sol._0.0, [0u8; 4], "{}: error", case);
-            prop_assert_eq!(sol._1, U256::from(lit.len()), "{}: cursor", case);
-            prop_assert_eq!((big(sol._2), big(sol._3)), (c, e), "{}", case);
+    // The cursor stops at the end of the literal, or reports the error.
+    let inline = inline.map(|s| (s._0.0, s._1, big(s._2), big(s._3)));
+    let want_inline = match want {
+        Ok((c, e)) => Ok(([0u8; 4], U256::from(lit.len()), c, e)),
+        Err(w) => Err(w),
+    };
+    match (inline, want_inline) {
+        (Ok((sel, ..)), Err(w)) => {
+            prop_assert!(
+                error_matches(&Fail::Selector(sel), w),
+                "{case}: solidity {sel:?}, reference {w:?}"
+            );
         }
-        Err(w) => prop_assert!(
-            error_matches(&Fail::Selector(sol._0.0), w),
-            "{case}: solidity {:?}, reference {w:?}",
-            sol._0
-        ),
+        (inline, want) => judge(&case, inline, want)?,
     }
 
+    // Only packing's ExponentOverflow reverts; every other error, the inline
+    // parse's own ExponentOverflow among them, is a selector.
     let case = format!("parseDecimalFloat({s:?})");
-    let want = match r::parse_inline(lit) {
-        Err(w) => Err(w),
-        Ok(_) if !suffix.is_empty() => Err(RefError::ParseDecimalFloatExcessCharacters),
-        Ok(_) => r::parse(lit),
+    let (want, reverts) = match r::parse_inline(lit) {
+        Err(w) => (Err(w), false),
+        Ok(_) if !suffix.is_empty() => (Err(RefError::ParseDecimalFloatExcessCharacters), false),
+        Ok(_) => {
+            let w = r::parse(lit);
+            let reverts = matches!(w, Err(RefError::ExponentOverflow));
+            (w, reverts)
+        }
     };
-    // Only packing's ExponentOverflow reverts; every other error is a selector.
-    let sol = harness(H::parseDecimalFloatCall { str: s.clone() });
-    let concrete = evm::concrete(T::parseCall { str: s });
-    match (&sol, &concrete) {
-        (Ok(h), Ok(c)) => prop_assert_eq!((h._0, h._1), (c._0, c._1), "{}: harness and concrete", case),
+    match (&whole, &concrete) {
+        (Ok(h), Ok(c)) => {
+            prop_assert_eq!((h._0, h._1), (c._0, c._1), "{}: harness and concrete", case)
+        }
         (Err(Fail::Harness(h)), Err(c)) => prop_assert_eq!(h, c, "{}: harness and concrete", case),
         (h, c) => prop_assert!(false, "{case}: harness {h:?}, concrete {c:?}"),
     }
-    match (sol, want) {
+    match (whole, want) {
         (Ok(s), Ok(w)) => {
             prop_assert_eq!(s._0.0, [0u8; 4], "{}: error", case);
             prop_assert_eq!(s._1, w.to_bytes(), "{}: reference {:?}", case, w);
         }
-        (Ok(s), Err(w)) if w != RefError::ExponentOverflow => {
+        (Ok(s), Err(w)) if !reverts => {
             prop_assert!(
                 error_matches(&Fail::Selector(s._0.0), w),
                 "{case}: solidity {:?}, reference {w:?}",
@@ -428,9 +571,9 @@ fn check_parse_entry_points(lit: &str, suffix: &str) -> Result<(), TestCaseError
             );
             prop_assert!(s._1.is_zero(), "{}: an error returns zero", case);
         }
-        (Err(s), Err(RefError::ExponentOverflow)) => prop_assert!(
-            error_matches(&s, RefError::ExponentOverflow),
-            "{case}: solidity {s:?}"
+        (Err(s), Err(w)) if reverts => prop_assert!(
+            error_matches(&s, w),
+            "{case}: solidity {s:?}, reference {w:?}"
         ),
         (s, w) => prop_assert!(false, "{case}: solidity {s:?}, reference {w:?}"),
     }
@@ -497,7 +640,12 @@ fn run(r: Result<(), TestCaseError>) {
 fn library_pack_edges() {
     let floor = BigInt::from(I32_MIN);
     for shortfall in 60i64..=70 {
-        for c in [r::int224_max(), r::int224_min(), pow10(67), pow10(67) * 2 + 1] {
+        for c in [
+            r::int224_max(),
+            r::int224_min(),
+            pow10(67),
+            pow10(67) * 2 + 1,
+        ] {
             let e = &floor - shortfall;
             run(check_pack_lossy(&c, &e));
             run(check_pack_lossless(&c, &e));
@@ -505,7 +653,13 @@ fn library_pack_edges() {
         }
     }
     for excess in 0i64..=70 {
-        for c in [BigInt::from(1), BigInt::from(-1), BigInt::from(26), pow10(66), r::int224_max() / 10] {
+        for c in [
+            BigInt::from(1),
+            BigInt::from(-1),
+            BigInt::from(26),
+            pow10(66),
+            r::int224_max() / 10,
+        ] {
             let e = BigInt::from(I32_MAX + excess);
             run(check_pack_lossy(&c, &e));
             run(check_pack_lossless(&c, &e));
@@ -515,7 +669,11 @@ fn library_pack_edges() {
         for d in [0i64, 1, 12345, -1] {
             let c = pow10(k) + d;
             if r::fits_int256(&c) {
-                for e in [BigInt::from(0), BigInt::from(I32_MAX - 3), BigInt::from(I32_MIN)] {
+                for e in [
+                    BigInt::from(0),
+                    BigInt::from(I32_MAX - 3),
+                    BigInt::from(I32_MIN),
+                ] {
                     run(check_pack_lossy(&c, &e));
                     run(check_pack_lossy(&-c.clone(), &e));
                 }
@@ -551,9 +709,19 @@ fn library_is_odd_every_representation() {
 /// exactly `1`, which `1 <= 1` accepts.
 #[test]
 fn library_agree_documented_boundary() {
-    let want = r::agree(&Dec::zero(), &Dec::new(1, 0), &Dec::new(-1, -100), &Dec::new(1, 0));
+    let want = r::agree(
+        &Dec::zero(),
+        &Dec::new(1, 0),
+        &Dec::new(-1, -100),
+        &Dec::new(1, 0),
+    );
     assert_eq!(want, Ok(true));
-    run(check_agree(&Dec::zero(), &Dec::new(1, 0), &Dec::new(-1, -100), &Dec::new(1, 0)));
+    run(check_agree(
+        &Dec::zero(),
+        &Dec::new(1, 0),
+        &Dec::new(-1, -100),
+        &Dec::new(1, 0),
+    ));
 }
 
 /// The two tolerance errors, for each sign of each tolerance and every
@@ -580,7 +748,11 @@ fn library_agree_tolerance_errors() {
 fn library_to_fixed_exponent_wrap() {
     for d in 0i64..=3 {
         for decimals in [0u8, 1, 4, 255] {
-            run(check_to_fixed_unpacked(&BigInt::from(1), &(r::int256_max() - d), decimals));
+            run(check_to_fixed_unpacked(
+                &BigInt::from(1),
+                &(r::int256_max() - d),
+                decimals,
+            ));
         }
     }
 }
@@ -591,5 +763,583 @@ fn library_parse_zero() {
     for lit in ["0", "0.000", "0e5", "0e-5", "-0.0e3", "00.00e-1"] {
         run(check_parse_entry_points(lit, ""));
         run(check_parse_entry_points(lit, " x"));
+    }
+}
+
+/// Each check against Solidity and python answers that are wrong.
+mod checker {
+    use super::*;
+    use alloy::primitives::B256;
+
+    fn one() -> Dec {
+        Dec::new(1, 0)
+    }
+
+    fn two() -> Dec {
+        Dec::new(2, 0)
+    }
+
+    /// A real `AgreeToleranceNegative` revert, and a real
+    /// `AgreeNoPositiveTolerance` one.
+    fn negative() -> Fail {
+        harness(H::agreeCall {
+            absolute: one().neg().to_bytes(),
+            proportional: Dec::zero().to_bytes(),
+            lowest: one().to_bytes(),
+            highest: one().to_bytes(),
+        })
+        .unwrap_err()
+    }
+
+    fn no_positive() -> Fail {
+        harness(H::agreeCall {
+            absolute: Dec::zero().to_bytes(),
+            proportional: Dec::zero().to_bytes(),
+            lowest: one().to_bytes(),
+            highest: one().to_bytes(),
+        })
+        .unwrap_err()
+    }
+
+    #[test]
+    fn judge_rejects_wrong_solidity() {
+        let neg = RefError::AgreeToleranceNegative;
+        assert!(judge("checker", Ok(1), Ok(1)).is_ok());
+        assert!(judge("checker", Ok(2), Ok(1)).is_err());
+        assert!(judge("checker", Err(negative()), Ok(1)).is_err());
+        assert!(judge("checker", Ok(1), Err(neg)).is_err());
+        assert!(judge::<u8>("checker", Err(negative()), Err(neg)).is_ok());
+        assert!(judge::<u8>("checker", Err(no_positive()), Err(neg)).is_err());
+    }
+
+    #[test]
+    fn judge_py_rejects_wrong_python() {
+        let neg = RefError::AgreeToleranceNegative;
+        assert!(judge_py("checker", Ok(1), &Ok(1)).is_ok());
+        assert!(judge_py("checker", Ok(2), &Ok(1)).is_err());
+        assert!(judge_py("checker", Err("AgreeToleranceNegative".into()), &Ok(1)).is_err());
+        assert!(judge_py("checker", Ok(1), &Err(neg)).is_err());
+        assert!(judge_py::<u8>("checker", Err("AgreeToleranceNegative".into()), &Err(neg)).is_ok());
+        assert!(
+            judge_py::<u8>("checker", Err("AgreeNoPositiveTolerance".into()), &Err(neg)).is_err()
+        );
+    }
+
+    #[test]
+    fn py_result_reads_ok_and_err() {
+        assert_eq!(
+            py_result(&json!({"ok": true}), |p| p.as_bool().unwrap()),
+            Ok(true)
+        );
+        assert_eq!(
+            py_result(&json!({"ok": false}), |p| p.as_bool().unwrap()),
+            Ok(false)
+        );
+        assert_eq!(
+            py_result(&json!({"err": "Log10Zero"}), |p| p.as_bool().unwrap()),
+            Err("Log10Zero".to_string())
+        );
+    }
+
+    fn pack_lossy_accepts(py: Value, value: Dec, lossless: bool) -> bool {
+        let sol = Ok(H::packLossyReturn {
+            _0: value.to_bytes(),
+            _1: lossless,
+        });
+        check_pack_lossy_with(&BigInt::from(1), &BigInt::from(0), Some(py), sol).is_ok()
+    }
+
+    #[test]
+    fn pack_lossy_rejects_wrong_answers() {
+        let py = || json!({"ok": [["1", 0], true]});
+        assert!(pack_lossy_accepts(py(), one(), true));
+        assert!(pack_lossy_accepts(
+            json!({"ok": [["10", -1], true]}),
+            one(),
+            true
+        ));
+        assert!(!pack_lossy_accepts(py(), two(), true));
+        assert!(!pack_lossy_accepts(py(), one(), false));
+        // The same value in other bytes.
+        assert!(!pack_lossy_accepts(py(), Dec::new(10, -1), true));
+        assert!(!pack_lossy_accepts(
+            json!({"ok": [["2", 0], true]}),
+            one(),
+            true
+        ));
+        assert!(!pack_lossy_accepts(
+            json!({"ok": [["1", 0], false]}),
+            one(),
+            true
+        ));
+        assert!(!pack_lossy_accepts(
+            json!({"err": "ExponentUnderflow"}),
+            one(),
+            true
+        ));
+        // A value every digit is shed from is zero, lossy, where python
+        // reports the underflow.
+        let (c, e) = (BigInt::from(1), BigInt::from(I32_MIN - 80));
+        let zero = || {
+            Ok(H::packLossyReturn {
+                _0: Dec::zero().to_bytes(),
+                _1: false,
+            })
+        };
+        let underflow = || Some(json!({"err": "ExponentUnderflow"}));
+        assert!(check_pack_lossy_with(&c, &e, underflow(), zero()).is_ok());
+        assert!(
+            check_pack_lossy_with(&c, &e, Some(json!({"err": "ExponentOverflow"})), zero())
+                .is_err()
+        );
+        let lossless = Ok(H::packLossyReturn {
+            _0: Dec::zero().to_bytes(),
+            _1: true,
+        });
+        assert!(check_pack_lossy_with(&c, &e, underflow(), lossless).is_err());
+    }
+
+    #[test]
+    fn packed_rejects_other_bytes() {
+        let py = || Some(json!({"ok": ["1", 0]}));
+        assert!(check_packed("checker", Ok(one().to_bytes()), Ok(one()), py()).is_ok());
+        assert!(check_packed("checker", Ok(Dec::new(10, -1).to_bytes()), Ok(one()), py()).is_err());
+        assert!(check_packed("checker", Ok(two().to_bytes()), Ok(one()), None).is_err());
+    }
+
+    fn canonicalize_accepts(py: Value, sol: Dec, again: Dec) -> bool {
+        check_canonicalize_with(&one(), py, Ok(sol.to_bytes()), |_| Ok(again.to_bytes())).is_ok()
+    }
+
+    #[test]
+    fn canonicalize_rejects_wrong_answers() {
+        let want = r::canonicalize(&one());
+        let py = || json!({"ok": [want.c.to_string(), want.e]});
+        assert!(canonicalize_accepts(py(), want.clone(), want.clone()));
+        // The same value in other bytes, from Solidity or python.
+        assert!(!canonicalize_accepts(py(), one(), want.clone()));
+        assert!(!canonicalize_accepts(
+            json!({"ok": ["1", 0]}),
+            want.clone(),
+            want.clone()
+        ));
+        // Not idempotent.
+        assert!(!canonicalize_accepts(py(), want.clone(), one()));
+    }
+
+    fn agree_args() -> [Dec; 4] {
+        [Dec::zero(), one(), one(), two()]
+    }
+
+    fn agree_accepts(args: [Dec; 4], py: Value, sol: Sol<bool>) -> bool {
+        let [a, p, l, h] = &args;
+        check_agree_with([a, p, l, h], py, sol).is_ok()
+    }
+
+    #[test]
+    fn agree_rejects_wrong_answers() {
+        // A spread of 1 against a limit of 2.
+        assert!(agree_accepts(agree_args(), json!({"ok": true}), Ok(true)));
+        assert!(!agree_accepts(agree_args(), json!({"ok": true}), Ok(false)));
+        assert!(!agree_accepts(agree_args(), json!({"ok": false}), Ok(true)));
+        assert!(!agree_accepts(
+            agree_args(),
+            json!({"ok": true}),
+            Err(negative())
+        ));
+        let bad = [one().neg(), Dec::zero(), one(), two()];
+        let py = || json!({"err": "AgreeToleranceNegative"});
+        assert!(agree_accepts(bad.clone(), py(), Err(negative())));
+        assert!(!agree_accepts(bad.clone(), py(), Err(no_positive())));
+        assert!(!agree_accepts(
+            bad.clone(),
+            json!({"err": "AgreeNoPositiveTolerance"}),
+            Err(negative())
+        ));
+        assert!(!agree_accepts(bad, py(), Ok(false)));
+    }
+
+    #[test]
+    fn is_odd_rejects_wrong_answers() {
+        assert!(check_is_odd_with(&one(), json!({"ok": true}), Ok(true)).is_ok());
+        assert!(check_is_odd_with(&one(), json!({"ok": true}), Ok(false)).is_err());
+        assert!(check_is_odd_with(&one(), json!({"ok": false}), Ok(true)).is_err());
+        assert!(check_is_odd_with(&two(), json!({"ok": false}), Ok(false)).is_ok());
+    }
+
+    /// `2^256 - 1` sheds its last digit, a 5.
+    fn from_fixed_accepts(
+        py: Value,
+        lossy: (BigInt, i64, bool),
+        lossless: Sol<H::fromFixedDecimalLosslessReturn>,
+    ) -> bool {
+        let (c, e, l) = lossy;
+        let lossy = Ok(H::fromFixedDecimalLossyReturn {
+            _0: i256(&c),
+            _1: i256(&BigInt::from(e)),
+            _2: l,
+        });
+        check_from_fixed_unpacked_with(U256::MAX, 3, py, lossy, lossless).is_ok()
+    }
+
+    #[test]
+    fn from_fixed_rejects_wrong_answers() {
+        let shed = r::u256_to_big(U256::MAX) / 10;
+        let lossless = || {
+            harness(H::fromFixedDecimalLosslessCall {
+                value: U256::MAX,
+                decimals: 3,
+            })
+        };
+        let py = |c: &BigInt, e: i64, l: bool| json!({"ok": [[c.to_string(), e], l]});
+        assert!(from_fixed_accepts(
+            py(&shed, -2, false),
+            (shed.clone(), -2, false),
+            lossless()
+        ));
+        assert!(!from_fixed_accepts(
+            py(&shed, -2, false),
+            (shed.clone(), -3, false),
+            lossless()
+        ));
+        assert!(!from_fixed_accepts(
+            py(&shed, -2, false),
+            (shed.clone() - 1, -2, false),
+            lossless()
+        ));
+        assert!(!from_fixed_accepts(
+            py(&shed, -2, false),
+            (shed.clone(), -2, true),
+            lossless()
+        ));
+        assert!(!from_fixed_accepts(
+            py(&shed, -3, false),
+            (shed.clone(), -2, false),
+            lossless()
+        ));
+        assert!(!from_fixed_accepts(
+            py(&shed, -2, true),
+            (shed.clone(), -2, false),
+            lossless()
+        ));
+        let value = Ok(H::fromFixedDecimalLosslessReturn {
+            _0: i256(&shed),
+            _1: i256(&BigInt::from(-2)),
+        });
+        assert!(!from_fixed_accepts(
+            py(&shed, -2, false),
+            (shed.clone(), -2, false),
+            value
+        ));
+    }
+
+    fn to_fixed_accepts(py: Option<Value>, lossy: (u64, bool), lossless: Sol<U256>) -> bool {
+        let lossy = Ok(H::toFixedDecimalLossyReturn {
+            _0: U256::from(lossy.0),
+            _1: lossy.1,
+        });
+        // 15e-1 at 0 decimals: 1, lossy.
+        check_to_fixed_unpacked_with(&BigInt::from(15), &BigInt::from(-1), 0, py, lossy, lossless)
+            .is_ok()
+    }
+
+    #[test]
+    fn to_fixed_rejects_wrong_answers() {
+        let lossless = || {
+            harness(H::toFixedDecimalLosslessCall {
+                signedCoefficient: i256(&BigInt::from(15)),
+                exponent: i256(&BigInt::from(-1)),
+                decimals: 0,
+            })
+        };
+        let py = || Some(json!({"ok": ["1", false]}));
+        assert!(to_fixed_accepts(py(), (1, false), lossless()));
+        assert!(to_fixed_accepts(None, (1, false), lossless()));
+        assert!(!to_fixed_accepts(py(), (2, false), lossless()));
+        assert!(!to_fixed_accepts(py(), (1, true), lossless()));
+        assert!(!to_fixed_accepts(
+            Some(json!({"ok": ["2", false]})),
+            (1, false),
+            lossless()
+        ));
+        assert!(!to_fixed_accepts(
+            Some(json!({"ok": ["1", true]})),
+            (1, false),
+            lossless()
+        ));
+        assert!(!to_fixed_accepts(py(), (1, false), Ok(U256::from(1))));
+    }
+
+    fn inline(
+        selector: [u8; 4],
+        cursor: u64,
+        c: i64,
+        e: i64,
+    ) -> Sol<H::parseDecimalFloatInlineReturn> {
+        Ok(H::parseDecimalFloatInlineReturn {
+            _0: selector.into(),
+            _1: U256::from(cursor),
+            _2: i256(&BigInt::from(c)),
+            _3: i256(&BigInt::from(e)),
+        })
+    }
+
+    fn whole(selector: [u8; 4], value: B256) -> Sol<H::parseDecimalFloatReturn> {
+        Ok(H::parseDecimalFloatReturn {
+            _0: selector.into(),
+            _1: value,
+        })
+    }
+
+    fn concrete(
+        selector: [u8; 4],
+        value: B256,
+    ) -> Result<T::parseReturn, alloy::primitives::Bytes> {
+        Ok(T::parseReturn {
+            _0: selector.into(),
+            _1: value,
+        })
+    }
+
+    fn parse_accepts(
+        suffix: &str,
+        py: Option<Value>,
+        i: Sol<H::parseDecimalFloatInlineReturn>,
+        w: Sol<H::parseDecimalFloatReturn>,
+        c: Result<T::parseReturn, alloy::primitives::Bytes>,
+    ) -> bool {
+        check_parse_entry_points_with("15e-1", suffix, py, i, w, c).is_ok()
+    }
+
+    #[test]
+    fn parse_rejects_wrong_answers() {
+        let none = [0u8; 4];
+        let v = Dec::new(15, -1).to_bytes();
+        let py = || Some(json!({"ok": ["15", -1]}));
+        assert!(parse_accepts(
+            "",
+            py(),
+            inline(none, 5, 15, -1),
+            whole(none, v),
+            concrete(none, v)
+        ));
+        // The inline parse.
+        assert!(!parse_accepts(
+            "",
+            Some(json!({"ok": ["16", -1]})),
+            inline(none, 5, 15, -1),
+            whole(none, v),
+            concrete(none, v)
+        ));
+        assert!(!parse_accepts(
+            "",
+            py(),
+            inline(none, 4, 15, -1),
+            whole(none, v),
+            concrete(none, v)
+        ));
+        assert!(!parse_accepts(
+            "",
+            py(),
+            inline(none, 5, 16, -1),
+            whole(none, v),
+            concrete(none, v)
+        ));
+        assert!(!parse_accepts(
+            "",
+            py(),
+            inline(none, 5, 15, -2),
+            whole(none, v),
+            concrete(none, v)
+        ));
+        let loss = RefError::ParseDecimalPrecisionLoss.selector();
+        assert!(!parse_accepts(
+            "",
+            py(),
+            inline(loss, 5, 15, -1),
+            whole(none, v),
+            concrete(none, v)
+        ));
+        // The whole parse.
+        let other = Dec::new(16, -1).to_bytes();
+        assert!(!parse_accepts(
+            "",
+            py(),
+            inline(none, 5, 15, -1),
+            whole(none, other),
+            concrete(none, other)
+        ));
+        assert!(!parse_accepts(
+            "",
+            py(),
+            inline(none, 5, 15, -1),
+            whole(none, v),
+            concrete(none, other)
+        ));
+        assert!(!parse_accepts(
+            "",
+            py(),
+            inline(none, 5, 15, -1),
+            whole(loss, B256::ZERO),
+            concrete(loss, B256::ZERO)
+        ));
+        // The right value under an error selector.
+        assert!(!parse_accepts(
+            "",
+            py(),
+            inline(none, 5, 15, -1),
+            whole(loss, v),
+            concrete(loss, v)
+        ));
+        // Excess characters: a selector and zero.
+        let excess = RefError::ParseDecimalFloatExcessCharacters.selector();
+        assert!(parse_accepts(
+            " x",
+            py(),
+            inline(none, 5, 15, -1),
+            whole(excess, B256::ZERO),
+            concrete(excess, B256::ZERO)
+        ));
+        assert!(!parse_accepts(
+            " x",
+            py(),
+            inline(none, 5, 15, -1),
+            whole(excess, v),
+            concrete(excess, v)
+        ));
+        assert!(!parse_accepts(
+            " x",
+            py(),
+            inline(none, 5, 15, -1),
+            whole(loss, B256::ZERO),
+            concrete(loss, B256::ZERO)
+        ));
+        assert!(!parse_accepts(
+            " x",
+            py(),
+            inline(none, 5, 15, -1),
+            whole(none, v),
+            concrete(none, v)
+        ));
+    }
+
+    /// Past every Float the whole parse reverts, from both contracts alike.
+    #[test]
+    fn parse_overflow_must_revert() {
+        let lit = "1e3000000000";
+        let s = || lit.to_string();
+        let inline = || harness(H::parseDecimalFloatInlineCall { str: s() });
+        let sol = harness(H::parseDecimalFloatCall { str: s() });
+        let c = evm::concrete(T::parseCall { str: s() });
+        let revert = c.clone().unwrap_err();
+        assert!(check_parse_entry_points_with(lit, "", None, inline(), sol, c).is_ok());
+        let none = [0u8; 4];
+        let loss = RefError::ParseDecimalPrecisionLoss.selector();
+        assert!(
+            check_parse_entry_points_with(
+                lit,
+                "",
+                None,
+                inline(),
+                whole(loss, B256::ZERO),
+                concrete(loss, B256::ZERO)
+            )
+            .is_err()
+        );
+        assert!(
+            check_parse_entry_points_with(
+                lit,
+                "",
+                None,
+                inline(),
+                Err(Fail::Harness(revert.clone())),
+                concrete(none, B256::ZERO)
+            )
+            .is_err()
+        );
+        let other = no_positive();
+        let Fail::Harness(other) = other else {
+            unreachable!()
+        };
+        assert!(
+            check_parse_entry_points_with(
+                lit,
+                "",
+                None,
+                inline(),
+                Err(Fail::Harness(other.clone())),
+                Err(other)
+            )
+            .is_err()
+        );
+    }
+
+    /// An inline exponent past int256 is a selector, never a revert.
+    #[test]
+    fn parse_inline_overflow_is_a_selector() {
+        let lit = format!("9.1e{}", r::int256_min());
+        let inline = || harness(H::parseDecimalFloatInlineCall { str: lit.clone() });
+        let eo = RefError::ExponentOverflow.selector();
+        assert!(
+            check_parse_entry_points_with(
+                &lit,
+                "",
+                None,
+                inline(),
+                whole(eo, B256::ZERO),
+                concrete(eo, B256::ZERO)
+            )
+            .is_ok()
+        );
+        let revert = evm::concrete(T::parseCall {
+            str: "1e3000000000".into(),
+        })
+        .unwrap_err();
+        assert!(
+            check_parse_entry_points_with(
+                &lit,
+                "",
+                None,
+                inline(),
+                Err(Fail::Harness(revert.clone())),
+                Err(revert)
+            )
+            .is_err()
+        );
+        let loss = RefError::ParseDecimalPrecisionLoss.selector();
+        let wrong = Ok(H::parseDecimalFloatInlineReturn {
+            _0: loss.into(),
+            _1: U256::ZERO,
+            _2: I256::ZERO,
+            _3: I256::ZERO,
+        });
+        assert!(
+            check_parse_entry_points_with(
+                &lit,
+                "",
+                None,
+                wrong,
+                whole(eo, B256::ZERO),
+                concrete(eo, B256::ZERO)
+            )
+            .is_err()
+        );
+    }
+}
+
+/// A fraction's exponent below an int256.min exponent: the inline parse's
+/// `ExponentOverflow` selector, before any packing.
+#[test]
+fn library_parse_exponent_wrap() {
+    let min = r::int256_min();
+    for lit in [
+        format!("9.1e{min}"),
+        format!("-9.1e{min}"),
+        format!("9.12e{}", &min + 1),
+        format!("9.1e{}", &min + 1),
+        format!("0.5e{min}"),
+    ] {
+        run(check_parse_entry_points(&lit, ""));
+        run(check_parse_entry_points(&lit, " x"));
     }
 }
