@@ -11,7 +11,7 @@ import {
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 /// `mul`, `maximize`, `packLossy`, `packLossless` and `packArithmeticResult`
-/// verbatim from main 2e1f8840fabaf3f189654bc1bba13d748a15c30b, before the
+/// verbatim from main a8df3d32b2d7c9af59129a6b666dce6fd48cb984, before the
 /// gas changes of issue #310. The helpers they call are unchanged since that
 /// commit, so they are qualified to the live library. Equivalence tests only.
 library LibDecimalFloatGasMain {
@@ -94,9 +94,7 @@ library LibDecimalFloatGasMain {
             (signedCoefficient, exponent) = LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
                 signedCoefficientB,
-                LibDecimalFloatImplementation.mulDiv(
-                    signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent
-                ),
+                LibDecimalFloatImplementation.mulDivPow10(signedCoefficientAAbs, signedCoefficientBAbs, adjustExponent),
                 exponent
             );
         }

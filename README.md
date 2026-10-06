@@ -135,23 +135,24 @@ additional judgement calls re: when precision loss is acceptable.
 These round their final result to nearest at 41 significant digits, `pow`
 including an integer power and `a^1`, within proven bounds of the true value:
 
-- `pow10`: half a unit in the 41st digit plus 5.1662e-6 of a unit, under
-  5.0000517e-41 relative.
-- `log10`: half a unit in the 41st digit plus 2.245e-47 absolute.
-- `pow`: 5.00006e-41 + 3N·1e-75 relative, for N the integer part of |b|.
-- `sqrt`: 5.00006e-41 relative.
+- `pow10`: half a unit in the 41st digit plus 3.28e-8 of a unit, under
+  5.0000004e-41 relative.
+- `log10`: half a unit in the 41st digit plus 2e-50 absolute.
+- `pow`: 5.0000004e-41 + 3N·1e-75 relative, for N the integer part of |b|.
+- `sqrt`: correctly rounded, half a unit in the 41st digit, under 5e-41
+  relative.
 
 A `pow10` or `pow` result below 1e-2147483608 sheds digits to lift its exponent
 to the int32 floor, so its bound adds 1e-2147483648 absolute. Below
 1e-2147483648 it reverts `ExponentUnderflow`. A `pow` result that rounding would
 carry above the largest Float is truncated to int224 instead.
 
-They are monotone within rounding error, not strictly monotone. For a < b the
-order of the results can flip by exactly one unit in the last place, only when
-both true values lie within the larger raw error of the same rounding tie, and
-never by more. The raw error, before rounding, is 5.1662e-6 of a unit for
-`pow10`, 2.245e-47 for `log10`, and 5.69e-46 + 3N·1e-75 relative for `pow` and
-`sqrt`. Callers must not rely on strict ordering at one-ulp resolution.
+`sqrt` is monotone. The others are monotone within rounding error, not strictly
+monotone. For a < b the order of the results can flip by exactly one unit in the
+last place, only when both true values lie within the larger raw error of the
+same rounding tie, and never by more. The raw error, before rounding, is 3.28e-8
+of a unit for `pow10`, 2e-50 for `log10`, and 3.33e-48 + 3N·1e-75 relative for
+`pow`. Callers must not rely on strict ordering at one-ulp resolution.
 
 Exact results stay exact: powers of ten (`pow10(k)` is `10^k`, `log10(10^k)` is
 `k`), and integer and fractional powers, roots included, with at most 41
@@ -245,13 +246,13 @@ rather than simply return a bool, with a standard default error message.
 The log/pow calculations are not simply truncated on precision loss, they are
 inherently approximations in many cases.
 
-`log10` takes a four figure log table value (from the tables deployed
-deterministically onchain as data contracts) as a seed and refines it with a
-fixed point series. Before rounding it is within 2.5e-47 of the true value, and
-within 3e-49 relative of it for an input within a table step of a power of ten,
-so a log near zero keeps its precision. The result is rounded to 41 significant
-digits, so it is within half a unit in the 41st digit plus 2.5e-47. A power of
-ten has an exact log.
+`log10` reads no tables. It divides the input by powers 10^(2^-i) down to within
+10^(2^-16) of a power of ten and closes the gap with a fixed point series.
+Before rounding it is within 2e-50 of the true value, and within 3.3e-49
+relative of it for an input within a factor 1.001 of a power of ten, so a log
+near zero keeps its precision. The result is rounded to 41 significant digits,
+so it is within half a unit in the 41st digit plus 2e-50. A power of ten has an
+exact log.
 
 `pow10` reads no tables. It computes the power in fixed point and rounds it to
 41 significant digits, so it is within half a unit in the 41st digit and an
