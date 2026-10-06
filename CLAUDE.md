@@ -27,7 +27,6 @@ derived in integer arithmetic.
 forge build          # Compile contracts
 forge test           # Run all Solidity tests (5096 fuzz runs)
 forge test --mt testFunctionName  # Run specific test by name
-forge test -vvvv     # Verbose trace output for debugging
 nix develop          # Enter dev shell with all tooling
 ```
 
