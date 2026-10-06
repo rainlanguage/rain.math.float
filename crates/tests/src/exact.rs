@@ -1024,10 +1024,16 @@ mod found {
                     (Err(a), Err(b)) => assert_eq!(a, b, "{s}"),
                     (a, b) => panic!("{s}: {a:?}, {bare}: {b:?}"),
                 }
-                assert!(!matches!(r::parse(&s), Err(RefError::ParseDecimalPrecisionLoss)), "{s}");
+                assert!(
+                    !matches!(r::parse(&s), Err(RefError::ParseDecimalPrecisionLoss)),
+                    "{s}"
+                );
                 assert!(zero_fraction_defect(&s), "{s}");
                 assert!(
-                    error_matches(&sol_parse(&s).unwrap_err(), RefError::ParseDecimalPrecisionLoss),
+                    error_matches(
+                        &sol_parse(&s).unwrap_err(),
+                        RefError::ParseDecimalPrecisionLoss
+                    ),
                     "{s}"
                 );
             }
