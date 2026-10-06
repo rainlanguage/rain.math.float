@@ -854,7 +854,10 @@ library LibDecimalFloat {
         if (
             exponent > 76
                 || (exponent > 0
+                    // exponent is in [1, 76] here, so 10 ** exponent fits int256.
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     && (signedCoefficient > type(int256).max / int256(10 ** uint256(exponent))
+                        // forge-lint: disable-next-line(unsafe-typecast)
                         || signedCoefficient < type(int256).min / int256(10 ** uint256(exponent))))
         ) {
             if (signedCoefficient < 0) {

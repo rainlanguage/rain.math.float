@@ -73,16 +73,20 @@ contract LibDecimalFloatPowTest is LogTest {
             return b.lt(LibDecimalFloat.FLOAT_ZERO)
                 // forge-lint: disable-next-line(boolean-cst)
                 ? (false, abi.encodeWithSelector(ZeroNegativePower.selector, b))
+                // forge-lint: disable-next-line(boolean-cst)
                 : (true, bytes(""));
         } else if (signedCoefficientA < 0 && !b.frac().isZero()) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (false, abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA));
         } else if (LibDecimalFloatImplementation.eq(
                 signedCoefficientA < 0 ? -signedCoefficientA : signedCoefficientA, exponentA, 1, 0
             )) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (true, "");
         }
         PowRange range = powRange(a, b);
         if (range == PowRange.Inside) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (true, "");
         }
         bool edge = range == PowRange.OverEdge || range == PowRange.UnderEdge;
