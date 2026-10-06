@@ -475,7 +475,7 @@ contract LibDecimalFloatImplementationLog10Test is LogTest {
 
     function log10Either(address tables, int256 signedCoefficient, int256 exponent, bool rounded)
         internal
-        view
+        pure
         returns (int256, int256)
     {
         return rounded

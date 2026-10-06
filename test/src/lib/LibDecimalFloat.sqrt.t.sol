@@ -23,7 +23,7 @@ contract LibDecimalFloatSqrtTest is LogTest {
             .add(LibDecimalFloat.packLossless(1, -65));
     }
 
-    function sqrtExternal(Float a, address tables) external view returns (Float) {
+    function sqrtExternal(Float a, address tables) external pure returns (Float) {
         return a.sqrt(tables);
     }
 

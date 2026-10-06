@@ -49,7 +49,7 @@ contract LibDecimalFloatGasTest is LogTest {
         console2.log(string.concat("sqrt ", name), used);
     }
 
-    function logMul(string memory name, Float a, Float b) internal {
+    function logMul(string memory name, Float a, Float b) internal view {
         uint256 before = gasleft();
         a.mul(b);
         uint256 used = before - gasleft();
@@ -104,7 +104,7 @@ contract LibDecimalFloatGasTest is LogTest {
         logSqrt("odd exponent 2e-1", f(2, -1));
     }
 
-    function testGasMul() external {
+    function testGasMul() external view {
         logMul("2*3", f(2, 0), f(3, 0));
         logMul("1e18 scale", f(1234567890123456789, -18), f(9876543210987654321, -18));
         logMul(

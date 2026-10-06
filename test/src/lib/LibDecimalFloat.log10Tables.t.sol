@@ -214,7 +214,7 @@ contract LibDecimalFloatLog10TablesTest is Test {
 
     /// The largest |a / (a ^ b) ^ (1 / b) - 1| over the round trips
     /// LibDecimalFloatPowTest.testRoundTripSimple checks, scaled by ONE.
-    function maxRoundTrip(address tables) internal view returns (uint256) {
+    function maxRoundTrip(address tables) internal pure returns (uint256) {
         uint256 worst = 0;
         int256[4][9] memory cases = [
             [int256(5), 0, 2, 0],
