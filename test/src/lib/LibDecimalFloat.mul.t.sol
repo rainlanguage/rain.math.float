@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
@@ -36,20 +37,31 @@ contract LibDecimalFloatMulTest is Test {
         this.mulExternal(a, b);
     }
 
+    /// Reverts only where the exact product is beyond the largest Float of its
+    /// sign or below the smallest positive Float, and otherwise agrees with the
+    /// unpacked path.
     function testMulPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        try this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
-            Float floatExternal
-        ) {
-            (int256 signedCoefficient, int256 exponent) = floatExternal.unpack();
-            Float float = this.mulExternal(a, b);
-            (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = float.unpack();
-            assertEq(signedCoefficient, signedCoefficientUnpacked);
-            assertEq(exponent, exponentUnpacked);
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
+        bool overflows = LibTestExactDecimal.mulOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        bool underflows =
+            LibTestExactDecimal.mulUnderflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        if (overflows || underflows) {
+            (int256 signedCoefficient, int256 exponent) =
+                LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    overflows ? ExponentOverflow.selector : ExponentUnderflow.selector, signedCoefficient, exponent
+                )
+            );
             this.mulExternal(a, b);
+            return;
         }
+        Float floatExternal = this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficientParts, int256 exponentParts) = floatExternal.unpack();
+        Float float = this.mulExternal(a, b);
+        (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = float.unpack();
+        assertEq(signedCoefficientParts, signedCoefficientUnpacked);
+        assertEq(exponentParts, exponentUnpacked);
     }
 }

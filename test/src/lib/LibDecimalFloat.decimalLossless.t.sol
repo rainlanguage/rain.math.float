@@ -9,6 +9,7 @@ import {
     Float
 } from "../../../src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatDecimalLosslessTest is Test {
     using LibDecimalFloat for Float;
@@ -60,16 +61,24 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         assertEq(signedCoefficient == 0 ? int256(0) : exponent, exponentPacked);
     }
 
+    /// Both paths match the exact `coefficient × 10^(exponent + decimals)`,
+    /// with any truncation reverting `LossyConversionFromFloat`.
     function testToFixedDecimalLosslessPacked(Float float, uint8 decimals) external {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
-        try this.toFixedDecimalLosslessExternal(signedCoefficient, exponent, decimals) returns (uint256 value) {
-            uint256 valueFloat = float.toFixedDecimalLossless(decimals);
-            assertEq(valueFloat, value);
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            uint256 valueFloat = this.toFixedDecimalLosslessExternal(float, decimals);
-            (valueFloat);
+        (bytes memory expectedError, uint256 expectedValue, bool lossless) =
+            LibTestExactDecimal.toFixedDecimal(signedCoefficient, exponent, decimals);
+        if (expectedError.length == 0 && !lossless) {
+            expectedError = abi.encodeWithSelector(LossyConversionFromFloat.selector, signedCoefficient, exponent);
         }
+        if (expectedError.length > 0) {
+            vm.expectRevert(expectedError);
+            this.toFixedDecimalLosslessExternal(signedCoefficient, exponent, decimals);
+            vm.expectRevert(expectedError);
+            this.toFixedDecimalLosslessExternal(float, decimals);
+            return;
+        }
+        assertEq(this.toFixedDecimalLosslessExternal(signedCoefficient, exponent, decimals), expectedValue, "unpacked");
+        assertEq(this.toFixedDecimalLosslessExternal(float, decimals), expectedValue, "packed");
     }
 
     function testToFixedDecimalLosslessPass(int256 signedCoefficient, int256 exponent, uint8 decimals) external pure {

@@ -2,7 +2,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
+import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
@@ -35,19 +37,37 @@ contract LibDecimalFloatDivTest is Test {
         this.divExternal(a, b);
     }
 
+    /// Reverts only on a zero divisor, or where the exact quotient is beyond
+    /// the largest Float of its sign or below the smallest positive Float, and
+    /// otherwise agrees with the unpacked path.
     function testDivPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        try this.divExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (Float resultParts) {
-            (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(resultParts);
-            Float float = this.divExternal(a, b);
-            (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
-            assertEq(signedCoefficient, signedCoefficientFloat);
-            assertEq(exponent, exponentFloat);
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
+        if (signedCoefficientB == 0) {
+            vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, signedCoefficientA, exponentA));
             this.divExternal(a, b);
+            return;
         }
+        bool overflows = LibTestExactDecimal.divOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        bool underflows =
+            LibTestExactDecimal.divUnderflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        if (overflows || underflows) {
+            (int256 signedCoefficient, int256 exponent) =
+                LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            vm.expectRevert(
+                abi.encodeWithSelector(
+                    overflows ? ExponentOverflow.selector : ExponentUnderflow.selector, signedCoefficient, exponent
+                )
+            );
+            this.divExternal(a, b);
+            return;
+        }
+        Float resultParts = this.divExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficientParts, int256 exponentParts) = LibDecimalFloat.unpack(resultParts);
+        Float float = this.divExternal(a, b);
+        (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
+        assertEq(signedCoefficientParts, signedCoefficientFloat);
+        assertEq(exponentParts, exponentFloat);
     }
 
     function testDivByOneFloat(int224 signedCoefficient, int32 exponent) external pure {

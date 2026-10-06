@@ -5,6 +5,8 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatInvTest is Test {
     using LibDecimalFloat for Float;
@@ -54,17 +56,30 @@ contract LibDecimalFloatInvTest is Test {
         this.invExternal(float);
     }
 
+    /// Reverts only on zero, or where the exact inverse is below the smallest
+    /// positive Float, and otherwise agrees with the unpacked path. No inverse
+    /// overflows: the smallest magnitude is `1e-2147483648`, whose inverse is
+    /// `10 × 10^int32.max`.
     function testInvMem(Float float) external {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
-        try this.invExternal(signedCoefficient, exponent) returns (Float floatParts) {
-            (int256 signedCoefficientResult, int256 exponentResult) = floatParts.unpack();
-            Float floatInv = this.invExternal(float);
-            (int256 signedCoefficientResultUnpacked, int256 exponentResultUnpacked) = floatInv.unpack();
-            assertEq(signedCoefficientResultUnpacked, signedCoefficientResult);
-            assertEq(exponentResultUnpacked, exponentResult);
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
+        if (signedCoefficient == 0) {
+            vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, int256(1e76), int256(-76)));
             this.invExternal(float);
+            return;
         }
+        assertFalse(LibTestExactDecimal.divOverflows(1, 0, signedCoefficient, exponent), "inverse overflows");
+        if (LibTestExactDecimal.divUnderflows(1, 0, signedCoefficient, exponent)) {
+            (int256 signedCoefficientInv, int256 exponentInv) =
+                LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
+            vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficientInv, exponentInv));
+            this.invExternal(float);
+            return;
+        }
+        Float floatParts = this.invExternal(signedCoefficient, exponent);
+        (int256 signedCoefficientResult, int256 exponentResult) = floatParts.unpack();
+        Float floatInv = this.invExternal(float);
+        (int256 signedCoefficientResultUnpacked, int256 exponentResultUnpacked) = floatInv.unpack();
+        assertEq(signedCoefficientResultUnpacked, signedCoefficientResult);
+        assertEq(exponentResultUnpacked, exponentResult);
     }
 }

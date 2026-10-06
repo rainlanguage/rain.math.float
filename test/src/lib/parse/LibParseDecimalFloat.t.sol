@@ -17,6 +17,7 @@ import {
 import {ExponentOverflow, CoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
@@ -44,55 +45,57 @@ contract LibParseDecimalFloatTest is Test {
 
     /// Check that the packed version matches the inline version.
     function testParsePacked(string memory data) external {
-        try this.parseDecimalFloatInlineExternal(data) returns (
-            bytes4 errorSelector, uint256 cursorMove, int256 signedCoefficient, int256 exponent
+        // The inline parse reports every malformed input as a selector. Its only
+        // revert is a zero start pointer, which no memory string has.
+        (bytes4 errorSelector, uint256 cursorMove, int256 signedCoefficient, int256 exponent) =
+            this.parseDecimalFloatInlineExternal(data);
+        // Inline parsing doesn't treat a partially consumed string as an
+        // error, but the external parsing does, so we have to special case
+        // that check.
+        if (errorSelector == bytes4(0) && cursorMove != bytes(data).length) {
+            errorSelector = ParseDecimalFloatExcessCharacters.selector;
+            signedCoefficient = 0;
+            exponent = 0;
+        } else if (
+            signedCoefficient != 0
+                && LibTestExactDecimal.overflows(
+                    LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)),
+                    exponent,
+                    signedCoefficient < 0
+                )
         ) {
-            // Inline parsing doesn't treat a partially consumed string as an
-            // error, but the external parsing does, so we have to special case
-            // that check.
-            if (errorSelector == bytes4(0) && cursorMove != bytes(data).length) {
-                errorSelector = ParseDecimalFloatExcessCharacters.selector;
-                signedCoefficient = 0;
-                exponent = 0;
-                // forge-lint: disable-next-line(unsafe-typecast)
-            } else if (exponent != int32(exponent) && exponent > 0 && signedCoefficient == int224(signedCoefficient)) {
-                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+            // The parsed value is beyond the largest Float of its sign.
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+            signedCoefficient = 0;
+            exponent = 0;
+        } else {
+            (Float packed, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+            if (!lossless) {
+                errorSelector = ParseDecimalPrecisionLoss.selector;
                 signedCoefficient = 0;
                 exponent = 0;
             } else {
-                (Float packed, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-                if (!lossless) {
-                    errorSelector = ParseDecimalPrecisionLoss.selector;
-                    signedCoefficient = 0;
-                    exponent = 0;
-                } else {
-                    // A lossless pack may still have shed trailing zeros, to
-                    // fit the coefficient in int224 or to lift the exponent to
-                    // int32.min, so the representation can differ from the
-                    // inline parse. The VALUE cannot, and that is asserted
-                    // against the raw inline values here; the representation
-                    // comparison below is then between the two packed paths.
-                    (int256 packedCoefficient, int256 packedExponent) = packed.unpack();
-                    assertTrue(
-                        LibDecimalFloatImplementation.eq(
-                            signedCoefficient, exponent, packedCoefficient, packedExponent
-                        ),
-                        "lossless pack changed the value"
-                    );
-                    signedCoefficient = packedCoefficient;
-                    exponent = packedExponent;
-                }
+                // A lossless pack may still have shed trailing zeros, to
+                // fit the coefficient in int224 or to lift the exponent to
+                // int32.min, so the representation can differ from the
+                // inline parse. The VALUE cannot, and that is asserted
+                // against the raw inline values here; the representation
+                // comparison below is then between the two packed paths.
+                (int256 packedCoefficient, int256 packedExponent) = packed.unpack();
+                assertTrue(
+                    LibDecimalFloatImplementation.eq(signedCoefficient, exponent, packedCoefficient, packedExponent),
+                    "lossless pack changed the value"
+                );
+                signedCoefficient = packedCoefficient;
+                exponent = packedExponent;
             }
-
-            (bytes4 errorSelectorPacked, Float float) = this.parseDecimalFloatExternal(data);
-            assertEq(errorSelector, errorSelectorPacked, "Error selector mismatch");
-            (int256 signedCoefficientPacked, int256 exponentPacked) = float.unpack();
-            assertEq(signedCoefficient, signedCoefficientPacked, "Signed coefficient mismatch");
-            assertEq(exponent, exponentPacked, "Exponent mismatch");
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            this.parseDecimalFloatExternal(data);
         }
+
+        (bytes4 errorSelectorPacked, Float float) = this.parseDecimalFloatExternal(data);
+        assertEq(errorSelector, errorSelectorPacked, "Error selector mismatch");
+        (int256 signedCoefficientPacked, int256 exponentPacked) = float.unpack();
+        assertEq(signedCoefficient, signedCoefficientPacked, "Signed coefficient mismatch");
+        assertEq(exponent, exponentPacked, "Exponent mismatch");
     }
 
     function checkParseDecimalFloat(
