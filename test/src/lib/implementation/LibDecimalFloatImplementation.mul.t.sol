@@ -315,6 +315,27 @@ contract LibDecimalFloatImplementationMulTest is Test {
         checkMulExponentOverflow(1e76, max - 75, -1e76, 0);
     }
 
+    /// The exponent guard's window edges: [-2^253, 2^253) skips the checks.
+    function testMulExponentGuardEdges() external pure {
+        int256 edge = 2 ** 253;
+        checkMul(1, edge - 1, 1, edge - 1, 1, 2 * edge - 2);
+        checkMul(1, edge, 1, edge, 1, 2 * edge);
+        checkMul(1, -edge, 1, -edge, 1, -2 * edge);
+        checkMul(1, -edge - 1, 1, -edge - 1, 1, -2 * edge - 2);
+    }
+
+    /// Both exponents in the guard window's upper margin wrap the sum.
+    function testMulExponentGuardUpperMarginWraps() external {
+        int256 e = 2 ** 254 + (2 ** 253 - 1);
+        checkMulExponentOverflow(1, e, 1, e);
+    }
+
+    /// Both exponents below -2^254 wrap the sum past the floor.
+    function testMulExponentGuardLowerMarginWraps() external pure {
+        int256 e = -(2 ** 254) - 1;
+        checkMul(1e70, e, 1, e, 1e68, type(int256).min);
+    }
+
     function checkMulNearCeiling(
         int256 signedCoefficientA,
         int256 exponentA,
