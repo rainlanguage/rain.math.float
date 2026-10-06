@@ -19,5 +19,28 @@
       "testsAfter": 649,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-06T18:06:53Z",
+    "commit": "44e1684d84e143c430b42e21701586551147bc83",
+    "testsAfterCommit": "b6a4b4b1117ab3e99219b595685ff0f9df96eba7",
+    "publishedTag": "sol-v0.2.14",
+    "commitsAheadOfTag": 16,
+    "scope": "pr:317 test-only: exact ExponentOverflow/ExponentUnderflow payloads. Mutants on the packArithmeticResult/packLossy revert args and the mul/div/inv/add intermediates that feed them. Full suite kills all 15 on both trees. Scoped to LibDecimalFloat.{add,sub,mul,div,inv}.t.sol, main kills 1/15 and the PR kills 10/15. The 5 scoped survivors are int256-floor paths and add int256-sum-overflow branches that no Float reaches with an observable payload.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 15,
+      "killedBefore": 15,
+      "killedAfter": 0,
+      "equivalent": 0,
+      "candidates": 1,
+      "confirmed": 0,
+      "testsBefore": 693,
+      "testsAfter": 696,
+      "filed": [
+        326
+      ]
+    }
   }
 ]
