@@ -28,26 +28,17 @@ contract LibDecimalFloatPowTest is LogTest {
         return LibTestErrorBound.pow(b);
     }
 
-    /// Up to one unit of the coefficient, if a pack shed digits to lift the
-    /// exponent to the int32 floor.
-    function floorLoss(Float x) internal pure returns (Float) {
-        (int256 signedCoefficient, int256 exponent) = x.unpack();
-        return exponent == type(int32).min
-            ? LibDecimalFloat.FLOAT_ONE.div(LibDecimalFloat.packLossless(signedCoefficient, 0).abs())
-            : LibDecimalFloat.FLOAT_ZERO;
-    }
-
     /// With c = a^b (1 + d1), the inverse 1/b (1 + e) and the round trip
     /// c^(1/b (1 + e)) (1 + d2), ln(a / roundTrip) = -(d1 / b + d2 + e ln a) to
     /// first order. Each d is within `legError` plus the floor losses of its
     /// result and, for a negative b, of the base it inverts. e is the 1e-66 of
     /// a pack and |b ln a| is below 5e9 for a finite c, so e ln a vanishes.
     function roundTripLogError(Float a, Float b, Float c, Float roundTrip) internal pure returns (Float) {
-        Float first = legError(b).add(floorLoss(c));
-        Float second = legError(b.inv()).add(floorLoss(roundTrip));
+        Float first = legError(b).add(LibTestErrorBound.floor(c));
+        Float second = legError(b.inv()).add(LibTestErrorBound.floor(roundTrip));
         if (b.lt(LibDecimalFloat.FLOAT_ZERO)) {
-            first = first.add(floorLoss(a.abs().inv()));
-            second = second.add(floorLoss(c.abs().inv()));
+            first = first.add(LibTestErrorBound.floor(a.abs().inv()));
+            second = second.add(LibTestErrorBound.floor(c.abs().inv()));
         }
         return first.div(b.abs()).add(second);
     }
@@ -488,6 +479,12 @@ contract LibDecimalFloatPowTest is LogTest {
         assertTrue(product.lt(LibDecimalFloat.packLossless(1001, -3)));
     }
 
+    /// Issue #297 review: 0.1^2147483645.5 is 316.2277e-2147483648, below
+    /// 1e-2147483608, so it sheds digits at the int32 floor.
+    function testPowFloor() external {
+        checkPow(1, -1, 21474836455, -1, 316, type(int32).min);
+    }
+
     /// The base's inverse is the result when the power is -1, so it still
     /// underflows: 10^-2147483713 is 1e40 · 10^-2147483753.
     function testPowMinusOneHugeBaseUnderflows() external {
@@ -551,8 +548,8 @@ contract LibDecimalFloatPowTest is LogTest {
         if (representable) {
             Float actual = this.powExternal(a, b.minus());
             Float diff = actual.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs();
-            Float limit =
-                legError(b).add(legError(b)).add(floorLoss(power)).add(floorLoss(actual)).add(floorLoss(expected));
+            Float limit = legError(b).add(legError(b)).add(LibTestErrorBound.floor(power))
+                .add(LibTestErrorBound.floor(actual)).add(LibTestErrorBound.floor(expected));
             assertTrue(diff.lte(limit), "diff");
         } else {
             try this.powExternal(a, b.minus()) {}

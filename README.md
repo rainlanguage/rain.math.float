@@ -141,6 +141,10 @@ including an integer power and `a^1`, within proven bounds of the true value:
 - `pow`: 5.00006e-41 + 3N·1e-75 relative, for N the integer part of |b|.
 - `sqrt`: 5.00006e-41 relative.
 
+A `pow10` or `pow` result below 1e-2147483608 sheds digits to lift its exponent
+to the int32 floor, so its bound adds 1e-2147483648 absolute. Below
+1e-2147483648 it reverts `ExponentUnderflow`.
+
 They are monotone within rounding error, not strictly monotone. For a < b the
 order of the results can flip by exactly one unit in the last place, only when
 both true values lie within the larger raw error of the same rounding tie, and

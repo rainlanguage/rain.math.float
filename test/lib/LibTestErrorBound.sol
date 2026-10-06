@@ -54,10 +54,41 @@ library LibTestErrorBound {
         return low.sub(high).lte(lowError.add(highError));
     }
 
-    /// For x < y and results r, relative bounds give r(x) / (1 + E(x)) <=
-    /// f(x) <= f(y) <= r(y) / (1 - E(y)), so r(x) - r(y) <= E(y) r(x) +
-    /// E(x) r(y), which is 2E of the larger.
+    /// The int32 exponent floor's 1e-2147483648, which a relative bound adds
+    /// absolute: a result below 1e-2147483608 sheds digits to lift its
+    /// exponent to the floor. Relative to t = signedCoefficient 10^exponent,
+    /// that is 1e-2147483648 / |t|, zero where it is below the smallest Float.
+    function floor(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
+        (signedCoefficient, exponent) =
+            LibDecimalFloatImplementation.div(1, type(int32).min, signedCoefficient, exponent);
+        (Float relative,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+        return relative.abs();
+    }
+
+    /// `floor` relative to a nonzero Float.
+    function floor(Float x) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = x.unpack();
+        return floor(signedCoefficient, exponent);
+    }
+
+    /// E |x|, unpacked, as it underflows a Float near the floor.
+    function scaled(Float error, Float x) private pure returns (int256, int256) {
+        (int256 errorCoefficient, int256 errorExponent) = error.unpack();
+        (int256 signedCoefficient, int256 exponent) = x.abs().unpack();
+        return LibDecimalFloatImplementation.mul(errorCoefficient, errorExponent, signedCoefficient, exponent);
+    }
+
+    /// For x < y and results r within E f + u of the true f, r(x) - u over
+    /// 1 + E(x) <= f(x) <= f(y) <= r(y) + u over 1 - E(y), so r(x) - r(y) <=
+    /// E(y) r(x) + E(x) r(y) + 3u, which is 2E of the larger and the floor's u.
     function monotoneRelative(Float low, Float high, Float lowError, Float highError) internal pure returns (bool) {
-        return low.sub(high).lte(highError.mul(low.abs()).add(lowError.mul(high.abs())));
+        (int256 limitCoefficient, int256 limitExponent) = scaled(highError, low);
+        (int256 signedCoefficient, int256 exponent) = scaled(lowError, high);
+        (limitCoefficient, limitExponent) =
+            LibDecimalFloatImplementation.add(limitCoefficient, limitExponent, signedCoefficient, exponent);
+        (limitCoefficient, limitExponent) =
+            LibDecimalFloatImplementation.add(limitCoefficient, limitExponent, 3, type(int32).min);
+        (signedCoefficient, exponent) = low.sub(high).unpack();
+        return LibDecimalFloatImplementation.lte(signedCoefficient, exponent, limitCoefficient, limitExponent);
     }
 }

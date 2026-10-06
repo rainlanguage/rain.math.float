@@ -60,6 +60,7 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
   tolerated because it preserves the order of magnitude: digits are shed to fit
   the coefficient in int224 AND to lift an exponent below int32.min back to the
   floor. `ExponentUnderflow` is only the case where every digit has been shed.
+  The pow10 and pow bounds add 1e-2147483648 absolute there.
 - log10 refines a log table seed in 1e50 fixed point; pow10 reads no tables.
 - log10, pow10, pow and sqrt are monotone within rounding error, not correctly
   rounded: order can flip by one ulp at a shared rounding tie, never more. Exact
@@ -72,7 +73,6 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
     legitimate parse result reported via `ParseDecimalPrecisionLoss`.
   - `packArithmeticResult`: tolerates coefficient truncation, reverts on
     exponent underflow. Used by every public arithmetic operation.
-- Solidity compiler: 0.8.25, EVM target: Cancun, optimizer: 1,000,000 runs.
 
 ## License
 

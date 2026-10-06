@@ -835,7 +835,10 @@ library LibDecimalFloat {
     /// The tables address is unused, and kept so that callers need not change.
     /// @return The result of 10^float, rounded to nearest at 41 significant
     /// digits, within half a unit in the 41st digit plus 5.1662e-6 of a unit,
-    /// under 5.0000517e-41 relative. Monotone within rounding error: for
+    /// under 5.0000517e-41 relative. A result below 1e-2147483608 sheds digits
+    /// to lift its exponent to the int32 floor, so its bound adds
+    /// 1e-2147483648 absolute, and below 1e-2147483648 it reverts
+    /// `ExponentUnderflow`. Monotone within rounding error: for
     /// x < y the results can be out of order by exactly one unit in the last
     /// place, only when both true values lie within the raw error of the same
     /// rounding tie, and never by more. Callers must not rely on strict
@@ -890,10 +893,14 @@ library LibDecimalFloat {
     ///   the leg adds 1e-75 more. With N 1 the integer part is a itself.
     /// - Rounding adds half a unit in the 41st digit, at most 5e-41 of the
     ///   product.
+    /// - A result below 1e-2147483608 sheds digits to lift its exponent to
+    ///   the int32 floor, so its bound adds 1e-2147483648 absolute. Below
+    ///   1e-2147483648 it reverts `ExponentUnderflow`.
     /// Monotone within rounding error: for b < c, a^b and a^c can be out of
     /// order by exactly one unit in the last place, only when both true
     /// values lie within the larger raw error, 5.69e-46 + 3N 1e-75 relative,
-    /// of the same rounding tie, and never by more. Callers must not rely on strict ordering at one-ulp resolution.
+    /// of the same rounding tie, and never by more. Callers must not rely on
+    /// strict ordering at one-ulp resolution.
     /// Exact results stay exact: a power with at most 41 significant digits,
     /// integer or fractional such as 4^0.5.
     ///

@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LogTest} from "../../abstract/LogTest.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
@@ -65,6 +65,14 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         return LibDecimalFloatImplementation.sub(signedCoefficient, actualExponent, 1, 0);
     }
 
+    /// The floor's term relative to the oracle's power, which is within 1e-67
+    /// of the true value, so the term is within 1e-67 of itself.
+    function floorOf(uint256 power, int256 powerExponent) internal pure returns (Float) {
+        // The oracle's power is below 1e71 and so fits.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return LibTestErrorBound.floor(int256(power), powerExponent);
+    }
+
     /// The oracle's 1e-67 relative, through the quotient and its truncation.
     function exp10Slack() internal pure returns (Float) {
         return LibDecimalFloat.packLossless(1, -66);
@@ -102,15 +110,12 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         return LibDecimalFloat.packLossless(coefficient, exponent);
     }
 
-    /// A float of magnitude below 10^digits, at most 2e9, with any exponent in
-    /// [-90, 2], so 10^x packs.
-    function exponentInput(int256 coefficient, int256 exponent, uint256 digits) internal pure returns (Float) {
-        exponent = bound(exponent, -90, 2);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 magnitude = 10 ** bound(digits, 0, 9);
-        if (magnitude > 2e9) {
-            magnitude = 2e9;
-        }
+    /// The largest x below which every 10^x packs: an integer x returns
+    /// 10^x as 1 at exponent x.
+    int256 constant POW10_TOP = type(int32).max;
+
+    /// x scaled to a coefficient at exponent, toward zero, held to int224.
+    function exponentLimit(uint256 magnitude, int256 exponent) internal pure returns (int256) {
         uint256 limit;
         if (exponent >= 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -124,7 +129,25 @@ contract LibDecimalFloatPrecisionTest is LogTest {
             }
         }
         // forge-lint: disable-next-line(unsafe-typecast)
-        coefficient = bound(coefficient, -int256(limit), int256(limit));
+        return int256(limit);
+    }
+
+    /// A float x of magnitude below 10^digits with any exponent in [-90, 2],
+    /// across the whole range where 10^x packs: above int32.min, where it
+    /// underflows, and at most `POW10_TOP`.
+    function exponentInput(int256 coefficient, int256 exponent, uint256 digits) internal pure returns (Float) {
+        exponent = bound(exponent, -90, 2);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 magnitude = 10 ** bound(digits, 0, 10);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 bottom = uint256(-int256(type(int32).min)) - 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 top = uint256(POW10_TOP);
+        coefficient = bound(
+            coefficient,
+            -exponentLimit(magnitude < bottom ? magnitude : bottom, exponent),
+            exponentLimit(magnitude < top ? magnitude : top, exponent)
+        );
         return LibDecimalFloat.packLossless(coefficient, exponent);
     }
 
@@ -158,7 +181,12 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         (int256 signedCoefficient, int256 exponent) = x.unpack();
         (uint256 power, int256 powerExponent) = LibTranscendentalOracle.exp10(signedCoefficient, exponent);
         (int256 errorCoefficient, int256 errorExponent) = relativeError(actual, power, powerExponent);
-        assertWithin(errorCoefficient, errorExponent, LibTestErrorBound.pow10().add(exp10Slack()), what);
+        assertWithin(
+            errorCoefficient,
+            errorExponent,
+            LibTestErrorBound.pow10().add(floorOf(power, powerExponent)).add(exp10Slack()),
+            what
+        );
     }
 
     /// 10^(b log10 a) from the oracle.
@@ -174,7 +202,12 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     function assertPowReference(Float a, Float b, Float actual, string memory what) internal pure {
         (uint256 power, int256 powerExponent) = oraclePow(a, b);
         (int256 errorCoefficient, int256 errorExponent) = relativeError(actual, power, powerExponent);
-        assertWithin(errorCoefficient, errorExponent, LibTestErrorBound.pow(b).add(powSlack(b)), what);
+        assertWithin(
+            errorCoefficient,
+            errorExponent,
+            LibTestErrorBound.pow(b).add(floorOf(power, powerExponent)).add(powSlack(b)),
+            what
+        );
     }
 
     /// The product's packing moves its log by under 4.4e-67, and each packed
@@ -361,7 +394,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
 
     function testPow10Monotone(int256 coefficient, int256 exponent, uint256 digits, uint256 step) external {
         Float x = exponentInput(coefficient, exponent, digits);
-        Float y = stepUp(x, step).min(LibDecimalFloat.packLossless(2e9, 0));
+        Float y = stepUp(x, step).min(LibDecimalFloat.packLossless(POW10_TOP, 0));
         assertPow10Monotone(x, y, "pow10 monotone");
     }
 
@@ -386,6 +419,41 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     {
         (Float a, Float b) = powInputs(coefficientA, exponentA, region, coefficientB, exponentB);
         assertPowReference(a, b, this.powExternal(a, b), "pow");
+    }
+
+    /// a^b for b in [1, 2] with a placed so b log10 a is within a few units
+    /// of [-2147483660, -2147483600], across the floor region: within the
+    /// proven bound plus the floor's 1e-2147483648 absolute, or reverting
+    /// `ExponentUnderflow` only for a true value below 1e-2147483648.
+    function testPowFloor(int256 coefficientA, int256 target, int256 coefficientB) external {
+        coefficientA = bound(coefficientA, 1, 1e67);
+        target = bound(target, -2147483660, -2147483600);
+        coefficientB = bound(coefficientB, 1e18, 2e18);
+        int256 digits = 1;
+        for (int256 scale = 10; scale <= coefficientA; scale *= 10) {
+            digits++;
+        }
+        int256 exponentA = target * 1e18 / coefficientB - (digits - 1);
+        if (exponentA < type(int32).min) {
+            exponentA = type(int32).min;
+        }
+        Float a = LibDecimalFloat.packLossless(coefficientA, exponentA);
+        Float b = LibDecimalFloat.packLossless(coefficientB, -18);
+        try this.powExternal(a, b) returns (Float actual) {
+            assertPowReference(a, b, actual, "pow floor");
+        } catch (bytes memory reason) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertEq(bytes4(reason), ExponentUnderflow.selector);
+            (uint256 power, int256 powerExponent) = oraclePow(a, b);
+            // The oracle's power is below 1e71 and so fits.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertTrue(
+                LibDecimalFloatImplementation.lt(
+                    int256(power), powerExponent, 100000000000000000000000000000000000000001, -2147483688
+                ),
+                "underflow below the floor"
+            );
+        }
     }
 
     function testPowProduct(

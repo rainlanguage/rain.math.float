@@ -25,6 +25,19 @@ contract LibDecimalFloatPow10Test is LogTest {
         this.pow10External(float);
     }
 
+    /// Issue #297 review: below 1e-2147483608 the result sheds digits at the
+    /// int32 floor. 10^-2147483645.5 is 316.2277e-2147483648 and
+    /// 10^-2147483647.5 is 3.162277e-2147483648, truncated.
+    function testPow10Floor() external {
+        (int256 signedCoefficient, int256 exponent) =
+            this.pow10External(LibDecimalFloat.packLossless(-21474836455, -1)).unpack();
+        assertEq(signedCoefficient, 316);
+        assertEq(exponent, type(int32).min);
+        (signedCoefficient, exponent) = this.pow10External(LibDecimalFloat.packLossless(-21474836475, -1)).unpack();
+        assertEq(signedCoefficient, 3);
+        assertEq(exponent, type(int32).min);
+    }
+
     function testPow10Packed(Float float) external {
         (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
         try this.pow10External(signedCoefficientFloat, exponentFloat) returns (
