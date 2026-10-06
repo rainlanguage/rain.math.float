@@ -8,6 +8,7 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
 import {console2} from "forge-std-1.17.0/src/Test.sol";
+import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 
 contract LibDecimalFloatSqrtTest is LogTest {
     using LibDecimalFloat for Float;
@@ -167,14 +168,16 @@ contract LibDecimalFloatSqrtTest is LogTest {
         return uint256(error < 0 ? -error : error);
     }
 
-    /// pow10 correctly rounds half log10Unrounded, which is within half of
-    /// 2.245e-47, so the root is within half a unit plus 2.585e-47 relative,
-    /// which is 2585 billionths of a unit at most 1e-41 relative.
+    /// pow10 rounds to nearest with its fixed point power within
+    /// `POW10_RAW_ERROR` units, 5166.2 billionths of a unit, and its argument
+    /// is half log10Unrounded, within half of 2.245e-47, which moves the root
+    /// by 2.5847e-47 relative, 2584.7 billionths of a unit at most 1e-41
+    /// relative. With the half unit that is under 500007751.
     function testSqrtUlpFuzz(int256 signedCoefficient, int256 exponent) external {
-        assertLe(sqrtUlpError(signedCoefficient, exponent), 500002585, "sqrt error");
+        assertLe(sqrtUlpError(signedCoefficient, exponent), 500007751, "sqrt error");
     }
 
-    /// x < y implies sqrt(x) <= sqrt(y), down to adjacent coefficients.
+    /// x < y implies sqrt(x) <= sqrt(y) + 2E, down to adjacent coefficients.
     function testSqrtMonotone(int256 signedCoefficient, int256 gap, int256 exponent) external {
         signedCoefficient = bound(signedCoefficient, 1, type(int224).max - 1e3);
         gap = bound(gap, 1, 1e3);
@@ -182,6 +185,7 @@ contract LibDecimalFloatSqrtTest is LogTest {
         address tables = logTables();
         Float low = LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt(tables);
         Float high = LibDecimalFloat.packLossless(signedCoefficient + gap, exponent).sqrt(tables);
-        assertTrue(low.lte(high), "monotone");
+        Float error = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_HALF);
+        assertTrue(LibTestErrorBound.monotoneRelative(low, high, error, error), "monotone");
     }
 }

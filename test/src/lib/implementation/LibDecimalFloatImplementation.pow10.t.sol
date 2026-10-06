@@ -8,6 +8,7 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibTranscendentalOracle, ORACLE_ONE} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
+import {LibTestErrorBound} from "../../../lib/LibTestErrorBound.sol";
 
 contract LibDecimalFloatImplementationPow10Test is Test {
     using LibDecimalFloat for Float;
@@ -34,8 +35,9 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         checkPow10(-20, -1, 1, -2);
     }
 
-    /// The result is correctly rounded to 41 significant digits, so within
-    /// half a unit, and the 70 digit reference is within 1e-29 of a unit.
+    /// The result is within half a unit plus `POW10_RAW_ERROR` units of 1e-50
+    /// over a unit of `POW_GUARD` of them, 5.1662e-6, and the 70 digit
+    /// reference is within 1e-29 of a unit.
     function testPow10Accuracy() external pure {
         int256[4][] memory references = pow10References();
         for (uint256 i = 0; i < references.length; i++) {
@@ -55,7 +57,8 @@ contract LibDecimalFloatImplementationPow10Test is Test {
                 exponent += 1;
             }
             assertTrue(
-                LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 500001, exponent - 6), "pow10 error"
+                LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 50000516621, exponent - 11),
+                "pow10 error"
             );
         }
     }
@@ -417,11 +420,11 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         return actual > expected ? actual - expected : expected - actual;
     }
 
-    /// Half a unit, as pow10 is correctly rounded, plus 2 for the oracle:
-    /// exp10Small is within a few units of 1e-70, under 1e-18 of these
-    /// billionths, and the expected value floors one.
+    /// Half a unit plus 5166.2 billionths, pow10's bound, plus 2 for the
+    /// oracle: exp10Small is within a few units of 1e-70, under 1e-18 of
+    /// these billionths, and the expected value floors one.
     function testPow10OracleFuzz(uint256 primeSeed, uint256 j, int256 d, int256 n) external pure {
-        assertLe(pow10OracleError(primeSeed, j, d, n), 500000002, "pow10 error");
+        assertLe(pow10OracleError(primeSeed, j, d, n), 500005168, "pow10 error");
     }
 
     /// pow10(x + k) is pow10(x) 10^k exactly for an integer k. x is at the
@@ -444,48 +447,21 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         checkPow10(k * int256(10 ** zeros), -int256(zeros), 1, k);
     }
 
-    /// x < y implies pow10(x) <= pow10(y), down to adjacent inputs at 1e-70.
+    /// x < y implies pow10(x) <= pow10(y) + 2E, down to adjacent inputs at
+    /// 1e-70.
     function testPow10Monotone(int256 x, int256 gap) external pure {
         x = bound(x, -1e75, 1e75);
         gap = bound(gap, 1, 1e3);
         (int256 lowCoefficient, int256 lowExponent) = LibDecimalFloatImplementation.pow10(x, -70);
         (int256 highCoefficient, int256 highExponent) = LibDecimalFloatImplementation.pow10(x + gap, -70);
         assertTrue(
-            LibDecimalFloatImplementation.lte(lowCoefficient, lowExponent, highCoefficient, highExponent), "monotone"
+            LibTestErrorBound.monotoneRelative(
+                LibDecimalFloat.packLossless(lowCoefficient, lowExponent),
+                LibDecimalFloat.packLossless(highCoefficient, highExponent),
+                LibTestErrorBound.pow10(),
+                LibTestErrorBound.pow10()
+            ),
+            "monotone"
         );
-    }
-
-    /// The oracle's unit range functions against `bc -l`.
-    function testOracleUnitFunctions() external pure {
-        uint256 sqrt10 = 31622776601683793319988935444327185337195551393252168268575048527925944;
-        uint256 power = LibTranscendentalOracle.exp10Unit(ORACLE_ONE / 2);
-        assertLe(power, sqrt10, "exp10 above");
-        assertLe(sqrt10 - power, 1e3, "exp10 below");
-        for (uint256 primeSeed = 0; primeSeed < 3; primeSeed++) {
-            uint256 base = prime(primeSeed);
-            uint256 log = LibTranscendentalOracle.log10Unit(base * ORACLE_ONE);
-            uint256 expected = LibTranscendentalOracle.log10Prime(base);
-            assertLe(log > expected ? log - expected : expected - log, 1e3, "log10");
-        }
-    }
-
-    /// x is within 1e18 units of 1e-65, but at least one, of log10 of the
-    /// rounding tie T = (10 p + 5) 10^(k - 41), so 10^x is within 3e-46
-    /// relative of T and inside the tie check. The oracle's log10 is within
-    /// 1e3 units of 1e-70, so x is above log10 T exactly when delta is
-    /// positive, and pow10 must round up exactly then.
-    function testPow10NearTie(uint256 p, int256 k, int256 delta) external pure {
-        p = bound(p, 1e40, 1e41 - 1);
-        k = bound(k, -30, 30);
-        delta = bound(delta, -1e18, 1e18);
-        if (delta >= 0) {
-            delta += 2;
-        }
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 log = int256(LibTranscendentalOracle.log10Unit((10 * p + 5) * 1e29) / 1e5);
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(k * 1e65 + log + delta, -65);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 expected = int256(delta > 0 ? p + 1 : p);
-        assertTrue(LibDecimalFloatImplementation.eq(signedCoefficient, exponent, expected, k - 40), "near tie");
     }
 }

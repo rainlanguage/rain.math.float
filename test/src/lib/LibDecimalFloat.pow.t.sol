@@ -15,19 +15,14 @@ import {
 } from "src/error/ErrDecimalFloat.sol";
 import {WithTargetExponentOverflow} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {console2} from "forge-std-1.17.0/src/Test.sol";
+import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
 
-    /// Half a unit in the 41st digit, 5e-41 relative, where pow10 correctly
-    /// rounds the fractional power. Its argument is log10Unrounded, within
-    /// 2.245e-47, times a fraction below 1, which moves the power by under
-    /// 5.17e-47 relative, and the pack under 1e-60. Raising the base, or its
-    /// inverse, to the integer part N of b truncates under 1e-75 relative per
-    /// multiply, which squaring compounds to under 3 N 1e-75.
+    /// The proven bound of a pow leg, `LibTestErrorBound.pow`.
     function legError(Float b) internal pure returns (Float) {
-        return
-            LibDecimalFloat.packLossless(500006, -46).add(b.abs().integer().mul(LibDecimalFloat.packLossless(3, -75)));
+        return LibTestErrorBound.pow(b);
     }
 
     /// Up to one unit of the coefficient, if a pack shed digits to lift the
@@ -748,7 +743,7 @@ contract LibDecimalFloatPowTest is LogTest {
         assertTrue(this.powExternal(LibDecimalFloat.packLossless(1, k), b).eq(this.pow10External(kb)), "pow10");
     }
 
-    /// a < c implies a^b <= c^b for b > 0, down to adjacent coefficients.
+    /// a < c implies a^b <= c^b + 2E for b > 0, down to adjacent coefficients.
     function testPowMonotoneInBase(
         int256 signedCoefficientA,
         int256 gap,
@@ -762,18 +757,23 @@ contract LibDecimalFloatPowTest is LogTest {
         Float b = LibDecimalFloat.packLossless(bound(signedCoefficientB, 1, 1e9), bound(exponentB, -9, -8));
         Float low = this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
         Float high = this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA + gap, exponentA), b);
-        assertTrue(low.lte(high), "monotone");
+        assertTrue(LibTestErrorBound.monotoneRelative(low, high, legError(b), legError(b)), "monotone");
     }
 
-    /// b < c implies a^b <= a^c for a > 1, down to adjacent exponents.
+    /// b < c implies a^b <= a^c + 2E for a > 1, down to adjacent exponents.
     function testPowMonotoneInExponent(int256 signedCoefficientA, int256 exponentA, int256 lowB, int256 gap) external {
         signedCoefficientA = bound(signedCoefficientA, 1e40 + 1, 1e41 - 1);
         exponentA = bound(exponentA, -40, 0);
         lowB = bound(lowB, 1, 4e18);
         gap = bound(gap, 1, 1e3);
         Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
-        Float low = this.powExternal(a, LibDecimalFloat.packLossless(lowB, -18));
-        Float high = this.powExternal(a, LibDecimalFloat.packLossless(lowB + gap, -18));
-        assertTrue(low.lte(high), "monotone");
+        Float b = LibDecimalFloat.packLossless(lowB, -18);
+        Float c = LibDecimalFloat.packLossless(lowB + gap, -18);
+        assertTrue(
+            LibTestErrorBound.monotoneRelative(
+                this.powExternal(a, b), this.powExternal(a, c), legError(b), legError(c)
+            ),
+            "monotone"
+        );
     }
 }

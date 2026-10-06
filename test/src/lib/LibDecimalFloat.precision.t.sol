@@ -6,6 +6,7 @@ import {LogTest} from "../../abstract/LogTest.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibTestTranscendental} from "test/lib/LibTestTranscendental.sol";
 import {LibTestPrecision} from "test/lib/LibTestPrecision.sol";
+import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 
 /// log10, pow10, pow and sqrt against the fixed point references in
 /// LibTestTranscendental and against each other, each within the bound
@@ -176,7 +177,8 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         }
     }
 
-    /// log10 is non decreasing over every four digit mantissa.
+    /// log10 is non decreasing over every four digit mantissa. Neighbours'
+    /// logs differ by over 4.3e-5, far above twice its error bound.
     function testLog10GridMonotone() external {
         Float previous = this.log10External(LibDecimalFloat.packLossless(1000, 0));
         for (uint256 n = 1001; n < 10000; n++) {
@@ -201,9 +203,18 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         assertTrue(this.log10External(a).eq(LibDecimalFloat.packLossless(exponent + shift, 0)), "log10 anchor");
     }
 
+    function assertLog10Monotone(Float a, Float b, string memory what) internal {
+        Float low = this.log10External(a);
+        Float high = this.log10External(b);
+        assertTrue(
+            LibTestErrorBound.monotoneAbsolute(low, high, LibTestErrorBound.log10(low), LibTestErrorBound.log10(high)),
+            what
+        );
+    }
+
     function testLog10Monotone(int224 coefficient, int32 exponent, uint8 region, uint256 step) external {
         Float a = positive(coefficient, exponent, region);
-        assertTrue(this.log10External(a).lte(this.log10External(stepUp(a, step))), "log10 monotone");
+        assertLog10Monotone(a, stepUp(a, step), "log10 monotone");
     }
 
     function testLog10MonotonePairs(
@@ -218,7 +229,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         if (a.gt(b)) {
             (a, b) = (b, a);
         }
-        assertTrue(this.log10External(a).lte(this.log10External(b)), "log10 monotone pairs");
+        assertLog10Monotone(a, b, "log10 monotone pairs");
     }
 
     function testLog10Product(int224 coefficientA, int32 exponentA, int224 coefficientB, int32 exponentB) external {
@@ -241,10 +252,19 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         );
     }
 
+    function assertPow10Monotone(Float x, Float y, string memory what) internal {
+        assertTrue(
+            LibTestErrorBound.monotoneRelative(
+                this.pow10External(x), this.pow10External(y), LibTestErrorBound.pow10(), LibTestErrorBound.pow10()
+            ),
+            what
+        );
+    }
+
     function testPow10Monotone(int256 coefficient, int256 exponent, uint256 digits, uint256 step) external {
         Float x = exponentInput(coefficient, exponent, digits);
         Float y = stepUp(x, step).min(LibDecimalFloat.packLossless(2e9, 0));
-        assertTrue(this.pow10External(x).lte(this.pow10External(y)), "pow10 monotone");
+        assertPow10Monotone(x, y, "pow10 monotone");
     }
 
     function testPow10MonotonePairs(int256 coefficientX, int256 coefficientY, int256 exponent, uint256 digits)
@@ -255,7 +275,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         if (x.gt(y)) {
             (x, y) = (y, x);
         }
-        assertTrue(this.pow10External(x).lte(this.pow10External(y)), "pow10 monotone pairs");
+        assertPow10Monotone(x, y, "pow10 monotone pairs");
     }
 
     function testPow10Log10(int224 coefficient, int32 exponent) external {
@@ -292,7 +312,13 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     ) external {
         (Float a, Float b) = powInputs(coefficientA, exponentA, 0, coefficientB, exponentB);
         b = b.abs();
-        assertTrue(this.powExternal(a, b).lte(this.powExternal(stepUp(a, step), b)), "pow monotone in base");
+        Float error = LibTestErrorBound.pow(b);
+        assertTrue(
+            LibTestErrorBound.monotoneRelative(
+                this.powExternal(a, b), this.powExternal(stepUp(a, step), b), error, error
+            ),
+            "pow monotone in base"
+        );
     }
 
     function testSqrtReference(int224 coefficient, int32 exponent, uint8 region) external {
@@ -309,6 +335,10 @@ contract LibDecimalFloatPrecisionTest is LogTest {
 
     function testSqrtMonotone(int224 coefficient, int32 exponent, uint8 region, uint256 step) external {
         Float a = positive(coefficient, exponent, region);
-        assertTrue(this.sqrtExternal(a).lte(this.sqrtExternal(stepUp(a, step))), "sqrt monotone");
+        Float error = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_HALF);
+        assertTrue(
+            LibTestErrorBound.monotoneRelative(this.sqrtExternal(a), this.sqrtExternal(stepUp(a, step)), error, error),
+            "sqrt monotone"
+        );
     }
 }

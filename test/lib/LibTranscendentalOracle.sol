@@ -10,9 +10,6 @@ uint256 constant ORACLE_ONE = 1e70;
 /// @dev ln(10) at `ORACLE_ONE`, truncated, from `bc -l` at scale 100.
 uint256 constant ORACLE_LN10 = 23025850929940456840179914546843642076011014886287729760333279009675726;
 
-/// @dev ln(2) at `ORACLE_ONE`, truncated, from `bc -l` at scale 110.
-uint256 constant ORACLE_LN2 = 6931471805599453094172321214581765680755001343602552541206800094933936;
-
 /// Reference values for log10 and 10^x, independent of the library: plain
 /// Taylor series over OpenZeppelin's `mulDiv`, against `bc` constants.
 library LibTranscendentalOracle {
@@ -81,46 +78,5 @@ library LibTranscendentalOracle {
             }
         }
         return sum;
-    }
-
-    /// 10^t at `ORACLE_ONE` for t in [0, 1] at `ORACLE_ONE`, by the Taylor
-    /// series of e^(t ln 10), at most 1e3 units below and never above.
-    ///
-    /// y floors twice and is under 2 units low, under 20 in the sum. A term
-    /// floors to within 1 + y / k of the previous term's loss, under 3 units,
-    /// over under 90 nonzero terms, and the dropped tail is under 5 units.
-    function exp10Unit(uint256 t) internal pure returns (uint256) {
-        uint256 y = Math.mulDiv(t, ORACLE_LN10, ORACLE_ONE);
-        uint256 sum = ORACLE_ONE;
-        uint256 term = ORACLE_ONE;
-        for (uint256 k = 1; term > 0; k++) {
-            term = Math.mulDiv(term, y, ORACLE_ONE * k);
-            sum += term;
-        }
-        return sum;
-    }
-
-    /// log10(m) at `ORACLE_ONE` for m in [1, 10) at `ORACLE_ONE`, within 1e3
-    /// units, by ln(m / 2^k) = 2 atanh((y - 1) / (y + 1)) for y = m / 2^k in
-    /// [1, 2).
-    ///
-    /// z is at most 1/3 and floors a unit, under 2.25 units of the log. Each
-    /// power of z^2 is within 2.25 units, each term within 3.25, over under
-    /// 75 terms, so the doubled series is within 490 units, and k ln 2 within
-    /// 3. Dividing by ln 10 gives under 220 below and 1 above.
-    function log10Unit(uint256 m) internal pure returns (uint256) {
-        uint256 k = 0;
-        while (m >= ORACLE_ONE << (k + 1)) {
-            k++;
-        }
-        uint256 y = m >> k;
-        uint256 z = Math.mulDiv(y - ORACLE_ONE, ORACLE_ONE, y + ORACLE_ONE);
-        uint256 zz = Math.mulDiv(z, z, ORACLE_ONE);
-        uint256 sum = 0;
-        for (uint256 j = 1; z > 0; j += 2) {
-            sum += z / j;
-            z = Math.mulDiv(z, zz, ORACLE_ONE);
-        }
-        return Math.mulDiv(k * ORACLE_LN2 + 2 * sum, ORACLE_ONE, ORACLE_LN10);
     }
 }
