@@ -845,6 +845,23 @@ library LibDecimalFloat {
     /// ordering at one-ulp resolution. 10^k is exactly 10^k for an integer k.
     function pow10(Float float, address) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
+        // A zero of any exponent, which the integer part below cannot rescale.
+        if (signedCoefficient == 0) {
+            return FLOAT_ONE;
+        }
+        // An integer part past int256 is over 5.7e76, far past the range on
+        // the side of its sign.
+        if (
+            exponent > 76
+                || (exponent > 0
+                    && (signedCoefficient > type(int256).max / int256(10 ** uint256(exponent))
+                        || signedCoefficient < type(int256).min / int256(10 ** uint256(exponent))))
+        ) {
+            if (signedCoefficient < 0) {
+                revert ExponentUnderflow(signedCoefficient, exponent);
+            }
+            revert ExponentOverflow(signedCoefficient, exponent);
+        }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
         // We don't care if power10 is lossy because it's an approximation
         // anyway.
@@ -937,32 +954,61 @@ library LibDecimalFloat {
                 if (!b.frac().isZero()) {
                     revert PowNegativeBase(signedCoefficientA, exponentA);
                 }
-                Float magnitude = pow(a.minus(), b, tablesDataContract);
+                // -a stays unpacked: the most negative Float does not pack
+                // negated.
+                (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+                Float magnitude =
+                    powPositive(-signedCoefficientA, exponentA, signedCoefficientB, exponentB, tablesDataContract);
                 return b.isOdd() ? magnitude.minus() : magnitude;
             }
         }
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        return powPositive(signedCoefficientA, exponentA, signedCoefficientB, exponentB, tablesDataContract);
+    }
+
+    /// `pow` for a positive base and a nonzero b.
+    function powPositive(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        address tablesDataContract
+    ) private view returns (Float) {
         // 1^b is 1 for every b, including one too large for the integer leg.
-        else if (a.eq(FLOAT_ONE)) {
+        if (LibDecimalFloatImplementation.eq(signedCoefficientA, exponentA, 1, 0)) {
             return FLOAT_ONE;
         }
-        // Handle identity case for positive values of a, i.e. a^1.
-        else if (b.eq(FLOAT_ONE) && a.gt(FLOAT_ZERO)) {
+        // Handle identity case, i.e. a^1.
+        else if (LibDecimalFloatImplementation.eq(signedCoefficientB, exponentB, 1, 0)) {
             return packRoundedSignificant(signedCoefficientA, exponentA);
-        } else if (b.lt(FLOAT_ZERO)) {
+        } else if (signedCoefficientB < 0) {
             // a^b is (1/a)^-b. The inverse stays unpacked: packed, the inverse
             // of a value near the top of the range underflows even when the
-            // power is representable.
+            // power is representable. -b stays unpacked too, as the most
+            // negative Float does not pack negated.
             (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.inv(signedCoefficientA, exponentA);
-            b = b.minus();
+            signedCoefficientB = -signedCoefficientB;
         }
 
         // Uses LibDecimalFloatImplementation directly (rather than the packed
         // Float API) to avoid repeated pack/unpack overhead in the squaring
         // loop and to preserve unnormalized intermediates.
-        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (int256 integerB, int256 fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
-
-        uint256 exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
+        uint256 exponentBInteger;
+        int256 fractionB;
+        {
+            int256 integerB;
+            (integerB, fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
+            // An integer part past int256 is over 5.7e76 and every a but 1 is
+            // at least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power
+            // is past the range, on the side a is of 1.
+            if (exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)))) {
+                if (LibDecimalFloatImplementation.lt(signedCoefficientA, exponentA, 1, 0)) {
+                    revert ExponentUnderflow(signedCoefficientA, exponentA);
+                }
+                revert ExponentOverflow(signedCoefficientA, exponentA);
+            }
+            exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
+        }
 
         // Exponentiation by squaring.
         (int256 signedCoefficientResult, int256 exponentResult) = (1, 0);
