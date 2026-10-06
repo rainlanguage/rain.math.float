@@ -21,16 +21,6 @@ this source (`.cargo/config.toml` points the bindings at the artifacts and runs
 their constructors) and cross-references the packed constants against values
 derived in integer arithmetic.
 
-## Build Commands
-
-```bash
-forge build          # Compile contracts
-forge test           # Run all Solidity tests (5096 fuzz runs)
-forge test --mt testFunctionName  # Run specific test by name
-forge test -vvvv     # Verbose trace output for debugging
-nix develop          # Enter dev shell with all tooling
-```
-
 ## Architecture
 
 ### Source (`src/`)
@@ -71,13 +61,10 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
   the coefficient in int224 AND to lift an exponent below int32.min back to the
   floor. `ExponentUnderflow` is only the case where every digit has been shed.
 - log10 refines a log table seed in 1e50 fixed point; pow10 reads no tables.
-- log10, pow10, pow and sqrt round to nearest at 41 significant digits within
-  proven bounds (README, "log10, pow10, pow and sqrt"). They are monotone within
-  rounding error, not correctly rounded: for a < b the order can flip by exactly
-  one ulp, only when both true values lie within the raw error of the same
-  rounding tie, never by more. Do not rely on strict ordering at one-ulp
-  resolution. Powers of ten, integer powers and perfect squares stay exact.
-  Tests assert the bounds from `test/lib/LibTestErrorBound.sol`.
+- log10, pow10, pow and sqrt are monotone within rounding error, not correctly
+  rounded: order can flip by one ulp at a shared rounding tie, never more. Exact
+  results stay exact. Bounds and contract: README; tests assert them via
+  `test/lib/LibTestErrorBound.sol`.
 - Three packing modes:
   - `packLossless`: reverts on any precision loss.
   - `packLossy`: surfaces the `lossless` flag, returns `FLOAT_ZERO` on exponent
