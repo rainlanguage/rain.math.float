@@ -60,5 +60,26 @@
       "testsAfter": 134,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-06T18:57:02Z",
+    "commit": "e9ee203bb017a07b279d1c56c36d83a90c373df9",
+    "testsAfterCommit": "e9ee203bb017a07b279d1c56c36d83a90c373df9",
+    "publishedTag": "sol-v0.2.18",
+    "commitsAheadOfTag": 8,
+    "scope": "pr:321 merge resolution with main 2e1f884: packLossy's 8/5-digit pre-shed composed with #304's ceiling lift, and mul's prod1 == 0 early return and unchecked lift addition behind #307's range guard. Probe suite: full forge suite minus LibDecimalFloatGasMainEquivalenceTest and the #320 tests; the 8 survivors were re-probed with the main equivalence fuzz included.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 21,
+      "killedBefore": 13,
+      "killedAfter": 0,
+      "equivalent": 8,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 710,
+      "testsAfter": 710,
+      "filed": []
+    }
   }
 ]
