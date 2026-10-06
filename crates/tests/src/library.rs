@@ -407,22 +407,32 @@ fn check_parse_entry_points(lit: &str, suffix: &str) -> Result<(), TestCaseError
         Ok(_) if !suffix.is_empty() => Err(RefError::ParseDecimalFloatExcessCharacters),
         Ok(_) => r::parse(lit),
     };
-    let sol = harness(H::parseDecimalFloatCall { str: s.clone() }).unwrap();
-    let concrete = evm::concrete(T::parseCall { str: s }).unwrap();
-    prop_assert_eq!((sol._0, sol._1), (concrete._0, concrete._1), "{}: harness and concrete", case);
-    match want {
-        Ok(w) => {
-            prop_assert_eq!(sol._0.0, [0u8; 4], "{}: error", case);
-            prop_assert_eq!(sol._1, w.to_bytes(), "{}: reference {:?}", case, w);
+    // Only packing's ExponentOverflow reverts; every other error is a selector.
+    let sol = harness(H::parseDecimalFloatCall { str: s.clone() });
+    let concrete = evm::concrete(T::parseCall { str: s });
+    match (&sol, &concrete) {
+        (Ok(h), Ok(c)) => prop_assert_eq!((h._0, h._1), (c._0, c._1), "{}: harness and concrete", case),
+        (Err(Fail::Harness(h)), Err(c)) => prop_assert_eq!(h, c, "{}: harness and concrete", case),
+        (h, c) => prop_assert!(false, "{case}: harness {h:?}, concrete {c:?}"),
+    }
+    match (sol, want) {
+        (Ok(s), Ok(w)) => {
+            prop_assert_eq!(s._0.0, [0u8; 4], "{}: error", case);
+            prop_assert_eq!(s._1, w.to_bytes(), "{}: reference {:?}", case, w);
         }
-        Err(w) => {
+        (Ok(s), Err(w)) if w != RefError::ExponentOverflow => {
             prop_assert!(
-                error_matches(&Fail::Selector(sol._0.0), w),
+                error_matches(&Fail::Selector(s._0.0), w),
                 "{case}: solidity {:?}, reference {w:?}",
-                sol._0
+                s._0
             );
-            prop_assert!(sol._1.is_zero(), "{}: an error returns zero", case);
+            prop_assert!(s._1.is_zero(), "{}: an error returns zero", case);
         }
+        (Err(s), Err(RefError::ExponentOverflow)) => prop_assert!(
+            error_matches(&s, RefError::ExponentOverflow),
+            "{case}: solidity {s:?}"
+        ),
+        (s, w) => prop_assert!(false, "{case}: solidity {s:?}, reference {w:?}"),
     }
     Ok(())
 }
