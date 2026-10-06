@@ -52,6 +52,10 @@ uint256 constant POW_FIXED_ONE_ODD_INVERSE =
 /// unit of the result and an exact power comes out exact.
 uint256 constant POW_GUARD = 1e10;
 
+/// @dev The inverse of 5 modulo 2^256, so that its nth power divides an exact
+/// multiple of 5^n.
+uint256 constant FIVE_INVERSE = 92633671389852956338856788006950326282615987732512451231566067206330503711949;
+
 /// @dev Library implementing core DecimalFloat operations using only stack
 /// variables.
 /// NOT intended for external use, typical use is to treat the `Float` type
@@ -221,7 +225,7 @@ library LibDecimalFloatImplementation {
             (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
                 signedCoefficientB,
-                mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
+                mulDivPow10(signedCoefficientAAbs, signedCoefficientBAbs, adjustExponent),
                 exponent
             );
         }
@@ -499,6 +503,23 @@ library LibDecimalFloatImplementation {
             let prod1 := sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0))
             prod0 := sub(prod0, remainder)
             result := mul(or(shr(50, prod0), shl(206, prod1)), inverse)
+        }
+    }
+
+    /// mulDiv(x, y, 10^n) for n in [0, 76] and a quotient below 2^256.
+    function mulDivPow10(uint256 x, uint256 y, uint256 n) internal pure returns (uint256 result) {
+        (uint256 prod1, uint256 prod0) = mul512(x, y);
+        if (prod1 == 0) {
+            unchecked {
+                return prod0 / 10 ** n;
+            }
+        }
+        uint256 inverse = FIVE_INVERSE;
+        assembly ("memory-safe") {
+            let remainder := mulmod(x, y, exp(10, n))
+            prod1 := sub(prod1, gt(remainder, prod0))
+            prod0 := sub(prod0, remainder)
+            result := mul(or(shr(n, prod0), shl(sub(256, n), prod1)), exp(inverse, n))
         }
     }
 
