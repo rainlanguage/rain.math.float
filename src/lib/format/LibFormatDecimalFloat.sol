@@ -4,7 +4,6 @@ pragma solidity ^0.8.25;
 
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
-import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
 import {UnformatableExponent} from "../../error/ErrFormat.sol";
 
 /// @dev Library for formatting DecimalFloat values as strings.
@@ -17,6 +16,16 @@ library LibFormatDecimalFloat {
     /// memory use when building the output string; callers that need to render
     /// such values should use scientific mode.
     int256 internal constant MAX_NON_SCIENTIFIC_EXPONENT = 1000;
+
+    /// Inline assembly takes only literal constants.
+    uint256 private constant E8 = 1e8;
+    uint256 private constant E16 = 1e16;
+    uint256 private constant E32 = 1e32;
+    uint256 private constant E64 = 1e64;
+    /// 32 ASCII `0` bytes.
+    bytes32 private constant ZEROS = 0x3030303030303030303030303030303030303030303030303030303030303030;
+    /// ASCII `0.`, left aligned.
+    bytes32 private constant ZERO_POINT = 0x302e000000000000000000000000000000000000000000000000000000000000;
 
     /// Format a decimal float as a string.
     /// Not particularly efficient as it is intended for offchain use that
@@ -36,68 +45,20 @@ library LibFormatDecimalFloat {
     }
 
     /// Scientific notation: render as `d.dddeN` where the leading digit is the
-    /// most significant digit of the maximized coefficient. Uses big-integer
-    /// division to place the decimal point; the divisor is always `1e75` or
-    /// `1e76` which both fit in int256.
-    function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
+    /// most significant digit of the maximized coefficient, so the display
+    /// exponent is the maximized exponent plus 75 or 76.
+    function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory out) {
         int256 originalExponent = exponent;
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
 
-        uint256 scale;
-        uint256 scaleExponent;
-        if (signedCoefficient / 1e76 != 0) {
-            scaleExponent = 76;
-            scale = 1e76;
-        } else {
-            scaleExponent = 75;
-            scale = 1e75;
-        }
-
-        // scale is one of two hardcoded values (1e76, 1e75), both fit int256.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 integral = signedCoefficient / int256(scale);
-        // scale is one of two hardcoded values (1e76, 1e75), both fit int256.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 fractional = signedCoefficient % int256(scale);
-
-        bool isNeg = false;
-        if (integral < 0) {
-            isNeg = true;
-            integral = -integral;
-        }
-        if (fractional < 0) {
-            isNeg = true;
-            fractional = -fractional;
-        }
-
-        string memory fractionalString = "";
-        if (fractional != 0) {
-            uint256 fracLeadingZeros = 0;
-            uint256 fracScale = scale / 10;
-            // fracScale is scale/10 of a hardcoded power of 10, fits int256.
+        bool isNeg = signedCoefficient < 0;
+        uint256 absCoef;
+        unchecked {
+            // A maximized packed coefficient is never `type(int256).min`.
             // forge-lint: disable-next-line(unsafe-typecast)
-            while (fractional / int256(fracScale) == 0) {
-                fracScale /= 10;
-                fracLeadingZeros++;
-            }
-
-            string memory fracLeadingZerosString = "";
-            for (uint256 i = 0; i < fracLeadingZeros; i++) {
-                fracLeadingZerosString = string.concat(fracLeadingZerosString, "0");
-            }
-
-            while (fractional % 10 == 0) {
-                fractional /= 10;
-            }
-
-            fractionalString = string.concat(".", fracLeadingZerosString, Strings.toStringSigned(fractional));
+            absCoef = isNeg ? uint256(-signedCoefficient) : uint256(signedCoefficient);
         }
-
-        string memory integralString = Strings.toStringSigned(integral);
-        // scaleExponent is a hardcoded small value (75 or 76); the cast back
-        // to int256 cannot truncate.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 displayExponent = exponent + int256(scaleExponent);
+        int256 displayExponent = exponent + (absCoef >= 1e76 ? int256(76) : int256(75));
         // The parser reconstructs this float by calling packLossless with the
         // display exponent cast to int32. Guard here so the formatter reverts
         // cleanly rather than silently producing a string whose exponent cannot
@@ -108,10 +69,61 @@ library LibFormatDecimalFloat {
         if (displayExponent > type(int32).max || displayExponent < type(int32).min) {
             revert UnformatableExponent(originalExponent);
         }
-        string memory exponentString =
-            displayExponent == 0 ? "" : string.concat("e", Strings.toStringSigned(displayExponent));
-        string memory prefix = isNeg ? "-" : "";
-        return string.concat(prefix, integralString, fractionalString, exponentString);
+        (uint256 significand,) = stripTrailingZeros(absCoef);
+
+        assembly ("memory-safe") {
+            // Significand digits end at `out`, the exponent's digits end
+            // where the significand's start.
+            out := add(mload(0x40), 0x80)
+            let start := out
+            for {} 1 {} {
+                start := sub(start, 1)
+                mstore8(start, add(48, mod(significand, 10)))
+                significand := div(significand, 10)
+                if iszero(significand) { break }
+            }
+            let digits := sub(out, start)
+
+            let cursor := add(out, 0x20)
+            if isNeg {
+                mstore8(cursor, 0x2d)
+                cursor := add(cursor, 1)
+            }
+            mstore(cursor, mload(start))
+            cursor := add(cursor, 1)
+            if gt(digits, 1) {
+                mstore8(cursor, 0x2e)
+                cursor := add(cursor, 1)
+                let n := sub(digits, 1)
+                for { let i := 0 } lt(i, n) { i := add(i, 0x20) } {
+                    mstore(add(cursor, i), mload(add(add(start, 1), i)))
+                }
+                cursor := add(cursor, n)
+            }
+            if displayExponent {
+                mstore8(cursor, 0x65)
+                cursor := add(cursor, 1)
+                let e := displayExponent
+                if slt(e, 0) {
+                    mstore8(cursor, 0x2d)
+                    cursor := add(cursor, 1)
+                    e := sub(0, e)
+                }
+                let eStart := start
+                for {} 1 {} {
+                    eStart := sub(eStart, 1)
+                    mstore8(eStart, add(48, mod(e, 10)))
+                    e := div(e, 10)
+                    if iszero(e) { break }
+                }
+                let n := sub(start, eStart)
+                mstore(cursor, mload(eStart))
+                cursor := add(cursor, n)
+            }
+            mstore(out, sub(cursor, add(out, 0x20)))
+            mstore(cursor, 0)
+            mstore(0x40, and(add(cursor, 0x3f), not(0x1f)))
+        }
     }
 
     /// Non-scientific notation: render by placing a decimal point inside the
@@ -119,24 +131,18 @@ library LibFormatDecimalFloat {
     /// `10^exponent` as an integer, so the output is valid for any
     /// `|exponent| <= MAX_NON_SCIENTIFIC_EXPONENT` — including exponents below
     /// `-76` that arise from near-cancellation add/sub.
-    //slither-disable-next-line cyclomatic-complexity
-    function _toNonScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
+    function _toNonScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory out) {
         if (exponent > MAX_NON_SCIENTIFIC_EXPONENT || exponent < -MAX_NON_SCIENTIFIC_EXPONENT) {
             revert UnformatableExponent(exponent);
         }
 
         bool isNeg = signedCoefficient < 0;
         uint256 absCoef;
-        if (isNeg) {
+        unchecked {
             // signedCoefficient came from `unpack` so |signedCoefficient| fits
             // int224; negation always fits uint256.
             // forge-lint: disable-next-line(unsafe-typecast)
-            absCoef = uint256(-signedCoefficient);
-        } else {
-            // signedCoefficient is non-negative and fits int224, so fits
-            // uint256.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            absCoef = uint256(signedCoefficient);
+            absCoef = isNeg ? uint256(-signedCoefficient) : uint256(signedCoefficient);
         }
 
         // When exponent > 0 the formatted integer is absCoef × 10^exponent,
@@ -145,85 +151,130 @@ library LibFormatDecimalFloat {
         // even coefficient 1 overflows. Otherwise divide int224.max by
         // 10^exponent and check that absCoef doesn't exceed the quotient.
         if (exponent > 0) {
-            // exponent > 0, so the cast to uint256 is safe.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint256 uExp = uint256(exponent);
-            if (uExp >= 68) {
+            if (exponent >= 68) {
                 revert UnformatableExponent(exponent);
             }
-            uint256 limit = uint256(int256(type(int224).max));
-            for (uint256 i = 0; i < uExp; i++) {
-                limit /= 10;
-            }
-            if (absCoef > limit) {
-                revert UnformatableExponent(exponent);
+            unchecked {
+                // exponent is in [1, 67], so 10^exponent fits uint256.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                if (absCoef > uint256(int256(type(int224).max)) / 10 ** uint256(exponent)) {
+                    revert UnformatableExponent(exponent);
+                }
             }
         }
-
-        bytes memory digits = bytes(Strings.toString(absCoef));
-        uint256 k = digits.length;
 
         // Strip trailing decimal zeros of the coefficient, raising the
-        // exponent by the same count. Value-preserving, and simplifies
-        // downstream cases by eliminating redundant zeros.
-        uint256 trailingZeros = 0;
-        while (trailingZeros < k && digits[k - 1 - trailingZeros] == "0") {
-            trailingZeros++;
-        }
-        uint256 sigK = k - trailingZeros;
-        // k <= 78 (int224 max has ~68 decimal digits), so int256(trailingZeros)
-        // cannot overflow.
+        // exponent by the same count.
+        (uint256 significand, uint256 trailingZeros) = stripTrailingZeros(absCoef);
+        // trailingZeros < 68.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 effExp = exponent + int256(trailingZeros);
 
-        string memory prefix = isNeg ? "-" : "";
+        assembly ("memory-safe") {
+            // The digits end at `out`, at most 68 of them.
+            out := add(mload(0x40), 0x60)
+            let start := out
+            for {} 1 {} {
+                start := sub(start, 1)
+                mstore8(start, add(48, mod(significand, 10)))
+                significand := div(significand, 10)
+                if iszero(significand) { break }
+            }
+            let digits := sub(out, start)
 
-        if (effExp >= 0) {
-            // Significant digits followed by `effExp` trailing zeros.
-            // effExp is bounded by MAX_NON_SCIENTIFIC_EXPONENT + ~78.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint256 uEffExp = uint256(effExp);
-            bytes memory out = new bytes(sigK + uEffExp);
-            for (uint256 i = 0; i < sigK; i++) {
-                out[i] = digits[i];
+            let cursor := add(out, 0x20)
+            if isNeg {
+                mstore8(cursor, 0x2d)
+                cursor := add(cursor, 1)
             }
-            for (uint256 i = 0; i < uEffExp; i++) {
-                out[sigK + i] = "0";
+            switch slt(effExp, 0)
+            case 0 {
+                // Significant digits followed by `effExp` zeros.
+                for { let i := 0 } lt(i, digits) { i := add(i, 0x20) } {
+                    mstore(add(cursor, i), mload(add(start, i)))
+                }
+                cursor := add(cursor, digits)
+                for { let i := 0 } lt(i, effExp) { i := add(i, 0x20) } { mstore(add(cursor, i), ZEROS) }
+                cursor := add(cursor, effExp)
             }
-            return string.concat(prefix, string(out));
+            default {
+                let fractionDigits := sub(0, effExp)
+                switch gt(digits, fractionDigits)
+                case 0 {
+                    // "0." + leading zeros + significant digits.
+                    mstore(cursor, ZERO_POINT)
+                    cursor := add(cursor, 2)
+                    let leadingZeros := sub(fractionDigits, digits)
+                    for { let i := 0 } lt(i, leadingZeros) { i := add(i, 0x20) } {
+                        mstore(add(cursor, i), ZEROS)
+                    }
+                    cursor := add(cursor, leadingZeros)
+                    for { let i := 0 } lt(i, digits) { i := add(i, 0x20) } {
+                        mstore(add(cursor, i), mload(add(start, i)))
+                    }
+                    cursor := add(cursor, digits)
+                }
+                default {
+                    // The decimal point sits inside the significant digits.
+                    let integerDigits := sub(digits, fractionDigits)
+                    for { let i := 0 } lt(i, integerDigits) { i := add(i, 0x20) } {
+                        mstore(add(cursor, i), mload(add(start, i)))
+                    }
+                    cursor := add(cursor, integerDigits)
+                    mstore8(cursor, 0x2e)
+                    cursor := add(cursor, 1)
+                    start := add(start, integerDigits)
+                    for { let i := 0 } lt(i, fractionDigits) { i := add(i, 0x20) } {
+                        mstore(add(cursor, i), mload(add(start, i)))
+                    }
+                    cursor := add(cursor, fractionDigits)
+                }
+            }
+            mstore(out, sub(cursor, add(out, 0x20)))
+            mstore(cursor, 0)
+            mstore(0x40, and(add(cursor, 0x3f), not(0x1f)))
         }
+    }
 
-        // effExp < 0
-        // effExp >= -MAX_NON_SCIENTIFIC_EXPONENT (by the guard above) so
-        // -effExp is positive and fits uint256.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 absEffExp = uint256(-effExp);
-
-        if (sigK > absEffExp) {
-            // Decimal point sits inside the significant digits.
-            uint256 splitAt = sigK - absEffExp;
-            bytes memory out = new bytes(sigK + 1);
-            for (uint256 i = 0; i < splitAt; i++) {
-                out[i] = digits[i];
+    /// Divides the decimal trailing zeros out of a nonzero value of at most 77
+    /// digits.
+    /// @return significand The value without its trailing zeros.
+    /// @return trailingZeros How many zeros were divided out.
+    function stripTrailingZeros(uint256 value) private pure returns (uint256 significand, uint256 trailingZeros) {
+        assembly ("memory-safe") {
+            // Each step takes half of what the previous one could, so at most
+            // 76 zeros come out in at most one step each.
+            if iszero(mod(value, 10)) {
+                if iszero(mod(value, E64)) {
+                    value := div(value, E64)
+                    trailingZeros := 64
+                }
+                if iszero(mod(value, E32)) {
+                    value := div(value, E32)
+                    trailingZeros := add(trailingZeros, 32)
+                }
+                if iszero(mod(value, E16)) {
+                    value := div(value, E16)
+                    trailingZeros := add(trailingZeros, 16)
+                }
+                if iszero(mod(value, E8)) {
+                    value := div(value, E8)
+                    trailingZeros := add(trailingZeros, 8)
+                }
+                if iszero(mod(value, 10000)) {
+                    value := div(value, 10000)
+                    trailingZeros := add(trailingZeros, 4)
+                }
+                if iszero(mod(value, 100)) {
+                    value := div(value, 100)
+                    trailingZeros := add(trailingZeros, 2)
+                }
+                if iszero(mod(value, 10)) {
+                    value := div(value, 10)
+                    trailingZeros := add(trailingZeros, 1)
+                }
             }
-            out[splitAt] = ".";
-            for (uint256 i = 0; i < absEffExp; i++) {
-                out[splitAt + 1 + i] = digits[splitAt + i];
-            }
-            return string.concat(prefix, string(out));
-        } else {
-            // "0." + (absEffExp - sigK) leading zeros + significant digits.
-            uint256 leadingZerosCount = absEffExp - sigK;
-            bytes memory out = new bytes(2 + leadingZerosCount + sigK);
-            out[0] = "0";
-            out[1] = ".";
-            for (uint256 i = 0; i < leadingZerosCount; i++) {
-                out[2 + i] = "0";
-            }
-            for (uint256 i = 0; i < sigK; i++) {
-                out[2 + leadingZerosCount + i] = digits[i];
-            }
-            return string.concat(prefix, string(out));
+            significand := value
         }
     }
 }
