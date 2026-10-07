@@ -11,7 +11,7 @@ contract LibDecimalFloatLog10GasTest is Test {
 
     function log10Gas(Float float) external view returns (Float result, uint256 gas) {
         gas = gasleft();
-        result = float.log10(address(0));
+        result = float.log10();
         gas -= gasleft();
     }
 
