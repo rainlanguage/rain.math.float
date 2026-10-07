@@ -954,10 +954,9 @@ library LibDecimalFloat {
     /// Every range error reports `a`, unpacked.
     /// @param a The float `a` in `a^b`.
     /// @param b The float `b` in `a^b`.
-    /// @param tablesDataContract Unused, and kept so that callers need not
-    /// change.
+    /// The trailing address is unused, kept so that callers need not change.
     /// @return The result of a^b.
-    function pow(Float a, Float b, address tablesDataContract) internal pure returns (Float) {
+    function pow(Float a, Float b, address) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, a);
         return packRoundedSignificant(signedCoefficientA, exponentA, a);
@@ -1193,10 +1192,9 @@ library LibDecimalFloat {
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
     /// @param a The float to take the square root of.
-    /// @param tablesDataContract Unused, and kept so that callers need not
-    /// change.
+    /// The trailing address is unused, kept so that callers need not change.
     /// @return The square root of a.
-    function sqrt(Float a, address tablesDataContract) internal pure returns (Float) {
+    function sqrt(Float a, address) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficient, int256 exponent) = powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF, a);
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
