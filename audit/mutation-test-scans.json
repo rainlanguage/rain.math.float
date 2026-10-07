@@ -124,5 +124,26 @@
       "testsAfter": 730,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-06T21:27:28Z",
+    "commit": "3408fabf099961ebc493eefd2ee6e724290bc7a9",
+    "testsAfterCommit": "27ef819348482e0ebb3555d1292e30751262e00f",
+    "publishedTag": "sol-v0.2.19",
+    "commitsAheadOfTag": 1,
+    "scope": "issue #327 fix: the changed lines of LibParseDecimalFloat.parseDecimalFloatInline (the all-zero-fraction guard now encloses the fraction sign, exponent and rescale). Probe suite: forge test --mc ^(LibParseDecimalFloatTest|LibFormatDecimalFloatToDecimalStringTest)$; test counts are that suite. M01-M17 were probed against the pre-existing suite at commit; M18 (the pre-fix structure restored) was added after and is killed only by the new tests. Equivalent: M04 and M08 (unreachable guards: the fraction digits are unsigned and nonZeroCursor > fracStart inside the branch), M11 (a scale of 68 always fails the int224 check).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 18,
+      "killedBefore": 14,
+      "killedAfter": 1,
+      "equivalent": 3,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 68,
+      "testsAfter": 73,
+      "filed": []
+    }
   }
 ]
