@@ -865,7 +865,6 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    /// The tables address is unused, and kept so that callers need not change.
     /// @return The result of 10^float, rounded to nearest at 41 significant
     /// digits, within half a unit in the 41st digit plus 3.28e-8 of a unit,
     /// under 5.0000004e-41 relative. A result below 1e-2147483608 sheds digits
@@ -876,7 +875,7 @@ library LibDecimalFloat {
     /// place, only when both true values lie within the raw error of the same
     /// rounding tie, and never by more. Callers must not rely on strict
     /// ordering at one-ulp resolution. 10^k is exactly 10^k for an integer k.
-    function pow10(Float float, address) internal pure returns (Float) {
+    function pow10(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         // A zero of any exponent, which the integer part below cannot rescale.
         if (signedCoefficient == 0) {
@@ -905,8 +904,6 @@ library LibDecimalFloat {
     /// Same as log10, but accepts a Float struct instead of separate values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
-    /// @param tablesDataContract Unused, and kept so that callers need not
-    /// change.
     /// @param a The float to log10.
     /// @return The base-10 logarithm of a, rounded to nearest at 41
     /// significant digits, within half a unit in the 41st digit plus 2e-50
@@ -915,10 +912,9 @@ library LibDecimalFloat {
     /// true values lie within the raw error of the same rounding tie, and
     /// never by more. Callers must not rely on strict ordering at one-ulp
     /// resolution. log10(10^k) is exactly k.
-    function log10(Float a, address tablesDataContract) internal pure returns (Float) {
+    function log10(Float a) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
-        (signedCoefficient, exponent) =
-            LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.log10(signedCoefficient, exponent);
         // We don't care if log10 is lossy because it's an approximation anyway.
         Float result = packArithmeticResult(signedCoefficient, exponent);
         return result;
@@ -962,22 +958,16 @@ library LibDecimalFloat {
     /// fractional `b` reverts `PowNegativeBase`.
     /// @param a The float `a` in `a^b`.
     /// @param b The float `b` in `a^b`.
-    /// @param tablesDataContract Unused, and kept so that callers need not
-    /// change.
     /// @return The result of a^b.
-    function pow(Float a, Float b, address tablesDataContract) internal pure returns (Float) {
+    function pow(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
+        (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b);
         return packRoundedSignificant(signedCoefficientA, exponentA);
     }
 
     /// `pow` before rounding and packing, so a negative base and an odd power
     /// are negated unpacked: int224.min at int32.max has no packed negation.
-    function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b, address tablesDataContract)
-        private
-        pure
-        returns (int256, int256)
-    {
+    function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b) private pure returns (int256, int256) {
         if (b.isZero()) {
             (signedCoefficientA, exponentA) = FLOAT_ONE.unpack();
             return (signedCoefficientA, exponentA);
@@ -999,7 +989,7 @@ library LibDecimalFloat {
                     revert PowNegativeBase(signedCoefficientA, exponentA);
                 }
                 (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
-                (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
+                (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b);
                 if (b.isOdd()) {
                     (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
                 }
@@ -1067,7 +1057,7 @@ library LibDecimalFloat {
 
         if (fractionB != 0) {
             (int256 signedCoefficientC, int256 exponentC) =
-                LibDecimalFloatImplementation.log10Unrounded(tablesDataContract, signedCoefficientA, exponentA);
+                LibDecimalFloatImplementation.log10Unrounded(signedCoefficientA, exponentA);
             (signedCoefficientC, exponentC) =
                 LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
             (signedCoefficientC, exponentC) =
@@ -1140,13 +1130,10 @@ library LibDecimalFloat {
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
     /// @param a The float to take the square root of.
-    /// @param tablesDataContract Unused, and kept so that callers need not
-    /// change.
     /// @return The square root of a.
-    function sqrt(Float a, address tablesDataContract) internal pure returns (Float) {
+    function sqrt(Float a) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (int256 signedCoefficient, int256 exponent) =
-            powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF, tablesDataContract);
+        (int256 signedCoefficient, int256 exponent) = powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF);
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
         if (signedCoefficient > 0) {
             (signedCoefficient, exponent) = roundRoot(signedCoefficientA, exponentA, signedCoefficient, exponent);

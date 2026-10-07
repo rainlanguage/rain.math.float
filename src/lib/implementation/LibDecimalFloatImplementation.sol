@@ -10,7 +10,6 @@ import {
     DivisionByZero,
     MaximizeOverflow
 } from "../../error/ErrDecimalFloat.sol";
-import {LOG_TABLE_SIZE_BYTES, LOG_TABLE_SIZE_BASE} from "../table/LibLogTable.sol";
 
 /// @dev Thrown when attempting to rescale a coefficient to a target exponent
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
@@ -846,55 +845,17 @@ library LibDecimalFloatImplementation {
         return div(1e76, -76, signedCoefficient, exponent);
     }
 
-    /// Looks up the log10 table value for a given index.
-    /// @param tables The address of the log tables data contract.
-    /// @param index The index into the log table.
-    /// @return result The log10 table value.
-    function lookupLogTableVal(address tables, uint256 index) internal view returns (uint256 result) {
-        // Skip first byte of data contract.
-        uint256 smallTableOffset = LOG_TABLE_SIZE_BYTES + 1;
-        uint256 logTableSizeBase = LOG_TABLE_SIZE_BASE;
-        assembly ("memory-safe") {
-            // First byte of the data contract must be skipped.
-            // truncation from the div by 10 is intentional here to keep the
-            // main offset and small offset distinct.
-            // slither-disable-next-line divide-before-multiply
-            let mainOffset := add(1, mul(div(index, 10), 2))
-            mstore(0, 0)
-            extcodecopy(tables, 30, mainOffset, 2)
-            let mainTableVal := mload(0)
-
-            result := and(mainTableVal, 0x7FFF)
-            if iszero(iszero(and(mainTableVal, 0x8000))) {
-                smallTableOffset := add(smallTableOffset, logTableSizeBase)
-            }
-
-            mstore(0, 0)
-            // truncation from the div by 100 is intentional here to keep the
-            // small table offset and small offset distinct.
-            // slither-disable-next-line divide-before-multiply
-            extcodecopy(tables, 31, add(smallTableOffset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
-            result := add(result, mload(0))
-        }
-    }
-
     /// log10(x) for a float x, rounded to nearest at 41 significant digits,
     /// half away from zero, so within half a unit in the 41st digit plus
     /// `LOG10_RAW_ERROR` units of 1e-50. log10(10^k) is exactly k.
     ///
-    /// @param tablesDataContract Unused, and kept so that callers need not
-    /// change.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function log10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
-        internal
-        pure
-        returns (int256, int256)
-    {
-        (signedCoefficient, exponent) = log10Unrounded(tablesDataContract, signedCoefficient, exponent);
+    function log10(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (signedCoefficient, exponent) = log10Unrounded(signedCoefficient, exponent);
         return roundSignificant(signedCoefficient, exponent);
     }
 
@@ -980,7 +941,7 @@ library LibDecimalFloatImplementation {
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function log10Unrounded(address, int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    function log10Unrounded(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         if (signedCoefficient <= 0) {
             if (signedCoefficient == 0) {
                 revert Log10Zero();
