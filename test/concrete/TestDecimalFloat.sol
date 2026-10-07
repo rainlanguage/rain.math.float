@@ -5,19 +5,10 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
-import {LibTestLogTables} from "test/lib/LibTestLogTables.sol";
 
-/// The `DecimalFloat` ABI over this source, for the Rust bindings' tests. The
-/// constructor deploys the log tables, where the deployed concrete requires
-/// them at their Zoltu address.
+/// The `DecimalFloat` ABI over this source, for the Rust bindings' tests.
 contract TestDecimalFloat {
     using LibDecimalFloat for Float;
-
-    address immutable I_TABLES;
-
-    constructor() {
-        I_TABLES = LibTestLogTables.deploy();
-    }
 
     function maxPositiveValue() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE;
@@ -116,20 +107,20 @@ contract TestDecimalFloat {
         return a.ceil();
     }
 
-    function pow10(Float a) external view returns (Float) {
-        return a.pow10(I_TABLES);
+    function pow10(Float a) external pure returns (Float) {
+        return a.pow10();
     }
 
-    function log10(Float a) external view returns (Float) {
-        return a.log10(I_TABLES);
+    function log10(Float a) external pure returns (Float) {
+        return a.log10();
     }
 
-    function pow(Float a, Float b) external view returns (Float) {
-        return a.pow(b, I_TABLES);
+    function pow(Float a, Float b) external pure returns (Float) {
+        return a.pow(b);
     }
 
-    function sqrt(Float a) external view returns (Float) {
-        return a.sqrt(I_TABLES);
+    function sqrt(Float a) external pure returns (Float) {
+        return a.sqrt();
     }
 
     function min(Float a, Float b) external pure returns (Float) {

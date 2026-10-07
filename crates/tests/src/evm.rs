@@ -36,8 +36,7 @@ fn put(db: &mut InMemoryDB, at: Address, code: Bytes) {
     );
 }
 
-/// Runs `creation` as `at`, so the constructor runs (`TestDecimalFloat`'s
-/// deploys its log tables), and keeps the code and state it leaves.
+/// Runs `creation` as `at` and keeps the runtime code it returns.
 fn create(db: &mut InMemoryDB, at: Address, creation: &Bytes) {
     put(db, at, creation.clone());
     let mut evm = Context::mainnet().with_db(db.clone()).build_mainnet();
@@ -95,21 +94,4 @@ pub fn harness<C: SolCall>(c: C) -> Result<C::Return, Bytes> {
 /// A float-valued call on the concrete.
 pub fn float<C: SolCall<Return = B256>>(c: C) -> Result<Dec, Bytes> {
     concrete(c).map(Dec::from_bytes)
-}
-
-/// `TestDecimalFloat`'s constructor deploys the log tables as a data contract,
-/// and `create` keeps it: one account with code besides the concrete.
-#[test]
-fn constructor_state_is_kept() {
-    let mut db = InMemoryDB::default();
-    create(&mut db, CONCRETE, &TestDecimalFloat::BYTECODE);
-    let deployed: Vec<_> = db
-        .cache
-        .accounts
-        .iter()
-        .filter(|(at, account)| {
-            **at != CONCRETE && account.info.code.as_ref().is_some_and(|c| !c.is_empty())
-        })
-        .collect();
-    assert_eq!(deployed.len(), 1, "{deployed:?}");
 }

@@ -5,10 +5,9 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
-import {LibLogTable, ALT_TABLE_FLAG} from "src/lib/table/LibLogTable.sol";
 
 /// The library functions `TestDecimalFloat` does not expose, each by its own
-/// name, and the log tables as `LibLogTable` ships them.
+/// name.
 contract TestDecimalFloatHarness {
     function packLossy(int256 signedCoefficient, int256 exponent) external pure returns (Float, bool) {
         return LibDecimalFloat.packLossy(signedCoefficient, exponent);
@@ -81,29 +80,5 @@ contract TestDecimalFloatHarness {
         (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
             LibParseDecimalFloat.parseDecimalFloatInline(start, end);
         return (errorSelector, cursor - start, signedCoefficient, exponent);
-    }
-
-    function altTableFlag() external pure returns (uint16) {
-        return ALT_TABLE_FLAG;
-    }
-
-    function logTableDec() external pure returns (uint16[10][90] memory) {
-        return LibLogTable.logTableDec();
-    }
-
-    function logTableDecSmall() external pure returns (uint8[10][90] memory) {
-        return LibLogTable.logTableDecSmall();
-    }
-
-    function logTableDecSmallAlt() external pure returns (uint8[10][10] memory) {
-        return LibLogTable.logTableDecSmallAlt();
-    }
-
-    function antiLogTableDec() external pure returns (uint16[10][100] memory) {
-        return LibLogTable.antiLogTableDec();
-    }
-
-    function antiLogTableDecSmall() external pure returns (uint8[10][100] memory) {
-        return LibLogTable.antiLogTableDecSmall();
     }
 }

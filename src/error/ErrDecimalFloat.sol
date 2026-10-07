@@ -65,22 +65,6 @@ error DivisionByZero(int256 signedCoefficient, int256 exponent);
 /// @dev Thrown when attempting to raise a negative base to a fractional power.
 error PowNegativeBase(int256 signedCoefficient, int256 exponent);
 
-/// @dev Thrown if writing the data by creating the contract fails somehow.
-error WriteError();
-
-/// @dev Thrown when constructing a `DecimalFloat` on a chain where the
-/// log tables data contract is not deployed at the expected address with
-/// the expected codehash. Without this check, transcendental functions
-/// (`pow10`/`log10`/`pow`/`sqrt`) would silently `extcodecopy` zero bytes
-/// and return garbage.
-/// @param tablesAddress The address `DecimalFloat` was compiled to read
-/// log tables from.
-/// @param expectedCodehash The codehash the deployed table contract is
-/// expected to have.
-/// @param actualCodehash The codehash currently at `tablesAddress` (zero
-/// if no contract is deployed there).
-error LogTablesNotDeployed(address tablesAddress, bytes32 expectedCodehash, bytes32 actualCodehash);
-
 /// @dev Thrown when `agree` is given a negative tolerance. A spread is a
 /// distance and so is never negative, which leaves nothing a negative
 /// tolerance could express. Without this revert it would be silently dominated
