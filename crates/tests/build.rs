@@ -1,5 +1,5 @@
-//! Compiles the Solidity, so the bindings run over the test concretes built
-//! from this source: `.cargo/config.toml` points them at the artifacts.
+//! Compiles the Solidity, so the tests run the concretes built from this
+//! source in revm.
 
 use std::path::Path;
 use std::process::Command;

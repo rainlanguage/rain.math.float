@@ -23,6 +23,9 @@
         devShells.default = pkgs.mkShell {
           inherit (rainix.devShells.${system}.default) shellHook;
           inputsFrom = [ rainix.devShells.${system}.default ];
+          # crates/tests runs test/oracle/decimal_oracle.py (standard library
+          # only) as a second reference.
+          packages = [ pkgs.python3 ];
         };
       }
     );

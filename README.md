@@ -255,8 +255,8 @@ so it is within half a unit in the 41st digit plus 2e-50. A power of ten has an
 exact log.
 
 `pow10` reads no tables. It computes the power in fixed point and rounds it to
-41 significant digits, so it is within half a unit in the 41st digit and an
-exactly representable power such as `10^2` is exact.
+41 significant digits, so it is within half a unit in the 41st digit plus
+3.28e-8 of a unit, and an exactly representable power such as `10^2` is exact.
 
 `pow` calculates an integer exponent by squaring, and the fractional component
 of a non-integer exponent as `pow10(frac(b) * log10(a))` with its guard digits,
