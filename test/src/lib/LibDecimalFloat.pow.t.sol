@@ -2,17 +2,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LogTest} from "../../abstract/LogTest.sol";
+import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {ZeroNegativePower, PowNegativeBase, ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {console2} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
-contract LibDecimalFloatPowTest is LogTest {
+contract LibDecimalFloatPowTest is Test {
     using LibDecimalFloat for Float;
 
     /// The proven bound of a pow leg, `LibTestErrorBound.pow`.
@@ -117,7 +116,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     /// pow(a, b), failing on any revert but the one `expectedPowError`
     /// derives, and on a value where it derives none is representable.
-    function powChecked(Float a, Float b) internal returns (bool returned, Float c) {
+    function powChecked(Float a, Float b) internal view returns (bool returned, Float c) {
         (bool mayReturn, bytes memory err) = expectedPowError(a, b);
         try this.powExternal(a, b) returns (Float result) {
             assertTrue(mayReturn, "pow returned past the range");
@@ -143,12 +142,11 @@ contract LibDecimalFloatPowTest is LogTest {
         int256 exponentB,
         int256 expectedSignedCoefficient,
         int256 expectedExponent
-    ) internal {
+    ) internal view {
         Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
         Float b = LibDecimalFloat.packLossless(signedCoefficientB, exponentB);
-        address tables = logTables();
         uint256 beforeGas = gasleft();
-        Float c = a.pow(b, tables);
+        Float c = a.pow(b);
         uint256 afterGas = gasleft();
         console2.log("Gas used:", beforeGas - afterGas);
         (int256 actualSignedCoefficient, int256 actualExponent) = c.unpack();
@@ -156,7 +154,7 @@ contract LibDecimalFloatPowTest is LogTest {
         assertEq(actualExponent, expectedExponent, "exponent");
     }
 
-    function testPows() external {
+    function testPows() external view {
         checkPow(5, 0, 13, 0, 1220703125, 0);
         // 0.5 ^ 30 = 9.3132257462e-10
         checkPow(5e37, -38, 3e37, -36, 93132257461547851562500000000000000000000, -50);
@@ -204,7 +202,7 @@ contract LibDecimalFloatPowTest is LogTest {
         int256 exponentB,
         int256 referenceSignedCoefficient,
         int256 referenceExponent
-    ) internal {
+    ) internal view {
         Float c = this.powExternal(
             LibDecimalFloat.packLossless(signedCoefficientA, exponentA),
             LibDecimalFloat.packLossless(signedCoefficientB, exponentB)
@@ -218,7 +216,7 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// References are a^b to 45 digits from `bc -l` at scale 200.
-    function testPowFractionPrecision() external {
+    function testPowFractionPrecision() external view {
         checkPowPrecision(2, 0, 5, -1, 141421356237309504880168872420969807856967187, -44);
         checkPowPrecision(10029, -4, 41, -2, 100118798437099064831453568609189281135073206, -44);
         checkPowPrecision(96001, 0, 115, -5, 101328034166200158863572683539979437211361504, -44);
@@ -231,7 +229,7 @@ contract LibDecimalFloatPowTest is LogTest {
         checkPowPrecision(123456789, -3, 1, -100, 1, 0);
     }
 
-    function checkPowExact(Float a, Float b, Float expected) internal {
+    function checkPowExact(Float a, Float b, Float expected) internal view {
         Float c = this.powExternal(a, b);
         assertTrue(c.eq(expected), "exact");
     }
@@ -243,7 +241,7 @@ contract LibDecimalFloatPowTest is LogTest {
         int256 exponentB,
         int256 expectedSignedCoefficient,
         int256 expectedExponent
-    ) internal {
+    ) internal view {
         checkPowExact(
             LibDecimalFloat.packLossless(signedCoefficientA, exponentA),
             LibDecimalFloat.packLossless(signedCoefficientB, exponentB),
@@ -251,7 +249,7 @@ contract LibDecimalFloatPowTest is LogTest {
         );
     }
 
-    function testPowFractionExact() external {
+    function testPowFractionExact() external view {
         checkPowExact(4, 0, 15, -1, 8, 0);
         checkPowExact(16, 0, 25, -2, 2, 0);
         checkPowExact(32, 0, 2, -1, 2, 0);
@@ -289,13 +287,13 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// Issue #88: (-a)^b for a whole b is a^b, negated when b is odd.
-    function assertNegativeBaseWholeExponent(Float a, Float b, bool odd) internal {
+    function assertNegativeBaseWholeExponent(Float a, Float b, bool odd) internal view {
         Float magnitude = this.powExternal(a.minus(), b);
         Float expected = odd ? magnitude.minus() : magnitude;
         assertEq(Float.unwrap(this.powExternal(a, b)), Float.unwrap(expected));
     }
 
-    function testPowNegativeBaseWholeExponent() external {
+    function testPowNegativeBaseWholeExponent() external view {
         Float minusTwo = LibDecimalFloat.packLossless(-2, 0);
         assertTrue(
             this.powExternal(minusTwo, LibDecimalFloat.packLossless(2, 0)).eq(LibDecimalFloat.packLossless(4, 0))
@@ -325,6 +323,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     function testPowNegativeBaseWholeExponentFuzz(int64 coefficientA, int8 exponentA, int8 integerB, bool scaledB)
         external
+        view
     {
         vm.assume(coefficientA != 0);
         Float a = LibDecimalFloat.packLossless(
@@ -339,7 +338,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     /// 1^b is 1 and (-1)^b is 1 or -1 by the parity of a whole b, for a b too
     /// large for the integer leg.
-    function testPowOneHugeExponent() external {
+    function testPowOneHugeExponent() external view {
         Float one = LibDecimalFloat.packLossless(1, 0);
         Float minusOne = LibDecimalFloat.packLossless(-1, 0);
         Float oneWide = LibDecimalFloat.packLossless(1e66, -66);
@@ -361,22 +360,20 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// a^0 = 1 for all a including 0^0.
-    function testPowBZero(Float a, int32 exponentB) external {
+    function testPowBZero(Float a, int32 exponentB) external pure {
         Float b = LibDecimalFloat.packLossless(0, exponentB);
         // If b is zero then the result is always 1.
-        address tables = logTables();
-        Float c = a.pow(b, tables);
+        Float c = a.pow(b);
         assertTrue(c.eq(LibDecimalFloat.packLossless(1, 0)), "c is not 1");
     }
 
     /// 0^b is defined as 0 for all b > 0.
-    function testPowAZero(int32 exponentA, Float b) external {
+    function testPowAZero(int32 exponentA, Float b) external pure {
         // 0^0 is defined as 1.
         vm.assume(b.gt(LibDecimalFloat.FLOAT_ZERO));
         // If a is zero then the result is always zero.
         Float a = LibDecimalFloat.packLossless(0, exponentA);
-        address tables = logTables();
-        Float c = a.pow(b, tables);
+        Float c = a.pow(b);
         assertTrue(c.isZero(), "c is not zero");
     }
 
@@ -390,7 +387,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     /// a^1 is a rounded to 41 significant digits, for every nonzero a of
     /// either sign and however 1 is written.
-    function testPowBOne(Float a) external {
+    function testPowBOne(Float a) external view {
         vm.assume(!a.isZero());
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 roundedCoefficient, int256 roundedExponent) =
@@ -479,7 +476,7 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// A rounded exponent one past int32 takes back one digit.
-    function testPowRoundedOnePastTheTop() external {
+    function testPowRoundedOnePastTheTop() external view {
         assertEq(
             Float.unwrap(
                 this.powExternal(
@@ -493,7 +490,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     /// A rounded coefficient exactly at the headroom bound for its excess lifts
     /// to the top exponent, rather than falling back to the unrounded value.
-    function testPowRoundedAtTheHeadroomBound() external {
+    function testPowRoundedAtTheHeadroomBound() external view {
         // int224.max / 1e27, the widest 41 digit coefficient that lifts 27
         // digits, followed by 27 digits that round down.
         int256 bound = 13479973333575319897333507543509815336818;
@@ -564,7 +561,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     /// Issue #297 review: a^1 kept all 67 digits of a, and 2 - 1e-50 put a
     /// 51 digit product above a^2, a 41 digit leg times a.
-    function testPowRoundsAtFortyOneDigits() external {
+    function testPowRoundsAtFortyOneDigits() external view {
         Float a = LibDecimalFloat.packLossless(1000000000000000000000000000000000000000051, -42);
         Float one = LibDecimalFloat.packLossless(1, -40).add(LibDecimalFloat.FLOAT_ONE);
         assertTrue(this.powExternal(a, LibDecimalFloat.FLOAT_ONE).eq(one), "a^1");
@@ -589,18 +586,18 @@ contract LibDecimalFloatPowTest is LogTest {
 
     function checkRoundTrip(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
+        view
     {
         Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
         Float b = LibDecimalFloat.packLossless(signedCoefficientB, exponentB);
-        address tables = logTables();
-        Float c = a.pow(b, tables);
+        Float c = a.pow(b);
 
-        Float roundTrip = c.pow(b.inv(), tables);
+        Float roundTrip = c.pow(b.inv());
         assertRoundTrip(a, b, c, roundTrip);
     }
 
     /// X^Y^(1/Y) = X within `roundTripLogError`.
-    function testRoundTripSimple() external {
+    function testRoundTripSimple() external view {
         checkRoundTrip(5, 0, 2, 0);
         checkRoundTrip(5, 0, 3, 0);
         checkRoundTrip(50, 0, 40, 0);
@@ -612,7 +609,7 @@ contract LibDecimalFloatPowTest is LogTest {
         checkRoundTrip(4157, 0, -1, -2);
     }
 
-    function testRoundTripExtremes() external {
+    function testRoundTripExtremes() external view {
         int256 full = 12345678901234567890123456789012345678901234567890123456789012345;
         checkRoundTrip(full, -100000, 3, 0);
         checkRoundTrip(full, 100000, 3, 0);
@@ -640,7 +637,7 @@ contract LibDecimalFloatPowTest is LogTest {
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
-    ) external {
+    ) external view {
         signedCoefficientA = bound(signedCoefficientA, 1, 1e67 - 1);
         exponentA = bound(exponentA, -300, 300);
         signedCoefficientB = bound(signedCoefficientB, -1e67 + 1, 1e67 - 1);
@@ -652,8 +649,8 @@ contract LibDecimalFloatPowTest is LogTest {
         );
     }
 
-    function powExternal(Float a, Float b) external returns (Float) {
-        return a.pow(b, logTables());
+    function powExternal(Float a, Float b) external pure returns (Float) {
+        return a.pow(b);
     }
 
     /// `pow` raises to an integer exponent via exponentiation by squaring,
@@ -704,7 +701,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     /// Issue #149: the inverse of a base this far up the range is below
     /// int32.min, but a small negative power of it is not.
-    function testPowNegativeExponentHugeBase() external {
+    function testPowNegativeExponentHugeBase() external view {
         Float a = LibDecimalFloat.packLossless(1e66, type(int32).max);
         Float b = LibDecimalFloat.packLossless(1, -7);
         Float product = this.powExternal(a, b.minus()).mul(this.powExternal(a, b));
@@ -714,7 +711,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     /// Issue #297 review: 0.1^2147483645.5 is 316.2277e-2147483648, below
     /// 1e-2147483608, so it sheds digits at the int32 floor.
-    function testPowFloor() external {
+    function testPowFloor() external view {
         checkPow(1, -1, 21474836455, -1, 316, type(int32).min);
     }
 
@@ -727,7 +724,7 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     /// pow(a, -1) is the inverse rounded to 41 digits.
-    function testPowMinusOneIsInv(int64 c, int16 e) external {
+    function testPowMinusOneIsInv(int64 c, int16 e) external view {
         vm.assume(c > 0);
         Float a = LibDecimalFloat.packLossless(c, e);
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.inv(c, e);
@@ -753,7 +750,7 @@ contract LibDecimalFloatPowTest is LogTest {
         uint8 region,
         int256 coefficientB,
         int256 exponentB
-    ) external {
+    ) external view {
         coefficientA = int224(bound(coefficientA, 1, type(int224).max));
         if (region % 3 == 1) {
             exponentA = int32(bound(exponentA, type(int32).max - 300, type(int32).max));
@@ -874,7 +871,7 @@ contract LibDecimalFloatPowTest is LogTest {
     /// The concrete counterexample surfaced by `testRoundTripFuzzPow`: a is 1,
     /// whose round trip leg `c.pow(b.inv())` reverted `WithTargetExponentOverflow`
     /// on an inverse with exponent 363177628, until 1^b returned 1 (#312).
-    function testRoundTripOneHugeExponent() external {
+    function testRoundTripOneHugeExponent() external view {
         Float a = Float.wrap(bytes32(uint256(1)));
         Float b = Float.wrap(bytes32(0xea5a58dfdcc79c60ac38b8284569e4519fda5eaaffec2a3d22027a4af1969e13));
 
@@ -956,13 +953,13 @@ contract LibDecimalFloatPowTest is LogTest {
         );
     }
 
-    function testRoundTripFuzzPow(Float a, Float b) external {
+    function testRoundTripFuzzPow(Float a, Float b) external view {
         roundTripFuzz(a, b);
     }
 
     /// Each leg returns or reverts only as `powChecked` derives from its own
     /// inputs.
-    function roundTripFuzz(Float a, Float b) internal {
+    function roundTripFuzz(Float a, Float b) internal view {
         (bool returned, Float c) = powChecked(a, b);
         // If C is 1 then either a == 1 or b == 0 (or b rounds to 0).
         // The case where a is 1 should round trip, but all other cases won't.
@@ -993,7 +990,7 @@ contract LibDecimalFloatPowTest is LogTest {
 
     /// a^(p / q) for a = n^q 10^(qk) is n^p 10^(pk) exactly, wherever n^p has
     /// at most the 41 digits pow keeps.
-    function testPowExactRoots(uint256 n, int256 k, uint256 which) external {
+    function testPowExactRoots(uint256 n, int256 k, uint256 which) external view {
         // (q, p, the largest n for n^q below 1e66 and n^p below 1e41, b's coefficient,
         // b's exponent)
         uint256[5][11] memory roots = [
@@ -1022,11 +1019,11 @@ contract LibDecimalFloatPowTest is LogTest {
     }
 
     function pow10External(Float x) external pure returns (Float) {
-        return x.pow10(address(0));
+        return x.pow10();
     }
 
     /// (10^k)^b is pow10(k b) exactly, as log10(10^k) is exactly k.
-    function testPowPowersOfTenMatchPow10(int256 k, int256 signedCoefficientB, int256 exponentB) external {
+    function testPowPowersOfTenMatchPow10(int256 k, int256 signedCoefficientB, int256 exponentB) external view {
         k = bound(k, -1e4, 1e4);
         vm.assume(k != 0);
         Float b = LibDecimalFloat.packLossless(bound(signedCoefficientB, 1, 1e12), bound(exponentB, -12, -9));
@@ -1041,7 +1038,7 @@ contract LibDecimalFloatPowTest is LogTest {
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
-    ) external {
+    ) external view {
         signedCoefficientA = bound(signedCoefficientA, 1, type(int224).max - 1e3);
         gap = bound(gap, 1, 1e3);
         exponentA = bound(exponentA, -1000, 1000);
@@ -1067,7 +1064,7 @@ contract LibDecimalFloatPowTest is LogTest {
         int256 lowB,
         int256 exponentB,
         int256 gap
-    ) external {
+    ) external view {
         signedCoefficientA = bound(signedCoefficientA, 1, 1e67);
         exponentA = bound(exponentA, -67, 0);
         Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
