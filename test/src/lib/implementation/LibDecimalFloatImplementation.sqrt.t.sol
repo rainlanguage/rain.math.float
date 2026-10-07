@@ -172,6 +172,9 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         (variantRoot, variantExponent) = LibDecimalFloatSqrtVariants.sqrtAsmResidual(signedCoefficient, exponent);
         assertEq(root, variantRoot, "residual root");
         assertEq(rootExponent, variantExponent, "residual exponent");
+        (variantRoot, variantExponent) = LibDecimalFloatSqrtVariants.sqrt512Residual(signedCoefficient, exponent);
+        assertEq(root, variantRoot, "512-bit residual root");
+        assertEq(rootExponent, variantExponent, "512-bit residual exponent");
     }
 
     function sqrtGas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
@@ -198,21 +201,31 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         g -= gasleft();
     }
 
+    function residual512Gas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
+        g = gasleft();
+        LibDecimalFloatSqrtVariants.sqrt512Residual(signedCoefficient, exponent);
+        g -= gasleft();
+    }
+
     function logGas(string memory name, int256 signedCoefficient, int256 exponent) internal view {
         console2.log(name);
         console2.log("  library", this.sqrtGas(signedCoefficient, exponent));
-        console2.log("  512-bit residual", this.baseGas(signedCoefficient, exponent));
+        console2.log("  sqrtBase", this.baseGas(signedCoefficient, exponent));
+        console2.log("  512-bit residual", this.residual512Gas(signedCoefficient, exponent));
         console2.log("  plain Newton", this.plainNewtonGas(signedCoefficient, exponent));
         console2.log("  assembly residual", this.asmResidualGas(signedCoefficient, exponent));
     }
 
-    /// Run with `-vv`: the library against the 512-bit residual of #309's
-    /// branch, Newton in plain Solidity, and the residual in assembly.
+    /// Run with `-vv`: the library against #309's `sqrtBase`, the library with
+    /// `sqrtBase`'s 512-bit residual, Newton in plain Solidity, and the
+    /// residual in assembly.
     function testSqrtGas() external view {
         logGas("2", 2, 0);
         logGas("2e-1", 2, -1);
         logGas("int224 max", type(int224).max, 0);
         logGas("1e75 - 1", 1e75 - 1, 0);
         logGas("1e76 - 1", 1e76 - 1, 0);
+        // Newton lands one above the floor.
+        logGas("((4e40 + 1)^2 - 1) / 1e6", 16e74 + 8e34, 0);
     }
 }

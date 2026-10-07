@@ -149,4 +149,46 @@ library LibDecimalFloatSqrtVariants {
             return (int256(root), exponent);
         }
     }
+
+    /// The library's sqrt with its low-word residual rounding replaced by
+    /// `sqrtBase`'s 512-bit residual compare.
+    function sqrt512Residual(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.scaleUp(signedCoefficient, exponent);
+        unchecked {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 coefficient = uint256(signedCoefficient);
+            uint256 scale = 1e6;
+            uint256 estimate = coefficient;
+            if (exponent & 1 == 1) {
+                scale = 1e5;
+                estimate = coefficient / 10;
+            }
+            exponent = (exponent - (scale == 1e5 ? int256(5) : int256(6))) / 2;
+            uint256 root;
+            assembly ("memory-safe") {
+                root := add(shr(126, estimate), shl(124, 1))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+            }
+            root *= 1e3;
+            root = (root + LibDecimalFloatImplementation.mulDiv(coefficient, scale, root)) >> 1;
+            (uint256 high, uint256 low) = LibDecimalFloatImplementation.mul512(coefficient, scale);
+            (uint256 rootHigh, uint256 rootLow) = LibDecimalFloatImplementation.mul512(root, root);
+            if (rootHigh > high || (rootHigh == high && rootLow > low)) {
+                root -= 1;
+                (rootHigh, rootLow) = LibDecimalFloatImplementation.mul512(root, root);
+            }
+            assembly ("memory-safe") {
+                let differenceLow := sub(low, rootLow)
+                let differenceHigh := sub(sub(high, rootHigh), lt(low, rootLow))
+                root := add(root, or(gt(differenceHigh, 0), gt(differenceLow, root)))
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return (int256(root), exponent);
+        }
+    }
 }
