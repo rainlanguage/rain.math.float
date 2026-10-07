@@ -55,21 +55,47 @@ contract LibDecimalFloatPackTest is Test {
         this.packLosslessExternal(signedCoefficient, exponent);
     }
 
-    /// packLossy returns lossless=false but a valid non-zero Float when the
-    /// coefficient exceeds int224 but can be normalized by dividing by 10.
-    function testPackLossyButPackable() external view {
-        // int224.max + 1 doesn't fit in int224, but dividing by 10 does.
-        int256 signedCoefficient = int256(type(int224).max) + 1;
-        int256 exponent = 0;
+    function checkPackLossy(
+        int256 signedCoefficient,
+        int256 exponent,
+        int256 expectedCoefficient,
+        int256 expectedExponent,
+        bool expectedLossless
+    ) internal view {
         (Float float, bool lossless) = this.packLossyExternal(signedCoefficient, exponent);
-        assertFalse(lossless, "lossless");
-        assertTrue(Float.unwrap(float) != Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "non-zero");
-
-        // The packed value should unpack to a truncated coefficient with
-        // incremented exponent.
         (int256 unpackedCoefficient, int256 unpackedExponent) = LibDecimalFloat.unpack(float);
-        assertEq(unpackedExponent, 1, "exponent");
-        assertEq(unpackedCoefficient, signedCoefficient / 10, "coefficient");
+        assertEq(unpackedCoefficient, expectedCoefficient, "coefficient");
+        assertEq(unpackedExponent, expectedExponent, "exponent");
+        assertEq(lossless, expectedLossless, "lossless");
+    }
+
+    /// A coefficient just past int224 packs as the int224 bound one exponent
+    /// below the digits it fits at, when that is nearer than shedding one
+    /// more digit: the nearest Float not exceeding the value (#326, #332).
+    function testPackLossyNearestBound() external view {
+        int256 two223 = int256(1) << 223;
+        int256 max = type(int224).max;
+        int256 min = type(int224).min;
+        checkPackLossy(two223, 0, max, 0, false);
+        checkPackLossy(two223 + 1, 0, max, 0, false);
+        checkPackLossy(two223 + 2, 0, (two223 + 2) / 10, 1, true);
+        checkPackLossy(two223 * 10 + 9, -5, max, -4, false);
+        checkPackLossy(two223 * 1e9, 0, max, 9, false);
+        checkPackLossy(-two223 - 1, 0, min, 0, false);
+        checkPackLossy(-two223 - 2, 0, (-two223 - 2) / 10, 1, true);
+        checkPackLossy(-(two223 + 1) * 1e9, 0, min, 9, false);
+        checkPackLossy(two223, type(int32).max, max, type(int32).max, false);
+        checkPackLossy(-two223 - 1, type(int32).min, min, type(int32).min, false);
+        // The bound's exponent is below the floor, so shedding to it stands.
+        checkPackLossy(two223, int256(type(int32).min) - 1, two223 / 10, type(int32).min, false);
+    }
+
+    /// Past the ceiling the bound one exponent down is still past it.
+    function testPackLossyNearestBoundPastCeiling() external {
+        int256 signedCoefficient = int256(type(int224).max) + 3;
+        int256 exponent = type(int32).max;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+        this.packLossyExternal(signedCoefficient, exponent);
     }
 
     /// packLossless(x, 0) is a bitwise identity for non-negative integers

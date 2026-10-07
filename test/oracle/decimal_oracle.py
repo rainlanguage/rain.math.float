@@ -72,33 +72,36 @@ def fits224(c):
     return INT224_MIN <= c <= INT224_MAX
 
 
+def nearest_within(x, lo, hi):
+    """The largest in magnitude of c * 10^f not exceeding |x|, over int224 c
+    and f in [lo, hi]. Below x's 70th digit the clamp only shrinks, above its
+    66th truncation only shrinks, so that window and the two ends hold it."""
+    top = x.adjusted() + 1
+    best = Decimal(0)
+    for f in [*range(top - 70, top - 65), lo, hi]:
+        f = min(max(f, lo), hi)
+        c = x.scaleb(-f, EXACT).to_integral_value(ROUND_DOWN, EXACT)
+        c = min(max(c, Decimal(INT224_MIN)), Decimal(INT224_MAX))
+        w = c.scaleb(f, EXACT)
+        if abs(w) > abs(best):
+            best = w
+    return best
+
+
 def pack(x):
-    """Truncate towards zero to the largest int224 coefficient, lift the
-    exponent to the int32 floor, grow it down to the int32 ceiling.
+    """The Float closest to x that does not exceed its magnitude. Overflow
+    when that Float, with an unbounded exponent, is past every Float of its sign;
+    underflow when it is zero within int32.
     Returns (value, lossless) or the error name."""
     if x.is_zero():
         return Decimal(0), True
-    sign, digits, exp = x.as_tuple()
-    c = int("".join(map(str, digits)))
-    if sign:
-        c = -c
-    k = 0
-    while not fits224(int(Decimal(c).scaleb(-k, EXACT).to_integral_value(ROUND_DOWN, EXACT))):
-        k += 1
-    c = int(Decimal(c).scaleb(-k, EXACT).to_integral_value(ROUND_DOWN, EXACT))
-    e = exp + k
-    if e > INT32_MAX:
-        grow = e - INT32_MAX
-        if k == 0 and grow <= 68 and fits224(c * 10**grow):
-            c, e = c * 10**grow, INT32_MAX
-        else:
-            return "ExponentOverflow"
-    if e < INT32_MIN:
-        c = int(Decimal(c).scaleb(e - INT32_MIN, EXACT).to_integral_value(ROUND_DOWN, EXACT))
-        e = INT32_MIN
-        if c == 0:
-            return "ExponentUnderflow"
-    v = Decimal(c).scaleb(e, EXACT)
+    top = x.adjusted() + 1
+    unbounded = nearest_within(x, top - 70, top - 66)
+    if not Decimal(INT224_MIN).scaleb(INT32_MAX, EXACT) <= unbounded <= Decimal(INT224_MAX).scaleb(INT32_MAX, EXACT):
+        return "ExponentOverflow"
+    v = nearest_within(x, INT32_MIN, INT32_MAX)
+    if v.is_zero():
+        return "ExponentUnderflow"
     return v, v == x
 
 
@@ -107,14 +110,6 @@ def arithmetic(x):
     if isinstance(p, str):
         return {"err": p}
     return {"ok": out(p[0])}
-
-
-def minus(f):
-    """Exact, but an int224.min coefficient, whose negation 2^223 is no
-    int224, takes int224.max at the same exponent (#326)."""
-    if int(f[0]) == INT224_MIN:
-        return {"ok": [str(INT224_MAX), int(f[1])]}
-    return arithmetic(EXACT.minus(dec(f)))
 
 
 def maximize(x):
@@ -274,9 +269,9 @@ def handle(req):
     if op == "inv":
         return div(Decimal(1), a)
     if op == "minus":
-        return minus(req["a"])
+        return arithmetic(EXACT.minus(a))
     if op == "abs":
-        return minus(req["a"]) if a < 0 else arithmetic(a)
+        return arithmetic(EXACT.abs(a))
     if op == "integer":
         return arithmetic(a.to_integral_value(ROUND_DOWN, EXACT))
     if op == "frac":

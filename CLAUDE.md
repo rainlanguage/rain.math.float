@@ -56,11 +56,10 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
 
 - 512-bit intermediate values in multiply/divide to preserve precision.
 - Exponent overflow and underflow both revert from the public arithmetic surface
-  (`ExponentOverflow` / `ExponentUnderflow`). Coefficient truncation is silently
-  tolerated because it preserves the order of magnitude: digits are shed to fit
-  the coefficient in int224 AND to lift an exponent below int32.min back to the
-  floor. `ExponentUnderflow` is only the case where every digit has been shed.
-  The pow10 and pow bounds add 1e-2147483648 absolute there.
+  (`ExponentOverflow` / `ExponentUnderflow`). Precision loss is tolerated: a
+  value that does not fit packs to the Float closest to it that does not exceed
+  its magnitude, for every op. `ExponentUnderflow` is only the case where that
+  Float is zero. The pow10 and pow bounds add 1e-2147483648 absolute there.
 - log10 and pow10 read no tables; both work in 1e50 fixed point. Their tables
   parameters are kept, unused.
 - sqrt is correctly rounded, so monotone. log10, pow10 and pow are monotone

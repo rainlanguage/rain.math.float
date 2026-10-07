@@ -88,4 +88,13 @@ contract LibDecimalFloatSubTest is Test {
         Float floatImplementation = this.subExternal(a, b);
         assertTrue(float.eq(floatImplementation));
     }
+
+    /// #332: 0 - int224.min is 2^223, which packs as int224.max at the same
+    /// exponent, as `minus` does.
+    function testSubZeroInt224Min() external pure {
+        Float min = LibDecimalFloat.packLossless(type(int224).min, 0);
+        Float difference = LibDecimalFloat.FLOAT_ZERO.sub(min);
+        assertEq(Float.unwrap(difference), Float.unwrap(LibDecimalFloat.packLossless(type(int224).max, 0)));
+        assertEq(Float.unwrap(difference), Float.unwrap(min.minus()));
+    }
 }

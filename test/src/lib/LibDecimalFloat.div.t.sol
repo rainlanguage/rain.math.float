@@ -92,17 +92,20 @@ contract LibDecimalFloatDivTest is Test {
         int256 negativeOne = -1;
         for (int256 oneExponent = 0; oneExponent >= -65; --oneExponent) {
             Float result = LibDecimalFloat.div(float, LibDecimalFloat.packLossless(negativeOne, oneExponent));
-            if (signedCoefficient == type(int224).min) {
-                // Division sheds a digit of 2^223 as all arithmetic does;
-                // minus takes int224.max instead (#326).
-                assertTrue(result.eq(LibDecimalFloat.packLossless(-(type(int224).min / 10), int256(exponent) + 1)));
-            } else {
-                assertTrue(result.eq(float.minus()));
-            }
+            assertTrue(result.eq(float.minus()));
             if (oneExponent == -65) {
                 break;
             }
             negativeOne *= 10;
         }
+    }
+
+    /// #332: int224.min / -1 is 2^223, which packs as int224.max at the same
+    /// exponent, as `minus` does.
+    function testDivInt224MinNegativeOne() external pure {
+        Float min = LibDecimalFloat.packLossless(type(int224).min, 0);
+        Float quotient = min.div(LibDecimalFloat.packLossless(-1, 0));
+        assertEq(Float.unwrap(quotient), Float.unwrap(LibDecimalFloat.packLossless(type(int224).max, 0)));
+        assertEq(Float.unwrap(quotient), Float.unwrap(min.minus()));
     }
 }

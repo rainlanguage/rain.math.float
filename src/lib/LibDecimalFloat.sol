@@ -342,7 +342,11 @@ library LibDecimalFloat {
     ///
     /// The coefficient is divided by ten (rounding towards zero) and the
     /// exponent raised by one, as many times as it takes to fit the coefficient
-    /// in int224 AND the exponent in int32. Both directions of the trade are
+    /// in int224 AND the exponent in int32. When int224.max (or int224.min) one
+    /// exponent below that is closer to the value, it is the result instead:
+    /// a value that does not fit packs to the Float closest to it that does
+    /// not exceed its magnitude, so `2^223` packs as int224.max, not as
+    /// `2^223 - 8` at the next exponent. Both directions of the trade are
     /// the same operation, so the packing never gives up on the exponent while
     /// it still has coefficient digits to spend: a value whose exponent is
     /// below the floor is brought up to the floor by shedding its low digits,
@@ -396,6 +400,28 @@ library LibDecimalFloat {
                 while (int224(signedCoefficient) != signedCoefficient) {
                     signedCoefficient /= 10;
                     ++exponent;
+                }
+
+                // The last digit shed left a coefficient that fits ten times
+                // over, so the int224 bound one exponent down is the closer
+                // Float.
+                int256 unshed = signedCoefficient * 10;
+                // forge-lint: disable-next-line(unsafe-typecast)
+                if (int224(unshed) == unshed) {
+                    int256 boundExponent = exponent - 1;
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    if (int32(boundExponent) == boundExponent) {
+                        int256 bound = type(int224).max;
+                        uint256 boundMask = type(uint224).max;
+                        assembly ("memory-safe") {
+                            // int224.max, or int224.min as its complement.
+                            bound := xor(sar(255, signedCoefficient), bound)
+                            float := or(and(bound, boundMask), shl(0xe0, boundExponent))
+                        }
+                        // The literal is the bool this function returns, not a condition operand.
+                        //forge-lint: disable-next-line(boolean-cst)
+                        return (float, false);
+                    }
                 }
             } else {
                 if (signedCoefficient == 0) {
@@ -509,7 +535,8 @@ library LibDecimalFloat {
     }
 
     /// Variant of `packLossy` used as the finaliser of every arithmetic
-    /// operation but `minus` and `abs`. Tolerates coefficient truncation (which preserves the order
+    /// operation but `minus` and `abs`, which cannot underflow. Tolerates
+    /// coefficient truncation (which preserves the order
     /// of magnitude) but reverts on exponent underflow (which silently
     /// replaces the value by `FLOAT_ZERO`, losing the magnitude entirely).
     /// Distinguishes the two `lossless = false` modes from `packLossy` by the
@@ -617,13 +644,10 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Negates a float. Every coefficient but int224.min negates exactly, at
-    /// the same exponent. An int224.min coefficient at any exponent negates to
-    /// int224.max at the same exponent: the true negation, 2^223 at that
-    /// exponent, is no Float, and int224.max there is the largest Float not
-    /// above it. So the result rounds towards zero, is off by one in the last
-    /// place, and negation reverses the order of every pair of floats. Never
-    /// reverts.
+    /// Negates a float. The negation is packed as `packLossy` packs any value,
+    /// so it is exact at the same exponent for every coefficient but
+    /// int224.min, whose negation 2^223 is no int224 and packs as int224.max.
+    /// Never reverts.
     /// @param float The float to negate.
     /// @return The negated float.
     function minus(Float float) internal pure returns (Float) {
@@ -632,9 +656,7 @@ library LibDecimalFloat {
     }
 
     /// Returns the absolute value of a float.
-    /// Identity if non-negative, `minus` if negative, so an int224.min
-    /// coefficient at any exponent becomes int224.max at the same exponent.
-    /// Never reverts.
+    /// Identity if non-negative, `minus` if negative. Never reverts.
     ///
     /// https://speleotrove.com/decimal/daops.html#refabs
     /// > abs takes one operand. If the operand is negative, the result is the
@@ -653,8 +675,8 @@ library LibDecimalFloat {
         return float;
     }
 
-    /// `minus` of an unpacked float, packed. int224.min is the one coefficient
-    /// whose negation does not fit int224, and it takes int224.max.
+    /// `minus` of an unpacked float, packed. A negation that fits int224 packs
+    /// directly, as an unpacked exponent fits int32.
     function packNegated(int256 signedCoefficient, int256 exponent) private pure returns (Float float) {
         unchecked {
             // An int224 negates in int256 without overflow.
@@ -662,8 +684,10 @@ library LibDecimalFloat {
         }
         // forge-lint: disable-next-line(unsafe-typecast)
         if (int224(signedCoefficient) != signedCoefficient) {
-            signedCoefficient = type(int224).max;
-        } else if (signedCoefficient == 0) {
+            (float,) = packLossy(signedCoefficient, exponent);
+            return float;
+        }
+        if (signedCoefficient == 0) {
             return FLOAT_ZERO;
         }
         uint256 mask = type(uint224).max;
