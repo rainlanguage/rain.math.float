@@ -61,7 +61,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
     /// 220, as (input coefficient, input exponent, power coefficient, power
     /// exponent).
     function pow10References() internal pure returns (int256[4][] memory references) {
-        references = new int256[4][](57);
+        references = new int256[4][](59);
         references[0] = [int256(2), 0, 1000000000000000000000000000000000000000000000000000000000000000000000, -67];
         references[1] = [int256(-2), 0, 1000000000000000000000000000000000000000000000000000000000000000000000, -71];
         references[2] = [int256(15), -1, 3162277660168379331998893544432718533719555139325216826857504852792594, -68];
@@ -347,6 +347,20 @@ contract LibDecimalFloatImplementationPow10Test is Test {
             -40,
             4901210439088553342950526591647952577144864592790904433897627154847901,
             -75
+        ];
+        // Three units of the 41st digit below 1 and 1e7, where the true
+        // power's unit is a tenth of the power of ten's.
+        references[57] = [
+            int256(-1302883445709755482953386756749815246883),
+            -80,
+            9999999999999999999999999999999999999999700000000000000000000000000000,
+            -70
+        ];
+        references[58] = [
+            int256(6999999999999999999999999999999999999999986971165542902445170466133),
+            -66,
+            9999999999999999999999999999999999999999700000000000000000000000013067,
+            -63
         ];
     }
 
