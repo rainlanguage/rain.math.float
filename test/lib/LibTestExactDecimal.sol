@@ -461,101 +461,80 @@ library LibTestExactDecimal {
         return cmpScaled(magnitude, exponent, u512(limit / 10 + 1), re + 1) < 0;
     }
 
-    /// Whether the Float `(rc, re)` is the next Float away from zero after
-    /// the one `isNearestTowardZero` accepts for the exact
-    /// `±magnitude × 10^exponent`: it exceeds that value in magnitude, and the
-    /// largest Float of its sign below it in magnitude does not. Same
-    /// preconditions as `isNearestTowardZero`.
-    function isNextAwayFromZero(bool negative, U512 memory magnitude, int256 exponent, int256 rc, int256 re)
-        internal
-        pure
-        returns (bool)
-    {
-        if (isZero(magnitude) || rc == 0 || (rc < 0) != negative) {
-            return false;
-        }
-        uint256 r = abs(rc);
-        if (cmpScaled(u512(r), re, magnitude, exponent) <= 0) {
-            return false;
-        }
-        uint256 limit = coefficientLimit(negative);
-        while (re > type(int32).min && r * 10 <= limit) {
-            r *= 10;
-            --re;
-        }
-        // The largest Float below `r × 10^re` is one unit down at `re`, or at
-        // most the limit one exponent lower. Lower still holds less, as
-        // `100 r` exceeds the limit.
-        U512 memory below = u512(r - 1);
-        int256 belowExponent = re;
-        if (re > type(int32).min) {
-            uint256 finer = r * 10 - 1 < limit ? r * 10 - 1 : limit;
-            if (cmpScaled(u512(finer), re - 1, below, belowExponent) > 0) {
-                (below, belowExponent) = (u512(finer), re - 1);
-            }
-        }
-        return cmpScaled(magnitude, exponent, below, belowExponent) > 0;
+    /// The exponent of a non-zero Float's int256 unit: its last digit when
+    /// written with as many digits as an int256 coefficient holds, 77 or 76.
+    function int256Unit(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+        uint256 magnitude = abs(signedCoefficient);
+        int256 n = digits(u512(magnitude));
+        // n is at most 68, and a 77 digit magnitude fits uint256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        bool fits77 = magnitude * 10 ** uint256(77 - n) <= uint256(type(int256).max);
+        return exponent + n - (fits77 ? int256(77) : int256(76));
     }
 
-    /// `±magnitude × 10^exponent` standing in for the exact
-    /// `ca × 10^ea + cb × 10^eb`, with a magnitude below 10^146. An operand
-    /// whose unit is more than 145 digits below the other's leading digit is
-    /// replaced by one unit 145 digits below that leading digit, of its sign.
-    /// Both are under 10^-77 of the other operand, far inside the gap between
-    /// it and either neighbouring Float, so the stand-in lies strictly between
-    /// the same two Floats as the exact sum.
-    function exactSum(int256 ca, int256 ea, int256 cb, int256 eb)
+    /// Step 1 of `add`'s documented rounding (#340), as `±units × 10^unit`:
+    /// the exact sum in units of the larger operand's int256 unit, rounded
+    /// towards zero when the signs agree and away from zero when they differ.
+    /// The larger operand is a whole number of units; the smaller is split
+    /// into whole units and whether a fraction of one remains.
+    function sumRule(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
-        returns (bool negative, U512 memory magnitude, int256 exponent)
+        returns (bool negative, uint256 units, int256 unit)
     {
         if (ca == 0) {
-            return (cb < 0, u512(abs(cb)), eb);
+            return (cb < 0, abs(cb), eb);
         }
         if (cb == 0) {
-            return (ca < 0, u512(abs(ca)), ea);
+            return (ca < 0, abs(ca), ea);
         }
-        if (digits(u512(abs(ca))) + ea < digits(u512(abs(cb))) + eb) {
+        if (cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) < 0) {
             (ca, ea, cb, eb) = (cb, eb, ca, ea);
         }
-        int256 top = digits(u512(abs(ca))) + ea;
-        U512 memory small = u512(abs(cb));
-        if (top - eb > 145) {
-            (small, eb) = (u512(1), top - 145);
+        unit = int256Unit(ca, ea);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 bigUnits = abs(ca) * 10 ** uint256(ea - unit);
+        uint256 smallUnits;
+        bool smallFraction;
+        if (eb >= unit) {
+            // |cb| × 10^(eb - unit) is at most |a|'s 77 digits.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            smallUnits = abs(cb) * 10 ** uint256(eb - unit);
+        } else if (unit - eb > 68) {
+            // |cb| has at most 68 digits, so it is under one unit.
+            smallFraction = true;
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 scale = 10 ** uint256(unit - eb);
+            smallUnits = abs(cb) / scale;
+            smallFraction = abs(cb) % scale != 0;
         }
-        exponent = ea < eb ? ea : eb;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        U512 memory large = mulPow10(u512(abs(ca)), uint256(ea - exponent));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        small = mulPow10(small, uint256(eb - exponent));
-        negative = ca < 0;
         if ((ca < 0) == (cb < 0)) {
-            return (negative, add(large, small), exponent);
+            // Towards zero drops the fraction.
+            units = bigUnits + smallUnits;
+        } else {
+            // |b| <= |a|, so this is at least zero: the whole units of the
+            // exact difference, then away from zero rounds a remaining
+            // fraction up to a unit.
+            units = bigUnits - smallUnits - (smallFraction ? 1 : 0);
+            if (smallFraction) {
+                units += 1;
+            }
         }
-        if (cmp(large, small) >= 0) {
-            return (negative, sub(large, small), exponent);
-        }
-        return (!negative, sub(small, large), exponent);
+        return (ca < 0, units, unit);
     }
 
-    /// Whether the Float `(rc, re)` is what `add` documents for the exact
-    /// `ca × 10^ea + cb × 10^eb` (#340). Where the magnitudes add, it is the
-    /// nearest Float towards zero. Where they cancel, the operand truncated
-    /// before summing leaves the sum under one unit of the larger operand away
-    /// from zero, which packing then truncates towards zero: either Float
-    /// adjacent to the exact sum. Exact sums are exact either way. The caller
-    /// rules out sums that `addOverflows`.
+    /// Whether the Float `(rc, re)` is what `add` documents for
+    /// `ca × 10^ea + cb × 10^eb` (#340): `sumRule`, then packing, the closest
+    /// Float not exceeding that in magnitude. Exactly one Float is accepted.
+    /// The caller rules out sums that `addOverflows`.
     function isSumResult(int256 ca, int256 ea, int256 cb, int256 eb, int256 rc, int256 re)
         internal
         pure
         returns (bool)
     {
-        (bool negative, U512 memory magnitude, int256 exponent) = exactSum(ca, ea, cb, eb);
-        if (isNearestTowardZero(negative, magnitude, exponent, rc, re)) {
-            return true;
-        }
-        bool cancel = ca != 0 && cb != 0 && (ca < 0) != (cb < 0);
-        return cancel && isNextAwayFromZero(negative, magnitude, exponent, rc, re);
+        (bool negative, uint256 units, int256 unit) = sumRule(ca, ea, cb, eb);
+        return isNearestTowardZero(negative, u512(units), unit, rc, re);
     }
 
     /// `|ca / cb|` for a non-zero `cb`, truncated to 71 or 72 significant
