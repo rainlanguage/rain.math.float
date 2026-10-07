@@ -1001,6 +1001,9 @@ library LibDecimalFloatImplementation {
     /// @return signedCoefficient The signed coefficient of the log.
     /// @return exponent The exponent of the log.
     // slither-disable-start too-many-digits
+    // Each series term floors on purpose, and u is z / 1e25 with v its
+    // remainder, so u^2 + 2uv 1e25 + v^2 is z^2 exactly.
+    // slither-disable-start divide-before-multiply
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
@@ -1073,6 +1076,7 @@ library LibDecimalFloatImplementation {
         return (below ? -signedCoefficient : signedCoefficient, exponent);
     }
 
+    // slither-disable-end divide-before-multiply
     // slither-disable-end too-many-digits
 
     /// Scales a coefficient in (0, 1e75) up into [1e75, 1e76), lowering the
