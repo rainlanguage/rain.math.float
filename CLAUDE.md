@@ -30,7 +30,7 @@ cross-references the packed constants against values derived independently.
   mul/div), normalization, packing.
 - **`lib/parse/`** — String-to-Float parsing.
 - **`lib/format/`** — Float-to-string formatting.
-- **`error/`** — Custom error definitions (CoefficientOverflow,
+- **`error/`** — Custom error definitions (LossyConversionToFloat,
   ExponentOverflow, DivisionByZero, etc.).
 
 ### Tests (`test/`)

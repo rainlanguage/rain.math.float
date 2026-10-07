@@ -14,7 +14,7 @@ import {
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters
 } from "src/error/ErrParse.sol";
-import {ExponentOverflow, CoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
@@ -481,15 +481,39 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloatFail("0.-1", MalformedDecimalPoint.selector, 2);
     }
 
-    /// Exponent overflow when fractional exponent + e-notation exponent wraps.
-    /// (A10-1/p1)
-    function testParseExponentOverflowFracPlusEValue() external pure {
-        // exponent = -1 (from ".1") + int256.min (from e-notation) wraps.
-        // "0.1e-" = 5 chars + 77 digits = 82
-        checkParseDecimalFloatFail(
+    /// A fraction's exponent plus an e-notation exponent below int256.min is a
+    /// value smaller than every Float, so `ParseDecimalPrecisionLoss`, from
+    /// both entry points. One step above, the sum fits and the inline parse
+    /// returns it, and the value is still smaller than every Float.
+    function testParseExponentSumBelowInt256() external view {
+        string[4] memory wraps = [
+            // -1 (from ".1") + int256.min. "0.1e-" + 77 digits = 82.
             "0.1e-57896044618658097711785492504343953926634992332820282019728792003956564819968",
-            ExponentOverflow.selector,
-            82
+            "-0.1e-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+            "9.1e-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+            // -2 + (int256.min + 1) is one below int256.min.
+            "9.12e-57896044618658097711785492504343953926634992332820282019728792003956564819967"
+        ];
+        for (uint256 i = 0; i < wraps.length; i++) {
+            checkParseDecimalFloatFail(wraps[i], ParseDecimalPrecisionLoss.selector, bytes(wraps[i]).length);
+            (bytes4 err, Float float) = this.parseDecimalFloatExternal(wraps[i]);
+            assertEq(err, ParseDecimalPrecisionLoss.selector, "wrapper");
+            assertEq(Float.unwrap(float), bytes32(0), "zero");
+        }
+
+        // -1 + (int256.min + 1) is int256.min exactly.
+        string memory fits = "9.1e-57896044618658097711785492504343953926634992332820282019728792003956564819967";
+        checkParseDecimalFloat(fits, 91, type(int256).min, bytes(fits).length);
+        (bytes4 fitsErr,) = this.parseDecimalFloatExternal(fits);
+        assertEq(fitsErr, ParseDecimalPrecisionLoss.selector, "fits wrapper");
+
+        // No fraction: int256.min itself is the exponent.
+        checkParseDecimalFloat(
+            "1e-57896044618658097711785492504343953926634992332820282019728792003956564819968", 1, type(int256).min, 80
+        );
+        // Zero has no exponent to wrap.
+        checkParseDecimalFloat(
+            "0.0e-57896044618658097711785492504343953926634992332820282019728792003956564819968", 0, 0, 82
         );
         // exponent = -1 (from ".1") + int256.max (from e-notation) does NOT
         // overflow — it's a valid large positive exponent.

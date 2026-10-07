@@ -18,7 +18,6 @@ import {
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters
 } from "../../error/ErrParse.sol";
-import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 
@@ -29,6 +28,9 @@ import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 /// implementations by standardizing in Solidity.
 library LibParseDecimalFloat {
     /// @notice Parses a decimal float from a substring defined by [start, end).
+    /// A literal whose exponent is below int256.min has a non-zero coefficient
+    /// and is smaller than every Float, so it is `ParseDecimalPrecisionLoss`,
+    /// as `parseDecimalFloat` reports any literal smaller than every Float.
     /// @param start The starting index of the substring (inclusive).
     /// @param end The ending index of the substring (exclusive).
     /// @return errorSelector The error selector if an error occurred, otherwise
@@ -168,9 +170,11 @@ library LibParseDecimalFloat {
                 }
 
                 {
+                    // exponent is at most zero, so only a negative eValue can
+                    // wrap the sum, and then the value is below every Float.
                     int256 newExponent = exponent + eValue;
-                    if ((eValue > 0 && newExponent < exponent) || (eValue < 0 && newExponent > exponent)) {
-                        return (ExponentOverflow.selector, cursor, 0, 0);
+                    if (eValue < 0 && newExponent > exponent) {
+                        return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
                     }
                     exponent = newExponent;
                 }
@@ -187,7 +191,9 @@ library LibParseDecimalFloat {
     /// @notice Parses a decimal float from a string. This a high-level wrapper
     /// around `parseDecimalFloatInline` that handles string memory layout and
     /// returns a packed `Float` amenable to subsequent operations with
-    /// `LibDecimalFloat`.
+    /// `LibDecimalFloat`. A literal larger in magnitude than every Float reverts
+    /// `ExponentOverflow`. Any other literal that is not exactly a Float, one
+    /// smaller than every Float included, returns `ParseDecimalPrecisionLoss`.
     /// @param str The string to parse.
     /// @return errorSelector The error selector if an error occurred, otherwise
     /// 0.

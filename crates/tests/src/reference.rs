@@ -22,7 +22,6 @@ pub enum RefError {
     ExponentOverflow,
     ExponentUnderflow,
     DivisionByZero,
-    CoefficientOverflow,
     LossyConversionToFloat,
     LossyConversionFromFloat,
     NegativeFixedDecimalConversion,
@@ -45,7 +44,6 @@ impl RefError {
             Self::ExponentOverflow => "ExponentOverflow(int256,int256)",
             Self::ExponentUnderflow => "ExponentUnderflow(int256,int256)",
             Self::DivisionByZero => "DivisionByZero(int256,int256)",
-            Self::CoefficientOverflow => "CoefficientOverflow(int256,int256)",
             Self::LossyConversionToFloat => "LossyConversionToFloat(int256,int256)",
             Self::LossyConversionFromFloat => "LossyConversionFromFloat(int256,int256)",
             Self::NegativeFixedDecimalConversion => "NegativeFixedDecimalConversion(int256,int256)",
@@ -471,19 +469,12 @@ pub fn from_fixed_decimal_lossy(value: U256, decimals: u8) -> (Dec, bool) {
     }
 }
 
-/// `fromFixedDecimalLossless`: a value above int256.max is first divided by
-/// ten (`LossyConversionToFloat` when that drops a non-zero digit), then the
-/// result must pack losslessly (`CoefficientOverflow`).
+/// `fromFixedDecimalLosslessPacked`: a value that is not exactly a Float is
+/// `LossyConversionToFloat`.
 pub fn from_fixed_decimal_lossless(value: U256, decimals: u8) -> Result<Dec, RefError> {
-    let (v, lossless) = from_fixed_decimal_lossy(value, decimals);
-    if lossless {
-        return Ok(v);
-    }
-    let big = u256_to_big(value);
-    if big > int256_max() && !(&big % 10u32).is_zero() {
-        Err(RefError::LossyConversionToFloat)
-    } else {
-        Err(RefError::CoefficientOverflow)
+    match from_fixed_decimal_lossy(value, decimals) {
+        (v, true) => Ok(v),
+        (_, false) => Err(RefError::LossyConversionToFloat),
     }
 }
 
@@ -535,11 +526,13 @@ pub fn pack_lossy(c: &BigInt, e: &BigInt) -> Result<(Dec, bool), RefError> {
     }
 }
 
-/// `packLossless`: `packLossy`, with any lost digit `CoefficientOverflow`.
+/// `packLossless`: past every Float is `ExponentOverflow`, any other value
+/// that is not exactly a Float `LossyConversionToFloat`.
 pub fn pack_lossless(c: &BigInt, e: &BigInt) -> Result<Dec, RefError> {
-    match pack_lossy(c, e)? {
-        (v, true) => Ok(v),
-        (_, false) => Err(RefError::CoefficientOverflow),
+    match pack(&Dec::new(c.clone(), pin(e))) {
+        Packed::Value(v, true) => Ok(v),
+        Packed::Overflow => Err(RefError::ExponentOverflow),
+        Packed::Value(_, false) | Packed::Underflow => Err(RefError::LossyConversionToFloat),
     }
 }
 
@@ -638,20 +631,13 @@ pub fn from_fixed_decimal_lossless_unpacked(value: U256, decimals: u8) -> Result
     }
 }
 
-/// `toFixedDecimalLossy` over any int256 coefficient and exponent:
-/// `exponent + decimals` past int256.max is `ExponentOverflow`, otherwise as
+/// `toFixedDecimalLossy` over any int256 coefficient and exponent, as
 /// `to_fixed_decimal_lossy`.
 pub fn to_fixed_decimal_lossy_unpacked(
     c: &BigInt,
     e: &BigInt,
     decimals: u8,
 ) -> Result<(U256, bool), RefError> {
-    if c.is_negative() {
-        return Err(RefError::NegativeFixedDecimalConversion);
-    }
-    if !c.is_zero() && !fits_int256(&(e + decimals)) {
-        return Err(RefError::ExponentOverflow);
-    }
     to_fixed_decimal_lossy(&Dec::new(c.clone(), pin(e)), decimals)
 }
 
@@ -774,9 +760,8 @@ pub fn literal_value(s: &str) -> Dec {
 /// integer part, fraction digits (trailing zeros dropped) and exponent are
 /// each read as int256 (`ParseDecimalOverflow`); a non-zero integer part
 /// takes at most 67 fraction digits and the combined coefficient must fit
-/// int224 (`ParseDecimalPrecisionLoss`); the exponent sum must fit int256
-/// (`ExponentOverflow`); then the value packs, where any lost digit is
-/// `ParseDecimalPrecisionLoss` and a value past every Float is
+/// int224 (`ParseDecimalPrecisionLoss`); then the value packs, where any lost
+/// digit is `ParseDecimalPrecisionLoss` and a value past every Float is
 /// `ExponentOverflow`.
 pub fn parse(s: &str) -> Result<Dec, RefError> {
     parse_packed(&parse_unpacked(s)?)
@@ -814,7 +799,8 @@ pub fn pin(e: &BigInt) -> i64 {
 
 /// `parseDecimalFloatInline` over a whole well formed literal: the
 /// coefficient and int256 exponent `parse_unpacked` describes, zero at
-/// exponent zero.
+/// exponent zero. A value with no int256 exponent is the error `parse_packed`
+/// gives it.
 pub fn parse_inline(s: &str) -> Result<(BigInt, BigInt), RefError> {
     let (mantissa, exp_str) = match s.find(['e', 'E']) {
         Some(i) => (&s[..i], Some(&s[i + 1..])),
@@ -871,9 +857,9 @@ pub fn parse_inline(s: &str) -> Result<(BigInt, BigInt), RefError> {
             return Err(RefError::ParseDecimalOverflow);
         }
         e += x;
-        if !fits_int256(&e) {
-            return Err(RefError::ExponentOverflow);
-        }
+    }
+    if !c.is_zero() && !fits_int256(&e) {
+        return Err(parse_packed(&Dec::new(c, pin(&e))).unwrap_err());
     }
     if c.is_zero() {
         return Ok((BigInt::zero(), BigInt::zero()));

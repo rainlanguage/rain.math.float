@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
-import {CoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LossyConversionToFloat} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatPackTest is Test {
@@ -45,14 +45,37 @@ contract LibDecimalFloatPackTest is Test {
         return LibDecimalFloat.packLossless(signedCoefficient, exponent);
     }
 
-    /// packLossless reverts with CoefficientOverflow when lossy.
-    function testPackLosslessCoefficientOverflow() external {
+    /// packLossless reverts LossyConversionToFloat when lossy.
+    function testPackLosslessLossyConversionToFloat() external {
         // int224.max + 1 can't fit losslessly — packLossy would normalize it
         // but packLossless must revert.
         int256 signedCoefficient = int256(type(int224).max) + 1;
         int256 exponent = 0;
-        vm.expectRevert(abi.encodeWithSelector(CoefficientOverflow.selector, signedCoefficient, exponent));
+        vm.expectRevert(abi.encodeWithSelector(LossyConversionToFloat.selector, signedCoefficient, exponent));
         this.packLosslessExternal(signedCoefficient, exponent);
+    }
+
+    /// packLossless reverts ExponentOverflow for a value past every Float, at
+    /// the first exponent no int224 coefficient can lift and above it, and
+    /// LossyConversionToFloat for one that rounds to zero.
+    function testPackLosslessErrorByMagnitude() external {
+        int256 past = int256(type(int32).max) + 68;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), past));
+        this.packLosslessExternal(1, past);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-1), type(int256).max));
+        this.packLosslessExternal(-1, type(int256).max);
+        // One below the ceiling's reach still lifts.
+        Float lifted = this.packLosslessExternal(1, past - 1);
+        (int256 liftedCoefficient, int256 liftedExponent) = LibDecimalFloat.unpack(lifted);
+        assertEq(liftedCoefficient, 1e67, "lifted coefficient");
+        assertEq(liftedExponent, int256(type(int32).max), "lifted exponent");
+
+        vm.expectRevert(abi.encodeWithSelector(LossyConversionToFloat.selector, int256(1), type(int256).min));
+        this.packLosslessExternal(1, type(int256).min);
+        vm.expectRevert(
+            abi.encodeWithSelector(LossyConversionToFloat.selector, int256(-9), int256(type(int32).min) - 1)
+        );
+        this.packLosslessExternal(-9, int256(type(int32).min) - 1);
     }
 
     /// packLossy returns lossless=false but a valid non-zero Float when the
@@ -153,7 +176,7 @@ contract LibDecimalFloatPackTest is Test {
         assertEq(unpackedCoefficient, 7, "coefficient");
         assertEq(unpackedExponent, int256(type(int32).min), "exponent");
 
-        vm.expectRevert(abi.encodeWithSelector(CoefficientOverflow.selector, int256(7), int256(type(int32).min) - 1));
+        vm.expectRevert(abi.encodeWithSelector(LossyConversionToFloat.selector, int256(7), int256(type(int32).min) - 1));
         this.packLosslessExternal(7, int256(type(int32).min) - 1);
     }
 }

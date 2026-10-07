@@ -285,13 +285,8 @@ def handle(req):
         v, lossless = fixed_lossy(int(req["value"]), req["decimals"])
         return {"ok": [out(v), lossless]}
     if op == "from_fixed_lossless":
-        value, decimals = int(req["value"]), req["decimals"]
-        v, lossless = fixed_lossy(value, decimals)
-        if lossless:
-            return {"ok": out(v)}
-        if value > INT256_MAX and value % 10 != 0:
-            return {"err": "LossyConversionToFloat"}
-        return {"err": "CoefficientOverflow"}
+        v, lossless = fixed_lossy(int(req["value"]), req["decimals"])
+        return {"ok": out(v)} if lossless else {"err": "LossyConversionToFloat"}
     if op in ("to_fixed_lossy", "to_fixed_lossless"):
         r, lossless = to_fixed(a, req["decimals"])
         if lossless is None:
@@ -325,7 +320,7 @@ def handle(req):
         if p == "ExponentOverflow":
             return {"err": p}
         if isinstance(p, str) or not p[1]:
-            return {"err": "CoefficientOverflow"}
+            return {"err": "LossyConversionToFloat"}
         return {"ok": out(p[0])}
     if op == "pack_arithmetic":
         return arithmetic(a)

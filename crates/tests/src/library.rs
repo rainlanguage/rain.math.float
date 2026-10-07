@@ -539,8 +539,8 @@ fn check_parse_entry_points_with(
         (inline, want) => judge(&case, inline, want)?,
     }
 
-    // Only packing's ExponentOverflow reverts; every other error, the inline
-    // parse's own ExponentOverflow among them, is a selector.
+    // Only packing's ExponentOverflow reverts; every other error is a
+    // selector.
     let case = format!("parseDecimalFloat({s:?})");
     let (want, reverts) = match r::parse_inline(lit) {
         Err(w) => (Err(w), false),
@@ -1314,20 +1314,21 @@ mod checker {
         );
     }
 
-    /// An inline exponent past int256 is a selector, never a revert.
+    /// An inline exponent below int256 is the precision loss selector, never
+    /// a revert and never ExponentOverflow.
     #[test]
-    fn parse_inline_overflow_is_a_selector() {
+    fn parse_inline_exponent_wrap_is_a_selector() {
         let lit = format!("9.1e{}", r::int256_min());
         let inline = || harness(H::parseDecimalFloatInlineCall { str: lit.clone() });
-        let eo = RefError::ExponentOverflow.selector();
+        let loss = RefError::ParseDecimalPrecisionLoss.selector();
         assert!(
             check_parse_entry_points_with(
                 &lit,
                 "",
                 None,
                 inline(),
-                whole(eo, B256::ZERO),
-                concrete(eo, B256::ZERO)
+                whole(loss, B256::ZERO),
+                concrete(loss, B256::ZERO)
             )
             .is_ok()
         );
@@ -1346,9 +1347,9 @@ mod checker {
             )
             .is_err()
         );
-        let loss = RefError::ParseDecimalPrecisionLoss.selector();
+        let eo = RefError::ExponentOverflow.selector();
         let wrong = Ok(H::parseDecimalFloatInlineReturn {
-            _0: loss.into(),
+            _0: eo.into(),
             _1: U256::ZERO,
             _2: I256::ZERO,
             _3: I256::ZERO,
@@ -1359,8 +1360,8 @@ mod checker {
                 "",
                 None,
                 wrong,
-                whole(eo, B256::ZERO),
-                concrete(eo, B256::ZERO)
+                whole(loss, B256::ZERO),
+                concrete(loss, B256::ZERO)
             )
             .is_err()
         );
@@ -1368,7 +1369,7 @@ mod checker {
 }
 
 /// A fraction's exponent below an int256.min exponent: the inline parse's
-/// `ExponentOverflow` selector, before any packing.
+/// `ParseDecimalPrecisionLoss` selector, before any packing.
 #[test]
 fn library_parse_exponent_wrap() {
     let min = r::int256_min();
