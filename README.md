@@ -260,4 +260,10 @@ and an exactly representable power such as `10^2` is exact.
 `pow` calculates an integer exponent by squaring, and the fractional component
 of a non-integer exponent as `pow10(frac(b) * log10(a))` with its guard digits,
 then rounds the product to 41 significant digits, so it is within about 5e-41
-relative of the true value and a power such as `sqrt(4)` is exact.
+relative of the true value and a power such as `4^1.5` is exact. A fractional
+part of exactly a half instead takes the square root of `a^(2N+1)`, for N the
+integer part of |b|.
+
+`sqrt` takes the integer square root of the coefficient scaled to 81 or 82
+digits and rounds it to nearest, so it is correctly rounded and a root such as
+`sqrt(4)` is exact.

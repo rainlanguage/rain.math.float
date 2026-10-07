@@ -1068,6 +1068,64 @@ library LibDecimalFloatImplementation {
         }
     }
 
+    /// The square root of a positive float, rounded to nearest at 41
+    /// significant digits. A root is never a midpoint: (2r + 1)^2 is odd and
+    /// 4N even.
+    ///
+    /// With the coefficient C scaled into [1e75, 1e76), N is C 1e5 for an odd
+    /// exponent and C 1e6 for an even one, so sqrt N is in [1e40, 1e41) and
+    /// its exponent is whole.
+    ///
+    /// The estimate is 1e3 times the Newton root of C / 10 or C, whose root is
+    /// in [2^122.9, 2^126.3): from 2^125, the seventh iterate is within
+    /// 4.7e-27 relative above it and at least its floor. So the estimate is
+    /// within 4.7e14 of sqrt N, and one Newton step over N lands within 1.2e-11
+    /// above sqrt N and at least its floor: on the floor or one above.
+    ///
+    /// |N - r^2| is then at most 2r + 1, far under 2^255, so the low words of
+    /// N and r^2 give it signed, though N passes 2^256.
+    /// @param signedCoefficient The coefficient, in (0, 1e76).
+    /// @param exponent The exponent, at least `type(int256).min + 81`.
+    /// @return signedCoefficient The root's coefficient, in [1e40, 1e41].
+    /// @return exponent The root's exponent.
+    function sqrt(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (signedCoefficient, exponent) = scaleUp(signedCoefficient, exponent);
+        unchecked {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 coefficient = uint256(signedCoefficient);
+            uint256 scale = 1e6;
+            uint256 estimate = coefficient;
+            if (exponent & 1 == 1) {
+                scale = 1e5;
+                estimate = coefficient / 10;
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            exponent = (exponent - (scale == 1e5 ? int256(5) : int256(6))) / 2;
+            uint256 root;
+            assembly ("memory-safe") {
+                root := add(shr(126, estimate), shl(124, 1))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+                root := shr(1, add(root, div(estimate, root)))
+            }
+            root *= 1e3;
+            root = (root + mulDiv(coefficient, scale, root)) >> 1;
+            assembly ("memory-safe") {
+                let residual := sub(mul(coefficient, scale), mul(root, root))
+                if slt(residual, 0) {
+                    residual := add(residual, sub(shl(1, root), 1))
+                    root := sub(root, 1)
+                }
+                root := add(root, gt(residual, root))
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return (int256(root), exponent);
+        }
+    }
+
     /// Divides x out by 10^(2^-i) for each i in [1, 16] where x is at least
     /// 1e75 10^(2^-i), each by its reciprocal at the 2^256 scale, so x lands
     /// within a factor 10^(2^-16) of 1e75 and the summed powers are the log

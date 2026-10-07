@@ -728,6 +728,14 @@ fn small_b() -> BoxedStrategy<Dec> {
     .boxed()
 }
 
+/// n + 1/2 in any representation, either sign, which `pow` takes as the root
+/// of a^(2n + 1).
+fn half_b() -> BoxedStrategy<Dec> {
+    (-400i64..=400, 0u64..=60)
+        .prop_map(|(n, j)| Dec::new(BigInt::from(2 * n + 1) * 5 * pow10(j), -(j as i64) - 1))
+        .boxed()
+}
+
 /// b = t / log10(a) for a = 10^j, with t at the edges of the range.
 fn edge_pow() -> BoxedStrategy<(Dec, Dec)> {
     (
@@ -776,6 +784,7 @@ fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
     prop_oneof![
         2 => (float(), float()),
         4 => (moderate(), small_b()),
+        2 => (moderate(), half_b()),
         2 => edge_pow(),
         // a within 1e-66 of one, and a large b.
         1 => (-1000i64..=1000, crate::exact::coefficient(), 40i64..=80).prop_map(|(d, c, e)| {
@@ -831,6 +840,9 @@ proptest! {
 
     #[test]
     fn monotone_pow_neighbours((a, b) in (moderate(), small_b())) { monotone_pow(&a, &b)?; }
+
+    #[test]
+    fn monotone_pow_half_neighbours((a, b) in (moderate(), half_b())) { monotone_pow(&a, &b)?; }
 
     #[test]
     fn monotone_sqrt_neighbours(a in a_sqrt()) { monotone_sqrt(&a)?; }
