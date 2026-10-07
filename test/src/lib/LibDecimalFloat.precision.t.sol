@@ -220,15 +220,17 @@ contract LibDecimalFloatPrecisionTest is Test {
         );
     }
 
-    /// The product's packing moves its log by under 4.4e-67, and each packed
-    /// sum or difference of logs at most 420 loses under 4.2e-64.
+    /// The product's packing moves its log by under 4.4e-67, and each
+    /// `subParts` of logs at most 280 truncates under a unit of a maximized
+    /// coefficient above 5.7e75, so under 4.9e-74.
     function log10ProductSlack() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(1, -63);
+        return LibDecimalFloat.packLossless(1, -66);
     }
 
-    /// Each packed quotient, product or difference near 1 loses under 1e-66.
+    /// The `quotient` near 1 truncates under 2e-74 and `mulParts` under
+    /// 2e-76 relative.
     function packingSlack() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(1, -65);
+        return LibDecimalFloat.packLossless(1, -73);
     }
 
     /// |log10(a b) - log10 a - log10 b| within the three logs' bounds.

@@ -15,13 +15,13 @@ contract LibDecimalFloatSqrtTest is Test {
 
     /// The root is within E of sqrt a and its square, rounded, within E2 of
     /// the root squared, so a over the square is within 2E + E2 of 1, plus
-    /// higher orders and the quotient's truncation, under 1e-65.
+    /// higher orders under 1e-79 and the quotient's truncation under 2e-74.
     function diffLimit() internal pure returns (int256, int256) {
         (int256 errorCoefficient, int256 errorExponent) = LibTestErrorBound.sqrt().unpack();
         (int256 limitCoefficient, int256 limitExponent) = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_TWO).unpack();
         (limitCoefficient, limitExponent) =
             LibTestExactDecimal.addParts(limitCoefficient, limitExponent, 2 * errorCoefficient, errorExponent);
-        return LibTestExactDecimal.addParts(limitCoefficient, limitExponent, 1, -65);
+        return LibTestExactDecimal.addParts(limitCoefficient, limitExponent, 1, -73);
     }
 
     function sqrtExternal(Float a) external pure returns (Float) {
