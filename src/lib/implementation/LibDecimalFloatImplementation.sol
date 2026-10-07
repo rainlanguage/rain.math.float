@@ -1036,7 +1036,8 @@ library LibDecimalFloatImplementation {
     /// @param a The numerator, at most 1e76.
     /// @param b The denominator, at most 1e76.
     /// @param relative `true` for at least 48 significant digits however small
-    /// the log, `false` for a coefficient at the `POW_FIXED_ONE` scale.
+    /// the log, which needs a + b of at least 1e50, `false` for a coefficient
+    /// at the `POW_FIXED_ONE` scale.
     /// @return signedCoefficient The signed coefficient of the log.
     /// @return exponent The exponent of the log.
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
@@ -1061,7 +1062,9 @@ library LibDecimalFloatImplementation {
             difference = uint256(differenceCoefficient);
             exponent += differenceExponent;
         }
-        // The quotient is below 1e53 and so fits.
+        // The scaled series is below 0.8686e50, so the quotient is below it
+        // when not relative, and below int256.max / 1e50 times it when
+        // relative, as a + b is at least 1e50.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedCoefficient = int256(mulDiv(difference, mulDiv(series, 2 * POW_FIXED_ONE, POW_FIXED_LN10), sum));
         return (below ? -signedCoefficient : signedCoefficient, exponent);
