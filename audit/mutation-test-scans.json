@@ -232,5 +232,26 @@
       "testsAfter": 73,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-07T22:22:05Z",
+    "commit": "af2bd178bd46a8223de3c6d3c4bd47577838362b",
+    "testsAfterCommit": "af2bd178bd46a8223de3c6d3c4bd47577838362b",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 20,
+    "scope": "pr:321 lines moved from assembly to plain Solidity at af2bd17: mul's digit cascade over prod1 (C01-C15) and maximize's tail bound plus TIMES_TEN_MAX/TIMES_TEN_SPAN (T01-T07). Probe suite: full forge suite minus LibDecimalFloatGasMainEquivalenceTest, cache/fuzz cleared per run, 747 tests. The first probe run was killed externally during T03; the tree was restored from af2bd17 and T03-T07 re-probed. The 3 survivors (C01/C05 step threshold > to >=, C04 1e37 step removed: the digit count and so the result are unchanged, only gas) were re-probed with the main equivalence fuzz included (753 tests) and still survived.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 22,
+      "killedBefore": 19,
+      "killedAfter": 0,
+      "equivalent": 3,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 747,
+      "testsAfter": 747,
+      "filed": []
+    }
   }
 ]
