@@ -82,9 +82,13 @@ contract LibDecimalFloatDecimalAddTest is Test {
         view
     {
         uint256 shed = bound(gap, 0, 68);
+        // forge-lint: disable-next-line(unsafe-typecast)
         vm.assume(int256(exponentB) + int256(shed) <= type(int32).max);
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedCoefficientA = -(int256(signedCoefficientB) / int256(10 ** shed)) + bound(delta, -2, 2);
+        // forge-lint: disable-next-line(unsafe-typecast)
         vm.assume(int224(signedCoefficientA) == signedCoefficientA);
+        // forge-lint: disable-next-line(unsafe-typecast)
         checkAddPartsMatchRule(signedCoefficientA, int256(exponentB) + int256(shed), signedCoefficientB, exponentB);
     }
 
