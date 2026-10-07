@@ -6,7 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
+import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 
 /// Bounds from the `log10Ratio` NatSpec: 1.005 units of 1e-50 for a
 /// coefficient at that scale, or C / 1e49 + 2 units of its exponent when
@@ -131,14 +131,50 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         assertEq(exponent, -81, "exponent");
     }
 
-    /// #311: below a + b of 1e50 relative is outside the domain.
-    function testLog10RatioRelativeBelowDomain() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                MulDivOverflow.selector, 1e76, 86858896453025541590786522955046089009035348062649, 20001
-            )
+    /// a + b = 1e50 and a - b = 3e45, so z is exactly 3e-5 and z squared is
+    /// exactly 9e40 units: one unit less in z floors z squared and three
+    /// series terms a unit lower, which moves the coefficient by about 1e26.
+    function testLog10RatioRelativeZOnFloorBoundary() external pure {
+        uint256 a = 5.00015e49;
+        uint256 b = 4.99985e49;
+        checkAgainstBc(a, b, true, 26057668922012410337547610399529953336038179692555075595894572145948150, -75);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, true);
+        assertEq(
+            signedCoefficient,
+            26057668922012410337547610399529953336038179692554900000000000000000000000000,
+            "coefficient"
         );
+        assertEq(exponent, -81, "exponent");
+    }
+
+    /// The guard boundary: a + b = 1e50 - 1 reverts with its inputs.
+    function testLog10RatioRelativeSumJustBelowMin() external {
+        uint256 a = 50002894802230932904885589274625217197696331749615;
+        uint256 b = 49997105197769067095114410725374782802303668250384;
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, a, b));
+        this.ratio(a, b, true);
+    }
+
+    /// #311: below a + b of 1e50 relative reverts with its inputs, where it
+    /// reverted `MulDivOverflow` before.
+    function testLog10RatioRelativeBelowDomain() external {
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, 10001, 10000));
         this.ratio(10001, 10000, true);
+    }
+
+    /// a + b = 0 reverts with its inputs rather than dividing by zero.
+    function testLog10RatioRelativeZeroSum() external {
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, 0, 0));
+        this.ratio(0, 0, true);
+    }
+
+    /// Every relative a + b below 1e50 reverts with its inputs, including 0,
+    /// before any arithmetic can return a value or overflow.
+    function testLog10RatioRelativeBelowDomainFuzz(uint256 a, uint256 b) external {
+        a = bound(a, 0, 1e50 - 1);
+        b = bound(b, 0, 1e50 - 1 - a);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, a, b));
+        this.ratio(a, b, true);
     }
 
     function testLog10RatioMidDomain() external pure {
@@ -200,5 +236,44 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         uint256 error = actual > expected ? actual - expected : expected - actual;
         // forge-lint: disable-next-line(unsafe-typecast)
         assertLe(error, uint256(abs(signedCoefficient)) / 1e29 + 1 + 2e20 + 2401, "relative error");
+    }
+
+    /// |C 10^g - D / b times the ratio at 10^-g| against the bound, where g
+    /// shrinks from 20 as C grows to keep C 10^g below 1e75. The expected
+    /// value is within 24 D / (b 10^(20 - g)) + 1 of the truth.
+    function checkRelativeError(uint256 c, uint256 maximized, uint256 d, uint256 b, bool below) internal pure {
+        uint256 digits = Math.log10(c) + 1;
+        uint256 g = digits <= 55 ? 20 : digits >= 75 ? 0 : 75 - digits;
+        uint256 denominator = b * 10 ** (20 - g);
+        uint256 actual = c * 10 ** g;
+        uint256 expected = Math.mulDiv(maximized, oracleRatio(d, b, below), denominator);
+        uint256 error = actual > expected ? actual - expected : expected - actual;
+        assertLe(error, actual / 1e49 + 2 * 10 ** g + Math.mulDiv(maximized, 24, denominator) + 1, "relative error");
+    }
+
+    /// Relative at every scale with a + b of at least 1e50: never reverts,
+    /// keeps 48 digits and is within C / 1e49 + 2 units of its exponent. C
+    /// reaches 5.8e76 near a + b = 1e50.
+    function testLog10RatioRelativeOracleAnyScale(uint256 seedB, uint256 seedD, uint256 seedP, bool below)
+        external
+        pure
+    {
+        uint256 p = bound(seedP, 49, 75);
+        uint256 b = bound(seedB, p == 49 ? 5.0026e49 : 10 ** p, p == 75 ? 9.9e75 : 10 ** (p + 1) - 1);
+        uint256 d = bound(seedD, 1, b / 1e6 * (below ? 1019 : 1020));
+        uint256 a = below ? b - d : b + d;
+        assertGe(a + b, 1e50, "domain");
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, true);
+        assertTrue(below ? signedCoefficient < 0 : signedCoefficient > 0, "sign");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 c = uint256(abs(signedCoefficient));
+        assertGe(c, 1e48, "48 digits");
+        int256 shift = -50 - exponent;
+        assertGe(shift, 0, "shift");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 maximized = d * 10 ** uint256(shift);
+        assertGe(maximized, 1e75, "maximized low");
+        assertLt(maximized, 1e77, "maximized high");
+        checkRelativeError(c, maximized, d, b, below);
     }
 }
