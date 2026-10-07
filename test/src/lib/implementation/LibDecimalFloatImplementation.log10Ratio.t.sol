@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "../../../lib/LibTestExactDecimal.sol";
 import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
@@ -25,13 +26,13 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, relative);
         assertTrue(expectedCoefficient < 0 ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
         (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(signedCoefficient, exponent, expectedCoefficient, expectedExponent);
+            LibTestExactDecimal.subParts(signedCoefficient, exponent, expectedCoefficient, expectedExponent);
         (int256 boundCoefficient, int256 boundExponent) =
             relative ? (abs(signedCoefficient) + 2e49, exponent - 49) : (int256(1005), int256(-53));
         (boundCoefficient, boundExponent) =
-            LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, expectedExponent);
+            LibTestExactDecimal.addParts(boundCoefficient, boundExponent, 1, expectedExponent);
         assertTrue(
-            LibDecimalFloatImplementation.lte(abs(errorCoefficient), errorExponent, boundCoefficient, boundExponent),
+            LibTestExactDecimal.absLte(errorCoefficient, errorExponent, boundCoefficient, boundExponent),
             "log10Ratio error"
         );
         if (relative) {

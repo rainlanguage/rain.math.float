@@ -6,6 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {DOCUMENTED_LOG10_RAW_ERROR} from "../../../lib/LibTestErrorBound.sol";
 import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal} from "../../../lib/LibTestExactDecimal.sol";
 import {LibTranscendentalOracle} from "../../../lib/LibTranscendentalOracle.sol";
 
 /// `log10Unrounded` against the oracle, which is within 1e-67, and its proven
@@ -33,11 +34,11 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedFraction = int256(fraction);
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.add(characteristic, 0, signedFraction, -70);
+            LibTestExactDecimal.addParts(characteristic, 0, signedFraction, -70);
         (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, characteristic, 0);
+            LibTestExactDecimal.subParts(actualCoefficient, actualExponent, characteristic, 0);
         (errorCoefficient, errorExponent) =
-            LibDecimalFloatImplementation.sub(errorCoefficient, errorExponent, signedFraction, -70);
+            LibTestExactDecimal.subParts(errorCoefficient, errorExponent, signedFraction, -70);
         return (abs(errorCoefficient), errorExponent, expectedCoefficient, expectedExponent);
     }
 
@@ -48,10 +49,10 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         (int256 boundCoefficient, int256 boundExponent) = (int256(DOCUMENTED_LOG10_RAW_ERROR) * 1e17 + 1, int256(-67));
         if (expectedExponent > -50) {
             (boundCoefficient, boundExponent) =
-                LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, expectedExponent);
+                LibTestExactDecimal.addParts(boundCoefficient, boundExponent, 1, expectedExponent);
         }
         assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, boundCoefficient, boundExponent),
+            LibTestExactDecimal.cmpParts(errorCoefficient, errorExponent, boundCoefficient, boundExponent) <= 0,
             "log10Unrounded error"
         );
     }
@@ -62,10 +63,10 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         (int256 errorCoefficient, int256 errorExponent, int256 expectedCoefficient, int256 expectedExponent) =
             errorAgainstOracle(signedCoefficient, exponent);
         (int256 boundCoefficient, int256 boundExponent) =
-            LibDecimalFloatImplementation.mul(abs(expectedCoefficient), expectedExponent, 327, -51);
-        (boundCoefficient, boundExponent) = LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, -67);
+            LibTestExactDecimal.mulParts(abs(expectedCoefficient), expectedExponent, 327, -51);
+        (boundCoefficient, boundExponent) = LibTestExactDecimal.addParts(boundCoefficient, boundExponent, 1, -67);
         assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, boundCoefficient, boundExponent),
+            LibTestExactDecimal.cmpParts(errorCoefficient, errorExponent, boundCoefficient, boundExponent) <= 0,
             "log10Unrounded relative error"
         );
     }
