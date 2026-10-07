@@ -63,7 +63,6 @@ library LibParseDecimalFloat {
 
             int256 fracValue = int256(LibParseChar.isMask(cursor, end, CMASK_DECIMAL_POINT));
             if (fracValue != 0) {
-                fracValue = 0;
                 cursor++;
                 uint256 fracStart = cursor;
                 cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);
@@ -77,64 +76,65 @@ library LibParseDecimalFloat {
                     nonZeroCursor--;
                 }
 
+                // An all-zero fraction is the same literal as no fraction.
                 if (nonZeroCursor != fracStart) {
-                    (bytes4 fracErrorSelector, int256 fracValueTmp) =
+                    bytes4 fracErrorSelector;
+                    (fracErrorSelector, fracValue) =
                         LibParseDecimal.unsafeDecimalStringToSignedInt(fracStart, nonZeroCursor);
                     if (fracErrorSelector != 0) {
                         return (fracErrorSelector, cursor, 0, 0);
                     }
-                    fracValue = fracValueTmp;
-                }
-                // Frac value inherits its sign from the coefficient.
-                if (fracValue < 0) {
-                    return (MalformedDecimalPoint.selector, cursor, 0, 0);
-                }
-                if (isNegative) {
-                    fracValue = -fracValue;
-                }
-
-                // We want to _decrease_ the exponent by the number of digits in the
-                // fractional part.
-                // _technically_ these numbers could be out of range but in
-                // the intended use case that would imply a memory region that
-                // is physically impossible to exist.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                exponent = int256(fracStart) - int256(nonZeroCursor);
-                // Should not be possible but guard against it in case.
-                if (exponent > 0) {
-                    return (MalformedExponentDigits.selector, cursor, 0, 0);
-                }
-
-                if (signedCoefficient == 0) {
-                    signedCoefficient = fracValue;
-                } else {
-                    // exponent is non positive here.
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    uint256 scale = uint256(-exponent);
-                    // 67 is the maximum number of fractional digits we can
-                    // rescale by without overflowing. The coefficient is at
-                    // most int224 (~6.7e66), and the rescaled product
-                    // (coefficient * 10^scale) must fit in int256 (~5.8e76).
-                    // Beyond 67 digits the multiplication would overflow
-                    // int256 for any non-trivial coefficient.
-                    if (scale > 67) {
-                        return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
+                    // Frac value inherits its sign from the coefficient.
+                    if (fracValue < 0) {
+                        return (MalformedDecimalPoint.selector, cursor, 0, 0);
                     }
-                    scale = 10 ** scale;
-                    // scale [1, 1e67]
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    int256 rescaledIntValue = signedCoefficient * int256(scale);
-                    // Check 1: the multiplication overflowed int256.
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    bool mulDidOverflow = rescaledIntValue / int256(scale) != signedCoefficient;
-                    // Check 2: the rescaled value exceeds int224 precision,
-                    // so it cannot be packed losslessly into a Float.
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    bool mulDidTruncate = int224(rescaledIntValue) != rescaledIntValue;
-                    if (mulDidOverflow || mulDidTruncate) {
-                        return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
+                    if (isNegative) {
+                        fracValue = -fracValue;
                     }
-                    signedCoefficient = rescaledIntValue + fracValue;
+
+                    // We want to _decrease_ the exponent by the number of digits in the
+                    // fractional part.
+                    // _technically_ these numbers could be out of range but in
+                    // the intended use case that would imply a memory region that
+                    // is physically impossible to exist.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    exponent = int256(fracStart) - int256(nonZeroCursor);
+                    // Should not be possible but guard against it in case.
+                    if (exponent > 0) {
+                        return (MalformedExponentDigits.selector, cursor, 0, 0);
+                    }
+
+                    if (signedCoefficient == 0) {
+                        signedCoefficient = fracValue;
+                    } else {
+                        // exponent is negative here.
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        uint256 scale = uint256(-exponent);
+                        // 67 is the maximum number of fractional digits we can
+                        // rescale by without overflowing. The coefficient is at
+                        // most int224 (~6.7e66), and the rescaled product
+                        // (coefficient * 10^scale) must fit in int256 (~5.8e76).
+                        // Beyond 67 digits the multiplication would overflow
+                        // int256 for any non-trivial coefficient.
+                        if (scale > 67) {
+                            return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
+                        }
+                        scale = 10 ** scale;
+                        // scale [10, 1e67]
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        int256 rescaledIntValue = signedCoefficient * int256(scale);
+                        // Check 1: the multiplication overflowed int256.
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        bool mulDidOverflow = rescaledIntValue / int256(scale) != signedCoefficient;
+                        // Check 2: the rescaled value exceeds int224 precision,
+                        // so it cannot be packed losslessly into a Float.
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        bool mulDidTruncate = int224(rescaledIntValue) != rescaledIntValue;
+                        if (mulDidOverflow || mulDidTruncate) {
+                            return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
+                        }
+                        signedCoefficient = rescaledIntValue + fracValue;
+                    }
                 }
             }
 
