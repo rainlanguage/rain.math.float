@@ -6,6 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
+import {MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
 
 /// Bounds from the `log10Ratio` NatSpec: 1.005 units of 1e-50 for a
 /// coefficient at that scale, or C / 1e49 + 2 units of its exponent when
@@ -77,6 +78,67 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     function testLog10RatioUnitDifference() external pure {
         checkBothModes(1e75 + 1, 1e75, 4342944819032518276511289189166050822943970058036665661144537831658646, -145);
         checkBothModes(1e76 - 1, 1e76, -4342944819032518276511289189166050822943970058036665661144537831658646, -146);
+    }
+
+    function ratio(uint256 a, uint256 b, bool relative) external pure returns (int256, int256) {
+        return LibDecimalFloatImplementation.log10Ratio(a, b, relative);
+    }
+
+    /// #311: z = 5e-5 at every scale. Not relative the result is the same at
+    /// every scale.
+    function testLog10RatioFixedPointScaleFree() external pure {
+        uint256[4] memory bs = [uint256(1e4), 1e40, 1e60, 1e72];
+        for (uint256 i = 0; i < 4; i++) {
+            uint256 b = bs[i];
+            (int256 signedCoefficient, int256 exponent) =
+                LibDecimalFloatImplementation.log10Ratio(b + b / 1e4, b, false);
+            assertEq(signedCoefficient, 4342727686266963731352758509826813109796277589, "coefficient");
+            assertEq(exponent, -50, "exponent");
+        }
+    }
+
+    /// #311: relative needs a + b of at least 1e50.
+    function testLog10RatioRelativeScale() external pure {
+        uint256[2] memory bs = [uint256(1e60), 1e72];
+        int256[2] memory coefficients = [
+            int256(434272768626696373135275850982681310979627758925298735063246837658),
+            434272768626696373135275850982681310979627758925298735
+        ];
+        int256[2] memory exponents = [int256(-70), -58];
+        for (uint256 i = 0; i < 2; i++) {
+            uint256 b = bs[i];
+            checkAgainstBc(
+                b + b / 1e4, b, true, 4342727686266963731352758509826813109796277589253077324640421158475901, -74
+            );
+            (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(b + b / 1e4, b, true);
+            assertEq(signedCoefficient, coefficients[i], "coefficient");
+            assertEq(exponent, exponents[i], "exponent");
+        }
+    }
+
+    /// a + b = 1e50 with the difference maximizing to just below int256.max,
+    /// the largest relative quotient the domain admits.
+    function testLog10RatioRelativeMinSum() external pure {
+        uint256 a = 50002894802230932904885589274625217197696331749616;
+        uint256 b = 49997105197769067095114410725374782802303668250384;
+        checkAgainstBc(a, b, true, 5028786546000284264695559962415145454590065007477657882759658232905352, -74);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, true);
+        assertEq(
+            signedCoefficient,
+            50287865460002842646955599624151454545900650074775565315544486988760780321019,
+            "coefficient"
+        );
+        assertEq(exponent, -81, "exponent");
+    }
+
+    /// #311: below a + b of 1e50 relative is outside the domain.
+    function testLog10RatioRelativeBelowDomain() external {
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                MulDivOverflow.selector, 1e76, 86858896453025541590786522955046089009035348062649, 20001
+            )
+        );
+        this.ratio(10001, 10000, true);
     }
 
     function testLog10RatioMidDomain() external pure {
