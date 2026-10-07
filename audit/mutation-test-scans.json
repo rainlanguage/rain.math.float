@@ -233,5 +233,27 @@
       "testsAfter": 146,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-07T23:40:00Z",
+    "commit": "69c8afb9a5f7ecbe8f2e624cfd0d2a0853913a9d",
+    "testsAfterCommit": "d22ea5d10bda8aae53706b23cb88a57ed62e4caa",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 5,
+    "scope": "issue #306 follow-up: the z^2 step of LibDecimalFloatImplementation.log10Ratio, now u^2 + floor((2 u v 1e25 + v^2) / 1e50) for z = u 1e25 + v, replacing the 512-bit multiply whose carry was the R41 survivor of the previous entry (R40 and R41 no longer exist). 7 mutants. Probe suite: forge test --mc 'Log10|Pow|Sqrt|Exp10|Precision|Transcend|SeriesMain' at commit, all 7 killed by pre-existing tests; testsAfter is the SeriesMainEquivalence suite alone, which also kills all 7. A +1 on v^2 was not probed: it changes the floor only when z^2 = -1 mod 1e50, impossible as -1 is not a square mod 4.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 7,
+      "killedBefore": 7,
+      "killedAfter": 7,
+      "equivalent": 0,
+      "survived": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 145,
+      "testsAfter": 10,
+      "filed": []
+    }
   }
 ]
