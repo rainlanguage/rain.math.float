@@ -441,6 +441,16 @@ library LibDecimalFloatImplementation {
 
                 exponent = exponentA + underflowExponentBy - exponentB;
 
+                // The quotient only exceeds type(int256).max as 2^255, from
+                // type(int256).min over the scale. Positive, it sheds a digit
+                // into the exponent.
+                if (
+                    exponent == type(int256).max && signedCoefficientA == type(int256).min
+                        && signedCoefficientBAbs == scale && signedCoefficientB < 0
+                ) {
+                    revert ExponentOverflow(signedCoefficientA, exponentA);
+                }
+
                 (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                     signedCoefficientA,
                     signedCoefficientB,
