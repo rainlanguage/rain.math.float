@@ -28,11 +28,16 @@ contract LibDecimalFloatConstantsTest is Test {
         assertEq(Float.unwrap(minValue), Float.unwrap(expected));
     }
 
+    /// Every non-zero magnitude is at least the smallest positive value.
     function testFloatMinPositiveValueIsMin(Float a) external pure {
-        vm.assume(!a.isZero());
-        a = a.abs();
+        assertEq(a.abs().gte(LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE), !a.isZero());
+    }
 
-        assertTrue(a.gte(LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE));
+    function testFloatMinNegativeValueAbsIsMaxPositiveValue() external pure {
+        assertEq(
+            Float.unwrap(LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE.abs()),
+            Float.unwrap(LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE)
+        );
     }
 
     function testFloatMaxNegativeValue() external pure {

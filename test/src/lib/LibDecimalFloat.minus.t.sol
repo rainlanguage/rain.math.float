@@ -43,11 +43,14 @@ contract LibDecimalFloatMinusTest is Test {
     }
 
     /// Every coefficient but int224.min negates exactly at the same exponent.
-    function testMinusPacked(int224 signedCoefficient, int32 exponent) external pure {
-        vm.assume(signedCoefficient != type(int224).min);
-        Float result = LibDecimalFloat.packLossless(signedCoefficient, exponent).minus();
-        (Float expected,) = LibDecimalFloat.packLossy(-int256(signedCoefficient), exponent);
-        assertEq(Float.unwrap(result), Float.unwrap(expected));
+    function testMinusPacked(Float float) external pure {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        int256 expectedCoefficient =
+            signedCoefficient == type(int224).min ? int256(type(int224).max) : -signedCoefficient;
+        int256 expectedExponent = signedCoefficient == 0 ? int256(0) : exponent;
+        (int256 signedCoefficientMinus, int256 exponentMinus) = float.minus().unpack();
+        assertEq(signedCoefficientMinus, expectedCoefficient);
+        assertEq(exponentMinus, expectedExponent);
     }
 
     /// Zero at any exponent negates to `FLOAT_ZERO`.
