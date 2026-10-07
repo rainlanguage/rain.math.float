@@ -37,22 +37,29 @@ int256 constant MAXIMIZED_ZERO_EXPONENT = 0;
 /// @dev Fixed point one for the log10 and pow10 series.
 uint256 constant POW_FIXED_ONE = 1e50;
 
-/// @dev ln(10) at the `POW_FIXED_ONE` scale, rounded to nearest.
+/// @dev ln(10) at the `POW_FIXED_ONE` scale, rounded down, 0.2976 units below,
+/// which is also nearest.
 uint256 constant POW_FIXED_LN10 = 230258509299404568401799145468436420760110148862877;
 
-/// @dev Halvings of the exp10Fixed argument before its Taylor series.
-uint256 constant POW_EXP_HALVINGS = 8;
+/// @dev The inverse of 5^50 modulo 2^256, which divides a multiple of
+/// `POW_FIXED_ONE` by it once the factor 2^50 is shifted out.
+uint256 constant POW_FIXED_ONE_ODD_INVERSE =
+    32019276099673541610834237427944372346803171054071557274126404137164986125033;
+
+/// @dev The inverse of 5 modulo 2^256, so that its nth power divides an exact
+/// multiple of 5^n.
+uint256 constant FIVE_INVERSE = 92633671389852956338856788006950326282615987732512451231566067206330503711949;
 
 /// @dev Guard digits pow10 rounds away.
 uint256 constant POW_GUARD = 1e10;
 
 /// @dev The most, in units of 1e-50, that the true 10^m 1e50 can lie from
 /// pow10's fixed point power. See `pow10`.
-uint256 constant POW10_RAW_ERROR = 51662;
+uint256 constant POW10_RAW_ERROR = 328;
 
 /// @dev The most, in units of 1e-50, that the true log can lie from
 /// `log10Unrounded`. See `log10Unrounded`.
-uint256 constant LOG10_RAW_ERROR = 2245;
+uint256 constant LOG10_RAW_ERROR = 2;
 
 /// @dev Library implementing core DecimalFloat operations using only stack
 /// variables.
@@ -245,7 +252,7 @@ library LibDecimalFloatImplementation {
             (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
                 signedCoefficientB,
-                mulDiv(signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent),
+                mulDivPow10(signedCoefficientAAbs, signedCoefficientBAbs, adjustExponent),
                 exponent
             );
         }
@@ -481,6 +488,39 @@ library LibDecimalFloatImplementation {
             let mm := mulmod(a, b, not(0))
             low := mul(a, b)
             high := sub(sub(mm, low), lt(mm, low))
+        }
+    }
+
+    /// mulDiv(x, y, POW_FIXED_ONE) for a quotient below 2^256.
+    function mulDivFixed(uint256 x, uint256 y) internal pure returns (uint256 result) {
+        uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
+        assembly ("memory-safe") {
+            let mm := mulmod(x, y, not(0))
+            let prod0 := mul(x, y)
+            // slither-disable-next-line too-many-digits
+            let remainder := mulmod(x, y, 100000000000000000000000000000000000000000000000000)
+            let prod1 := sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0))
+            prod0 := sub(prod0, remainder)
+            result := mul(or(shr(50, prod0), shl(206, prod1)), inverse)
+        }
+    }
+
+    /// mulDiv(x, y, 10^n) for n in [0, 76] and a quotient below 2^256. The
+    /// remainder is subtracted so 10^n divides the product exactly, the 2^n
+    /// is shifted out and the 5^n divided out by its inverse modulo 2^256.
+    function mulDivPow10(uint256 x, uint256 y, uint256 n) internal pure returns (uint256 result) {
+        (uint256 prod1, uint256 prod0) = mul512(x, y);
+        if (prod1 == 0) {
+            unchecked {
+                return prod0 / 10 ** n;
+            }
+        }
+        uint256 inverse = FIVE_INVERSE;
+        assembly ("memory-safe") {
+            let remainder := mulmod(x, y, exp(10, n))
+            prod1 := sub(prod1, gt(remainder, prod0))
+            prod0 := sub(prod0, remainder)
+            result := mul(or(shr(n, prod0), shl(sub(256, n), prod1)), exp(inverse, n))
         }
     }
 
@@ -810,7 +850,8 @@ library LibDecimalFloatImplementation {
     /// half away from zero, so within half a unit in the 41st digit plus
     /// `LOG10_RAW_ERROR` units of 1e-50. log10(10^k) is exactly k.
     ///
-    /// @param tablesDataContract The address of the log tables data contract.
+    /// @param tablesDataContract Unused, and kept so that callers need not
+    /// change.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
     /// @param exponent The exponent of the floating point number.
@@ -818,7 +859,7 @@ library LibDecimalFloatImplementation {
     /// @return exponent The exponent of the result.
     function log10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
         internal
-        view
+        pure
         returns (int256, int256)
     {
         (signedCoefficient, exponent) = log10Unrounded(tablesDataContract, signedCoefficient, exponent);
@@ -882,49 +923,48 @@ library LibDecimalFloatImplementation {
     /// log10(x) for a float x, with the guard digits that `log10` rounds
     /// away.
     ///
-    /// The four figure log table gives a seed S and the atanh series of the
-    /// ratio between the input and E = exp10Fixed(S) closes the remaining gap.
-    /// Inputs within a table step of a power of ten take an exact seed, so a
-    /// log near zero keeps its relative precision.
+    /// `log10Reduce` divides the coefficient C in [1e75, 1e76) by powers
+    /// 10^(2^-i) that sum to an exact seed S, leaving R within 10^(2^-16) of
+    /// 1e75, and the atanh series of R / 1e75 closes the remaining gap. A
+    /// coefficient within a factor 1.001 of a power of ten skips the reduction
+    /// and takes S = 0, so a log near zero keeps its relative precision.
     ///
-    /// The error, from the bounds on `exp10Fixed` and `log10Ratio`, is within
+    /// The error, from the bounds on `log10Reduce` and `log10Ratio`, is within
     /// `LOG10_RAW_ERROR` units of 1e-50 for a log below 1e25 in magnitude,
     /// which includes every float:
-    /// - Within a table step of 1: E is exact and the result is the relative
-    ///   coefficient of `log10Ratio`, at least 4.34e48, so within 3.27e-49
-    ///   relative of a log below log10(1.001), under 1.5e-52.
-    /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. The
-    ///   log E lacks to be log10(10^S) is in [-2.24256e-47, 2.3e-51], from
-    ///   exp10Fixed's relative error in [-5.1637e-47, 5.2e-51]. With
-    ///   log10Ratio's 1.005 units the true log is within 2244 units, which
-    ///   rounds up to 2245.
+    /// - Within a factor 1.001 of 1: the result is the relative coefficient
+    ///   of `log10Ratio`, at least 4.34e48, so within 3.27e-49 relative of a
+    ///   log below log10(1.001), under 1.5e-52.
+    /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. R
+    ///   is within 16.7 units of C / 10^S, 1.67e-74 relative, which moves its
+    ///   log by under 1e-24 units. With log10Ratio's 1.0043 units the true
+    ///   log is within 1.0044 units, which rounds up to 2.
     /// - log10(10^k) is exactly k.
     /// A characteristic of 1e25 or more is summed by `add`, which loses under
     /// a unit of the sum's exponent, at least -50.
     ///
-    /// @param tablesDataContract The address of the log tables data contract.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function log10Unrounded(address tablesDataContract, int256 signedCoefficient, int256 exponent)
-        internal
-        view
-        returns (int256, int256)
-    {
-        int256 shortfall;
-        {
-            int256 unmaximizedCoefficient = signedCoefficient;
-            int256 unmaximizedExponent = exponent;
-            (signedCoefficient, exponent, shortfall) = maximize(signedCoefficient, exponent);
-
-            if (signedCoefficient <= 0) {
-                if (signedCoefficient == 0) {
-                    revert Log10Zero();
-                } else {
-                    revert Log10Negative(unmaximizedCoefficient, unmaximizedExponent);
-                }
+    function log10Unrounded(address, int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        if (signedCoefficient <= 0) {
+            if (signedCoefficient == 0) {
+                revert Log10Zero();
+            } else {
+                revert Log10Negative(signedCoefficient, exponent);
+            }
+        }
+        int256 shortfall = 0;
+        // A coefficient of at least 1e75 is in place. Below it, scaleUp shifts
+        // by at most 75 digits, which the exponent takes unless it is within
+        // 75 of the floor, where maximize returns the shortfall.
+        if (signedCoefficient < 1e75) {
+            if (exponent >= type(int256).min + 75) {
+                (signedCoefficient, exponent) = scaleUp(signedCoefficient, exponent);
+            } else {
+                (signedCoefficient, exponent, shortfall) = maximize(signedCoefficient, exponent);
             }
         }
 
@@ -948,20 +988,13 @@ library LibDecimalFloatImplementation {
             characteristic += 1;
             estimate = 1e76;
         } else {
-            unchecked {
-                // signedCoefficient is in [1.001e75, 9.999e75) so idx is in
-                // [1, 8998] and the next entry exists.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                uint256 idx = uint256(signedCoefficient / 1e72 - 1000);
-                // forge-lint: disable-next-line(unsafe-typecast)
-                int256 y1 = int256(lookupLogTableVal(tablesDataContract, idx));
-                // forge-lint: disable-next-line(unsafe-typecast)
-                int256 y2 = int256(lookupLogTableVal(tablesDataContract, idx + 1));
-                seed = y1 * 1e46 + (signedCoefficient % 1e72) * (y2 - y1) / 1e26;
-            }
-            // seed is in (0, 1e50) and so is not negative.
+            estimate = 1e75;
+            // signedCoefficient is positive.
             // forge-lint: disable-next-line(unsafe-typecast)
-            estimate = exp10Fixed(uint256(seed)) * 1e25;
+            (uint256 reduced, uint256 reducedSeed) = log10Reduce(uint256(signedCoefficient));
+            // Both are below 1e76.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            (signedCoefficient, seed) = (int256(reduced), int256(reducedSeed));
         }
 
         // A log near zero is all correction, which keeps its relative
@@ -985,9 +1018,8 @@ library LibDecimalFloatImplementation {
     /// a and b within a few parts in ten thousand of each other.
     ///
     /// Error, in units of 1e-50 unless stated, for z = |a - b| / (a + b) at
-    /// most 5.1e-4. That holds as |log10(a / b)| is at most log10(1.001) at a
-    /// table edge and 1.2e-4 inside the table, the shipped entries' worst error
-    /// plus 5.4e-8 of interpolation curvature.
+    /// most 5.1e-4. That holds as a / b is within a factor 1.001 at a power
+    /// of ten and within 10^(2^-16) after `log10Reduce`.
     /// - The floored z and z^2 make each power of z^2 at most 2.001 below its
     ///   exact value, then at most 1.000001 once the floor dominates. Each
     ///   term's divide floors a further unit. z^16 is below 1e-50, so the loop
@@ -997,8 +1029,8 @@ library LibDecimalFloatImplementation {
     ///   below ln 10 1e50, so the scaled series is within (-8.3, 1.3e-51
     ///   relative] of 2 atanh(z) / (z ln 10).
     /// - The last mulDiv multiplies that by z, or by z 10^k when `relative`,
-    ///   and floors a unit. Not relative, the result is within 1.005 units of
-    ///   the log. Relative, it is within the coefficient C times 9.6e-50, plus
+    ///   and floors a unit. Not relative, the result is within 1 + 8.3 z,
+    ///   under 1.0043, units of the log. Relative, it is within the coefficient C times 9.6e-50, plus
     ///   a unit, below and 1.3e-51 relative above, so within C / 1e49 + 2
     ///   units of its exponent.
     /// @param a The numerator, at most 1e76.
@@ -1012,12 +1044,12 @@ library LibDecimalFloatImplementation {
         uint256 difference = below ? b - a : a - b;
         uint256 sum = a + b;
         uint256 z = mulDiv(difference, POW_FIXED_ONE, sum);
-        uint256 zSquared = mulDiv(z, z, POW_FIXED_ONE);
+        uint256 zSquared = mulDivFixed(z, z);
         // atanh(z) / z
         uint256 series = POW_FIXED_ONE;
         uint256 term = POW_FIXED_ONE;
         for (uint256 k = 3; term > 0; k += 2) {
-            term = mulDiv(term, zSquared, POW_FIXED_ONE);
+            term = mulDivFixed(term, zSquared);
             series += term / k;
         }
         int256 exponent = -50;
@@ -1035,16 +1067,193 @@ library LibDecimalFloatImplementation {
         return (below ? -signedCoefficient : signedCoefficient, exponent);
     }
 
+    /// Scales a coefficient in (0, 1e75) up into [1e75, 1e76), lowering the
+    /// exponent by the at most 75 digits of the shift.
+    /// @param signedCoefficient The signed coefficient, in (0, 1e75).
+    /// @param exponent The exponent, at least `type(int256).min + 75`.
+    /// @return signedCoefficient The scaled coefficient.
+    /// @return exponent The exponent of the scaled coefficient.
+    function scaleUp(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        unchecked {
+            if (signedCoefficient < 1e38) {
+                signedCoefficient *= 1e38;
+                exponent -= 38;
+            }
+            if (signedCoefficient < 1e57) {
+                signedCoefficient *= 1e19;
+                exponent -= 19;
+            }
+            if (signedCoefficient < 1e66) {
+                signedCoefficient *= 1e10;
+                exponent -= 10;
+            }
+            if (signedCoefficient < 1e71) {
+                signedCoefficient *= 1e5;
+                exponent -= 5;
+            }
+            if (signedCoefficient < 1e73) {
+                signedCoefficient *= 1e3;
+                exponent -= 3;
+            }
+            if (signedCoefficient < 1e74) {
+                signedCoefficient *= 1e2;
+                exponent -= 2;
+            }
+            if (signedCoefficient < 1e75) {
+                signedCoefficient *= 10;
+                exponent -= 1;
+            }
+            return (signedCoefficient, exponent);
+        }
+    }
+
+    /// Divides x out by 10^(2^-i) for each i in [1, 16] where x is at least
+    /// 1e75 10^(2^-i), each by its reciprocal at the 2^256 scale, so x lands
+    /// within a factor 10^(2^-16) of 1e75 and the summed powers are the log
+    /// of the factor taken out.
+    ///
+    /// Each threshold is 1e75 10^(2^-i) rounded up and each reciprocal
+    /// 2^256 / 10^(2^-i) rounded to nearest, so a step is within
+    /// x / 2^257 < 0.0432 of x / 10^(2^-i) before its floor, in
+    /// (-1.0432, 0.0432]. Later steps only shrink an earlier step's error, so
+    /// the reduced x is within (-16.7, 0.7] of x / 10^seed. A step leaves x
+    /// below the next threshold, so the reduced x is in (1e75 - 1.05,
+    /// 1e75 10^(2^-16)).
+    /// @param x A value in [1e75, 1e76).
+    /// @return The reduced x.
+    /// @return seed The summed powers at the `POW_FIXED_ONE` scale.
+    // slither-disable-start too-many-digits
+    //slither-disable-next-line cyclomatic-complexity
+    function log10Reduce(uint256 x) internal pure returns (uint256, uint256 seed) {
+        assembly ("memory-safe") {
+            if iszero(lt(x, 3162277660168379331998893544432718533719555139325216826857504852792594438640)) {
+                let mm :=
+                    mulmod(x, 36616673701938843778068833497358723556965087776446405157389940026215161181517, not(0))
+                let low := mul(x, 36616673701938843778068833497358723556965087776446405157389940026215161181517)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 50000000000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1778279410038922801225421195192684844735790526402255358011830722776301881540)) {
+                let mm :=
+                    mulmod(x, 65114676908271546481783089451486774924122586772716488419433647202158216225712, not(0))
+                let low := mul(x, 65114676908271546481783089451486774924122586772716488419433647202158216225712)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 25000000000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1333521432163324025675931715295331092415667964764370993329549987162758943181)) {
+                let mm :=
+                    mulmod(x, 86831817205570396472488487376619414734776470364260362375271208847034186727869, not(0))
+                let low := mul(x, 86831817205570396472488487376619414734776470364260362375271208847034186727869)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 12500000000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1154781984689458179666482887295508281566948041479611129977426848717929206981)) {
+                let mm :=
+                    mulmod(x, 100271818206840824917852211318445810475964718432762174250931870037200512150264, not(0))
+                let low := mul(x, 100271818206840824917852211318445810475964718432762174250931870037200512150264)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 6250000000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1074607828321317497215941531964343594667198228375277635737525385456277680090)) {
+                let mm :=
+                    mulmod(x, 107752880805083163274215415406366939907498821726554665908884917759802168845149, not(0))
+                let low := mul(x, 107752880805083163274215415406366939907498821726554665908884917759802168845149)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 3125000000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1036632928437697997291651724925344467708873031101004651184732490611638515681)) {
+                let mm :=
+                    mulmod(x, 111700184376571576959242954511464064493576035854940459532905296431575491590884, not(0))
+                let low := mul(x, 111700184376571576959242954511464064493576035854940459532905296431575491590884)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 1562500000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1018151721718181841474226888578835347615879638667598311831418789512158676639)) {
+                let mm :=
+                    mulmod(x, 113727735039244707269314004292417912634116897559789282410115004998408115167755, not(0))
+                let low := mul(x, 113727735039244707269314004292417912634116897559789282410115004998408115167755)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 781250000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1009035044841447437759254423906421331381168979588236162503174368256031811568)) {
+                let mm :=
+                    mulmod(x, 114755270225040536177195215467999502584020270197659510607710463068073932425995, not(0))
+                let low := mul(x, 114755270225040536177195215467999502584020270197659510607710463068073932425995)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 390625000000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1004507364254462515664794694341317664136965486448855489880346341316837480908)) {
+                let mm :=
+                    mulmod(x, 115272514028064070535758128409080922034070970152660607303989700309153489211414, not(0))
+                let low := mul(x, 115272514028064070535758128409080922034070970152660607303989700309153489211414)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 195312500000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1002251148292912915465673638866571192454241130208227099208420545124889760121)) {
+                let mm :=
+                    mulmod(x, 115532009551238127069034569024473762622767147147788687595329406319473705950071, not(0))
+                let low := mul(x, 115532009551238127069034569024473762622767147147788687595329406319473705950071)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 97656250000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1001124941399879875885426434365711773271338418873287617190761945242904872061)) {
+                let mm :=
+                    mulmod(x, 115661976291793632079080739461244514212109858454009171777232224145244584379146, not(0))
+                let low := mul(x, 115661976291793632079080739461244514212109858454009171777232224145244584379146)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 48828125000000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1000562312602208636618511367809636978696490479831100413718397439177031575557)) {
+                let mm :=
+                    mulmod(x, 115727014478658864191206019837644585076293120248274136969870782148370783742109, not(0))
+                let low := mul(x, 115727014478658864191206019837644585076293120248274136969870782148370783742109)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 24414062500000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1000281116787780132399257365769687045617010004075711462195816279315578112995)) {
+                let mm :=
+                    mulmod(x, 115759547285228489644640649073775386641395351335601881572150779206589155570705, not(0))
+                let low := mul(x, 115759547285228489644640649073775386641395351335601881572150779206589155570705)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 12207031250000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1000140548516947258162771187858928924807657707067732580839449098218983450057)) {
+                let mm :=
+                    mulmod(x, 115775817117921914513665754670628277870063336875992169054789846993299520681056, not(0))
+                let low := mul(x, 115775817117921914513665754670628277870063336875992169054789846993299520681056)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 6103515625000000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1000070271789411435538813638676535763208836739091941327682886747964405335251)) {
+                let mm :=
+                    mulmod(x, 115783952891761361996258436523111610648709418794355347035638479532448488583968, not(0))
+                let low := mul(x, 115783952891761361996258436523111610648709418794355347035638479532448488583968)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 3051757812500000000000000000000000000000000000)
+            }
+            if iszero(lt(x, 1000035135277461856608582335861556633189962147970549360011398536055919590052)) {
+                let mm :=
+                    mulmod(x, 115788020993071844566540918178001145605824617021039977012160767671253988218160, not(0))
+                let low := mul(x, 115788020993071844566540918178001145605824617021039977012160767671253988218160)
+                x := sub(sub(mm, low), lt(mm, low))
+                seed := add(seed, 1525878906250000000000000000000000000000000000)
+            }
+        }
+        return (x, seed);
+    }
+
+    // slither-disable-end too-many-digits
+
     /// 10^x for a float x, rounded to nearest at 41 significant digits, half
     /// up. 10^k is exactly 10^k for an integer k.
     ///
     /// The fraction m of x, truncated to 1e-50, goes through `exp10Fixed`.
     /// Truncation moves 10^m by under 2.3026e-50 relative either way, and with
-    /// exp10Fixed's bounds the true 10^m 1e50 is within 29 units below and
-    /// `POW10_RAW_ERROR` units above the fixed point power, for a power below
-    /// 1e51 units. A unit of the result is `POW_GUARD` of those, so the result
-    /// is within half a unit plus 5.1662e-6 of a unit, and under 5.0000517e-41
-    /// relative.
+    /// exp10Fixed's bounds the true 10^x 1e50 is within 24 units below and
+    /// `POW10_RAW_ERROR` units, 304.71 plus 23.03 rounded up, above the fixed
+    /// point power, for a power below 1e51 units. A unit of the result is
+    /// `POW_GUARD` of those, so the result is within half a unit plus 3.28e-8
+    /// of a unit, and under 5.0000004e-41 relative.
     ///
     /// A nonzero fraction that truncates to zero is under 1e-50 from an
     /// integer, which puts 10^x within 2.4e-50 relative of the power of ten
@@ -1093,36 +1302,105 @@ library LibDecimalFloatImplementation {
         return (int256(exp10Fixed(uint256(mantissa))), characteristic - 50);
     }
 
-    /// 10^x at the `POW_FIXED_ONE` scale, by the Taylor series of e^(x ln 10).
-    /// The argument is halved `POW_EXP_HALVINGS` times so the series converges
-    /// in few terms, then the sum is squared back up.
+    /// 10^x at the `POW_FIXED_ONE` scale. Each binary digit 2^-i of x, for i
+    /// in [1, 16], multiplies in 10^(2^-i), and the r below 2^-16 that is left
+    /// goes through the Taylor series of 10^r to its ninth power by Horner's
+    /// rule. Every constant and every product is floored, so the result is
+    /// never above 10^x.
     ///
-    /// The result is within [-5.1637e-47, 5.2e-51] relative of 10^x:
-    /// - The reduced argument r is x ln 10 / 256, at most 0.0089945, floored a
-    ///   unit, and POW_FIXED_LN10 is 0.2976 units of 1e-50 below ln 10, so r
-    ///   is within (-1.002e-50, 2e-53] of exact.
-    /// - Term n floors once, losing under a unit plus r / n of term n - 1's
-    ///   loss. r^18 / 18! is under 0.0024 units, so at most 17 terms are
-    ///   nonzero, and those, the first zero term and the tail leave the
-    ///   series under 17.03 units below e^r. The sum is at least 1e50, so
-    ///   with r's error it is within [-1.8032e-49, 2e-53] relative.
-    /// - Each squaring doubles the relative error and floors under 1e-50
-    ///   relative, so the eight leave it at least 256 (-1.8032e-49) -
-    ///   255e-50 = -4.8712e-47 and at most 5.12e-51.
-    /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1].
-    /// @return The power at the `POW_FIXED_ONE` scale, in [1, 10].
-    function exp10Fixed(uint256 x) internal pure returns (uint256) {
-        uint256 reduced = mulDiv(x, POW_FIXED_LN10, POW_FIXED_ONE << POW_EXP_HALVINGS);
-        uint256 sum = POW_FIXED_ONE;
-        uint256 term = POW_FIXED_ONE;
-        for (uint256 n = 1; term > 0; n++) {
-            term = mulDiv(term, reduced, POW_FIXED_ONE * n);
-            sum += term;
+    /// The result is within [-3.048e-49, 0] relative of 10^x. In units of
+    /// 1e-50 relative:
+    /// - Each 10^(2^-i) constant is under a unit below 10^(2^-i) 1e50, and
+    ///   each multiply after the first floors under a unit of a product of at
+    ///   least 10^(2^-i) 1e50, so the digits lose under the sum of
+    ///   2 / 10^(2^-i) less the first multiply's, 28.392.
+    /// - The floored coefficients and steps leave the series under
+    ///   1 + 2r / (1 - r) below its nine terms, and the terms past the ninth
+    ///   sum under 0.079, so it is under 1.079 below 10^r, which is at least 1.
+    /// - The last multiply floors under a unit.
+    /// In all that is under 30.471.
+    /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1).
+    /// @return result The power at the `POW_FIXED_ONE` scale, in [1, 10).
+    //slither-disable-next-line cyclomatic-complexity
+    function exp10Fixed(uint256 x) internal pure returns (uint256 result) {
+        unchecked {
+            result = POW_FIXED_ONE;
+            if (x >= 5e49) {
+                x -= 5e49;
+                result = 316227766016837933199889354443271853371955513932521;
+            }
+            if (x >= 2.5e49) {
+                x -= 2.5e49;
+                result = mulDivFixed(result, 177827941003892280122542119519268484473579052640225);
+            }
+            if (x >= 1.25e49) {
+                x -= 1.25e49;
+                result = mulDivFixed(result, 133352143216332402567593171529533109241566796476437);
+            }
+            if (x >= 6.25e48) {
+                x -= 6.25e48;
+                result = mulDivFixed(result, 115478198468945817966648288729550828156694804147961);
+            }
+            if (x >= 3.125e48) {
+                x -= 3.125e48;
+                result = mulDivFixed(result, 107460782832131749721594153196434359466719822837527);
+            }
+            if (x >= 1.5625e48) {
+                x -= 1.5625e48;
+                result = mulDivFixed(result, 103663292843769799729165172492534446770887303110100);
+            }
+            if (x >= 7.8125e47) {
+                x -= 7.8125e47;
+                result = mulDivFixed(result, 101815172171818184147422688857883534761587963866759);
+            }
+            if (x >= 3.90625e47) {
+                x -= 3.90625e47;
+                result = mulDivFixed(result, 100903504484144743775925442390642133138116897958823);
+            }
+            if (x >= 1.953125e47) {
+                x -= 1.953125e47;
+                result = mulDivFixed(result, 100450736425446251566479469434131766413696548644885);
+            }
+            if (x >= 9.765625e46) {
+                x -= 9.765625e46;
+                result = mulDivFixed(result, 100225114829291291546567363886657119245424113020822);
+            }
+            if (x >= 4.8828125e46) {
+                x -= 4.8828125e46;
+                result = mulDivFixed(result, 100112494139987987588542643436571177327133841887328);
+            }
+            if (x >= 2.44140625e46) {
+                x -= 2.44140625e46;
+                result = mulDivFixed(result, 100056231260220863661851136780963697869649047983110);
+            }
+            if (x >= 1.220703125e46) {
+                x -= 1.220703125e46;
+                result = mulDivFixed(result, 100028111678778013239925736576968704561701000407571);
+            }
+            if (x >= 6.103515625e45) {
+                x -= 6.103515625e45;
+                result = mulDivFixed(result, 100014054851694725816277118785892892480765770706773);
+            }
+            if (x >= 3.0517578125e45) {
+                x -= 3.0517578125e45;
+                result = mulDivFixed(result, 100007027178941143553881363867653576320883673909194);
+            }
+            if (x >= 1.52587890625e45) {
+                x -= 1.52587890625e45;
+                result = mulDivFixed(result, 100003513527746185660858233586155663318996214797054);
+            }
+            uint256 series = 501392883377544009807090987164215453583108663277;
+            series = 1959769462647852369682789087147690310674843760584 + mulDivFixed(series, x);
+            series = 6808936507443706236540404026537606122629959236393 + mulDivFixed(series, x);
+            series = 20699584869686809669966601589738494188245922773010 + mulDivFixed(series, x);
+            series = 53938292919558141019969155571017253478007614081814 + mulDivFixed(series, x);
+            series = 117125514891226696317825761603265234076100689858139 + mulDivFixed(series, x);
+            series = 203467859229347619683099119171381053024105502647771 + mulDivFixed(series, x);
+            series = 265094905523919900528083319429700884579872503956640 + mulDivFixed(series, x);
+            series = POW_FIXED_LN10 + mulDivFixed(series, x);
+            series = POW_FIXED_ONE + mulDivFixed(series, x);
+            result = mulDivFixed(result, series);
         }
-        for (uint256 i = 0; i < POW_EXP_HALVINGS; i++) {
-            sum = mulDiv(sum, sum, POW_FIXED_ONE);
-        }
-        return sum;
     }
 
     /// Maximizes a float's signed coefficient by increasing its magnitude

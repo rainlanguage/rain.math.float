@@ -262,7 +262,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     /// sqrt(a)^2 / a - 1, within twice the root's bound plus its square.
     function assertSqrtSquare(Float a) internal {
         Float root = this.sqrtExternal(a);
-        Float error = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_HALF);
+        Float error = LibTestErrorBound.sqrt();
         assertWithin(
             relativeError(root, a.div(root)), error.add(error).add(error.mul(error)).add(packingSlack()), "sqrt square"
         );
@@ -499,10 +499,6 @@ contract LibDecimalFloatPrecisionTest is LogTest {
 
     function testSqrtMonotone(int224 coefficient, int32 exponent, uint8 region, uint256 step) external {
         Float a = positive(coefficient, exponent, region);
-        Float error = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_HALF);
-        assertTrue(
-            LibTestErrorBound.monotoneRelative(this.sqrtExternal(a), this.sqrtExternal(stepUp(a, step)), error, error),
-            "sqrt monotone"
-        );
+        assertTrue(this.sqrtExternal(a).lte(this.sqrtExternal(stepUp(a, step))), "sqrt monotone");
     }
 }

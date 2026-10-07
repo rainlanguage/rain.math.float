@@ -66,7 +66,7 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         );
     }
 
-    /// The table edges log10Unrounded hands over.
+    /// The 1.001 edges log10Unrounded hands over.
     function testLog10RatioTableEdges() external pure {
         checkBothModes(1001e72, 1e75, 4340774793186406689213877779888660200037751774867729013649473955595637, -73);
         checkBothModes(9999e72, 1e76, -4343161980751038455604402380722667375072594570258433791106376134065183, -74);
