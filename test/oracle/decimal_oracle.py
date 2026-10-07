@@ -109,6 +109,14 @@ def arithmetic(x):
     return {"ok": out(p[0])}
 
 
+def minus(f):
+    """Exact, but an int224.min coefficient, whose negation 2^223 is no
+    int224, takes int224.max at the same exponent (#326)."""
+    if int(f[0]) == INT224_MIN:
+        return {"ok": [str(INT224_MAX), int(f[1])]}
+    return arithmetic(EXACT.minus(dec(f)))
+
+
 def maximize(x):
     sign, digits, exp = x.as_tuple()
     c = int("".join(map(str, digits)))
@@ -266,9 +274,9 @@ def handle(req):
     if op == "inv":
         return div(Decimal(1), a)
     if op == "minus":
-        return arithmetic(EXACT.minus(a))
+        return minus(req["a"])
     if op == "abs":
-        return arithmetic(EXACT.abs(a))
+        return minus(req["a"]) if a < 0 else arithmetic(a)
     if op == "integer":
         return arithmetic(a.to_integral_value(ROUND_DOWN, EXACT))
     if op == "frac":

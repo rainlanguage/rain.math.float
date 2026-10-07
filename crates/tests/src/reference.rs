@@ -400,12 +400,20 @@ pub fn inv(a: &Dec) -> Result<Dec, RefError> {
     div(&Dec::new(1, 0), a)
 }
 
+/// Exact negation, but for an int224.min coefficient: its negation, 2^223, is
+/// no int224, and it takes int224.max at the same exponent (#326).
 pub fn minus(a: &Dec) -> Result<Dec, RefError> {
+    if a.c == int224_min() {
+        return Ok(Dec::new(int224_max(), a.e));
+    }
     arithmetic(&a.neg())
 }
 
 pub fn abs(a: &Dec) -> Result<Dec, RefError> {
-    arithmetic(&a.abs())
+    if a.c.is_negative() {
+        return minus(a);
+    }
+    arithmetic(a)
 }
 
 pub fn integer(a: &Dec) -> Result<Dec, RefError> {

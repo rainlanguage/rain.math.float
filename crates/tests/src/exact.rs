@@ -967,6 +967,19 @@ mod found {
         run(check_mul(&Dec::new(1, I32_MAX), &Dec::new(1, 1)));
     }
 
+    /// #326: an int224.min coefficient negates to int224.max at the same
+    /// exponent, the ceiling included.
+    #[test]
+    fn minus_int224_min() {
+        for e in [I32_MIN, -1, 0, 1, I32_MAX] {
+            let a = Dec::new(r::int224_min(), e);
+            for want in [r::minus(&a).unwrap(), r::abs(&a).unwrap()] {
+                assert_eq!((want.c, want.e), (r::int224_max(), e));
+            }
+            run(check_unary(&a));
+        }
+    }
+
     #[test]
     fn parse_at_the_exponent_ceiling() {
         run(check_parse("1e2147483648"));

@@ -70,7 +70,13 @@ contract LibDecimalFloatDivTest is Test {
         int256 negativeOne = -1;
         for (int256 oneExponent = 0; oneExponent >= -65; --oneExponent) {
             Float result = LibDecimalFloat.div(float, LibDecimalFloat.packLossless(negativeOne, oneExponent));
-            assertTrue(result.eq(float.minus()));
+            if (signedCoefficient == type(int224).min) {
+                // Division sheds a digit of 2^223 as all arithmetic does;
+                // minus takes int224.max instead (#326).
+                assertTrue(result.eq(LibDecimalFloat.packLossless(-(type(int224).min / 10), int256(exponent) + 1)));
+            } else {
+                assertTrue(result.eq(float.minus()));
+            }
             if (oneExponent == -65) {
                 break;
             }

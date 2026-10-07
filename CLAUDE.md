@@ -73,7 +73,8 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
     underflow. Used by parsing where underflow → "value rounds to zero" is a
     legitimate parse result reported via `ParseDecimalPrecisionLoss`.
   - `packArithmeticResult`: tolerates coefficient truncation, reverts on
-    exponent underflow. Used by every public arithmetic operation.
+    exponent underflow. Used by every public arithmetic operation but `minus`
+    and `abs`, which take int224.max for a negated int224.min.
 
 ## License
 

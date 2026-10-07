@@ -30,8 +30,6 @@ contract LibDecimalFloatConstantsTest is Test {
 
     function testFloatMinPositiveValueIsMin(Float a) external pure {
         vm.assume(!a.isZero());
-        // cant abs smallest negative value because of overflow.
-        vm.assume(a.gt(LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE));
         a = a.abs();
 
         assertTrue(a.gte(LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE));

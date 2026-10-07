@@ -509,7 +509,7 @@ library LibDecimalFloat {
     }
 
     /// Variant of `packLossy` used as the finaliser of every arithmetic
-    /// operation. Tolerates coefficient truncation (which preserves the order
+    /// operation but `minus` and `abs`. Tolerates coefficient truncation (which preserves the order
     /// of magnitude) but reverts on exponent underflow (which silently
     /// replaces the value by `FLOAT_ZERO`, losing the magnitude entirely).
     /// Distinguishes the two `lossless = false` modes from `packLossy` by the
@@ -617,25 +617,24 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Same as minus, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
-    /// @param float The Float struct containing the signed coefficient and
-    /// exponent of the floating point number.
+    /// Negates a float. Every coefficient but int224.min negates exactly, at
+    /// the same exponent. An int224.min coefficient at any exponent negates to
+    /// int224.max at the same exponent: the true negation, 2^223 at that
+    /// exponent, is no Float, and int224.max there is the largest Float not
+    /// above it. So the result rounds towards zero, is off by one in the last
+    /// place, and negation reverses the order of every pair of floats. Never
+    /// reverts.
+    /// @param float The float to negate.
     /// @return The negated float.
     function minus(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
-        // Minus is a lossy operation due to the asymmetry of signed integers.
-
-        Float result = packArithmeticResult(signedCoefficient, exponent);
-        return result;
+        return packNegated(signedCoefficient, exponent);
     }
 
     /// Returns the absolute value of a float.
-    /// Identity if non-negative, negated if negative. Max negative signed value
-    /// for the coefficient will be shifted one OOM so that it can be negated to
-    /// a positive value.
+    /// Identity if non-negative, `minus` if negative, so an int224.min
+    /// coefficient at any exponent becomes int224.max at the same exponent.
+    /// Never reverts.
     ///
     /// https://speleotrove.com/decimal/daops.html#refabs
     /// > abs takes one operand. If the operand is negative, the result is the
@@ -645,15 +644,32 @@ library LibDecimalFloat {
     /// @return The absolute value of the float.
     function abs(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
-
         if (signedCoefficient < 0) {
-            (signedCoefficient, exponent) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
+            return packNegated(signedCoefficient, exponent);
         }
+        if (signedCoefficient == 0) {
+            return FLOAT_ZERO;
+        }
+        return float;
+    }
 
-        // At the limit of signed values there is the potential for a lossy
-        // conversion when negating.
-        Float result = packArithmeticResult(signedCoefficient, exponent);
-        return result;
+    /// `minus` of an unpacked float, packed. int224.min is the one coefficient
+    /// whose negation does not fit int224, and it takes int224.max.
+    function packNegated(int256 signedCoefficient, int256 exponent) private pure returns (Float float) {
+        unchecked {
+            // An int224 negates in int256 without overflow.
+            signedCoefficient = -signedCoefficient;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (int224(signedCoefficient) != signedCoefficient) {
+            signedCoefficient = type(int224).max;
+        } else if (signedCoefficient == 0) {
+            return FLOAT_ZERO;
+        }
+        uint256 mask = type(uint224).max;
+        assembly ("memory-safe") {
+            float := or(and(signedCoefficient, mask), shl(0xe0, exponent))
+        }
     }
 
     /// https://speleotrove.com/decimal/daops.html#refmult

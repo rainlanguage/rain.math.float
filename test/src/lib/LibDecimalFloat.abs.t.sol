@@ -9,14 +9,17 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 contract LibDecimalFloatAbsTest is Test {
     using LibDecimalFloat for Float;
 
-    /// Anything non negative is identity.
-    function testAbsNonNegative(int256 signedCoefficient, int32 exponent) external pure {
-        signedCoefficient = bound(signedCoefficient, 0, type(int224).max);
+    /// Anything positive is identity.
+    function testAbsPositive(int256 signedCoefficient, int32 exponent) external pure {
+        signedCoefficient = bound(signedCoefficient, 1, type(int224).max);
         Float float = LibDecimalFloat.packLossless(signedCoefficient, exponent);
-        Float result = float.abs();
-        (int256 resultSignedCoefficient, int256 resultExponent) = LibDecimalFloat.unpack(result);
-        assertEq(resultSignedCoefficient, signedCoefficient);
-        assertEq(resultExponent, resultSignedCoefficient == 0 ? int256(0) : exponent);
+        assertEq(Float.unwrap(float.abs()), Float.unwrap(float));
+    }
+
+    /// Zero at any exponent is `FLOAT_ZERO`.
+    function testAbsZero(int32 exponent) external pure {
+        Float zero = Float.wrap(bytes32(uint256(uint32(exponent)) << 224));
+        assertEq(Float.unwrap(zero.abs()), Float.unwrap(LibDecimalFloat.FLOAT_ZERO));
     }
 
     /// Anything negative is negated. Except for the minimum value.
@@ -29,13 +32,21 @@ contract LibDecimalFloatAbsTest is Test {
         assertEq(resultExponent, exponent);
     }
 
-    /// Minimum value is shifted one OOM.
-    function testAbsMinValue(int32 exponent) external pure {
-        vm.assume(exponent < type(int32).max);
-        Float float = LibDecimalFloat.packLossless(type(int224).min, exponent);
-        Float result = float.abs();
-        (int256 resultSignedCoefficient, int256 resultExponent) = LibDecimalFloat.unpack(result);
-        assertEq(resultSignedCoefficient, -(type(int224).min / 10));
-        assertEq(resultExponent, exponent + 1);
+    function checkAbsInt224Min(int256 exponent) internal pure {
+        Float result = LibDecimalFloat.packLossless(type(int224).min, exponent).abs();
+        (int256 signedCoefficient, int256 resultExponent) = result.unpack();
+        assertEq(signedCoefficient, type(int224).max);
+        assertEq(resultExponent, exponent);
+    }
+
+    /// An int224.min coefficient becomes int224.max at the same exponent.
+    function testAbsInt224Min() external pure {
+        checkAbsInt224Min(type(int32).min);
+        checkAbsInt224Min(-18);
+        checkAbsInt224Min(-1);
+        checkAbsInt224Min(0);
+        checkAbsInt224Min(1);
+        checkAbsInt224Min(18);
+        checkAbsInt224Min(type(int32).max);
     }
 }
