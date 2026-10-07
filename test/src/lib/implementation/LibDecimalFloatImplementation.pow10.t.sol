@@ -422,7 +422,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         int256 x = int256(j * LibTranscendentalOracle.log10Prime(base)) + n * int256(ORACLE_ONE);
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(x, -70);
         // forge-lint: disable-next-line(unsafe-typecast)
-        assertTrue(LibDecimalFloatImplementation.eq(signedCoefficient, exponent, int256(base ** j), n), "exact");
+        assertTrue(LibTestExactDecimal.eq(signedCoefficient, exponent, int256(base ** j), n), "exact");
     }
 
     /// |pow10(x) - oracle| in billionths of a unit in the result's last place,
