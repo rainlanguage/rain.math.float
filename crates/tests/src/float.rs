@@ -1,13 +1,180 @@
 //! The library's arithmetic, comparisons, conversions and errors, through the
-//! bindings.
+//! concrete in revm.
 
+use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
+use crate::exact::show;
+use crate::reference::Dec;
+use T::TestDecimalFloatErrors as Errors;
+use alloy::primitives::I256;
 use alloy::primitives::aliases::I224;
-use alloy::primitives::{U256, fixed_bytes};
+use alloy::primitives::{B256, Bytes, FixedBytes, U256, fixed_bytes};
+use alloy::sol_types::{SolCall, SolInterface};
 use core::str::FromStr;
 use proptest::prelude::*;
-use rain_math_float::DecimalFloat::DecimalFloatErrors;
-use rain_math_float::{Float, FloatError};
-use std::ops::Neg;
+
+/// How a call failed: a revert, which must decode as one of the concrete's
+/// errors, or the error selector `parse` returns.
+#[derive(Debug)]
+enum Fail {
+    Revert(Errors),
+    Selector(FixedBytes<4>),
+}
+
+type R<V> = Result<V, Fail>;
+
+fn call<C: SolCall>(c: C) -> R<C::Return> {
+    evm::concrete(c).map_err(|out: Bytes| Fail::Revert(Errors::abi_decode(&out).unwrap()))
+}
+
+#[derive(Clone, Copy, Debug)]
+struct Float(B256);
+
+fn float<C: SolCall<Return = B256>>(c: C) -> R<Float> {
+    call(c).map(Float)
+}
+
+impl Float {
+    fn zero() -> R<Float> {
+        float(T::zeroCall {})
+    }
+
+    fn max_positive_value() -> R<Float> {
+        float(T::maxPositiveValueCall {})
+    }
+
+    fn min_positive_value() -> R<Float> {
+        float(T::minPositiveValueCall {})
+    }
+
+    fn max_negative_value() -> R<Float> {
+        float(T::maxNegativeValueCall {})
+    }
+
+    fn min_negative_value() -> R<Float> {
+        float(T::minNegativeValueCall {})
+    }
+
+    fn parse(str: String) -> R<Float> {
+        let r = call(T::parseCall { str })?;
+        if r._0 != FixedBytes::ZERO {
+            return Err(Fail::Selector(r._0));
+        }
+        Ok(Float(r._1))
+    }
+
+    fn pack_lossless(coefficient: I224, exponent: i32) -> R<Float> {
+        evm::harness(H::packLosslessCall {
+            signedCoefficient: I256::from_dec_str(&coefficient.to_string()).unwrap(),
+            exponent: I256::try_from(exponent).unwrap(),
+        })
+        .map(Float)
+        .map_err(|out| Fail::Revert(Errors::abi_decode(&out).unwrap()))
+    }
+
+    fn show_unpacked(self) -> R<String> {
+        Ok(show(&Dec::from_bytes(self.0)))
+    }
+
+    fn format_with_scientific(self, scientific: bool) -> R<String> {
+        call(T::formatCall {
+            a: self.0,
+            scientific,
+        })
+    }
+
+    fn from_fixed_decimal(value: U256, decimals: u8) -> R<Float> {
+        float(T::fromFixedDecimalLosslessCall { value, decimals })
+    }
+
+    fn from_fixed_decimal_lossy(value: U256, decimals: u8) -> R<(Float, bool)> {
+        call(T::fromFixedDecimalLossyCall { value, decimals }).map(|r| (Float(r._0), r._1))
+    }
+
+    fn to_fixed_decimal(self, decimals: u8) -> R<U256> {
+        call(T::toFixedDecimalLosslessCall {
+            float: self.0,
+            decimals,
+        })
+    }
+
+    fn to_fixed_decimal_lossy(self, decimals: u8) -> R<(U256, bool)> {
+        call(T::toFixedDecimalLossyCall {
+            float: self.0,
+            decimals,
+        })
+        .map(|r| (r._0, r._1))
+    }
+
+    fn min(self, b: Float) -> R<Float> {
+        float(T::minCall { a: self.0, b: b.0 })
+    }
+
+    fn max(self, b: Float) -> R<Float> {
+        float(T::maxCall { a: self.0, b: b.0 })
+    }
+
+    fn eq(self, b: Float) -> R<bool> {
+        call(T::eqCall { a: self.0, b: b.0 })
+    }
+
+    fn lt(self, b: Float) -> R<bool> {
+        call(T::ltCall { a: self.0, b: b.0 })
+    }
+
+    fn gt(self, b: Float) -> R<bool> {
+        call(T::gtCall { a: self.0, b: b.0 })
+    }
+
+    fn lte(self, b: Float) -> R<bool> {
+        call(T::lteCall { a: self.0, b: b.0 })
+    }
+
+    fn gte(self, b: Float) -> R<bool> {
+        call(T::gteCall { a: self.0, b: b.0 })
+    }
+
+    fn neg(self) -> R<Float> {
+        float(T::minusCall { a: self.0 })
+    }
+
+    fn abs(self) -> R<Float> {
+        float(T::absCall { a: self.0 })
+    }
+
+    fn inv(self) -> R<Float> {
+        float(T::invCall { a: self.0 })
+    }
+
+    fn integer(self) -> R<Float> {
+        float(T::integerCall { a: self.0 })
+    }
+
+    fn frac(self) -> R<Float> {
+        float(T::fracCall { a: self.0 })
+    }
+
+    fn floor(self) -> R<Float> {
+        float(T::floorCall { a: self.0 })
+    }
+
+    fn is_zero(self) -> R<bool> {
+        call(T::isZeroCall { a: self.0 })
+    }
+}
+
+macro_rules! binary {
+    ($($op:ident $f:ident $call:ident),*) => {$(
+        impl core::ops::$op for Float {
+            type Output = R<Float>;
+
+            fn $f(self, b: Float) -> R<Float> {
+                float(T::$call { a: self.0, b: b.0 })
+            }
+        }
+    )*};
+}
+
+binary!(Add add addCall, Sub sub subCall, Mul mul mulCall, Div div divCall);
 
 /// Float::zero() is_zero, formats as "0" and equals parsed "0".
 #[test]
@@ -45,22 +212,19 @@ prop_compose! {
     }
 }
 
-/// Parsing an empty string returns a DecimalFloatSelector error.
+/// Parsing an empty string returns an error selector.
 #[test]
 fn test_parse_empty_string_error() {
     let err = Float::parse("".to_string()).unwrap_err();
     // We don't know the exact selector here, just ensure the error path is hit.
-    assert!(matches!(err, FloatError::DecimalFloatSelector(_)));
+    assert!(matches!(err, Fail::Selector(_)));
 }
 
 #[test]
 fn test_parse_exponent_overflow_error() {
     // Extremely large exponent expected to overflow (exponent >> i32::MAX).
     let err = Float::parse("1e3000000000".to_string()).unwrap_err();
-    assert!(matches!(
-        err,
-        FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
-    ));
+    assert!(matches!(err, Fail::Revert(Errors::ExponentOverflow(_))));
 }
 
 /// Malformed inputs ("1.2.3", "abc") return specific error selectors.
@@ -69,14 +233,14 @@ fn test_parse_edge_cases() {
     let err = Float::parse("1.2.3".to_string()).unwrap_err();
     assert!(matches!(
         err,
-        FloatError::DecimalFloatSelector(Err(selector))
+        Fail::Selector(selector)
         if selector == fixed_bytes!("ad384e87")
     ));
 
     let err = Float::parse("abc".to_string()).unwrap_err();
     assert!(matches!(
         err,
-        FloatError::DecimalFloatSelector(Err(selector))
+        Fail::Selector(selector)
         if selector == fixed_bytes!("34bd2069")
     ));
 }
@@ -145,10 +309,7 @@ fn test_add_exponent_overflow_error() {
 
     let err = (a + a).unwrap_err();
 
-    assert!(matches!(
-        err,
-        FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
-    ));
+    assert!(matches!(err, Fail::Revert(Errors::ExponentOverflow(_))));
 }
 
 /// Subtracting opposite-sign max-exponent floats overflows.
@@ -163,10 +324,7 @@ fn test_sub_exponent_overflow_error() {
 
     let err = (b - a).unwrap_err();
 
-    assert!(matches!(
-        err,
-        FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
-    ));
+    assert!(matches!(err, Fail::Revert(Errors::ExponentOverflow(_))));
 }
 
 proptest! {
@@ -422,10 +580,7 @@ fn test_divide_by_zero_error() {
     let zero = Float::parse("0".to_string()).unwrap();
     let err = (one / zero).unwrap_err();
 
-    assert!(matches!(
-        err,
-        FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::DivisionByZero(_))
-    ));
+    assert!(matches!(err, Fail::Revert(Errors::DivisionByZero(_))));
 }
 
 /// Multiplying near-max exponents overflows.
@@ -435,10 +590,7 @@ fn test_mul_exponent_overflow_error() {
     let one_e_hundred = Float::parse("1e100".to_string()).unwrap();
 
     let err = (near_max_exp * one_e_hundred).unwrap_err();
-    assert!(matches!(
-        err,
-        FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
-    ));
+    assert!(matches!(err, Fail::Revert(Errors::ExponentOverflow(_))));
 }
 
 /// Dividing near-max exponent by small exponent overflows.
@@ -448,10 +600,7 @@ fn test_div_exponent_overflow_error() {
     let one_e_neg_hundred = Float::parse("1e-100".to_string()).unwrap();
 
     let err = (near_max_exp / one_e_neg_hundred).unwrap_err();
-    assert!(matches!(
-        err,
-        FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentOverflow(_))
-    ));
+    assert!(matches!(err, Fail::Revert(Errors::ExponentOverflow(_))));
 }
 
 /// Multiplying near-min exponents underflows; the public arithmetic
@@ -463,10 +612,7 @@ fn test_mul_exponent_underflow_error() {
     let one_e_neg_three = Float::parse("1e-3".to_string()).unwrap();
 
     let err = (near_min_exp * one_e_neg_three).unwrap_err();
-    assert!(matches!(
-        err,
-        FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::ExponentUnderflow(_))
-    ));
+    assert!(matches!(err, Fail::Revert(Errors::ExponentUnderflow(_))));
 }
 
 /// from_fixed_decimal for known value/decimals pairs matches parsed strings.
@@ -494,7 +640,7 @@ fn test_from_fixed_decimal_err() {
     let err = Float::from_fixed_decimal(U256::MAX, 1).unwrap_err();
     assert!(matches!(
         err,
-        FloatError::DecimalFloat(e) if matches!(*e, DecimalFloatErrors::LossyConversionToFloat(_))
+        Fail::Revert(Errors::LossyConversionToFloat(_))
     ));
 }
 
@@ -599,11 +745,15 @@ fn test_integer_whole_numbers() {
     assert!(neg.frac().unwrap().eq(zero).unwrap());
 }
 
+/// Every non-negative I224, a negative draw mapped to its complement -c - 1.
+fn non_negative_i224() -> impl Strategy<Value = I224> {
+    any::<I224>().prop_map(|c| if c.is_negative() { !c } else { c })
+}
+
 proptest! {
     #[test]
     /// from_fixed_decimal then to_fixed_decimal round-trips for any non-negative I224.
-    fn test_from_to_fixed_decimal_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
-        prop_assume!(coeff >= I224::ZERO);
+    fn test_from_to_fixed_decimal_valid_range(coeff in non_negative_i224(), decimals in 0u8..=66u8) {
 
         let exponent = -(decimals as i32);
         let value = U256::from(coeff);
@@ -894,8 +1044,7 @@ proptest! {
     #[test]
     /// Lossy fixed-decimal round-trip: from(decimals+1) then to(decimals) is
     /// lossy iff the last digit is nonzero.
-    fn test_from_to_fixed_decimal_lossy_valid_range(coeff in any::<I224>(), decimals in 0u8..=66u8) {
-        prop_assume!(coeff >= I224::ZERO);
+    fn test_from_to_fixed_decimal_lossy_valid_range(coeff in non_negative_i224(), decimals in 0u8..=66u8) {
 
         let exponent = -(decimals as i32 + 1);
         let value = U256::from(coeff);

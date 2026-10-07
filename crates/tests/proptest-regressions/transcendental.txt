@@ -1,0 +1,12 @@
+# Seeds for failure cases proptest has generated in the past. It is
+# automatically read and these particular cases re-run before any
+# novel cases are generated.
+#
+# It is recommended to check this file in to source control so that
+# everyone who runs the test benefits from these saved cases.
+cc 07151639ea5288d072716e61d6b571a6f95f002ff0ae4e2b824ca5e81294b1cb # shrinks to (a, b) = (Dec { c: 1, e: 1 }, Dec { c: 21474836572700314200, e: -10 })
+cc 849406c298d388ed38898f1d6df786d31d248e55ddfd7aea8ae7b4c46fc05f48 # shrinks to a = Dec { c: 9, e: 0 }
+cc 9da4d79f1ecb30e3ed6876a8413e9af7706a16a0b5111363947de2717ada13c1 # shrinks to x = Dec { c: -1155936584525592175827329430266168383894913008407363262280471, e: -52 }
+cc dbeda8670984aa5ed15f30626143386f7e372b20655b1cb4d2a7319e8fdb78e0 # shrinks to a = Dec { c: 999, e: 0 }
+cc 1914dc3f16e45c345fc2bcacfe28e8fdfaf555634492ae3124d82cd8f94c3330 # shrinks to (a, b) = (Dec { c: 1, e: 1 }, Dec { c: -6, e: 2147483632 })
+cc e58266e7aea5ade48e6dd40eec47ccc28a24775073cb578241afe61b60afc7fb # shrinks to (a, b) = (Dec { c: 999999999999999999999999999999999999999999999999999999999999999999, e: -66 }, Dec { c: 1, e: 64 })
