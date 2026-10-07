@@ -9,6 +9,7 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
 import {console2} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
+import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 contract LibDecimalFloatSqrtTest is LogTest {
     using LibDecimalFloat for Float;
@@ -17,12 +18,12 @@ contract LibDecimalFloatSqrtTest is LogTest {
     /// the root squared, so a over the square is within 2E + E2 of 1, plus
     /// higher orders and the quotient's packing, under 1e-65.
     function diffLimit() internal pure returns (Float) {
-        Float error = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_HALF);
+        Float error = LibTestErrorBound.sqrt();
         return error.add(error).add(LibTestErrorBound.pow(LibDecimalFloat.FLOAT_TWO))
             .add(LibDecimalFloat.packLossless(1, -65));
     }
 
-    function sqrtExternal(Float a, address tables) external view returns (Float) {
+    function sqrtExternal(Float a, address tables) external pure returns (Float) {
         return a.sqrt(tables);
     }
 
@@ -172,16 +173,14 @@ contract LibDecimalFloatSqrtTest is LogTest {
         return uint256(error < 0 ? -error : error);
     }
 
-    /// pow10 rounds to nearest with its fixed point power within
-    /// `POW10_RAW_ERROR` units, 5166.2 billionths of a unit, and its argument
-    /// is half log10Unrounded, within half of 2.245e-47, which moves the root
-    /// by 2.5847e-47 relative, 2584.7 billionths of a unit at most 1e-41
-    /// relative. With the half unit that is under 500007751.
+    /// Correctly rounded: within half a unit, and never at it as a root is
+    /// never a midpoint. The estimate's second order and truncation are far
+    /// below a billionth.
     function testSqrtUlpFuzz(int256 signedCoefficient, int256 exponent) external {
-        assertLe(sqrtUlpError(signedCoefficient, exponent), 500007751, "sqrt error");
+        assertLe(sqrtUlpError(signedCoefficient, exponent), 5e8, "sqrt error");
     }
 
-    /// x < y implies sqrt(x) <= sqrt(y) + 2E, down to adjacent coefficients.
+    /// x < y implies sqrt(x) <= sqrt(y), down to adjacent coefficients.
     function testSqrtMonotone(int256 signedCoefficient, int256 gap, int256 exponent) external {
         signedCoefficient = bound(signedCoefficient, 1, type(int224).max - 1e3);
         gap = bound(gap, 1, 1e3);
@@ -189,7 +188,115 @@ contract LibDecimalFloatSqrtTest is LogTest {
         address tables = logTables();
         Float low = LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt(tables);
         Float high = LibDecimalFloat.packLossless(signedCoefficient + gap, exponent).sqrt(tables);
-        Float error = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_HALF);
-        assertTrue(LibTestErrorBound.monotoneRelative(low, high, error, error), "monotone");
+        assertTrue(low.lte(high), "monotone");
+    }
+
+    /// x 10^d > m^2 in 512 bits, for x 10^d below 2^256 squared.
+    function past(uint256 x, uint256 d, uint256 m) internal pure returns (bool) {
+        (uint256 xHigh, uint256 xLow) = LibDecimalFloatImplementation.mul512(x, 10 ** d);
+        (uint256 mHigh, uint256 mLow) = LibDecimalFloatImplementation.mul512(m, m);
+        return xHigh > mHigh || (xHigh == mHigh && xLow > mLow);
+    }
+
+    /// The root c 10^e of a, c in [1e40, 1e41), is correctly rounded exactly
+    /// when (c - 1/2)^2 10^2e < a < (c + 1/2)^2 10^2e, with the lower midpoint
+    /// at c = 1e40 a twentieth of a unit below. With a = A 10^f for A in
+    /// [1e75, 1e76) both compare 4 A 10^(f - 2e) against (2c +- 1)^2.
+    function assertCorrectlyRounded(int256 signedCoefficient, int256 exponent, Float root) internal pure {
+        (int256 c, int256 e) = root.unpack();
+        while (c < 1e40) {
+            c *= 10;
+            e -= 1;
+        }
+        while (c >= 1e41) {
+            assertEq(c % 10, 0, "root digits");
+            c /= 10;
+            e += 1;
+        }
+        while (signedCoefficient < 1e75) {
+            signedCoefficient *= 10;
+            exponent -= 1;
+        }
+        int256 d = exponent - 2 * e;
+        assertTrue(d >= 4 && d <= 7, "root scale");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 x = uint256(signedCoefficient) * 4;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 m = uint256(2 * c);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertFalse(past(x, uint256(d), m + 1), "above upper midpoint");
+        if (c == 1e40) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertTrue(past(x, uint256(d + 2), 2e41 - 1), "below lower midpoint");
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertTrue(past(x, uint256(d), m - 1), "below lower midpoint");
+        }
+    }
+
+    function testSqrtCorrectlyRoundedFuzz(int256 signedCoefficient, int256 exponent) external {
+        signedCoefficient = bound(signedCoefficient, 1, type(int224).max);
+        exponent = bound(exponent, -1e9, 1e9);
+        Float root = LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt(logTables());
+        assertCorrectlyRounded(signedCoefficient, exponent, root);
+    }
+
+    /// A = floor((c + 1/2)^2 / 1e16) has a root within 5e-25 of a unit below
+    /// the midpoint (c + 1/2) 1e-8, and A + 1 a root above it, far inside
+    /// pow's 3.6e-8 of a unit, so only the midpoint comparison rounds them:
+    /// to c and to c + 1. 100^k scales the root by 10^k exactly.
+    function checkMidpoint(uint256 c, int256 k) internal {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 a = int256(Math.mulDiv(2 * c + 1, 2 * c + 1, 4e16));
+        address tables = logTables();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedC = int256(c);
+        assertTrue(
+            LibDecimalFloat.packLossless(a, 2 * k).sqrt(tables).eq(LibDecimalFloat.packLossless(signedC, k - 8)),
+            "below midpoint"
+        );
+        assertTrue(
+            LibDecimalFloat.packLossless(a + 1, 2 * k).sqrt(tables)
+                .eq(LibDecimalFloat.packLossless(signedC + 1, k - 8)),
+            "above midpoint"
+        );
+        assertCorrectlyRounded(a, 2 * k, LibDecimalFloat.packLossless(a, 2 * k).sqrt(tables));
+        assertCorrectlyRounded(a + 1, 2 * k, LibDecimalFloat.packLossless(a + 1, 2 * k).sqrt(tables));
+    }
+
+    /// The ends of the decade. At 1e41 - 1 the upper neighbour is 1e40 a
+    /// decade up, so a root that pow rounds to 1e40 is checked against the
+    /// midpoint 1e41 - 1/2 below it.
+    function testSqrtMidpointEnds() external {
+        checkMidpoint(1e40, 0);
+        checkMidpoint(1e41 - 1, 0);
+        checkMidpoint(1e41 - 1, -3);
+        checkMidpoint(1e40, 5);
+    }
+
+    /// m = 2c + 1 is the first odd m past sqrt(100007 2^256), with m^2 under
+    /// m / 4 past 100007 2^256. a = (c + 1/4)^2 floored to 67 digits has 4a
+    /// 10^k under m^2 by about 2c, so below 100007 2^256: the high words of
+    /// 4a 10^k and m^2 differ while 4a's low word is the larger.
+    function testSqrtMidpointStraddlesWord() external {
+        uint256 c = 53805249438034112592410659411875078206494;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 a = int256(Math.mulDiv(4 * c + 1, 4 * c + 1, 16e15));
+        (uint256 mHigh, uint256 mLow) = LibDecimalFloatImplementation.mul512(2 * c + 1, 2 * c + 1);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (uint256 xHigh, uint256 xLow) = LibDecimalFloatImplementation.mul512(uint256(a) * 4, 1e15);
+        assertEq(mHigh, 100007, "m high");
+        assertEq(xHigh, 100006, "x high");
+        assertGt(xLow, mLow, "low words");
+        Float root = LibDecimalFloat.packLossless(a, 15).sqrt(logTables());
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertTrue(root.eq(LibDecimalFloat.packLossless(int256(c), 0)), "root");
+        assertCorrectlyRounded(a, 15, root);
+    }
+
+    function testSqrtMidpointFuzz(uint256 c, int256 k) external {
+        c = bound(c, 1e40, 1e41 - 1);
+        k = bound(k, -5e8, 5e8);
+        checkMidpoint(c, k);
     }
 }
