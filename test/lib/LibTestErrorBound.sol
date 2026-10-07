@@ -3,38 +3,85 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {
-    LibDecimalFloatImplementation,
-    LOG10_RAW_ERROR,
-    POW10_RAW_ERROR,
-    POW_GUARD
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTranscendentalOracle, ORACLE_ONE} from "test/lib/LibTranscendentalOracle.sol";
+
+/// @dev log10's raw error in units of 1e-50: the README's 2e-50.
+uint256 constant DOCUMENTED_LOG10_RAW_ERROR = 2;
+
+/// @dev pow10's raw error in units of 1e-50: the README's 3.28e-8 of a unit
+/// of `DOCUMENTED_POW_GUARD`.
+uint256 constant DOCUMENTED_POW10_RAW_ERROR = 328;
+
+/// @dev Units of 1e-50 in a unit of the 41st digit of a power of 1e50 to 1e51
+/// units.
+uint256 constant DOCUMENTED_POW_GUARD = 1e10;
 
 /// The proven error bound E of each transcendental function, and the
 /// monotonicity it implies: for x < y, the results r have r(x) <= r(y) + 2E.
 library LibTestErrorBound {
     using LibDecimalFloat for Float;
 
-    /// Half a unit in the 41st significant digit of a nonzero result. A
-    /// result one digit wider than its rounding only makes this larger.
-    function halfUnit(Float result) internal pure returns (Float) {
-        (int256 signedCoefficient, int256 exponent) = result.unpack();
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
-        return LibDecimalFloat.packLossless(5, exponent + (signedCoefficient / 1e76 == 0 ? int256(34) : int256(35)));
+    /// Half a unit in the 41st significant digit of magnitude 10^exponent,
+    /// zero for a zero magnitude.
+    function halfUnit(uint256 magnitude, int256 exponent) internal pure returns (Float) {
+        if (magnitude == 0) {
+            return LibDecimalFloat.FLOAT_ZERO;
+        }
+        int256 order = exponent - 1;
+        for (; magnitude > 0; magnitude /= 10) {
+            order++;
+        }
+        return LibDecimalFloat.packLossless(5, order - 41);
     }
 
-    /// log10: half a unit plus `LOG10_RAW_ERROR` units of 1e-50, absolute.
-    function log10(Float result) internal pure returns (Float) {
+    /// log10 of a positive input: half a unit of the true log plus
+    /// `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, absolute. The unit is the
+    /// oracle's less its 1e-67, the smaller one where that straddles a power
+    /// of ten, as a raw log past the power rounds to it or is far inside the
+    /// raw error of it.
+    function log10(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
+        // The input is positive.
         // forge-lint: disable-next-line(unsafe-typecast)
-        Float raw = LibDecimalFloat.packLossless(int256(LOG10_RAW_ERROR), -50);
-        return result.isZero() ? raw : halfUnit(result).add(raw);
+        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        // |log10| as whole + fraction / ORACLE_ONE.
+        uint256 whole;
+        if (characteristic >= 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            whole = uint256(characteristic);
+        } else if (fraction == 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            whole = uint256(-characteristic);
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            whole = uint256(-characteristic) - 1;
+            fraction = ORACLE_ONE - fraction;
+        }
+        // Less the oracle's 1e-67, 1000 units of 1e-70.
+        if (fraction >= 1000) {
+            fraction -= 1000;
+        } else if (whole > 0) {
+            whole -= 1;
+            fraction += ORACLE_ONE - 1000;
+        } else {
+            fraction = 0;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float raw = LibDecimalFloat.packLossless(int256(DOCUMENTED_LOG10_RAW_ERROR), -50);
+        return (whole > 0 ? halfUnit(whole, 0) : halfUnit(fraction, -70)).add(raw);
     }
 
-    /// pow10, relative: half of `POW_GUARD` plus `POW10_RAW_ERROR`, over a
-    /// power of at least 1e50 units.
+    /// `log10` of a positive Float input.
+    function log10(Float a) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        return log10(signedCoefficient, exponent);
+    }
+
+    /// pow10, relative: half of `DOCUMENTED_POW_GUARD` plus
+    /// `DOCUMENTED_POW10_RAW_ERROR`, over a power of at least 1e50 units.
     function pow10() internal pure returns (Float) {
         // forge-lint: disable-next-line(unsafe-typecast)
-        return LibDecimalFloat.packLossless(int256(POW_GUARD / 2 + POW10_RAW_ERROR), -50);
+        return LibDecimalFloat.packLossless(int256(DOCUMENTED_POW_GUARD / 2 + DOCUMENTED_POW10_RAW_ERROR), -50);
     }
 
     /// pow, relative, for the integer part N of |b|: 5.0000004e-41, pow10's

@@ -105,12 +105,11 @@ contract LibDecimalFloatPowTest is Test {
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficientL, int256 exponentL) = LibTestPowRange.log10Abs(signedCoefficientA, exponentA);
         (signedCoefficientL, exponentL) =
-            LibDecimalFloatImplementation.mul(signedCoefficientL, exponentL, signedCoefficientB, exponentB);
-        (int256 slackCoefficient, int256 slackExponent) = LibDecimalFloatImplementation.mul(
+            LibTestExactDecimal.mulParts(signedCoefficientL, exponentL, signedCoefficientB, exponentB);
+        (int256 slackCoefficient, int256 slackExponent) = LibTestExactDecimal.mulParts(
             signedCoefficientB < 0 ? -signedCoefficientB : signedCoefficientB, exponentB, 3, -75
         );
-        (slackCoefficient, slackExponent) =
-            LibDecimalFloatImplementation.add(slackCoefficient, slackExponent, 50000004, -48);
+        (slackCoefficient, slackExponent) = LibTestExactDecimal.addParts(slackCoefficient, slackExponent, 50000004, -48);
         return LibTestPowRange.range(signedCoefficientL, exponentL, slackCoefficient, slackExponent);
     }
 

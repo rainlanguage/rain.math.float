@@ -3,12 +3,13 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation, LOG10_RAW_ERROR} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {DOCUMENTED_LOG10_RAW_ERROR} from "../../../lib/LibTestErrorBound.sol";
 import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
 import {LibTranscendentalOracle} from "../../../lib/LibTranscendentalOracle.sol";
 
 /// `log10Unrounded` against the oracle, which is within 1e-67, and its proven
-/// `LOG10_RAW_ERROR` units of 1e-50, plus under a unit of the exponent of the
+/// `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, plus under a unit of the exponent of the
 /// oracle's sum when the characteristic is summed by `add`.
 contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
     function log10UnroundedExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
@@ -44,7 +45,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         (int256 errorCoefficient, int256 errorExponent,, int256 expectedExponent) =
             errorAgainstOracle(signedCoefficient, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 boundCoefficient, int256 boundExponent) = (int256(LOG10_RAW_ERROR) * 1e17 + 1, int256(-67));
+        (int256 boundCoefficient, int256 boundExponent) = (int256(DOCUMENTED_LOG10_RAW_ERROR) * 1e17 + 1, int256(-67));
         if (expectedExponent > -50) {
             (boundCoefficient, boundExponent) =
                 LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, expectedExponent);

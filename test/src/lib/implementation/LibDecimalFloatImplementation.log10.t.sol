@@ -2,13 +2,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation, LOG10_RAW_ERROR} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
 import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestErrorBound} from "../../../lib/LibTestErrorBound.sol";
+import {LibTestErrorBound, DOCUMENTED_LOG10_RAW_ERROR} from "../../../lib/LibTestErrorBound.sol";
 
 contract LibDecimalFloatImplementationLog10Test is Test {
     function checkLog10(
@@ -58,7 +58,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         );
     }
 
-    /// Away from powers of ten the error is within `LOG10_RAW_ERROR` units of
+    /// Away from powers of ten the error is within `DOCUMENTED_LOG10_RAW_ERROR` units of
     /// 1e-50, and the 70 digit references are within 1e-67.
     function testLog10Accuracy() external pure {
         int256[4][] memory references = log10References();
@@ -66,7 +66,9 @@ contract LibDecimalFloatImplementationLog10Test is Test {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.log10Unrounded(references[i][0], references[i][1]);
             // forge-lint: disable-next-line(unsafe-typecast)
-            assertErrorWithin(signedCoefficient, exponent, references[i], int256(LOG10_RAW_ERROR) * 1e17 + 1, -67);
+            assertErrorWithin(
+                signedCoefficient, exponent, references[i], int256(DOCUMENTED_LOG10_RAW_ERROR) * 1e17 + 1, -67
+            );
         }
     }
 
@@ -108,9 +110,8 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.log10(references[i][0], references[i][1]);
-            (int256 boundCoefficient, int256 boundExponent) = LibDecimalFloat.unpack(
-                LibTestErrorBound.log10(LibDecimalFloat.packLossless(signedCoefficient, exponent))
-            );
+            (int256 boundCoefficient, int256 boundExponent) =
+                LibDecimalFloat.unpack(LibTestErrorBound.log10(references[i][0], references[i][1]));
             (boundCoefficient, boundExponent) =
                 LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, references[i][3]);
             assertErrorWithin(signedCoefficient, exponent, references[i], boundCoefficient, boundExponent);
@@ -560,7 +561,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         return Math.mulDiv(error, 1e9, 10 ** uint256(70 + ulpExponent(logCoefficient, logExponent)));
     }
 
-    /// Half a unit plus `LOG10_RAW_ERROR` units of 1e-50, which is 200
+    /// Half a unit plus `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, which is 200
     /// billionths of a last place at least 1e-43. The oracle is within 101
     /// units of 1e-70: each truncated prime log is under a unit low and
     /// log10OnePlus is within 2. That is under 1e-16 billionths, and the
@@ -570,17 +571,23 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         pure
     {
         assertLe(
-            log10OracleError(primeSeed, j, p, d, negative, n, true), 500000000 + LOG10_RAW_ERROR * 100, "log10 error"
+            log10OracleError(primeSeed, j, p, d, negative, n, true),
+            500000000 + DOCUMENTED_LOG10_RAW_ERROR * 100,
+            "log10 error"
         );
     }
 
-    /// `LOG10_RAW_ERROR` units of 1e-50, plus the oracle's 101 units of 1e-70
+    /// `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, plus the oracle's 101 units of 1e-70
     /// and the unit the comparison truncates.
     function testLog10UnroundedOracleFuzz(uint256 primeSeed, uint256 j, uint256 p, uint256 d, bool negative, int256 n)
         external
         pure
     {
-        assertLe(log10OracleError(primeSeed, j, p, d, negative, n, false), LOG10_RAW_ERROR * 1e20 + 102, "log10 error");
+        assertLe(
+            log10OracleError(primeSeed, j, p, d, negative, n, false),
+            DOCUMENTED_LOG10_RAW_ERROR * 1e20 + 102,
+            "log10 error"
+        );
     }
 
     /// x = 1 ± d / 10^p, within a factor 1.001 of 1, and log10(x) from the
@@ -727,7 +734,12 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         Float low = LibDecimalFloat.packLossless(lowCoefficient, lowExponent);
         Float high = LibDecimalFloat.packLossless(highCoefficient, highExponent);
         assertTrue(
-            LibTestErrorBound.monotoneAbsolute(low, high, LibTestErrorBound.log10(low), LibTestErrorBound.log10(high)),
+            LibTestErrorBound.monotoneAbsolute(
+                low,
+                high,
+                LibTestErrorBound.log10(signedCoefficient, exponent),
+                LibTestErrorBound.log10(signedCoefficient + gap, exponent)
+            ),
             "monotone"
         );
     }

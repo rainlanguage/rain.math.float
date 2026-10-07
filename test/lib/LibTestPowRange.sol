@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibTranscendentalOracle, ORACLE_LN10} from "test/lib/LibTranscendentalOracle.sol";
 
 /// Where a power 10^L, computed within a slack of L in log10, can land against the
@@ -22,6 +22,22 @@ int256 constant LOG10_MAX_COEFFICIENT = 2147483714129689033067806532663773523561
 int256 constant LOG10_MAX_EXPONENT = -36;
 
 library LibTestPowRange {
+    /// Compares ca 10^ea with cb 10^eb exactly, returning -1, 0 or 1.
+    function cmp(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256) {
+        int256 signA = ca > 0 ? int256(1) : ca < 0 ? int256(-1) : int256(0);
+        int256 signB = cb > 0 ? int256(1) : cb < 0 ? int256(-1) : int256(0);
+        if (signA != signB || signA == 0) {
+            return signA < signB ? int256(-1) : signA > signB ? int256(1) : int256(0);
+        }
+        int256 magnitude = LibTestExactDecimal.cmpScaled(
+            LibTestExactDecimal.u512(LibTestExactDecimal.abs(ca)),
+            ea,
+            LibTestExactDecimal.u512(LibTestExactDecimal.abs(cb)),
+            eb
+        );
+        return signA * magnitude;
+    }
+
     /// log10 |a| for a nonzero a other than +-1, unpacked, from the oracle.
     /// Within 1e-63 relative: a within 1e-3 of 1 goes through ln(1 + u) / u,
     /// relative to 1e-68, and any other has |log10 a| over 4.3e-4 against the
@@ -38,16 +54,16 @@ library LibTestPowRange {
                 uint256 ratio = LibTranscendentalOracle.lnOnePlusOverRatio(distance, unit, below);
                 // distance is under 1e74 and ratio under 2e70, so both fit.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                (int256 c, int256 e) = LibDecimalFloatImplementation.mul(int256(distance), exponent, int256(ratio), -70);
+                (int256 c, int256 e) = LibTestExactDecimal.mulParts(int256(distance), exponent, int256(ratio), -70);
                 // forge-lint: disable-next-line(unsafe-typecast)
-                (c, e) = LibDecimalFloatImplementation.div(c, e, int256(ORACLE_LN10), -70);
+                (c, e) = LibTestExactDecimal.divParts(c, e, int256(ORACLE_LN10), -70);
                 return (below ? -c : c, e);
             }
         }
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(magnitude, exponent);
         // fraction is under 1e70 and so fits.
         // forge-lint: disable-next-line(unsafe-typecast)
-        return LibDecimalFloatImplementation.add(characteristic, 0, int256(fraction), -70);
+        return LibTestExactDecimal.addParts(characteristic, 0, int256(fraction), -70);
     }
 
     /// The range of a power 10^L for L = signedCoefficient 10^exponent, where
@@ -59,26 +75,24 @@ library LibTestPowRange {
         pure
         returns (PowRange)
     {
-        (int256 marginCoefficient, int256 marginExponent) = LibDecimalFloatImplementation.mul(
-            signedCoefficient < 0 ? -signedCoefficient : signedCoefficient, exponent, 1, -60
-        );
+        (int256 marginCoefficient, int256 marginExponent) =
+            (signedCoefficient < 0 ? -signedCoefficient : signedCoefficient, exponent - 60);
+        (marginCoefficient, marginExponent) = LibTestExactDecimal.addParts(marginCoefficient, marginExponent, 1, -30);
         (marginCoefficient, marginExponent) =
-            LibDecimalFloatImplementation.add(marginCoefficient, marginExponent, 1, -30);
-        (marginCoefficient, marginExponent) =
-            LibDecimalFloatImplementation.add(marginCoefficient, marginExponent, slackCoefficient, slackExponent);
+            LibTestExactDecimal.addParts(marginCoefficient, marginExponent, slackCoefficient, slackExponent);
 
         (int256 highCoefficient, int256 highExponent) =
-            LibDecimalFloatImplementation.add(signedCoefficient, exponent, marginCoefficient, marginExponent);
+            LibTestExactDecimal.addParts(signedCoefficient, exponent, marginCoefficient, marginExponent);
         (int256 lowCoefficient, int256 lowExponent) =
-            LibDecimalFloatImplementation.sub(signedCoefficient, exponent, marginCoefficient, marginExponent);
+            LibTestExactDecimal.addParts(signedCoefficient, exponent, -marginCoefficient, marginExponent);
 
-        if (LibDecimalFloatImplementation.gt(lowCoefficient, lowExponent, LOG10_MAX_COEFFICIENT, LOG10_MAX_EXPONENT)) {
+        if (cmp(lowCoefficient, lowExponent, LOG10_MAX_COEFFICIENT, LOG10_MAX_EXPONENT) > 0) {
             return PowRange.Over;
-        } else if (LibDecimalFloatImplementation.lt(highCoefficient, highExponent, type(int32).min, 0)) {
+        } else if (cmp(highCoefficient, highExponent, type(int32).min, 0) < 0) {
             return PowRange.Under;
         } else if (
-            !LibDecimalFloatImplementation.gt(highCoefficient, highExponent, LOG10_MAX_COEFFICIENT, LOG10_MAX_EXPONENT)
-                && !LibDecimalFloatImplementation.lt(lowCoefficient, lowExponent, type(int32).min, 0)
+            !(cmp(highCoefficient, highExponent, LOG10_MAX_COEFFICIENT, LOG10_MAX_EXPONENT) > 0)
+                && !(cmp(lowCoefficient, lowExponent, type(int32).min, 0) < 0)
         ) {
             return PowRange.Inside;
         }

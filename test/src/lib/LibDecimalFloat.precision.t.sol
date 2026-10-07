@@ -161,7 +161,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         return LibDecimalFloatImplementation.add(characteristic, 0, int256(fraction), -70);
     }
 
-    /// log10 a within half a unit plus `LOG10_RAW_ERROR` units of 1e-50, plus
+    /// log10 a within half a unit plus `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, plus
     /// the oracle's 1e-67.
     function assertLog10Reference(Float a, string memory what) internal view {
         Float actual = this.log10External(a);
@@ -170,10 +170,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         (int256 errorCoefficient, int256 errorExponent) =
             LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
         assertWithin(
-            errorCoefficient,
-            errorExponent,
-            LibTestErrorBound.log10(actual).add(LibDecimalFloat.packLossless(1, -67)),
-            what
+            errorCoefficient, errorExponent, LibTestErrorBound.log10(a).add(LibDecimalFloat.packLossless(1, -67)), what
         );
     }
 
@@ -225,10 +222,11 @@ contract LibDecimalFloatPrecisionTest is Test {
     function assertLog10Product(Float a, Float b) internal view {
         Float logA = this.log10External(a);
         Float logB = this.log10External(b);
-        Float logProduct = this.log10External(a.mul(b));
+        Float product = a.mul(b);
+        Float logProduct = this.log10External(product);
         assertWithin(
             absoluteError(logProduct, logA.add(logB)),
-            LibTestErrorBound.log10(logProduct).add(LibTestErrorBound.log10(logA)).add(LibTestErrorBound.log10(logB))
+            LibTestErrorBound.log10(product).add(LibTestErrorBound.log10(a)).add(LibTestErrorBound.log10(b))
                 .add(log10ProductSlack()),
             "log10 product"
         );
@@ -240,7 +238,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         Float log = this.log10External(a);
         assertWithin(
             relativeError(this.pow10External(log), a),
-            LibTestErrorBound.pow10().add(LibTestErrorBound.log10(log).mul(LibDecimalFloat.packLossless(23027, -4)))
+            LibTestErrorBound.pow10().add(LibTestErrorBound.log10(a).mul(LibDecimalFloat.packLossless(23027, -4)))
                 .add(packingSlack()),
             "pow10 log10"
         );
@@ -325,6 +323,25 @@ contract LibDecimalFloatPrecisionTest is Test {
         assertLog10Reference(positive(coefficient, exponent, region), "log10");
     }
 
+    /// log10 a three units of the 41st digit inside a power of ten in
+    /// magnitude, where the true log's unit is a tenth of the power's. The
+    /// logs, from `bc -l`, are within 1e-66 of 1 - 3e-41, -1 + 3e-41 and
+    /// 10 - 3e-40.
+    function testLog10ReferenceInsidePowersOfTen() external view {
+        assertLog10Reference(
+            LibDecimalFloat.packLossless(9999999999999999999999999999999999999999309224472101786294794602563, -66),
+            "inside 1"
+        );
+        assertLog10Reference(
+            LibDecimalFloat.packLossless(1000000000000000000000000000000000000000069077552789821370520539743, -67),
+            "inside -1"
+        );
+        assertLog10Reference(
+            LibDecimalFloat.packLossless(9999999999999999999999999999999999999993092244721017862947946025635, -57),
+            "inside 10"
+        );
+    }
+
     /// log10(10^k) is exactly k, for every k a Float can hold, whatever power
     /// of ten carries it.
     function testLog10Anchors(int32 k, uint8 digits) external view {
@@ -339,8 +356,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         Float low = this.log10External(a);
         Float high = this.log10External(b);
         assertTrue(
-            LibTestErrorBound.monotoneAbsolute(low, high, LibTestErrorBound.log10(low), LibTestErrorBound.log10(high)),
-            what
+            LibTestErrorBound.monotoneAbsolute(low, high, LibTestErrorBound.log10(a), LibTestErrorBound.log10(b)), what
         );
     }
 
