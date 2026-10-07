@@ -10,7 +10,6 @@ import {
     DivisionByZero,
     MaximizeOverflow
 } from "../../error/ErrDecimalFloat.sol";
-import {LOG_TABLE_SIZE_BYTES, LOG_TABLE_SIZE_BASE} from "../table/LibLogTable.sol";
 
 /// @dev Thrown when attempting to rescale a coefficient to a target exponent
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
@@ -812,38 +811,6 @@ library LibDecimalFloatImplementation {
     /// @return exponent The exponent of the inverted float.
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         return div(1e76, -76, signedCoefficient, exponent);
-    }
-
-    /// Looks up the log10 table value for a given index.
-    /// @param tables The address of the log tables data contract.
-    /// @param index The index into the log table.
-    /// @return result The log10 table value.
-    function lookupLogTableVal(address tables, uint256 index) internal view returns (uint256 result) {
-        // Skip first byte of data contract.
-        uint256 smallTableOffset = LOG_TABLE_SIZE_BYTES + 1;
-        uint256 logTableSizeBase = LOG_TABLE_SIZE_BASE;
-        assembly ("memory-safe") {
-            // First byte of the data contract must be skipped.
-            // truncation from the div by 10 is intentional here to keep the
-            // main offset and small offset distinct.
-            // slither-disable-next-line divide-before-multiply
-            let mainOffset := add(1, mul(div(index, 10), 2))
-            mstore(0, 0)
-            extcodecopy(tables, 30, mainOffset, 2)
-            let mainTableVal := mload(0)
-
-            result := and(mainTableVal, 0x7FFF)
-            if iszero(iszero(and(mainTableVal, 0x8000))) {
-                smallTableOffset := add(smallTableOffset, logTableSizeBase)
-            }
-
-            mstore(0, 0)
-            // truncation from the div by 100 is intentional here to keep the
-            // small table offset and small offset distinct.
-            // slither-disable-next-line divide-before-multiply
-            extcodecopy(tables, 31, add(smallTableOffset, add(mul(div(index, 100), 10), mod(index, 10))), 1)
-            result := add(result, mload(0))
-        }
     }
 
     /// log10(x) for a float x, rounded to nearest at 41 significant digits,

@@ -438,8 +438,7 @@ fn test_log_table_small_published() {
 }
 
 /// The four-figure lookup error of the shipped, published, all-derived and
-/// per-entry selected small tables, measured independently of the Solidity
-/// log10 that LibDecimalFloatLog10TablesTest measures.
+/// per-entry selected small tables.
 #[test]
 fn test_log_lookup_table_variants() {
     let main = log_table_dec();
