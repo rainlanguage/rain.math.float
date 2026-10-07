@@ -1012,21 +1012,23 @@ library LibDecimalFloatImplementation {
         uint256 series;
         uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
         assembly ("memory-safe") {
-            let mm := mulmod(z, z, not(0))
-            let prod0 := mul(z, z)
-            let remainder := mulmod(z, z, 100000000000000000000000000000000000000000000000000)
+            // floor(z^2 / 1e50) exactly, as u^2 + floor((2 u v 1e25 + v^2) /
+            // 1e50) for z = u 1e25 + v. z is at most 1e50, so u is at most 1e25
+            // and the dividend is under 2e75 + 1e50, which fits a word.
+            let u := div(z, 10000000000000000000000000)
+            let v := mod(z, 10000000000000000000000000)
             let zSquared :=
-                mul(
-                    or(
-                        shr(50, sub(prod0, remainder)),
-                        shl(206, sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0)))
-                    ),
-                    inverse
+                add(
+                    mul(u, u),
+                    div(
+                        add(mul(mul(u, v), 20000000000000000000000000), mul(v, v)),
+                        100000000000000000000000000000000000000000000000000
+                    )
                 )
             series := add(100000000000000000000000000000000000000000000000000, div(zSquared, 3))
-            mm := mulmod(zSquared, zSquared, not(0))
-            prod0 := mul(zSquared, zSquared)
-            remainder := mulmod(zSquared, zSquared, 100000000000000000000000000000000000000000000000000)
+            let mm := mulmod(zSquared, zSquared, not(0))
+            let prod0 := mul(zSquared, zSquared)
+            let remainder := mulmod(zSquared, zSquared, 100000000000000000000000000000000000000000000000000)
             let term :=
                 mul(
                     or(
