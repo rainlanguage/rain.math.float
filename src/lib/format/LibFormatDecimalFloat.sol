@@ -24,8 +24,6 @@ library LibFormatDecimalFloat {
     uint256 private constant E64 = 1e64;
     /// 32 ASCII `0` bytes.
     bytes32 private constant ZEROS = 0x3030303030303030303030303030303030303030303030303030303030303030;
-    /// ASCII `0.`, left aligned.
-    bytes32 private constant ZERO_POINT = 0x302e000000000000000000000000000000000000000000000000000000000000;
 
     /// Format a decimal float as a string.
     /// Not particularly efficient as it is intended for offchain use that
@@ -47,6 +45,7 @@ library LibFormatDecimalFloat {
     /// Scientific notation: render as `d.dddeN` where the leading digit is the
     /// most significant digit of the maximized coefficient, so the display
     /// exponent is the maximized exponent plus 75 or 76.
+    //slither-disable-next-line cyclomatic-complexity
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory out) {
         int256 originalExponent = exponent;
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
@@ -131,6 +130,7 @@ library LibFormatDecimalFloat {
     /// `10^exponent` as an integer, so the output is valid for any
     /// `|exponent| <= MAX_NON_SCIENTIFIC_EXPONENT` — including exponents below
     /// `-76` that arise from near-cancellation add/sub.
+    //slither-disable-next-line cyclomatic-complexity
     function _toNonScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory out) {
         if (exponent > MAX_NON_SCIENTIFIC_EXPONENT || exponent < -MAX_NON_SCIENTIFIC_EXPONENT) {
             revert UnformatableExponent(exponent);
@@ -202,7 +202,8 @@ library LibFormatDecimalFloat {
                 switch gt(digits, fractionDigits)
                 case 0 {
                     // "0." + leading zeros + significant digits.
-                    mstore(cursor, ZERO_POINT)
+                    // ASCII `0.`, left aligned.
+                    mstore(cursor, shl(240, 0x302e))
                     cursor := add(cursor, 2)
                     let leadingZeros := sub(fractionDigits, digits)
                     for { let i := 0 } lt(i, leadingZeros) { i := add(i, 0x20) } {
