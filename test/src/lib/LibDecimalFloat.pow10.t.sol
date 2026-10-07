@@ -19,15 +19,15 @@ contract LibDecimalFloatPow10Test is LogTest {
     }
 
     /// `pow10` of an input whose effective result exponent falls below
-    /// `int32.min` reverts instead of silently producing `FLOAT_ZERO`.
+    /// `int32.min` reverts instead of silently producing `FLOAT_ZERO`. x is
+    /// -3.74e49, its coefficient and exponent the low 224 and high 32 bits.
     function testPow10RevertsOnExponentUnderflow() external {
         Float float = Float.wrap(0xffffffffffffffffffffff0000000000000000000000000000000000000000ff);
-        // 10^x for x = -3.74...160.1 is 10^-0.1 = 0.794328234724281502065918282836387932588960 from `bc -l`.
         vm.expectRevert(
             abi.encodeWithSelector(
                 ExponentUnderflow.selector,
-                int256(79432823472428150206591828283638793258896),
-                int256(-37414441915671114706014331717536845303191873100201)
+                int256(-374144419156711147060143317175368453031918731001601),
+                int256(-1)
             )
         );
         this.pow10External(float);
@@ -86,7 +86,7 @@ contract LibDecimalFloatPow10Test is LogTest {
 
     /// 10^(int32.max + 68) is 1e68 at int32.max, past int224.
     function testPow10PastInt32MaxOverflows() external {
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(type(int32).max) + 68));
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(type(int32).max) + 68, int256(0)));
         this.pow10External(LibDecimalFloat.packLossless(int256(type(int32).max) + 68, 0));
     }
 
@@ -116,15 +116,15 @@ contract LibDecimalFloatPow10Test is LogTest {
                     assertTrue(range != PowRange.Over, "returned past the range");
                 } else {
                     assertTrue(range == PowRange.Over || range == PowRange.OverEdge, "overflow inside the range");
-                    vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+                    vm.expectRevert(LibTestPowRange.rangeError(true, float));
                     this.pow10External(float);
                 }
             } else {
-                // Predict whether packArithmeticResult will revert on underflow.
+                // Predict whether packing underflows.
                 (Float predicted, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
                 if (!lossless && Float.unwrap(predicted) == bytes32(0)) {
                     assertTrue(range == PowRange.Under || range == PowRange.UnderEdge, "underflow inside the range");
-                    vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
+                    vm.expectRevert(LibTestPowRange.rangeError(false, float));
                     this.pow10External(float);
                 } else {
                     Float floatPower10 = this.pow10External(float);
@@ -144,13 +144,7 @@ contract LibDecimalFloatPow10Test is LogTest {
                 assertTrue(
                     range == PowRange.Over || range == PowRange.Under, "implementation reverted inside the range"
                 );
-                vm.expectRevert(
-                    abi.encodeWithSelector(
-                        range == PowRange.Over ? ExponentOverflow.selector : ExponentUnderflow.selector,
-                        signedCoefficientFloat,
-                        exponentFloat
-                    )
-                );
+                vm.expectRevert(LibTestPowRange.rangeError(range == PowRange.Over, float));
                 this.pow10External(float);
             }
         }

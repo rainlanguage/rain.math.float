@@ -868,6 +868,7 @@ library LibDecimalFloat {
     /// place, only when both true values lie within the raw error of the same
     /// rounding tie, and never by more. Callers must not rely on strict
     /// ordering at one-ulp resolution. 10^k is exactly 10^k for an integer k.
+    /// Every range error reports `float`, unpacked.
     function pow10(Float float, address) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         // A zero of any exponent, which the integer part below cannot rescale.
@@ -885,13 +886,10 @@ library LibDecimalFloat {
                         // forge-lint: disable-next-line(unsafe-typecast)
                         || signedCoefficient < type(int256).min / int256(10 ** uint256(exponent))))
         ) {
-            if (signedCoefficient < 0) {
-                revert ExponentUnderflow(signedCoefficient, exponent);
-            }
-            revert ExponentOverflow(signedCoefficient, exponent);
+            revertPast(signedCoefficient > 0, float);
         }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
-        return packArithmeticResult(signedCoefficient, exponent);
+        return packPowResult(signedCoefficient, exponent, float);
     }
 
     /// Same as log10, but accepts a Float struct instead of separate values.
@@ -952,6 +950,8 @@ library LibDecimalFloat {
     /// A negative `a` is supported only for a whole `b`, where the result is
     /// `(-a)^b` with the sign of `a` kept when `b` is odd. A negative `a` with a
     /// fractional `b` reverts `PowNegativeBase`.
+    ///
+    /// Every range error reports `a`, unpacked.
     /// @param a The float `a` in `a^b`.
     /// @param b The float `b` in `a^b`.
     /// @param tablesDataContract Unused, and kept so that callers need not
@@ -959,17 +959,20 @@ library LibDecimalFloat {
     /// @return The result of a^b.
     function pow(Float a, Float b, address tablesDataContract) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
-        return packRoundedSignificant(signedCoefficientA, exponentA);
+        (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract, a);
+        return packRoundedSignificant(signedCoefficientA, exponentA, a);
     }
 
     /// `pow` before rounding and packing, so a negative base and an odd power
     /// are negated unpacked: int224.min at int32.max has no packed negation.
-    function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b, address tablesDataContract)
-        private
-        pure
-        returns (int256, int256)
-    {
+    /// `input` is the `a` pow was called with, which range errors report.
+    function powUnrounded(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        Float b,
+        address tablesDataContract,
+        Float input
+    ) private pure returns (int256, int256) {
         if (b.isZero()) {
             (signedCoefficientA, exponentA) = FLOAT_ONE.unpack();
             return (signedCoefficientA, exponentA);
@@ -991,7 +994,7 @@ library LibDecimalFloat {
                     revert PowNegativeBase(signedCoefficientA, exponentA);
                 }
                 (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
-                (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
+                (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract, input);
                 if (b.isOdd()) {
                     (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
                 }
@@ -1027,7 +1030,7 @@ library LibDecimalFloat {
             }
             int256 integerB;
             (integerB, fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
-            revertIfIntegerBPastInt256(signedCoefficientA, exponentA, integerB, exponentB);
+            revertIfIntegerBPastInt256(signedCoefficientA, exponentA, integerB, exponentB, input);
             exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
         }
 
@@ -1049,10 +1052,10 @@ library LibDecimalFloat {
                 // int256 and panics. A base this far out means the result,
                 // which moves away from 1 with it, cannot be packed either.
                 if (exponentBase > type(int128).max) {
-                    revert ExponentOverflow(signedCoefficientBase, exponentBase);
+                    revertPast(true, input);
                 }
                 if (exponentBase < type(int128).min) {
-                    revert ExponentUnderflow(signedCoefficientBase, exponentBase);
+                    revertPast(false, input);
                 }
             }
         }
@@ -1079,23 +1082,93 @@ library LibDecimalFloat {
 
     /// Rounds to 41 significant digits and packs. A rounding that carries
     /// above the largest Float packs the unrounded value instead.
-    function packRoundedSignificant(int256 signedCoefficient, int256 exponent) private pure returns (Float) {
+    function packRoundedSignificant(int256 signedCoefficient, int256 exponent, Float input)
+        private
+        pure
+        returns (Float)
+    {
         (int256 roundedCoefficient, int256 roundedExponent) =
             LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
         // Only a carry can leave the unrounded value packable. When the rounded
-        // value cannot lift, the unrounded one is packed, and if it cannot lift
-        // either its revert reports it. Past an excess of 67 neither can lift
-        // and the revert reports the rounded value.
+        // value cannot lift, the unrounded one is packed. Past an excess of 67
+        // neither can lift.
         int256 excess = roundedExponent - type(int32).max;
         if (excess > 0 && excess <= 67) {
             // excess is in [1, 67] so the casts cannot truncate.
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 scale = int256(10 ** uint256(excess));
             if (roundedCoefficient > type(int224).max / scale || roundedCoefficient < type(int224).min / scale) {
-                return packArithmeticResult(signedCoefficient, exponent);
+                return packPowResult(signedCoefficient, exponent, input);
             }
         }
-        return packArithmeticResult(roundedCoefficient, roundedExponent);
+        return packPowResult(roundedCoefficient, roundedExponent, input);
+    }
+
+    /// The range error of a pow or pow10 result past every Float, reporting
+    /// the call's input.
+    function revertPast(bool over, Float input) private pure {
+        (int256 signedCoefficient, int256 exponent) = input.unpack();
+        if (over) {
+            revert ExponentOverflow(signedCoefficient, exponent);
+        }
+        revert ExponentUnderflow(signedCoefficient, exponent);
+    }
+
+    /// `packArithmeticResult` for pow and pow10, its range errors reporting
+    /// the call's input. A zero coefficient comes only with exponent 0.
+    function packPowResult(int256 signedCoefficient, int256 exponent, Float input) private pure returns (Float float) {
+        unchecked {
+            int256 initialSignedCoefficient = signedCoefficient;
+            int256 initialExponent = exponent;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bool fits = int224(signedCoefficient) == signedCoefficient;
+            if (!fits) {
+                if (signedCoefficient / 1e72 != 0) {
+                    signedCoefficient /= 1e5;
+                    exponent += 5;
+                }
+                // forge-lint: disable-next-line(unsafe-typecast)
+                while (int224(signedCoefficient) != signedCoefficient) {
+                    signedCoefficient /= 10;
+                    ++exponent;
+                }
+            }
+            // Shed, lifted and floored as `packLossy` does.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (int32(exponent) != exponent) {
+                if (initialExponent > 0) {
+                    int256 excess = exponent - type(int32).max;
+                    if (!fits || excess > 67) {
+                        revertPast(true, input);
+                    }
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    int256 scale = int256(10 ** uint256(excess));
+                    if (
+                        initialSignedCoefficient > type(int224).max / scale
+                            || initialSignedCoefficient < type(int224).min / scale
+                    ) {
+                        revertPast(true, input);
+                    }
+                    signedCoefficient = initialSignedCoefficient * scale;
+                    exponent = type(int32).max;
+                } else {
+                    int256 shortfall = int256(type(int32).min) - exponent;
+                    if (shortfall > 67) {
+                        revertPast(false, input);
+                    }
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    signedCoefficient /= int256(10 ** uint256(shortfall));
+                    if (signedCoefficient == 0) {
+                        revertPast(false, input);
+                    }
+                    exponent = type(int32).min;
+                }
+            }
+            uint256 mask = type(uint224).max;
+            assembly ("memory-safe") {
+                float := or(and(signedCoefficient, mask), shl(0xe0, exponent))
+            }
+        }
     }
 
     function isOne(int256 signedCoefficient, int256 exponent) private pure returns (bool) {
@@ -1111,16 +1184,16 @@ library LibDecimalFloat {
     /// An integer part of b past int256 is over 5.7e76 and every a but 1 is at
     /// least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power is past
     /// the range, on the side a is of 1.
-    function revertIfIntegerBPastInt256(int256 signedCoefficientA, int256 exponentA, int256 integerB, int256 exponentB)
-        private
-        pure
-    {
+    function revertIfIntegerBPastInt256(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 integerB,
+        int256 exponentB,
+        Float input
+    ) private pure {
         // forge-lint: disable-next-line(unsafe-typecast)
         if (exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)))) {
-            if (isBelowOne(signedCoefficientA, exponentA)) {
-                revert ExponentUnderflow(signedCoefficientA, exponentA);
-            }
-            revert ExponentOverflow(signedCoefficientA, exponentA);
+            revertPast(!isBelowOne(signedCoefficientA, exponentA), input);
         }
     }
 
@@ -1138,7 +1211,7 @@ library LibDecimalFloat {
     function sqrt(Float a, address tablesDataContract) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficient, int256 exponent) =
-            powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF, tablesDataContract);
+            powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF, tablesDataContract, a);
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
         if (signedCoefficient > 0) {
             (signedCoefficient, exponent) = roundRoot(signedCoefficientA, exponentA, signedCoefficient, exponent);

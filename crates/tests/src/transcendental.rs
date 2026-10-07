@@ -31,11 +31,35 @@ use serde_json::{Value, json};
 
 // ----------------------------------------------------------------- the EVM
 
-/// A result, or the selector of the error it reverted with.
-type Sol = Result<Dec, [u8; 4]>;
+/// A result, or the data it reverted with.
+type Sol = Result<Dec, Vec<u8>>;
 
 fn call<C: SolCall<Return = B256>>(c: C) -> Sol {
-    evm::float(c).map_err(|output| output[..4].try_into().unwrap())
+    evm::float(c).map_err(|output| output.to_vec())
+}
+
+/// `x` as an int256 word.
+fn word(x: &BigInt) -> [u8; 32] {
+    let mut w = [if x.is_negative() { 0xff } else { 0 }; 32];
+    let b = x.to_signed_bytes_be();
+    w[32 - b.len()..].copy_from_slice(&b);
+    w
+}
+
+/// The revert data of `e` from a call whose first input is `a`. Every error
+/// reports `a` as its coefficient and exponent, but `Log10Zero`, which reports
+/// nothing, and `ZeroNegativePower`, which reports pow's `b` packed.
+fn revert_data(e: RefError, a: &Dec, b: Option<&Dec>) -> Vec<u8> {
+    let mut out = e.selector().to_vec();
+    match e {
+        RefError::Log10Zero => {}
+        RefError::ZeroNegativePower => out.extend_from_slice(bytes(b.expect("pow's b")).as_slice()),
+        _ => {
+            out.extend_from_slice(&word(&a.c));
+            out.extend_from_slice(&word(&BigInt::from(a.e)));
+        }
+    }
+    out
 }
 
 fn bytes(a: &Dec) -> B256 {
