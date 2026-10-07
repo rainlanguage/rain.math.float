@@ -616,6 +616,12 @@ library LibDecimalFloatImplementation {
     /// when combined with other operations such as division that can result in
     /// infinite recursion such a 1/3.
     ///
+    /// Aligning truncates the smaller operand towards zero to the larger
+    /// operand's int256 unit, so the returned sum is the exact sum rounded to
+    /// that unit, or ten of them past int256: towards zero when the signs
+    /// agree, and away from zero when they differ. `1e100 + -1` returns
+    /// `1e100`. `LibDecimalFloat.add` states the rule with packing.
+    ///
     /// https://speleotrove.com/decimal/daops.html#refaddsub
     /// > add and subtract both take two operands. If either operand is a special
     /// > value then the general rules apply.

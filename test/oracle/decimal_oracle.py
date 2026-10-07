@@ -17,6 +17,7 @@ from decimal import (
     ROUND_DOWN,
     ROUND_FLOOR,
     ROUND_HALF_EVEN,
+    ROUND_UP,
     Context,
     Decimal,
     Inexact,
@@ -109,28 +110,42 @@ def arithmetic(x):
     return {"ok": out(p[0])}
 
 
-def maximize(x):
+def int256_unit(x):
+    """The exponent of x's int256 unit: its last digit when written with as
+    many digits as an int256 coefficient holds, 77 or 76."""
     sign, digits, exp = x.as_tuple()
     c = int("".join(map(str, digits)))
     if sign:
         c = -c
-    while INT256_MIN <= c * 10 <= INT256_MAX:
-        c *= 10
-        exp -= 1
-    return c, exp
+    top = exp + len(digits)
+    if INT256_MIN <= c * 10 ** (77 - len(digits)) <= INT256_MAX:
+        return top - 77
+    return top - 76
+
+
+def rounded_sum(a, b):
+    """add's sum before packing, as its NatSpec states it: the exact sum
+    rounded to a multiple of the larger operand's int256 unit, towards zero
+    when the signs agree and away from zero when they differ."""
+    if a.is_zero():
+        return b
+    if b.is_zero():
+        return a
+    big, small = (b, a) if EXACT.abs(a) < EXACT.abs(b) else (a, b)
+    unit = int256_unit(big)
+    # Under one unit, small leaves the exact sum strictly within a unit of
+    # big, a multiple of it: outwards when the signs agree, so towards zero is
+    # big, and inwards when they differ, so away from zero is big.
+    if small.adjusted() < unit:
+        return big
+    rounding = ROUND_DOWN if a.is_signed() == b.is_signed() else ROUND_UP
+    # to_integral_value rounds without signalling Inexact.
+    units = EXACT.add(a, b).scaleb(-unit, EXACT).to_integral_value(rounding, EXACT)
+    return units.scaleb(unit, EXACT)
 
 
 def add(a, b):
-    if a.is_zero():
-        return arithmetic(b)
-    if b.is_zero():
-        return arithmetic(a)
-    (ca, ea), (cb, eb) = maximize(a), maximize(b)
-    if eb > ea:
-        (ca, ea), (cb, eb) = (cb, eb), (ca, ea)
-    unit = Decimal(1).scaleb(ea, EXACT)
-    aligned = EXACT.divide(Decimal(cb).scaleb(eb, EXACT), unit).to_integral_value(ROUND_DOWN, EXACT)
-    return arithmetic(EXACT.multiply(EXACT.add(Decimal(ca), aligned), unit))
+    return arithmetic(rounded_sum(a, b))
 
 
 def div(a, b):
@@ -175,26 +190,12 @@ def canonical(f):
     return [str(c), e]
 
 
-def aligned_sum(a, b):
-    """add's documented alignment, before packing."""
-    if a.is_zero():
-        return b
-    if b.is_zero():
-        return a
-    (ca, ea), (cb, eb) = maximize(a), maximize(b)
-    if eb > ea:
-        (ca, ea), (cb, eb) = (cb, eb), (ca, ea)
-    unit = Decimal(1).scaleb(ea, EXACT)
-    aligned = EXACT.divide(Decimal(cb).scaleb(eb, EXACT), unit).to_integral_value(ROUND_DOWN, EXACT)
-    return EXACT.multiply(EXACT.add(Decimal(ca), aligned), unit)
-
-
 def agree(absolute, proportional, lowest, highest):
     if absolute < 0 or proportional < 0:
         return {"err": "AgreeToleranceNegative"}
     if not absolute > 0 and not proportional > 0:
         return {"err": "AgreeNoPositiveTolerance"}
-    spread = aligned_sum(highest, EXACT.minus(lowest))
+    spread = rounded_sum(highest, EXACT.minus(lowest))
     anchor = max(EXACT.abs(lowest), EXACT.abs(highest))
     limit = max(absolute, EXACT.multiply(proportional, anchor))
     return {"ok": spread <= limit}
