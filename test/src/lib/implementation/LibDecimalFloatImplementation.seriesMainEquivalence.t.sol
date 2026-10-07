@@ -105,11 +105,17 @@ contract LibDecimalFloatImplementationSeriesMainEquivalenceTest is Test {
         series = 1e50 + LibDecimalFloatImplementation.mulDiv(series, x, 1e50);
     }
 
-    /// z a multiple of 2^128 squares to a multiple of 2^256, so z^2 borrows.
-    function testLog10RatioSeriesMainEquivalenceZSquaredBorrow(uint256 k, bool below) external pure {
-        k = bound(k, 1, 1e6);
-        uint256 z = k << 128;
-        assertTrue(borrows(z, z), "borrows");
+    /// z = u 1e25 + v at each end of v, across the whole domain of u, and z a
+    /// multiple of 2^128, whose square is a multiple of 2^256.
+    function testLog10RatioSeriesMainEquivalenceZSquaredSplit(uint256 u, uint256 k, bool below) external pure {
+        u = bound(u, 0, 4.99e21);
+        checkZ(u * 1e25, below);
+        checkZ(u * 1e25 + 1e25 - 1, below);
+        checkZ(bound(k, 1, 146000000) << 128, below);
+    }
+
+    /// The input pair 1e75 ± d with exactly this z.
+    function checkZ(uint256 z, bool below) internal pure {
         uint256 d = LibDecimalFloatImplementation.mulDiv(2e75, z, below ? 1e50 + z : 1e50 - z);
         while (LibDecimalFloatImplementation.mulDiv(d, 1e50, below ? 2e75 - d : 2e75 + d) < z) {
             d++;
