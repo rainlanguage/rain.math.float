@@ -300,7 +300,17 @@ def handle(req):
             return {"ok": [str(r), lossless]}
         return {"ok": str(r)} if lossless else {"err": "LossyConversionFromFloat"}
     if op == "parse_value":
-        # The value a literal denotes, packed losslessly or not at all.
+        # The value a literal denotes, packed losslessly or not at all. Past
+        # RANGE digits from 1 it is past every Float on its side, decided
+        # here because the module's exponent range ends near 1e18.
+        mantissa, _, exp = req["s"].lower().partition("e")
+        m = Decimal(mantissa)
+        if not m.is_zero():
+            adjusted = m.adjusted() + int(exp or "0")
+            if adjusted > RANGE:
+                return {"err": "ExponentOverflow"}
+            if adjusted < -RANGE:
+                return {"err": "ParseDecimalPrecisionLoss"}
         p = pack(literal(req["s"]))
         if isinstance(p, str):
             return {"err": "ExponentOverflow" if p == "ExponentOverflow" else "ParseDecimalPrecisionLoss"}
