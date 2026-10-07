@@ -29,9 +29,10 @@ library LibDecimalFloatImplementationSeriesMain {
         int256 exponent = -50;
         if (relative) {
             // difference is below 1e76 so it fits and maximizes in place.
-            // forge-lint: disable-next-line(unsafe-typecast)
+            // forge-lint: disable-start(unsafe-typecast)
             (int256 differenceCoefficient, int256 differenceExponent) =
                 LibDecimalFloatImplementation.maximizeFull(int256(difference), 0);
+            // forge-lint: disable-end(unsafe-typecast)
             // forge-lint: disable-next-line(unsafe-typecast)
             difference = uint256(differenceCoefficient);
             exponent += differenceExponent;
