@@ -1028,7 +1028,11 @@ library LibDecimalFloat {
             }
             int256 integerB;
             (integerB, fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
-            if (integerBPastInt256(integerB, exponentB)) {
+            // An integer part of b past int256 is over 5.7e76 and every a but 1 is
+            // at least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power is
+            // past the range, on the side a is of 1.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)))) {
                 revertPast(!isBelowOne(signedCoefficientA, exponentA), input);
             }
             exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
@@ -1179,14 +1183,6 @@ library LibDecimalFloat {
     function isBelowOne(int256 signedCoefficient, int256 exponent) private pure returns (bool) {
         (int256 signedCoefficientOne, int256 exponentOne) = FLOAT_ONE.unpack();
         return LibDecimalFloatImplementation.lt(signedCoefficient, exponent, signedCoefficientOne, exponentOne);
-    }
-
-    /// An integer part of b past int256 is over 5.7e76 and every a but 1 is at
-    /// least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power is past
-    /// the range, on the side a is of 1.
-    function integerBPastInt256(int256 integerB, int256 exponentB) private pure returns (bool) {
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)));
     }
 
     /// sqrt a = a ^ 0.5, correctly rounded to nearest at 41 significant
