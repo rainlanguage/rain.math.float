@@ -350,7 +350,7 @@ pub fn pack(x: &Dec) -> Packed {
         e -= 1;
     }
     let target = x.e.clamp(e, I32_MAX);
-    while e < target && (&c % 10).is_zero() {
+    while e < target && (&c % 10u32).is_zero() {
         c /= 10;
         e += 1;
     }
@@ -952,7 +952,7 @@ mod tests {
         let Packed::Value(v, false) = pack(&Dec::new(-int224_min(), 0)) else {
             panic!()
         };
-        assert_eq!(v.e, 1);
+        assert_eq!((v.c, v.e), (int224_max(), 0));
     }
 
     #[test]

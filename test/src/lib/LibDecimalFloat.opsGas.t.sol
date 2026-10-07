@@ -96,8 +96,9 @@ contract LibDecimalFloatOpsGasTest is LogTest {
         int256 two223 = int256(1) << 223;
         logPack("packLossy fits", 15, -1);
         logPack("packLossy shed", two223 + 2, 0);
-        logPack("packLossy shed 1e5", (two223 + 2) * 1e9 + 7, 0);
-        logPack("packLossy bound 1e5", two223 * 1e9 + 7, 0);
+        logPack("packLossy shed 1e73", (two223 + 2) * 1e6 + 7, 0);
+        logPack("packLossy shed 1e76", (two223 + 2) * 1e9 + 7, 0);
+        logPack("packLossy bound 1e76", two223 * 1e9 + 7, 0);
         logPack("packLossy bound", two223, 0);
         logPack("packLossy bound negative", -two223 - 1, 0);
         logPack("packLossy bound below floor", two223, int256(type(int32).min) - 1);

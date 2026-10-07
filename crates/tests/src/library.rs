@@ -697,14 +697,38 @@ fn library_pack_nearest_bound() {
     let cases = [
         (two223.clone(), 0i64, Some((r::int224_max(), 0i64, false))),
         (two223.clone() + 1, 0, Some((r::int224_max(), 0, false))),
-        (two223.clone() + 2, 0, Some(((two223.clone() + 2) / 10, 1, true))),
-        (two223.clone() * 10 + 9, 0, Some((r::int224_max(), 1, false))),
+        (
+            two223.clone() + 2,
+            0,
+            Some(((two223.clone() + 2) / 10, 1, true)),
+        ),
+        (
+            two223.clone() * 10 + 9,
+            0,
+            Some((r::int224_max(), 1, false)),
+        ),
         (-two223.clone() - 1, 0, Some((r::int224_min(), 0, false))),
-        (-two223.clone() - 2, 0, Some(((-two223.clone() - 2) / 10, 1, true))),
-        (two223.clone(), I32_MAX, Some((r::int224_max(), I32_MAX, false))),
+        (
+            -two223.clone() - 2,
+            0,
+            Some(((-two223.clone() - 2) / 10, 1, true)),
+        ),
+        (
+            two223.clone(),
+            I32_MAX,
+            Some((r::int224_max(), I32_MAX, false)),
+        ),
         (two223.clone() + 2, I32_MAX, None),
-        (two223.clone(), I32_MIN - 1, Some((two223.clone() / 10, I32_MIN, false))),
-        (two223.clone(), I32_MIN, Some((r::int224_max(), I32_MIN, false))),
+        (
+            two223.clone(),
+            I32_MIN - 1,
+            Some((two223.clone() / 10, I32_MIN, false)),
+        ),
+        (
+            two223.clone(),
+            I32_MIN,
+            Some((r::int224_max(), I32_MIN, false)),
+        ),
     ];
     for (c, e, want) in cases {
         let e = BigInt::from(e);

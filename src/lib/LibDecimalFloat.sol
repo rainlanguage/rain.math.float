@@ -389,9 +389,16 @@ library LibDecimalFloat {
             bool fits = int224(signedCoefficient) == signedCoefficient;
 
             if (!fits) {
+                // Shed digits that must go anyway: 1e72 or more is past int224
+                // after shedding 4, and 1e75 or more after shedding 7.
                 if (signedCoefficient / 1e72 != 0) {
-                    signedCoefficient /= 1e5;
-                    exponent += 5;
+                    if (signedCoefficient / 1e75 != 0) {
+                        signedCoefficient /= 1e8;
+                        exponent += 8;
+                    } else {
+                        signedCoefficient /= 1e5;
+                        exponent += 5;
+                    }
                 }
 
                 // truncation here is intentional if it happens as that is what we
@@ -404,10 +411,11 @@ library LibDecimalFloat {
 
                 // The last digit shed left a coefficient that fits ten times
                 // over, so the int224 bound one exponent down is the closer
-                // Float.
-                int256 unshed = signedCoefficient * 10;
+                // Float. int224.max / 10 is also 2^223 / 10, so the range is
+                // symmetric.
+                int256 tenFold = type(int224).max / 10;
                 // forge-lint: disable-next-line(unsafe-typecast)
-                if (int224(unshed) == unshed) {
+                if (uint256(signedCoefficient + tenFold) <= uint256(tenFold + tenFold)) {
                     int256 boundExponent = exponent - 1;
                     // forge-lint: disable-next-line(unsafe-typecast)
                     if (int32(boundExponent) == boundExponent) {

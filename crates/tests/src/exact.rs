@@ -997,18 +997,30 @@ mod found {
         let want = max.to_bytes();
         let cases = [
             (sol_add(&max, &one), r::add(&max, &one)),
-            (sol_add(&max, &Dec::new(2, 0)), r::add(&max, &Dec::new(2, 0))),
+            (
+                sol_add(&max, &Dec::new(2, 0)),
+                r::add(&max, &Dec::new(2, 0)),
+            ),
             (sol_sub(&Dec::zero(), &min), r::sub(&Dec::zero(), &min)),
             (sol_sub(&max, &neg_one), r::sub(&max, &neg_one)),
             (
-                sol_float(T::mulCall { a: min.to_bytes(), b: neg_one.to_bytes() }),
+                sol_float(T::mulCall {
+                    a: min.to_bytes(),
+                    b: neg_one.to_bytes(),
+                }),
                 r::mul(&min, &neg_one),
             ),
             (
-                sol_float(T::divCall { a: min.to_bytes(), b: neg_one.to_bytes() }),
+                sol_float(T::divCall {
+                    a: min.to_bytes(),
+                    b: neg_one.to_bytes(),
+                }),
                 r::div(&min, &neg_one),
             ),
-            (sol_float(T::minusCall { a: min.to_bytes() }), r::minus(&min)),
+            (
+                sol_float(T::minusCall { a: min.to_bytes() }),
+                r::minus(&min),
+            ),
         ];
         for (sol, reference) in cases {
             let sol = sol.unwrap();
