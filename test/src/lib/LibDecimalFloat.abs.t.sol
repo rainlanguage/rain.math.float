@@ -17,8 +17,8 @@ contract LibDecimalFloatAbsTest is Test {
     }
 
     /// Zero at any exponent is `FLOAT_ZERO`.
-    function testAbsZero(int32 exponent) external pure {
-        Float zero = Float.wrap(bytes32(uint256(uint32(exponent)) << 224));
+    function testAbsZero(uint32 exponent) external pure {
+        Float zero = Float.wrap(bytes32(uint256(exponent) << 224));
         assertEq(Float.unwrap(zero.abs()), Float.unwrap(LibDecimalFloat.FLOAT_ZERO));
     }
 

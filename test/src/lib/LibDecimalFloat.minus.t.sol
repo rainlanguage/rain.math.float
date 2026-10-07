@@ -51,8 +51,8 @@ contract LibDecimalFloatMinusTest is Test {
     }
 
     /// Zero at any exponent negates to `FLOAT_ZERO`.
-    function testMinusZero(int32 exponent) external pure {
-        Float zero = Float.wrap(bytes32(uint256(uint32(exponent)) << 224));
+    function testMinusZero(uint32 exponent) external pure {
+        Float zero = Float.wrap(bytes32(uint256(exponent) << 224));
         assertEq(Float.unwrap(zero.minus()), Float.unwrap(LibDecimalFloat.FLOAT_ZERO));
     }
 
