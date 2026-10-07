@@ -817,19 +817,13 @@ library LibDecimalFloatImplementation {
     /// half away from zero, so within half a unit in the 41st digit plus
     /// `LOG10_RAW_ERROR` units of 1e-50. log10(10^k) is exactly k.
     ///
-    /// @param tablesDataContract Unused, and kept so that callers need not
-    /// change.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function log10(address tablesDataContract, int256 signedCoefficient, int256 exponent)
-        internal
-        pure
-        returns (int256, int256)
-    {
-        (signedCoefficient, exponent) = log10Unrounded(tablesDataContract, signedCoefficient, exponent);
+    function log10(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        (signedCoefficient, exponent) = log10Unrounded(signedCoefficient, exponent);
         return roundSignificant(signedCoefficient, exponent);
     }
 
@@ -915,7 +909,7 @@ library LibDecimalFloatImplementation {
     /// @param exponent The exponent of the floating point number.
     /// @return signedCoefficient The signed coefficient of the result.
     /// @return exponent The exponent of the result.
-    function log10Unrounded(address, int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    function log10Unrounded(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         if (signedCoefficient <= 0) {
             if (signedCoefficient == 0) {
                 revert Log10Zero();

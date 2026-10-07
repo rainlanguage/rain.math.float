@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LogTest} from "../../../abstract/LogTest.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation, LOG10_RAW_ERROR} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
 import {LibTranscendentalOracle} from "../../../lib/LibTranscendentalOracle.sol";
@@ -10,9 +10,9 @@ import {LibTranscendentalOracle} from "../../../lib/LibTranscendentalOracle.sol"
 /// `log10Unrounded` against the oracle, which is within 1e-67, and its proven
 /// `LOG10_RAW_ERROR` units of 1e-50, plus under a unit of the exponent of the
 /// oracle's sum when the characteristic is summed by `add`.
-contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
-    function log10UnroundedExternal(int256 signedCoefficient, int256 exponent) external returns (int256, int256) {
-        return LibDecimalFloatImplementation.log10Unrounded(logTables(), signedCoefficient, exponent);
+contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
+    function log10UnroundedExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
+        return LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
     }
 
     function abs(int256 value) internal pure returns (int256) {
@@ -22,10 +22,11 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
     /// |log10Unrounded - oracle| and the oracle's log as a float.
     function errorAgainstOracle(int256 signedCoefficient, int256 exponent)
         internal
+        pure
         returns (int256, int256, int256, int256)
     {
         (int256 actualCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.log10Unrounded(logTables(), signedCoefficient, exponent);
+            LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -39,7 +40,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
         return (abs(errorCoefficient), errorExponent, expectedCoefficient, expectedExponent);
     }
 
-    function checkAbsolute(int256 signedCoefficient, int256 exponent) internal {
+    function checkAbsolute(int256 signedCoefficient, int256 exponent) internal pure {
         (int256 errorCoefficient, int256 errorExponent,, int256 expectedExponent) =
             errorAgainstOracle(signedCoefficient, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -56,7 +57,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
 
     /// Within a factor 1.001 of 1 the log is all correction and the error is
     /// under 3.27e-49 of it.
-    function checkRelative(int256 signedCoefficient, int256 exponent) internal {
+    function checkRelative(int256 signedCoefficient, int256 exponent) internal pure {
         (int256 errorCoefficient, int256 errorExponent, int256 expectedCoefficient, int256 expectedExponent) =
             errorAgainstOracle(signedCoefficient, exponent);
         (int256 boundCoefficient, int256 boundExponent) =
@@ -68,14 +69,14 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
         );
     }
 
-    function checkExact(int256 signedCoefficient, int256 exponent, int256 expected) internal {
+    function checkExact(int256 signedCoefficient, int256 exponent, int256 expected) internal pure {
         (int256 actualCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.log10Unrounded(logTables(), signedCoefficient, exponent);
+            LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         assertEq(actualCoefficient, expected, "coefficient");
         assertEq(actualExponent, 0, "exponent");
     }
 
-    function testLog10UnroundedPowersOfTen() external {
+    function testLog10UnroundedPowersOfTen() external pure {
         checkExact(1, 0, 0);
         checkExact(1, -1, -1);
         checkExact(10, 5, 6);
@@ -86,7 +87,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
 
     /// Within 75 of the floor the shift the exponent cannot take is the
     /// shortfall, and the log is still exact.
-    function testLog10UnroundedPowersOfTenAtFloor() external {
+    function testLog10UnroundedPowersOfTenAtFloor() external pure {
         int256 min = type(int256).min;
         checkExact(1, min, min);
         checkExact(10, min, min + 1);
@@ -109,7 +110,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
 
     /// Either side of each 1.001 edge, near 1 where the seed is exact and
     /// with a characteristic where it is not.
-    function testLog10UnroundedTableEdges() external {
+    function testLog10UnroundedTableEdges() external pure {
         int256[4] memory edges = [int256(1.001e75 - 1), 1.001e75, 9.999e75 - 1, 9.999e75];
         for (uint256 i = 0; i < edges.length; i++) {
             checkAbsolute(edges[i], -75);
@@ -124,13 +125,13 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
     /// 1.000878 has z about 4.39e-4, where the atanh series' z^14 term is
     /// just under 1000 units of 1e-50 and still moves the log by more than its
     /// relative bound.
-    function testLog10UnroundedRelativeSeriesTail() external {
+    function testLog10UnroundedRelativeSeriesTail() external pure {
         checkRelative(1000878e69, -75);
     }
 
     /// Either side of the 1e25 characteristic where `add` takes over, and
     /// past where the fixed point sum would overflow.
-    function testLog10UnroundedLargeCharacteristic() external {
+    function testLog10UnroundedLargeCharacteristic() external pure {
         checkAbsolute(2, 1e25 - 1);
         checkAbsolute(2, 1e25);
         checkAbsolute(2, 9e26);
@@ -140,13 +141,13 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
         checkAbsolute(31415926535, 1e40);
     }
 
-    function testLog10UnroundedOracle(int256 signedCoefficient, int256 exponent) external {
+    function testLog10UnroundedOracle(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         exponent = bound(exponent, -200, 200);
         checkAbsolute(signedCoefficient, exponent);
     }
 
-    function testLog10UnroundedOracleLargeExponent(int256 signedCoefficient, int256 exponent) external {
+    function testLog10UnroundedOracleLargeExponent(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         exponent = bound(exponent, -1e40, 1e40);
         checkAbsolute(signedCoefficient, exponent);
