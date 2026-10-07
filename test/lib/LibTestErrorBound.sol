@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibTranscendentalOracle, ORACLE_ONE} from "test/lib/LibTranscendentalOracle.sol";
 
 /// @dev log10's raw error in units of 1e-50: the README's 2e-50.
@@ -112,8 +112,7 @@ library LibTestErrorBound {
     /// exponent to the floor. Relative to t = signedCoefficient 10^exponent,
     /// that is 1e-2147483648 / |t|, zero where it is below the smallest Float.
     function floor(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
-        (signedCoefficient, exponent) =
-            LibDecimalFloatImplementation.div(1, type(int32).min, signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibTestExactDecimal.quotient(1, type(int32).min, signedCoefficient, exponent);
         (Float relative,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         return relative.abs();
     }
@@ -128,7 +127,7 @@ library LibTestErrorBound {
     function scaled(Float error, Float x) private pure returns (int256, int256) {
         (int256 errorCoefficient, int256 errorExponent) = error.unpack();
         (int256 signedCoefficient, int256 exponent) = x.abs().unpack();
-        return LibDecimalFloatImplementation.mul(errorCoefficient, errorExponent, signedCoefficient, exponent);
+        return LibTestExactDecimal.mulParts(errorCoefficient, errorExponent, signedCoefficient, exponent);
     }
 
     /// For x < y and results r within E f + u of the true f, r(x) - u over
@@ -138,10 +137,13 @@ library LibTestErrorBound {
         (int256 limitCoefficient, int256 limitExponent) = scaled(highError, low);
         (int256 signedCoefficient, int256 exponent) = scaled(lowError, high);
         (limitCoefficient, limitExponent) =
-            LibDecimalFloatImplementation.add(limitCoefficient, limitExponent, signedCoefficient, exponent);
+            LibTestExactDecimal.addParts(limitCoefficient, limitExponent, signedCoefficient, exponent);
         (limitCoefficient, limitExponent) =
-            LibDecimalFloatImplementation.add(limitCoefficient, limitExponent, 3, type(int32).min);
-        (signedCoefficient, exponent) = low.sub(high).unpack();
-        return LibDecimalFloatImplementation.lte(signedCoefficient, exponent, limitCoefficient, limitExponent);
+            LibTestExactDecimal.addParts(limitCoefficient, limitExponent, 3, type(int32).min);
+        (int256 lowCoefficient, int256 lowExponent) = low.unpack();
+        (int256 highCoefficient, int256 highExponent) = high.unpack();
+        (signedCoefficient, exponent) =
+            LibTestExactDecimal.subParts(lowCoefficient, lowExponent, highCoefficient, highExponent);
+        return LibTestExactDecimal.cmpParts(signedCoefficient, exponent, limitCoefficient, limitExponent) <= 0;
     }
 }

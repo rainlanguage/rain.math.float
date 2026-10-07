@@ -394,6 +394,92 @@ library LibTestExactDecimal {
         return signedCoefficient % int256(10 ** uint256(-exponent)) == 0;
     }
 
+    /// Compares the signed `ca × 10^ea` with `cb × 10^eb` exactly, returning
+    /// -1, 0 or 1.
+    function cmpParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256) {
+        int256 signA = ca > 0 ? int256(1) : ca < 0 ? int256(-1) : int256(0);
+        int256 signB = cb > 0 ? int256(1) : cb < 0 ? int256(-1) : int256(0);
+        if (signA != signB || signA == 0) {
+            return signA < signB ? int256(-1) : signA > signB ? int256(1) : int256(0);
+        }
+        return signA * cmpWords(abs(ca), ea, abs(cb), eb);
+    }
+
+    /// Whether `|ca × 10^ea| <= |cb × 10^eb|`, exactly.
+    function absLte(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
+        return cmpWords(abs(ca), ea, abs(cb), eb) <= 0;
+    }
+
+    /// `cmpScaled` of single words, without allocating, for long loops.
+    function cmpWords(uint256 x, int256 ex, uint256 y, int256 ey) internal pure returns (int256) {
+        if (x == 0 || y == 0) {
+            return x < y ? int256(-1) : x > y ? int256(1) : int256(0);
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 lx = int256(Math.log10(x)) + ex;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 ly = int256(Math.log10(y)) + ey;
+        if (lx != ly) {
+            return lx < ly ? int256(-1) : int256(1);
+        }
+        // Equal leading positions, so the exponents differ by under 78.
+        uint256 xHi;
+        uint256 xLo = x;
+        uint256 yHi;
+        uint256 yLo = y;
+        if (ex > ey) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            (xHi, xLo) = Math.mul512(x, 10 ** uint256(ex - ey));
+        } else if (ey > ex) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            (yHi, yLo) = Math.mul512(y, 10 ** uint256(ey - ex));
+        }
+        if (xHi != yHi) {
+            return xHi < yHi ? int256(-1) : int256(1);
+        }
+        return xLo < yLo ? int256(-1) : xLo > yLo ? int256(1) : int256(0);
+    }
+
+    /// `a / b` for a nonzero `b`, truncated towards zero to under 2e-74
+    /// relative: |a| scaled to 75 digits over |b| at its digit count is in
+    /// (1e74, 1e76).
+    function quotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        if (ca == 0) {
+            return (0, 0);
+        }
+        uint256 a = abs(ca);
+        uint256 b = abs(cb);
+        uint256 da = Math.log10(a) + 1;
+        uint256 db = Math.log10(b) + 1;
+        if (da > 75) {
+            a /= 10 ** (da - 75);
+        } else {
+            a *= 10 ** (75 - da);
+        }
+        uint256 q = Math.mulDiv(a, 10 ** db, b);
+        // q is below 1e76, and da and db are at most 78.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedQ = int256(q);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 e = ea + int256(da) - 75 - int256(db) - eb;
+        return ((ca < 0) != (cb < 0) ? -signedQ : signedQ, e);
+    }
+
+    /// `c × 10^e - 1`, exact where both fit int256 at `e`, otherwise as
+    /// `subParts`.
+    function minusOne(int256 c, int256 e) internal pure returns (int256, int256) {
+        if (e < 0 && e >= -76 && c < 1e76 && c > -1e76) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return (c - int256(10 ** uint256(-e)), e);
+        }
+        return subParts(c, e, 1, 0);
+    }
+
+    /// The parts of `a - b`, as `addParts` of `-b`.
+    function subParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        return addParts(ca, ea, -cb, eb);
+    }
+
     /// Exact numeric equality of two Floats' parts.
     function eq(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
         if (ca == 0 || cb == 0) {

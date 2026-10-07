@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 
@@ -35,12 +35,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         pure
     {
         (int256 boundCoefficient, int256 boundExponent) = bound.unpack();
-        if (errorCoefficient < 0) {
-            errorCoefficient = -errorCoefficient;
-        }
-        assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, boundCoefficient, boundExponent), what
-        );
+        assertTrue(LibTestExactDecimal.absLte(errorCoefficient, errorExponent, boundCoefficient, boundExponent), what);
     }
 
     function assertWithin(Float error, Float bound, string memory what) internal pure {
@@ -61,8 +56,8 @@ contract LibDecimalFloatPrecisionTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedPower = int256(power);
         (signedCoefficient, actualExponent) =
-            LibDecimalFloatImplementation.div(signedCoefficient, actualExponent, signedPower, exponent);
-        return LibDecimalFloatImplementation.sub(signedCoefficient, actualExponent, 1, 0);
+            LibTestExactDecimal.quotient(signedCoefficient, actualExponent, signedPower, exponent);
+        return LibTestExactDecimal.minusOne(signedCoefficient, actualExponent);
     }
 
     /// The floor's term relative to the oracle's power, which is within 1e-67
@@ -158,7 +153,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
-        return LibDecimalFloatImplementation.add(characteristic, 0, int256(fraction), -70);
+        return LibTestExactDecimal.addParts(characteristic, 0, int256(fraction), -70);
     }
 
     /// log10 a within half a unit plus `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, plus
@@ -168,7 +163,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         (int256 actualCoefficient, int256 actualExponent) = actual.unpack();
         (int256 expectedCoefficient, int256 expectedExponent) = oracleLog10(a);
         (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
+            LibTestExactDecimal.subParts(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
         assertWithin(
             errorCoefficient, errorExponent, LibTestErrorBound.log10(a).add(LibDecimalFloat.packLossless(1, -67)), what
         );
@@ -191,7 +186,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         (int256 logCoefficient, int256 logExponent) = oracleLog10(a);
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.mul(signedCoefficientB, exponentB, logCoefficient, logExponent);
+            LibTestExactDecimal.mulParts(signedCoefficientB, exponentB, logCoefficient, logExponent);
         return LibTranscendentalOracle.exp10(signedCoefficient, exponent);
     }
 
@@ -470,9 +465,9 @@ contract LibDecimalFloatPrecisionTest is Test {
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 signedPower = int256(power);
             assertTrue(
-                LibDecimalFloatImplementation.lt(
+                LibTestExactDecimal.cmpParts(
                     signedPower, powerExponent, 100000000000000000000000000000000000000001, -2147483688
-                ),
+                ) < 0,
                 "underflow below the floor"
             );
         }

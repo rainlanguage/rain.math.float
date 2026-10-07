@@ -8,7 +8,8 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibTranscendentalOracle, ORACLE_ONE} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibTestErrorBound} from "../../../lib/LibTestErrorBound.sol";
+import {LibTestErrorBound, DOCUMENTED_POW_GUARD, DOCUMENTED_POW10_RAW_ERROR} from "../../../lib/LibTestErrorBound.sol";
+import {LibTestExactDecimal} from "../../../lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationPow10Test is Test {
     using LibDecimalFloat for Float;
@@ -35,29 +36,22 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         checkPow10(-20, -1, 1, -2);
     }
 
-    /// The result is within half a unit plus `POW10_RAW_ERROR` units of 1e-50
-    /// over a unit of `POW_GUARD` of them, 3.28e-8, and the 70 digit
-    /// reference is within 1e-29 of a unit.
+    /// The result is within half a unit of the true power's 41st digit plus
+    /// `DOCUMENTED_POW10_RAW_ERROR` over `DOCUMENTED_POW_GUARD` of that unit,
+    /// and the 70 digit reference is within 1e-29 of it, inside 1e-11.
     function testPow10Accuracy() external pure {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 boundUnits = int256((DOCUMENTED_POW_GUARD / 2 + DOCUMENTED_POW10_RAW_ERROR) * 10 + 1);
         int256[4][] memory references = pow10References();
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.pow10(references[i][0], references[i][1]);
             (int256 errorCoefficient, int256 errorExponent) =
-                LibDecimalFloatImplementation.sub(signedCoefficient, exponent, references[i][2], references[i][3]);
-            if (errorCoefficient < 0) {
-                errorCoefficient = -errorCoefficient;
-            }
-            // The unit in the 41st significant digit of the result.
-            while (signedCoefficient < 1e40) {
-                signedCoefficient *= 10;
-                exponent -= 1;
-            }
-            if (signedCoefficient == 1e41) {
-                exponent += 1;
-            }
+                LibTestExactDecimal.subParts(signedCoefficient, exponent, references[i][2], references[i][3]);
+            int256 unitExponent = references[i][3]
+                + LibTestExactDecimal.digits(LibTestExactDecimal.u512(LibTestExactDecimal.abs(references[i][2]))) - 41;
             assertTrue(
-                LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 50000003281, exponent - 11),
+                LibTestExactDecimal.absLte(errorCoefficient, errorExponent, boundUnits, unitExponent - 11),
                 "pow10 error"
             );
         }
