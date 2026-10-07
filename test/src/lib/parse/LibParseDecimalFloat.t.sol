@@ -564,6 +564,116 @@ contract LibParseDecimalFloatTest is Test {
         assertEq(err3, ParseDecimalFloatExcessCharacters.selector);
     }
 
+    function zeros(uint256 n) internal pure returns (string memory z) {
+        z = new string(n);
+        for (uint256 i = 0; i < n; i++) {
+            bytes(z)[i] = "0";
+        }
+    }
+
+    function testParseZeroFractionSmall() external pure {
+        checkParseDecimalFloat("1", 1, 0, 1);
+        checkParseDecimalFloat("1.0", 1, 0, 3);
+        checkParseDecimalFloat("1.000", 1, 0, 5);
+        checkParseDecimalFloat("-12.0e-3", -12, -3, 8);
+        checkParseDecimalFloat("-0.0", 0, 0, 4);
+        checkParseDecimalFloat("0.000e5", 0, 0, 7);
+    }
+
+    /// Issue #327: an all-zero fraction is not rescaled into the integer part.
+    /// `2` + 67 zeros is past int224, so the wrapper sheds one trailing zero.
+    function testParseZeroFractionPastInt224() external view {
+        string memory int67 = string.concat("2", zeros(67));
+        int256 twoE67 = 2e67;
+        string[3] memory fracs = ["", ".0", ".000"];
+        for (uint256 i = 0; i < fracs.length; i++) {
+            string memory s = string.concat(int67, fracs[i]);
+            checkParseDecimalFloat(s, twoE67, 0, bytes(s).length);
+            (bytes4 err, Float float) = this.parseDecimalFloatExternal(s);
+            assertEq(err, bytes4(0));
+            (int256 signedCoefficient, int256 exponent) = float.unpack();
+            assertEq(signedCoefficient, 2e66);
+            assertEq(exponent, 1);
+        }
+    }
+
+    /// Issue #327: as above, negative and with an exponent after the fraction.
+    function testParseZeroFractionPastInt224NegativeExponent() external view {
+        string memory int67 = string.concat("-2", zeros(67));
+        int256 negTwoE67 = -2e67;
+        string[3] memory fracs = ["", ".0", ".000"];
+        for (uint256 i = 0; i < fracs.length; i++) {
+            string memory s = string.concat(int67, fracs[i], "e-5");
+            checkParseDecimalFloat(s, negTwoE67, -5, bytes(s).length);
+            (bytes4 err, Float float) = this.parseDecimalFloatExternal(s);
+            assertEq(err, bytes4(0));
+            (int256 signedCoefficient, int256 exponent) = float.unpack();
+            assertEq(signedCoefficient, -2e66);
+            assertEq(exponent, -4);
+        }
+    }
+
+    /// Issue #327: 68 nines with a zero fraction and a huge exponent overflows
+    /// the exponent exactly as it does without the fraction.
+    function testParseZeroFractionNinesExponentOverflow() external {
+        string memory nines = "99999999999999999999999999999999999999999999999999999999999999999999";
+        int256 ninesValue = 99999999999999999999999999999999999999999999999999999999999999999999;
+        string[3] memory fracs = ["", ".0", ".000"];
+        for (uint256 i = 0; i < fracs.length; i++) {
+            string memory s = string.concat(nines, fracs[i], "e2200000000");
+            checkParseDecimalFloat(s, ninesValue, 2200000000, bytes(s).length);
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, ninesValue, int256(2200000000)));
+            this.parseDecimalFloatExternal(s);
+        }
+    }
+
+    /// A return and a revert are tagged apart, so equal outcomes are equal bytes.
+    function parseOutcome(string memory s) internal view returns (bytes memory) {
+        try this.parseDecimalFloatExternal(s) returns (bytes4 err, Float float) {
+            return abi.encode("return", err, float);
+        } catch (bytes memory revertData) {
+            return abi.encode("revert", revertData);
+        }
+    }
+
+    /// Issue #327: `s` and `s` + `.` + any number of zeros parse identically,
+    /// inline and through the wrapper, for any integer part and exponent.
+    function testParseZeroFractionEquivalentFuzz(
+        uint256 value,
+        uint8 digits,
+        bool isNeg,
+        uint8 leadingZeros,
+        uint8 fracZeros,
+        bool hasExponent,
+        int256 e
+    ) external view {
+        // Up to 80 digits, so int224, int256 and past-int256 integer parts all
+        // come up.
+        digits = uint8(bound(digits, 1, 80));
+        if (digits < 78) {
+            value = bound(value, 0, 10 ** digits - 1);
+        }
+        fracZeros = uint8(bound(fracZeros, 1, 100));
+        string memory intPart = string.concat(isNeg ? "-" : "", zeros(leadingZeros), value.toString());
+        string memory exponentPart = hasExponent ? string.concat("e", Strings.toStringSigned(e)) : "";
+        string memory bare = string.concat(intPart, exponentPart);
+        string memory frac = string.concat(intPart, ".", zeros(fracZeros), exponentPart);
+
+        (bytes4 bareErr, uint256 bareCursor, int256 bareCoefficient, int256 bareExponent) =
+            this.parseDecimalFloatInlineExternal(bare);
+        (bytes4 fracErr, uint256 fracCursor, int256 fracCoefficient, int256 fracExponent) =
+            this.parseDecimalFloatInlineExternal(frac);
+        assertEq(fracErr, bareErr, "inline error");
+        assertEq(fracCoefficient, bareCoefficient, "inline coefficient");
+        assertEq(fracExponent, bareExponent, "inline exponent");
+        if (bareErr == bytes4(0)) {
+            assertEq(bareCursor, bytes(bare).length, "bare cursor");
+            assertEq(fracCursor, bytes(frac).length, "frac cursor");
+        }
+
+        assertEq(parseOutcome(frac), parseOutcome(bare), "wrapper outcome");
+    }
+
     /// Can't have more than max total precision. Add decimals after the max int.
     function testParseLiteralDecimalFloatPrecisionRevert0() external pure {
         checkParseDecimalFloatFail(
