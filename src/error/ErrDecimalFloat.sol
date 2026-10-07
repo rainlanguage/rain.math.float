@@ -59,9 +59,6 @@ error DivisionByZero(int256 signedCoefficient, int256 exponent);
 /// @dev Thrown when attempting to raise a negative base to a fractional power.
 error PowNegativeBase(int256 signedCoefficient, int256 exponent);
 
-/// @dev Thrown if writing the data by creating the contract fails somehow.
-error WriteError();
-
 /// @dev Thrown when `agree` is given a negative tolerance. A spread is a
 /// distance and so is never negative, which leaves nothing a negative
 /// tolerance could express. Without this revert it would be silently dominated
