@@ -201,9 +201,9 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             if (mOk) {
                 (int256 mc, int256 me) = pair(m);
                 assertTrue(me < 0, "main wrapped");
-                // #291: main drops a digit for a power of ten divisor at the
-                // floor.
-                if (slowShortfall(b, eb) > 0 && isPowerOfTen(b)) {
+                // #291: main keeps at most 76 digits for a power of ten
+                // divisor at the floor. The 77 digit 2^255 sheds one anyway.
+                if (slowShortfall(b, eb) > 0 && isPowerOfTen(b) && (qc >= 1e76 || qc <= -1e76)) {
                     qc /= 10;
                     qe += 1;
                 }
@@ -246,6 +246,22 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         int256 expA = which % 3 == 1 ? other : nearFloor(ea);
         int256 expB = which % 3 == 2 ? other : nearFloor(eb);
         checkDiv(digits(a, sa), expA, digits(b, sb), expB);
+    }
+
+    /// #320: main returns 2^255 / 10 for type(int256).min over -1 at the
+    /// floor, the same digits it returns off the floor, and the PR reverts.
+    function testMainEquivalenceDivMinByMinusOneAtFloor() external {
+        int256 min = type(int256).min;
+        int256 ea = 17810781030204754479236433;
+        int256 eb = min + 34;
+        (int256 mc, int256 me) = this.mainDiv(min, ea, -1, eb);
+        assertEq(mc, -(min / 10), "main coefficient");
+        unchecked {
+            assertEq(me, 1 + ea - eb, "main exponent wraps");
+        }
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, ea - 34));
+        this.prDiv(min, ea, -1, eb);
+        checkDiv(min, ea, -1, eb);
     }
 
     function testMainEquivalenceDivPacked(int224 a, int32 ea, int224 b, int32 eb) external view {
