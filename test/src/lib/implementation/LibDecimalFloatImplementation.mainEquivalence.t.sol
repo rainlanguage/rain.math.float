@@ -203,8 +203,10 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
                 assertTrue(me < 0, "main wrapped");
                 // #291: a power of ten divisor main cannot lift to 1e75 at
                 // the floor gets the scale a digit below it, so the quotient
-                // sheds a digit, whatever the numerator's length.
-                if (slowShortfall(b, eb) > 1 && isPowerOfTen(b)) {
+                // sheds a digit, whatever the numerator's length. Off the
+                // floor, a positive 2^255 quotient has shed it already.
+                (int256 maxA,) = slowMaximize(a);
+                if (slowShortfall(b, eb) > 1 && isPowerOfTen(b) && !(maxA == type(int256).min && b < 0)) {
                     qc /= 10;
                     qe += 1;
                 }
@@ -307,6 +309,25 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, max, 925));
         this.prDiv(max, 1000, 1, eb);
         checkDiv(max, 1000, 1, eb);
+    }
+
+    /// type(int256).min over a positive power of ten at the floor fits
+    /// int256 off it, so main sheds a digit only at the floor.
+    function testMainEquivalenceDivMinByOneAtFloorSheds() external {
+        int256 min = type(int256).min;
+        int256 ea = 17810781030204754479236433;
+        int256 eb = min + 34;
+        (int256 qc, int256 qe) = this.mainDiv(min, 0, 1, 0);
+        assertEq(qc, min, "off the floor keeps every digit");
+        assertEq(qe, 0, "off the floor exponent");
+        (int256 mc, int256 me) = this.mainDiv(min, ea, 1, eb);
+        assertEq(mc, min / 10, "main sheds at the floor");
+        unchecked {
+            assertEq(me, 1 + ea - eb, "main exponent wraps");
+        }
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, ea - 34));
+        this.prDiv(min, ea, 1, eb);
+        checkDiv(min, ea, 1, eb);
     }
 
     function testMainEquivalenceDivPacked(int224 a, int32 ea, int224 b, int32 eb) external view {
