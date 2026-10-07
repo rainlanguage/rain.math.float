@@ -269,6 +269,54 @@ contract LibDecimalFloatPowTest is Test {
         );
     }
 
+    /// b = n + 1/2, which pow takes as the root of a^(2N+1). References are
+    /// a^b from `bc -l` at scale 400, rounded to 41 digits; each true value is
+    /// at least 0.04 of a unit from a rounding midpoint.
+    function testPowHalfReference() external view {
+        int256 m = type(int224).max;
+        checkPowExact(2, 0, 5, -1, 14142135623730950488016887242096980785697, -40);
+        checkPowExact(2, 0, 15, -1, 28284271247461900976033774484193961571393, -40);
+        checkPowExact(2, 0, -5, -1, 70710678118654752440084436210484903928484, -41);
+        checkPowExact(2, 0, -15, -1, 35355339059327376220042218105242451964242, -41);
+        checkPowExact(3, 0, 25, -1, 15588457268119895641747017073552851302485, -39);
+        checkPowExact(7, 0, 105, -1, 74735926038504668213500094491157274492835, -32);
+        checkPowExact(10001, -4, 3655, -1, 10372242686267163625948684644874211166049, -40);
+        checkPowExact(
+            12345678901234567890123456789012345678901, -40, 15, -1, 13717420939643347448902607016495201211796, -40
+        );
+        checkPowExact(m, 0, 5, -1, 36715083186035844657140163036746987446154, -7);
+        // m^3 passes 1e76 in the coefficient, so a digit is dropped before the root.
+        checkPowExact(m, 0, 15, -1, 49491834228776278184956125696820890771745, 60);
+        checkPowExact(m, 0, 25, -1, 66714860563363448814354475902698812823710, 127);
+        checkPowExact(m, 0, -15, -1, 20205353379660459832413064675171877816182, -141);
+        checkPowExact(2, 0, 1005, -1, 17927286711931564773994220232786614963942, -10);
+        checkPowExact(999, -2, 25, -1, 31543778943002358670330350761941590124385, -38);
+        checkPowExact(7, -30, 15, -1, 18520259177452134133511310275474822979972, -84);
+        checkPowExact(5, -1, -25, -1, 56568542494923801952067548968387923142787, -40);
+    }
+
+    /// A half in any representation takes the same root.
+    function testPowHalfRepresentations() external view {
+        checkPowExact(2, 0, 50, -2, 14142135623730950488016887242096980785697, -40);
+        checkPowExact(2, 0, 1500000, -6, 28284271247461900976033774484193961571393, -40);
+        checkPowExact(2, 0, 15e60, -61, 28284271247461900976033774484193961571393, -40);
+        checkPowExact(2, 0, -15e60, -61, 35355339059327376220042218105242451964242, -41);
+    }
+
+    /// a^(1/2) is sqrt a, correctly rounded.
+    function testPowHalfIsSqrt(int224 signedCoefficient, int32 exponent) external view {
+        vm.assume(signedCoefficient > 0);
+        Float a = LibDecimalFloat.packLossless(signedCoefficient, exponent);
+        assertTrue(this.powExternal(a, LibDecimalFloat.FLOAT_HALF).eq(a.sqrt()), "sqrt");
+    }
+
+    /// A fractional part next to a half takes the log path, within its bound.
+    /// References are a^b to 45 digits from `bc -l` at scale 100.
+    function testPowNearHalf() external view {
+        checkPowPrecision(2, 0, 4999999, -7, 141421346434728409926273288890691513652913439, -44);
+        checkPowPrecision(2, 0, 5000001, -7, 141421366039891279297232822101374230501114564, -44);
+    }
+
     /// a^b is error for negative a and all b.
     /// A negative base with a fractional exponent has no real result.
     function testNegativePowError(Float a, Float b) external {

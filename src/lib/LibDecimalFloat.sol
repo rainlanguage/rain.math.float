@@ -967,6 +967,7 @@ library LibDecimalFloat {
 
     /// `pow` before rounding and packing, so a negative base and an odd power
     /// are negated unpacked: int224.min at int32.max has no packed negation.
+    //slither-disable-next-line cyclomatic-complexity
     function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b) private pure returns (int256, int256) {
         if (b.isZero()) {
             (signedCoefficientA, exponentA) = FLOAT_ONE.unpack();
@@ -1010,10 +1011,10 @@ library LibDecimalFloat {
         // Float API) to avoid repeated pack/unpack overhead in the squaring
         // loop and to preserve unnormalized intermediates.
         int256 exponentB;
-        int256 fractionB;
+        int256 fractionB = 0;
         // frac(b) is exactly a half.
-        bool halfB;
-        uint256 exponentBInteger;
+        bool halfB = false;
+        uint256 exponentBInteger = 0;
         {
             int256 signedCoefficientB;
             (signedCoefficientB, exponentB) = b.unpack();
@@ -1092,6 +1093,7 @@ library LibDecimalFloat {
                     signedCoefficientResult /= 10;
                     exponentResult += 1;
                 }
+                //slither-disable-next-line unused-return
                 return LibDecimalFloatImplementation.sqrt(signedCoefficientResult, exponentResult);
             }
             (int256 signedCoefficientC, int256 exponentC) =

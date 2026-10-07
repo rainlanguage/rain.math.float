@@ -48,15 +48,15 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         assertCorrectlyRounded(signedCoefficient, exponent, root, rootExponent);
     }
 
-    /// The exponent extremes the scaling and halving pass through.
+    /// The exponent extremes the scaling and halving pass through. Both are
+    /// odd, so each is exponent 1 shifted by an even exponent - 1.
     function testSqrtExponentEnds(int256 signedCoefficient, bool high) external pure {
         signedCoefficient = bound(signedCoefficient, 1, 1e76 - 1);
         int256 exponent = high ? type(int256).max : type(int256).min + 81;
         (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
-        (int256 shifted, int256 shiftedExponent) =
-            LibDecimalFloatImplementation.sqrt(signedCoefficient, high ? int256(1) : int256(0));
+        (int256 shifted, int256 shiftedExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, 1);
         assertEq(root, shifted, "root");
-        assertEq(rootExponent - shiftedExponent, high ? type(int256).max / 2 : (type(int256).min + 81) / 2, "exponent");
+        assertEq(rootExponent - shiftedExponent, (exponent - 1) / 2, "exponent");
     }
 
     /// A = floor((2c + 1)^2 / 4e16) has a root just below the midpoint
