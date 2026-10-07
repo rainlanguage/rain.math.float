@@ -74,7 +74,7 @@ Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
     legitimate parse result reported via `ParseDecimalPrecisionLoss`.
   - `packArithmeticResult`: tolerates coefficient truncation, reverts on
     exponent underflow. Used by every public arithmetic operation but `minus`
-    and `abs`, which take int224.max for a negated int224.min.
+    and `abs`.
 
 ## License
 
