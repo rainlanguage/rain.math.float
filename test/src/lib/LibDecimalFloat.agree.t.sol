@@ -9,6 +9,7 @@ import {
     ADD_MAX_EXPONENT_DIFF
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {AgreeToleranceNegative, AgreeNoPositiveTolerance} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 // The exponent gap at which the spread subtraction stops seeing the smaller
 // operand at all, so the spread reads as exactly the larger one. `add` aligns
@@ -357,7 +358,7 @@ contract LibDecimalFloatAgreeTest is Test {
     /// A refusal is always sound. Truncation only ever reduces the spread's
     /// magnitude, so if the computed spread already exceeds the limit then the
     /// exact spread does too. Fuzzed across gaps that straddle the cliff, a
-    /// refusal must be backed by `sub` reporting a spread above the limit.
+    /// refusal must be backed by the exact spread exceeding the limit.
     function testAgreeRefusalIsAlwaysBackedByTheSpread(int256 gap, int256 anchorExponent) external pure {
         gap = bound(gap, 1, 120);
         anchorExponent = bound(anchorExponent, -40, 40);
@@ -371,11 +372,13 @@ contract LibDecimalFloatAgreeTest is Test {
 
         (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
         (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
-        (int256 spreadCoefficient, int256 spreadExponent) =
-            LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
         (int256 limitCoefficient, int256 limitExponent) = highest.unpack();
+        // highest - lowest > limit iff lowest < highest - limit, which is
+        // exact as highest is the limit.
+        (int256 headroomCoefficient, int256 headroomExponent) =
+            LibTestExactDecimal.subParts(highestCoefficient, highestExponent, limitCoefficient, limitExponent);
         assertTrue(
-            LibDecimalFloatImplementation.gt(spreadCoefficient, spreadExponent, limitCoefficient, limitExponent),
+            LibTestExactDecimal.cmpParts(lowestCoefficient, lowestExponent, headroomCoefficient, headroomExponent) < 0,
             "refused without the spread exceeding the limit"
         );
     }

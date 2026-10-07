@@ -475,6 +475,20 @@ library LibTestExactDecimal {
         return subParts(c, e, 1, 0);
     }
 
+    /// The coefficient of `c × 10^e` at exponent `target`, truncated towards
+    /// zero, and reverting where it does not fit int256.
+    function atExponent(int256 c, int256 e, int256 target) internal pure returns (int256) {
+        if (e >= target) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return c == 0 ? int256(0) : c * int256(10 ** uint256(e - target));
+        }
+        if (target - e > 76) {
+            return 0;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return c / int256(10 ** uint256(target - e));
+    }
+
     /// The parts of `a - b`, as `addParts` of `-b`.
     function subParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         return addParts(ca, ea, -cb, eb);

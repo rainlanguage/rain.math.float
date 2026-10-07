@@ -66,9 +66,34 @@ library LibTestErrorBound {
         } else {
             fraction = 0;
         }
+        (int256 unitCoefficient, int256 unitExponent) =
+            (whole > 0 ? halfUnit(whole, 0) : halfUnit(fraction, -70)).unpack();
         // forge-lint: disable-next-line(unsafe-typecast)
-        Float raw = LibDecimalFloat.packLossless(int256(DOCUMENTED_LOG10_RAW_ERROR), -50);
-        return (whole > 0 ? halfUnit(whole, 0) : halfUnit(fraction, -70)).add(raw);
+        return sum(unitCoefficient, unitExponent, int256(DOCUMENTED_LOG10_RAW_ERROR), -50);
+    }
+
+    /// Two bound terms summed by `addParts` and packed, both truncating
+    /// towards zero, so a positive bound is never looser.
+    function sum(int256 ca, int256 ea, int256 cb, int256 eb) private pure returns (Float) {
+        (ca, ea) = LibTestExactDecimal.addParts(ca, ea, cb, eb);
+        (Float bound,) = LibDecimalFloat.packLossy(ca, ea);
+        return bound;
+    }
+
+    /// `sum` of two bound Floats.
+    function plus(Float a, Float b) internal pure returns (Float) {
+        (int256 ca, int256 ea) = a.unpack();
+        (int256 cb, int256 eb) = b.unpack();
+        return sum(ca, ea, cb, eb);
+    }
+
+    /// Two bound Floats multiplied by `mulParts` and packed, both truncating.
+    function times(Float a, Float b) internal pure returns (Float) {
+        (int256 ca, int256 ea) = a.unpack();
+        (int256 cb, int256 eb) = b.unpack();
+        (ca, ea) = LibTestExactDecimal.mulParts(ca, ea, cb, eb);
+        (Float bound,) = LibDecimalFloat.packLossy(ca, ea);
+        return bound;
     }
 
     /// `log10` of a positive Float input.
@@ -92,8 +117,15 @@ library LibTestErrorBound {
     /// 1 - (1 - 1e-75)^(2N), under 2N 1e-75; its product with the leg is
     /// under N 1e-75.
     function pow(Float b) internal pure returns (Float) {
-        return
-            LibDecimalFloat.packLossless(50000004, -48).add(b.abs().integer().mul(LibDecimalFloat.packLossless(3, -75)));
+        (int256 signedCoefficient, int256 exponent) = b.unpack();
+        // A Float coefficient is int224, so its magnitude fits int256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 n = int256(LibTestExactDecimal.abs(signedCoefficient));
+        if (exponent < 0) {
+            (n, exponent) = (LibTestExactDecimal.atExponent(n, exponent, 0), 0);
+        }
+        (n, exponent) = LibTestExactDecimal.mulParts(n, exponent, 3, -75);
+        return sum(50000004, -48, n, exponent);
     }
 
     /// sqrt, relative: correctly rounded, so half a unit in the 41st digit of
@@ -104,7 +136,13 @@ library LibTestErrorBound {
 
     /// For x < y, an absolute bound gives f(x) - f(y) <= E(x) + E(y).
     function monotoneAbsolute(Float low, Float high, Float lowError, Float highError) internal pure returns (bool) {
-        return low.sub(high).lte(lowError.add(highError));
+        (int256 ca, int256 ea) = low.unpack();
+        (int256 cb, int256 eb) = high.unpack();
+        (int256 spreadCoefficient, int256 spreadExponent) = LibTestExactDecimal.subParts(ca, ea, cb, eb);
+        (ca, ea) = lowError.unpack();
+        (cb, eb) = highError.unpack();
+        (ca, ea) = LibTestExactDecimal.addParts(ca, ea, cb, eb);
+        return LibTestExactDecimal.cmpParts(spreadCoefficient, spreadExponent, ca, ea) <= 0;
     }
 
     /// The int32 exponent floor's 1e-2147483648, which a relative bound adds

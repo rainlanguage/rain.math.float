@@ -110,4 +110,17 @@ contract LibTestExactDecimalTest is Test {
         (r,) = LibTestExactDecimal.minusOne(1e75 - 3, -75);
         assertEq(r, -3);
     }
+
+    /// |r| 10^t <= |c| 10^e < (|r| + 1) 10^t, with the sign of c.
+    function testAtExponentTruncates(int256 c, int256 e, int256 t) external pure {
+        c = bound(c, type(int224).min, type(int224).max);
+        e = bound(e, -100, 100);
+        t = bound(t, e - 9, e + 100);
+        int256 r = LibTestExactDecimal.atExponent(c, e, t);
+        assertTrue(c < 0 ? r <= 0 : r >= 0, "sign");
+        uint256 magnitude = LibTestExactDecimal.abs(r);
+        U512 memory exact = LibTestExactDecimal.u512(LibTestExactDecimal.abs(c));
+        assertTrue(LibTestExactDecimal.cmpScaled(LibTestExactDecimal.u512(magnitude), t, exact, e) <= 0, "floor");
+        assertTrue(LibTestExactDecimal.cmpScaled(LibTestExactDecimal.u512(magnitude + 1), t, exact, e) > 0, "next");
+    }
 }

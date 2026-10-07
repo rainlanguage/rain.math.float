@@ -31,7 +31,8 @@ contract LibTestErrorBoundTest is Test {
             "within"
         );
         assertFalse(
-            LibTestErrorBound.monotoneRelative(LibDecimalFloat.packLossless(10000200003, -10), high, error, error), "past"
+            LibTestErrorBound.monotoneRelative(LibDecimalFloat.packLossless(10000200003, -10), high, error, error),
+            "past"
         );
         assertTrue(LibTestErrorBound.monotoneRelative(high, high, error, error), "equal");
     }
