@@ -201,9 +201,10 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             if (mOk) {
                 (int256 mc, int256 me) = pair(m);
                 assertTrue(me < 0, "main wrapped");
-                // #291: main keeps at most 76 digits for a power of ten
-                // divisor at the floor. The 77 digit 2^255 sheds one anyway.
-                if (slowShortfall(b, eb) > 0 && isPowerOfTen(b) && (qc >= 1e76 || qc <= -1e76)) {
+                // #291: a power of ten divisor main cannot lift to 1e75 at
+                // the floor gets the scale a digit below it, so the quotient
+                // sheds a digit, whatever the numerator's length.
+                if (slowShortfall(b, eb) > 1 && isPowerOfTen(b)) {
                     qc /= 10;
                     qe += 1;
                 }
@@ -262,6 +263,50 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, ea - 34));
         this.prDiv(min, ea, -1, eb);
         checkDiv(min, ea, -1, eb);
+    }
+
+    /// CI on #321: a 76 digit numerator over a power of ten divisor at the
+    /// floor. Main sheds its last digit, so the quotient is not 2^252 - 1.
+    function testMainEquivalenceDivFloorPowerOfTenShedsShortNumerator() external {
+        int256 min = type(int256).min;
+        int256 a = (type(int256).max - 1) >> 3;
+        assertEq(a, int256(2 ** 252 - 1), "numerator");
+        int256 ea = 32178700140544239384795735284313615056211;
+        int256 eb = min + 6;
+        (int256 mc, int256 me) = this.mainDiv(a, ea, -1, eb);
+        assertEq(mc, -(a / 10), "main sheds the last digit");
+        unchecked {
+            assertEq(me, 1 + ea - eb, "main exponent wraps");
+        }
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, a, ea - 6));
+        this.prDiv(a, ea, -1, eb);
+        checkDiv(a, ea, -1, eb);
+        this.testMainEquivalenceDivNearFloor(
+            57896044618658097711785492504343953926634992332820282019728792003956564819966,
+            368367291179877007172175548793829148665894,
+            -3153459,
+            1043330888898218908680,
+            3,
+            94,
+            32178700140544239384795735284313615056211,
+            1
+        );
+    }
+
+    /// A divisor one digit short of 1e76 at the floor is 1e75 to main, which
+    /// is full, so main keeps every digit of a 77 digit numerator.
+    function testMainEquivalenceDivFloorPowerOfTenShortByOneKeepsDigits() external {
+        int256 min = type(int256).min;
+        int256 max = type(int256).max;
+        int256 eb = min + 75;
+        (int256 mc, int256 me) = this.mainDiv(max, 1000, 1, eb);
+        assertEq(mc, max, "main keeps the last digit");
+        unchecked {
+            assertEq(me, 1000 - 75 - min, "main exponent wraps");
+        }
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, max, 925));
+        this.prDiv(max, 1000, 1, eb);
+        checkDiv(max, 1000, 1, eb);
     }
 
     function testMainEquivalenceDivPacked(int224 a, int32 ea, int224 b, int32 eb) external view {
