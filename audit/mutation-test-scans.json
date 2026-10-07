@@ -190,5 +190,28 @@
       "testsAfter": 73,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-07T17:26:31Z",
+    "commit": "80790d1e4d7e3716bfe76d6396a545aec7d2e213",
+    "testsAfterCommit": "77a1f3ef50100a9b3a11d62923b1ff5d23d452c4",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 0,
+    "scope": "issue #311: LibDecimalFloatImplementation.log10Ratio (the src change is NatSpec and a comment only: relative mode needs a + b of at least 1e50; deployed bytecode identical to main). Probe suite: forge test (full). M01-M16 were probed against the pre-existing suite at commit; M02 survived and was re-probed with forge test --nmc MainEquivalence after the new tests, because testMainEquivalenceDivNearFloor went red on a fuzz input unrelated to log10Ratio (#335).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 16,
+      "killedBefore": 15,
+      "killedAfter": 1,
+      "equivalent": 0,
+      "candidates": 1,
+      "confirmed": 0,
+      "testsBefore": 743,
+      "testsAfter": 747,
+      "filed": [
+        335
+      ]
+    }
   }
 ]
