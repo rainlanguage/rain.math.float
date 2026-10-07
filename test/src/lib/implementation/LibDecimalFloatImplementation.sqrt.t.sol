@@ -161,17 +161,17 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         assertEq(rootExponent, baseExponent, "exponent");
     }
 
-    function testSqrtPlainEquivalence(int256 signedCoefficient, int256 exponent) external pure {
+    function testSqrtVariantEquivalence(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, 1e76 - 1);
         exponent = bound(exponent, type(int256).min + 81, type(int256).max);
         (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
-        (int256 plainRoot, int256 plainExponent) =
+        (int256 variantRoot, int256 variantExponent) =
             LibDecimalFloatSqrtVariants.sqrtPlainNewton(signedCoefficient, exponent);
-        assertEq(root, plainRoot, "newton root");
-        assertEq(rootExponent, plainExponent, "newton exponent");
-        (plainRoot, plainExponent) = LibDecimalFloatSqrtVariants.sqrtPlainResidual(signedCoefficient, exponent);
-        assertEq(root, plainRoot, "residual root");
-        assertEq(rootExponent, plainExponent, "residual exponent");
+        assertEq(root, variantRoot, "newton root");
+        assertEq(rootExponent, variantExponent, "newton exponent");
+        (variantRoot, variantExponent) = LibDecimalFloatSqrtVariants.sqrtAsmResidual(signedCoefficient, exponent);
+        assertEq(root, variantRoot, "residual root");
+        assertEq(rootExponent, variantExponent, "residual exponent");
     }
 
     function sqrtGas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
@@ -192,9 +192,9 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         g -= gasleft();
     }
 
-    function plainResidualGas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
+    function asmResidualGas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
         g = gasleft();
-        LibDecimalFloatSqrtVariants.sqrtPlainResidual(signedCoefficient, exponent);
+        LibDecimalFloatSqrtVariants.sqrtAsmResidual(signedCoefficient, exponent);
         g -= gasleft();
     }
 
@@ -203,11 +203,11 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         console2.log("  library", this.sqrtGas(signedCoefficient, exponent));
         console2.log("  512-bit residual", this.baseGas(signedCoefficient, exponent));
         console2.log("  plain Newton", this.plainNewtonGas(signedCoefficient, exponent));
-        console2.log("  plain residual", this.plainResidualGas(signedCoefficient, exponent));
+        console2.log("  assembly residual", this.asmResidualGas(signedCoefficient, exponent));
     }
 
     /// Run with `-vv`: the library against the 512-bit residual of #309's
-    /// branch and against each assembly block in plain Solidity.
+    /// branch, Newton in plain Solidity, and the residual in assembly.
     function testSqrtGas() external view {
         logGas("2", 2, 0);
         logGas("2e-1", 2, -1);

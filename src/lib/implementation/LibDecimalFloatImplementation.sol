@@ -1082,8 +1082,11 @@ library LibDecimalFloatImplementation {
     /// within 4.7e14 of sqrt N, and one Newton step over N lands within 1.2e-11
     /// above sqrt N and at least its floor: on the floor or one above.
     ///
-    /// |N - r^2| is then at most 2r + 1, far under 2^255, so the low words of
-    /// N and r^2 give it signed, though N passes 2^256.
+    /// One above the floor, it is within 1.2e-11 of sqrt N, so past the
+    /// midpoint below it, and is the rounded root. On the floor r, the root
+    /// rounds up exactly when N - r^2 > r. |N - r^2| is at most 2r + 1, far
+    /// under 2^255, so the low words of N and r^2 give it signed, though N
+    /// passes 2^256, and negative is the case one above.
     /// @param signedCoefficient The coefficient, in (0, 1e76).
     /// @param exponent The exponent, at least `type(int256).min + 81`.
     /// @return signedCoefficient The root's coefficient, in [1e40, 1e41].
@@ -1113,13 +1116,11 @@ library LibDecimalFloatImplementation {
             }
             root *= 1e3;
             root = (root + mulDiv(coefficient, scale, root)) >> 1;
-            assembly ("memory-safe") {
-                let residual := sub(mul(coefficient, scale), mul(root, root))
-                if slt(residual, 0) {
-                    residual := add(residual, sub(shl(1, root), 1))
-                    root := sub(root, 1)
-                }
-                root := add(root, gt(residual, root))
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 residual = int256(coefficient * scale - root * root);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (residual > int256(root)) {
+                root += 1;
             }
             // forge-lint: disable-next-line(unsafe-typecast)
             return (int256(root), exponent);

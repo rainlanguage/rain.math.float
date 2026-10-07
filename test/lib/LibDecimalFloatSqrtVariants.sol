@@ -105,21 +105,19 @@ library LibDecimalFloatSqrtVariants {
             root = (root + estimate / root) >> 1;
             root *= 1e3;
             root = (root + LibDecimalFloatImplementation.mulDiv(coefficient, scale, root)) >> 1;
-            assembly ("memory-safe") {
-                let residual := sub(mul(coefficient, scale), mul(root, root))
-                if slt(residual, 0) {
-                    residual := add(residual, sub(shl(1, root), 1))
-                    root := sub(root, 1)
-                }
-                root := add(root, gt(residual, root))
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 residual = int256(coefficient * scale - root * root);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (residual > int256(root)) {
+                root += 1;
             }
             // forge-lint: disable-next-line(unsafe-typecast)
             return (int256(root), exponent);
         }
     }
 
-    /// The library's sqrt with its residual rounding in plain Solidity.
-    function sqrtPlainResidual(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    /// The library's sqrt with its residual rounding in assembly.
+    function sqrtAsmResidual(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.scaleUp(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -143,16 +141,9 @@ library LibDecimalFloatSqrtVariants {
             }
             root *= 1e3;
             root = (root + LibDecimalFloatImplementation.mulDiv(coefficient, scale, root)) >> 1;
-            // forge-lint: disable-next-line(unsafe-typecast)
-            int256 residual = int256(coefficient * scale - root * root);
-            if (residual < 0) {
-                // forge-lint: disable-next-line(unsafe-typecast)
-                residual += int256(2 * root - 1);
-                root -= 1;
-            }
-            // forge-lint: disable-next-line(unsafe-typecast)
-            if (uint256(residual) > root) {
-                root += 1;
+            assembly ("memory-safe") {
+                let residual := sub(mul(coefficient, scale), mul(root, root))
+                root := add(root, sgt(residual, root))
             }
             // forge-lint: disable-next-line(unsafe-typecast)
             return (int256(root), exponent);
