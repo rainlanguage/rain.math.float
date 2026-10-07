@@ -190,5 +190,27 @@
       "testsAfter": 73,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-07T18:35:36Z",
+    "commit": "e8b9ae8b5e8c506cd85906821cce0e91cff0bda8",
+    "testsAfterCommit": "a14aed040a7962085a251fea49e15c535b818761",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 4,
+    "scope": "issue #329 fix: the changed lines of LibDecimalFloat pow/pow10/powUnrounded/packRoundedSignificant, the new revertPast and packPowResult, and the Rust reference revert data in crates/tests/src/transcendental.rs. Probe suite: forge test --mc LibDecimalFloat(Pow|Pow10|Sqrt|Precision)Test then cargo test -p rain-math-float-tests; test counts are that suite. 39 mutants (M01-M37, R01, R02). M20 (shed-loop exponent) survived the suite at commit and is killed by testPowCarryShedsTheUnrounded. Equivalent: M11 (bound 76 -> 77: at exponentB 77, int256(10**77) wraps negative so int256.max over it is -3 and every positive integer b still reverts), M12 (> -> >=: at the boundary b of about 5.79e76 the squaring loop reverts with the same payload for the closest a on either side of 1, pinned in testPowHugeExponentDirection), M23 (!fits dropped: an unfitted initial coefficient is past int224.max / scale for every scale >= 10, so the lift check reverts the same), M24 (67 -> 68: int224 / 1e68 is 0, so every nonzero initial coefficient fails the lift check the same). Not applied: M19, M26, M27, M29, M30, M31, M36, M37 (HARNESS-ERROR, their targets also match packLossy; the mutant file still needs unique targets).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 39,
+      "killedBefore": 26,
+      "killedAfter": 1,
+      "equivalent": 4,
+      "notApplied": 8,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 237,
+      "testsAfter": 238,
+      "filed": []
+    }
   }
 ]
