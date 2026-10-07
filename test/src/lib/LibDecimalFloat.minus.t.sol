@@ -3,6 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
@@ -83,5 +84,21 @@ contract LibDecimalFloatMinusTest is Test {
         (int256 signedCoefficient, int256 exponent) = result.unpack();
         assertEq(signedCoefficient, type(int224).min + 1);
         assertEq(exponent, 7);
+    }
+
+    /// The nearest Float towards zero to the exact negation.
+    function testMinusValue(Float float) external pure {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (int256 signedCoefficientMinus, int256 exponentMinus) = float.minus().unpack();
+        assertTrue(
+            LibTestExactDecimal.isNearestTowardZero(
+                signedCoefficient > 0,
+                LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)),
+                exponent,
+                signedCoefficientMinus,
+                exponentMinus
+            ),
+            "nearest Float towards zero"
+        );
     }
 }

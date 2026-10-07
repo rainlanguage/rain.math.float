@@ -585,11 +585,15 @@ library LibTestExactDecimal {
     /// leave it in int256 of the product's sign, and the number shed.
     function productInt256(int256 ca, int256 cb) internal pure returns (int256, int256) {
         bool negative = (ca < 0) != (cb < 0);
-        U512 memory product = mul(abs(ca), abs(cb));
+        (uint256 productHi, uint256 productLo) = Math.mul512(abs(ca), abs(cb));
         // floor(product / 10^k) is within the bound iff product < (bound + 1) × 10^k.
         uint256 aboveBound = negative ? 2 ** 255 + 1 : 2 ** 255;
         uint256 shed = 0;
-        while (cmp(product, mul(aboveBound, 10 ** shed)) >= 0) {
+        while (true) {
+            (uint256 hi, uint256 lo) = Math.mul512(aboveBound, 10 ** shed);
+            if (productHi < hi || (productHi == hi && productLo < lo)) {
+                break;
+            }
             shed++;
         }
         uint256 m = Math.mulDiv(abs(ca), abs(cb), 10 ** shed);

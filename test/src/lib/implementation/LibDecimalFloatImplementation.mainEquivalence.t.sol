@@ -10,6 +10,9 @@ import {MaximizeOverflow, ExponentOverflow} from "src/error/ErrDecimalFloat.sol"
 /// Wherever main returns, the PR returns the same bytes, and wherever main
 /// reverts, the PR reverts the same bytes, except in the floor shortfall
 /// classes each `check*` names. Those are asserted against an oracle.
+/// Equivalence only: main carries the mixed-sign add rounding of #340, so
+/// agreement is not a value check. `testAddPacked`, `testSubPacked`,
+/// `testDivPacked` and `testInvMem` check values against exact math.
 contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
     /// Lifts a floor operand clear of every maximize shift.
     int256 constant SHIFT = 200;

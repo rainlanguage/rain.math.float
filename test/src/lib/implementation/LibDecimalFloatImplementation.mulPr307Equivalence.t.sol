@@ -7,7 +7,8 @@ import {LibDecimalFloatImplementationMulPr307} from "test/lib/LibDecimalFloatImp
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 /// `mul` returns and reverts the same bytes as the #307 head it was
-/// restructured from.
+/// restructured from. Equivalence only, not a value check: `testMulPacked`
+/// checks values against exact math.
 contract LibDecimalFloatImplementationMulPr307EquivalenceTest is Test {
     function pr307Mul(int256 a, int256 ea, int256 b, int256 eb) external pure returns (int256, int256) {
         return LibDecimalFloatImplementationMulPr307.mul(a, ea, b, eb);
