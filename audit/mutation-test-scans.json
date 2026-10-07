@@ -167,5 +167,26 @@
       "testsAfter": 73,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-07T16:34:52Z",
+    "commit": "55c902390537698d328dbe7316bcb56652eb7c7f",
+    "testsAfterCommit": "036dfac3d6ae8cfc75b9d9234d0ce8771b962114",
+    "publishedTag": "sol-v0.2.21",
+    "commitsAheadOfTag": 34,
+    "scope": "issue #326 fix: the changed lines of LibDecimalFloat.minus, abs and the new packNegated (13 mutants, suite: full forge test), plus the exact reference minus/abs in crates/tests/src/reference.rs and the Python oracle minus/abs (8 mutants, suite: cargo test -p rain-math-float-tests exact). The mutants were probed only after the new tests were written, so no kill is attributed to the pre-existing suite (killedBefore is null). Main's own minus/abs tests asserted the old behaviour and are red against the new code, so there was no green pre-existing baseline to attribute against. Equivalent: M02 (abs sends zero to packNegated, which returns FLOAT_ZERO for zero too). Test counts are forge plus cargo exact.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 21,
+      "killedBefore": null,
+      "killedAfter": 20,
+      "equivalent": 1,
+      "candidates": 1,
+      "confirmed": 0,
+      "testsBefore": 778,
+      "testsAfter": 785,
+      "filed": [332]
+    }
   }
 ]
