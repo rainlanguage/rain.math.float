@@ -959,20 +959,18 @@ library LibDecimalFloat {
     /// @return The result of a^b.
     function pow(Float a, Float b, address tablesDataContract) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract, a);
+        (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, a);
         return packRoundedSignificant(signedCoefficientA, exponentA, a);
     }
 
     /// `pow` before rounding and packing, so a negative base and an odd power
     /// are negated unpacked: int224.min at int32.max has no packed negation.
     /// `input` is the `a` pow was called with, which range errors report.
-    function powUnrounded(
-        int256 signedCoefficientA,
-        int256 exponentA,
-        Float b,
-        address tablesDataContract,
-        Float input
-    ) private pure returns (int256, int256) {
+    function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b, Float input)
+        private
+        pure
+        returns (int256, int256)
+    {
         if (b.isZero()) {
             (signedCoefficientA, exponentA) = FLOAT_ONE.unpack();
             return (signedCoefficientA, exponentA);
@@ -994,7 +992,7 @@ library LibDecimalFloat {
                     revert PowNegativeBase(signedCoefficientA, exponentA);
                 }
                 (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
-                (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract, input);
+                (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, input);
                 if (b.isOdd()) {
                     (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
                 }
@@ -1030,7 +1028,9 @@ library LibDecimalFloat {
             }
             int256 integerB;
             (integerB, fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
-            revertIfIntegerBPastInt256(signedCoefficientA, exponentA, integerB, exponentB, input);
+            if (integerBPastInt256(integerB, exponentB)) {
+                revertPast(!isBelowOne(signedCoefficientA, exponentA), input);
+            }
             exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
         }
 
@@ -1062,7 +1062,7 @@ library LibDecimalFloat {
 
         if (fractionB != 0) {
             (int256 signedCoefficientC, int256 exponentC) =
-                LibDecimalFloatImplementation.log10Unrounded(tablesDataContract, signedCoefficientA, exponentA);
+                LibDecimalFloatImplementation.log10Unrounded(address(0), signedCoefficientA, exponentA);
             (signedCoefficientC, exponentC) =
                 LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
             (signedCoefficientC, exponentC) =
@@ -1184,17 +1184,9 @@ library LibDecimalFloat {
     /// An integer part of b past int256 is over 5.7e76 and every a but 1 is at
     /// least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power is past
     /// the range, on the side a is of 1.
-    function revertIfIntegerBPastInt256(
-        int256 signedCoefficientA,
-        int256 exponentA,
-        int256 integerB,
-        int256 exponentB,
-        Float input
-    ) private pure {
+    function integerBPastInt256(int256 integerB, int256 exponentB) private pure returns (bool) {
         // forge-lint: disable-next-line(unsafe-typecast)
-        if (exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)))) {
-            revertPast(!isBelowOne(signedCoefficientA, exponentA), input);
-        }
+        return exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)));
     }
 
     /// sqrt a = a ^ 0.5, correctly rounded to nearest at 41 significant
@@ -1210,8 +1202,7 @@ library LibDecimalFloat {
     /// @return The square root of a.
     function sqrt(Float a, address tablesDataContract) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (int256 signedCoefficient, int256 exponent) =
-            powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF, tablesDataContract, a);
+        (int256 signedCoefficient, int256 exponent) = powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF, a);
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
         if (signedCoefficient > 0) {
             (signedCoefficient, exponent) = roundRoot(signedCoefficientA, exponentA, signedCoefficient, exponent);

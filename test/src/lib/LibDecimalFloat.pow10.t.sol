@@ -25,9 +25,7 @@ contract LibDecimalFloatPow10Test is LogTest {
         Float float = Float.wrap(0xffffffffffffffffffffff0000000000000000000000000000000000000000ff);
         vm.expectRevert(
             abi.encodeWithSelector(
-                ExponentUnderflow.selector,
-                int256(-374144419156711147060143317175368453031918731001601),
-                int256(-1)
+                ExponentUnderflow.selector, int256(-374144419156711147060143317175368453031918731001601), int256(-1)
             )
         );
         this.pow10External(float);
