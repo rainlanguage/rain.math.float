@@ -60,6 +60,8 @@ contract LibDecimalFloatFormatParseGasTest is Test {
                 "|",
                 vm.toString(prGas),
                 "|",
+                // Gas amounts are far below int256.max.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 vm.toString(int256(prGas) - int256(baseGas))
             )
         );

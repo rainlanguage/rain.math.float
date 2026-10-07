@@ -52,8 +52,10 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
     }
 
     function checkFormat(Float f) internal view {
-        same(abi.encodeCall(this.baseFormat, (f, false)), abi.encodeCall(this.prFormat, (f, false)));
-        same(abi.encodeCall(this.baseFormat, (f, true)), abi.encodeCall(this.prFormat, (f, true)));
+        for (uint256 i = 0; i < 2; i++) {
+            bool scientific = i == 1;
+            same(abi.encodeCall(this.baseFormat, (f, scientific)), abi.encodeCall(this.prFormat, (f, scientific)));
+        }
     }
 
     function checkParse(string memory str) internal view {
@@ -88,6 +90,8 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         if (kind == 1) return bound(x, -1100, 1100);
         if (kind == 2) return bound(x, type(int32).min, type(int32).min + int256(100));
         if (kind == 3) return bound(x, type(int32).max - int256(100), type(int32).max);
+        // Truncating to int32 is the point: any exponent a Float can hold.
+        // forge-lint: disable-next-line(unsafe-typecast)
         return int256(int32(x));
     }
 
