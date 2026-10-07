@@ -2,14 +2,14 @@
 //! derivations of the published four-figure tables.
 #![allow(clippy::needless_range_loop)]
 
-use rain_math_float::tables;
+use crate::evm::{self, TestDecimalFloatHarness as H};
 
 /// `ALT_TABLE_FLAG` as used in LibLogTable.sol: bit 15 of a uint16.
 const ALT_TABLE_FLAG: u16 = 0x8000;
 
 #[test]
 fn alt_table_flag_is_the_library_flag() {
-    assert_eq!(tables::alt_table_flag().unwrap(), ALT_TABLE_FLAG);
+    assert_eq!(alt_table_flag(), ALT_TABLE_FLAG);
 }
 
 /// Generate the main log table without ALT_TABLE_FLAG: uint16[10][90].
@@ -51,7 +51,7 @@ fn generate_antilog_table() -> [[u16; 10]; 100] {
 /// IEEE 754 f64, so we check proximity rather than exact equality.
 #[test]
 fn test_log_table_accuracy() {
-    let table = tables::log_table_dec().unwrap();
+    let table = log_table_dec();
     for row in 0..90 {
         for col in 0..10 {
             let n = ((10 + row) * 100 + col * 10) as f64;
@@ -69,7 +69,7 @@ fn test_log_table_accuracy() {
 /// Verify the main antilog table entries are within ±1 of the true value.
 #[test]
 fn test_antilog_table_accuracy() {
-    let table = tables::anti_log_table_dec().unwrap();
+    let table = anti_log_table_dec();
     for row in 0..100 {
         for col in 0..10 {
             let k = row * 10 + col;
@@ -88,9 +88,9 @@ fn test_antilog_table_accuracy() {
 /// for every 4-digit number 1000-9999.
 #[test]
 fn test_log_lookup_accuracy() {
-    let main = tables::log_table_dec().unwrap();
-    let small = tables::log_table_dec_small().unwrap();
-    let small_alt = tables::log_table_dec_small_alt().unwrap();
+    let main = log_table_dec();
+    let small = log_table_dec_small();
+    let small_alt = log_table_dec_small_alt();
     for n in 1000..10000_usize {
         let row = n / 10 - 100;
         let _col = (n / 10) % 10;
@@ -123,8 +123,8 @@ fn test_log_lookup_accuracy() {
 /// for every index 0-9999.
 #[test]
 fn test_antilog_lookup_accuracy() {
-    let main = tables::anti_log_table_dec().unwrap();
-    let small = tables::anti_log_table_dec_small().unwrap();
+    let main = anti_log_table_dec();
+    let small = anti_log_table_dec_small();
     for idx in 0..10000_usize {
         let main_k = idx / 10;
         let main_row = main_k / 10;
@@ -151,7 +151,7 @@ fn test_antilog_lookup_accuracy() {
 #[test]
 fn test_antilog_table_exact() {
     let generated = generate_antilog_table();
-    let solidity = tables::anti_log_table_dec().unwrap();
+    let solidity = anti_log_table_dec();
     for row in 0..100 {
         for col in 0..10 {
             assert_eq!(
@@ -300,9 +300,9 @@ fn deviations(
 /// DEVIATIONS and is the other integer bracketing it.
 #[test]
 fn test_log_table_small_derivation() {
-    let main = tables::log_table_dec().unwrap();
-    let small = tables::log_table_dec_small().unwrap();
-    let alt = tables::log_table_dec_small_alt().unwrap();
+    let main = log_table_dec();
+    let small = log_table_dec_small();
+    let alt = log_table_dec_small_alt();
     for row in 0..90 {
         let expected = if row < 10 {
             SECOND_LINE_STARTS[row]
@@ -338,8 +338,8 @@ fn with_entries(
 
 fn published_tables() -> ([[u8; 10]; 90], [[u8; 10]; 10]) {
     with_entries(
-        &tables::log_table_dec_small().unwrap(),
-        &tables::log_table_dec_small_alt().unwrap(),
+        &log_table_dec_small(),
+        &log_table_dec_small_alt(),
         &PUBLISHED,
     )
 }
@@ -404,9 +404,9 @@ fn assert_within(value: f64, low: f64, high: f64, what: &str) {
 /// bracketing it.
 #[test]
 fn test_log_table_small_published() {
-    let main = tables::log_table_dec().unwrap();
-    let small = tables::log_table_dec_small().unwrap();
-    let alt = tables::log_table_dec_small_alt().unwrap();
+    let main = log_table_dec();
+    let small = log_table_dec_small();
+    let alt = log_table_dec_small_alt();
     for (row, second, digit, published) in PUBLISHED {
         let shipped = if second {
             alt[row - 10][digit]
@@ -442,9 +442,9 @@ fn test_log_table_small_published() {
 /// log10 that LibDecimalFloatLog10TablesTest measures.
 #[test]
 fn test_log_lookup_table_variants() {
-    let main = tables::log_table_dec().unwrap();
-    let small = tables::log_table_dec_small().unwrap();
-    let alt = tables::log_table_dec_small_alt().unwrap();
+    let main = log_table_dec();
+    let small = log_table_dec_small();
+    let alt = log_table_dec_small_alt();
     let (published_small, published_alt) = published_tables();
     let published_errors = lookup_errors(&main, &published_small, &published_alt);
 
@@ -533,7 +533,7 @@ fn test_log_lookup_table_variants() {
 /// Every small antilog entry is its derived mean difference.
 #[test]
 fn test_antilog_table_small_derivation() {
-    let small = tables::anti_log_table_dec_small().unwrap();
+    let small = anti_log_table_dec_small();
     for row in 0..100 {
         for digit in 0..10 {
             let derived = round_certified(antilog_mean_difference(row, digit));
@@ -550,7 +550,7 @@ fn test_antilog_table_small_derivation() {
 #[test]
 fn test_log_table_generation() {
     let generated = generate_log_table();
-    let solidity = tables::log_table_dec().unwrap();
+    let solidity = log_table_dec();
     for row in 0..90 {
         for col in 0..10 {
             let sol = solidity[row][col] & !ALT_TABLE_FLAG;
@@ -561,4 +561,28 @@ fn test_log_table_generation() {
             );
         }
     }
+}
+
+fn alt_table_flag() -> u16 {
+    evm::harness(H::altTableFlagCall {}).unwrap()
+}
+
+fn log_table_dec() -> [[u16; 10]; 90] {
+    evm::harness(H::logTableDecCall {}).unwrap()
+}
+
+fn log_table_dec_small() -> [[u8; 10]; 90] {
+    evm::harness(H::logTableDecSmallCall {}).unwrap()
+}
+
+fn log_table_dec_small_alt() -> [[u8; 10]; 10] {
+    evm::harness(H::logTableDecSmallAltCall {}).unwrap()
+}
+
+fn anti_log_table_dec() -> [[u16; 10]; 100] {
+    evm::harness(H::antiLogTableDecCall {}).unwrap()
+}
+
+fn anti_log_table_dec_small() -> [[u8; 10]; 100] {
+    evm::harness(H::antiLogTableDecSmallCall {}).unwrap()
 }

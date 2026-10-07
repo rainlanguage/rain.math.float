@@ -85,6 +85,27 @@
     }
   },
   {
+    "timestamp": "2026-10-06T18:36:55Z",
+    "commit": "a6dc37cdebdf81bc1e3ffee7a1ca9797d1e42ad4",
+    "testsAfterCommit": "f0e062438b64d421ca78d7b765b02b12e3f1aff0",
+    "publishedTag": "sol-v0.2.16",
+    "commitsAheadOfTag": 10,
+    "scope": "pr:318 transcendental exact reference: crates/tests/src/precise.rs (astro-float truth and its error bounds), crates/tests/src/transcendental.rs (truth functions and the bound, error, exact and monotone checks), test/oracle/decimal_oracle.py (log10/pow10/pow). 85 mutants probed against the pre-existing suite; 12 more from the re-survey probed only after the new tests.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 97,
+      "killedBefore": 44,
+      "killedAfter": 52,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 16,
+      "testsAfter": 28,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-06T20:13:44Z",
     "commit": "c9d432debfd400ea5f38c84fb883d66952c37dc6",
     "testsAfterCommit": "32adda2d9d125f82bbadd185f7968faa10e732ec",
@@ -103,6 +124,26 @@
       "confirmed": 0,
       "testsBefore": 244,
       "testsAfter": 272,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-06T20:55:27Z",
+    "commit": "6fc0a67afd14de2e2fc1657c0c2318dfc2d97bc4",
+    "testsAfterCommit": "61a58f2cb169d7f18d36b94db4f71583a5a5276c",
+    "publishedTag": "sol-v0.2.18",
+    "commitsAheadOfTag": 16,
+    "scope": "pr:318 library coverage on revm over test/concrete/TestDecimalFloatHarness: 26 mutants of the library functions it reaches (H: packLossy, packArithmeticResult, packLossless, canonicalize, agree, isOdd, from/toFixedDecimalLossy, parse) and 65 of their references, oracle and checkers (V). Probe suite: PROPTEST_CASES=64 cargo test -p rain-math-float-tests -- exact reference evm:: library::. V25 (oracle isOdd ignores the fraction) is equivalent.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 91,
+      "killedBefore": 9,
+      "killedAfter": 81,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsAfter": 76,
       "filed": []
     }
   },
