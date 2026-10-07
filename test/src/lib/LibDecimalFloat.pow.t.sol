@@ -891,6 +891,14 @@ contract LibDecimalFloatPowTest is LogTest {
         // 5.7e76 still fits int256 and goes to the squaring loop.
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e67 + 1), int256(-67)));
         this.powExternal(above, LibDecimalFloat.packLossless(57, 75));
+
+        // The largest integer b the squaring loop takes, by the closest a on
+        // either side of 1, still lands past the range on that side.
+        Float widest = LibDecimalFloat.packLossless(type(int256).max / 1e10, 10);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e67 + 1), int256(-67)));
+        this.powExternal(above, widest);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e67 - 1), int256(-67)));
+        this.powExternal(below, widest);
     }
 
     /// The most negative Float as b, or as a base with a whole b, does not
