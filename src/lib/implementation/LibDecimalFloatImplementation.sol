@@ -1016,12 +1016,40 @@ library LibDecimalFloatImplementation {
         }
         int256 exponent = -50;
         if (relative) {
-            // difference is below 1e76 so it fits and maximizes in place.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
-            // forge-lint: disable-next-line(unsafe-typecast)
-            difference = uint256(differenceCoefficient);
-            exponent += differenceExponent;
+            // Scale the difference by the largest power of ten that keeps it
+            // within int256.max, as maximizeFull does.
+            unchecked {
+                if (difference != 0) {
+                    if (difference <= uint256(type(int256).max) / 1e64) {
+                        difference *= 1e64;
+                        exponent -= 64;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e32) {
+                        difference *= 1e32;
+                        exponent -= 32;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e16) {
+                        difference *= 1e16;
+                        exponent -= 16;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e8) {
+                        difference *= 1e8;
+                        exponent -= 8;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e4) {
+                        difference *= 1e4;
+                        exponent -= 4;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e2) {
+                        difference *= 1e2;
+                        exponent -= 2;
+                    }
+                    if (difference <= uint256(type(int256).max) / 10) {
+                        difference *= 10;
+                        exponent -= 1;
+                    }
+                }
+            }
         }
         // The scaled series is below 0.8686e50, so the quotient is below it
         // when not relative, and below int256.max / 1e50 times it when
