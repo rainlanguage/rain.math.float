@@ -211,5 +211,26 @@
       "testsAfter": 741,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-07T23:27:08Z",
+    "commit": "bf5317ec854deaf909f194dab9ad797e0f9c46f7",
+    "testsAfterCommit": "cee7bf9407a580f8a431a446cdebcfdb1803bba5",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 0,
+    "scope": "issues #346/#347 (PR branch 2026-10-07-issue-346-integer-sqrt): LibDecimalFloatImplementation.sqrt (scaling, Newton steps, low-word residual rounding), LibDecimalFloat.sqrt, and the powUnrounded b split with the sqrt(a^(2N+1)) half route. Probe suite: full forge test. The probed code does not exist at the scanned commit; kills are attributed to the tests at probe base 6b9aacd, where this PR's sqrt and pow-half tests were already written, and killedAfter counts the mutants that survived there and were killed by tests added in 42693f8 (M19, M20: testPowHalfMidpoint). Equivalent: M07 (initial guess 2^123), M17 (exponentB > 0 for the whole-b branch). M10-M14 targeted the assembly residual correction and are not counted: cee7bf9 replaced it with plain `if (residual > int256(root)) root += 1`, and its own M11 survivor was equivalent. The new line was re-probed at cee7bf9: M29 `>=`, M30 `+= 1` dropped, M31 `int256(root) - 1`, all killed by testSqrtMidpoint/testSqrtMidpointEnds/testSqrtBaseEquivalencePacked among others.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 26,
+      "killedBefore": 22,
+      "killedAfter": 2,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 747,
+      "testsAfter": 763,
+      "filed": []
+    }
   }
 ]
