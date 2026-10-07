@@ -131,20 +131,20 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         assertEq(exponent, -81, "exponent");
     }
 
-    /// a + b = 1e50 and a - b = 1e46, so z is exactly 1e-4 and z squared and
-    /// the second series term sit on a floor boundary: one unit less in z
-    /// moves the series by a unit and the coefficient by about 1e26.
+    /// a + b = 1e50 and a - b = 3e45, so z is exactly 3e-5 and z squared is
+    /// exactly 9e40 units: one unit less in z floors z squared and three
+    /// series terms a unit lower, which moves the coefficient by about 1e26.
     function testLog10RatioRelativeZOnFloorBoundary() external pure {
-        uint256 a = 5.0005e49;
-        uint256 b = 4.9995e49;
-        checkAgainstBc(a, b, true, 8685889667018002186957160890549480484868872159511511115746797292541084, -74);
+        uint256 a = 5.00015e49;
+        uint256 b = 4.99985e49;
+        checkAgainstBc(a, b, true, 26057668922012410337547610399529953336038179692555075595894572145948150, -75);
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, true);
         assertEq(
             signedCoefficient,
-            8685889667018002186957160890549480484868872159511300000000000000000000000000,
+            26057668922012410337547610399529953336038179692554900000000000000000000000000,
             "coefficient"
         );
-        assertEq(exponent, -80, "exponent");
+        assertEq(exponent, -81, "exponent");
     }
 
     /// The guard boundary: a + b = 1e50 - 1 reverts with its inputs.
