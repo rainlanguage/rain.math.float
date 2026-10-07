@@ -11,6 +11,7 @@ import {
     ExponentOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationDivTest is Test {
     function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -45,24 +46,15 @@ contract LibDecimalFloatImplementationDivTest is Test {
         LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
     }
 
-    /// Independent of the library: multiply by 10 until it would overflow.
-    function slowMaximize(int256 c) internal pure returns (int256, int256 shift) {
-        unchecked {
-            while ((c * 10) / 10 == c) {
-                c *= 10;
-                shift++;
-            }
-        }
-        return (c, shift);
-    }
-
     /// A ±1 divisor at the floor divides exactly when the quotient exponent
     /// fits in int256, and reverts `ExponentOverflow` when it does not.
     function testDivByOneAtFloor(int256 signedCoefficient, int256 exponent, bool negative) external {
         vm.assume(signedCoefficient != 0);
         int256 one = negative ? int256(-1) : int256(1);
-        // The quotient is ±m * 10^(exponent - shift - type(int256).min).
-        (int256 m, int256 shift) = slowMaximize(signedCoefficient);
+        // The quotient is ±m * 10^(exponent - shift - type(int256).min). At
+        // exponent 0 the shift never reaches the floor, so it is -mExponent.
+        (int256 m, int256 mExponent,) = LibTestExactDecimal.maximize(signedCoefficient, 0);
+        int256 shift = -mExponent;
         if (exponent >= shift) {
             vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, m, exponent - shift));
             this.divExternal(signedCoefficient, exponent, one, type(int256).min);

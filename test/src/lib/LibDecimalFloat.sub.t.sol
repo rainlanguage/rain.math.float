@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
@@ -66,23 +67,25 @@ contract LibDecimalFloatSubTest is Test {
         assertEq(exponentOut, exponent, string.concat(label, " exponent"));
     }
 
+    /// Reverts only where the exact difference is beyond the largest Float of
+    /// its sign, and otherwise agrees with the unpacked path.
     function testSubPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        try this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
-            int256 signedCoefficient, int256 exponent
-        ) {
-            try this.packLossyExternal(signedCoefficient, exponent) returns (Float float, bool lossless) {
-                (lossless);
-                Float floatImplementation = this.subExternal(a, b);
-                assertTrue(float.eq(floatImplementation));
-            } catch (bytes memory err) {
-                vm.expectRevert(err);
-                this.packLossyExternal(signedCoefficient, exponent);
-            }
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
+        // a - b is a + (-b), and -b of an int224 coefficient is exact in int256.
+        if (LibTestExactDecimal.addOverflows(signedCoefficientA, exponentA, -signedCoefficientB, exponentB)) {
+            (int256 signedCoefficientDifference, int256 exponentDifference) =
+                LibTestExactDecimal.addParts(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
+            vm.expectRevert(
+                abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientDifference, exponentDifference)
+            );
             this.subExternal(a, b);
+            return;
         }
+        (int256 signedCoefficient, int256 exponent) =
+            this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (Float float,) = this.packLossyExternal(signedCoefficient, exponent);
+        Float floatImplementation = this.subExternal(a, b);
+        assertTrue(float.eq(floatImplementation));
     }
 }

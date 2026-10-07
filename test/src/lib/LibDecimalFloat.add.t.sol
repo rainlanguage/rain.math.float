@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
@@ -25,18 +26,23 @@ contract LibDecimalFloatDecimalAddTest is Test {
         return LibDecimalFloat.add(a, b);
     }
 
+    /// Reverts only where the exact sum is beyond the largest Float of its
+    /// sign, and otherwise agrees with the unpacked path.
     function testAddPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloat.unpack(a);
         (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloat.unpack(b);
-        try this.addExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (Float resultParts) {
-            (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(resultParts);
-            Float result = this.addExternal(a, b);
-            (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = LibDecimalFloat.unpack(result);
-            assertEq(signedCoefficient, signedCoefficientUnpacked);
-            assertEq(exponent, exponentUnpacked);
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
+        if (LibTestExactDecimal.addOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB)) {
+            (int256 signedCoefficientSum, int256 exponentSum) =
+                LibTestExactDecimal.addParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientSum, exponentSum));
             this.addExternal(a, b);
+            return;
         }
+        Float resultParts = this.addExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(resultParts);
+        Float result = this.addExternal(a, b);
+        (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = LibDecimalFloat.unpack(result);
+        assertEq(signedCoefficient, signedCoefficientUnpacked);
+        assertEq(exponent, exponentUnpacked);
     }
 }

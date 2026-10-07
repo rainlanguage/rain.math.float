@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
 
 contract LibDecimalFloatAbsTest is Test {
     using LibDecimalFloat for Float;
@@ -29,11 +29,20 @@ contract LibDecimalFloatAbsTest is Test {
         assertEq(resultExponent, exponent);
     }
 
-    /// Minimum value is shifted one OOM.
-    function testAbsMinValue(int32 exponent) external pure {
-        vm.assume(exponent < type(int32).max);
+    function absExternal(Float float) external pure returns (Float) {
+        return float.abs();
+    }
+
+    /// Minimum value is shifted one OOM. At the exponent ceiling the shift has
+    /// nowhere to go, as `2^223 × 10^int32.max` exceeds every Float.
+    function testAbsMinValue(int32 exponent) external {
         Float float = LibDecimalFloat.packLossless(type(int224).min, exponent);
-        Float result = float.abs();
+        if (exponent == type(int32).max) {
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2 ** 223), int256(exponent)));
+            this.absExternal(float);
+            return;
+        }
+        Float result = this.absExternal(float);
         (int256 resultSignedCoefficient, int256 resultExponent) = LibDecimalFloat.unpack(result);
         assertEq(resultSignedCoefficient, -(type(int224).min / 10));
         assertEq(resultExponent, exponent + 1);
