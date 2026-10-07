@@ -902,10 +902,10 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(below, wide);
 
         // A negative b inverts a first.
-        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.invParts(2, 0);
+        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.invPayload(2, 0);
         vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
         this.powExternal(LibDecimalFloat.packLossless(2, 0), b.minus());
-        (signedCoefficient, exponent) = LibTestExactDecimal.invParts(5, -1);
+        (signedCoefficient, exponent) = LibTestExactDecimal.invPayload(5, -1);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         this.powExternal(LibDecimalFloat.packLossless(5, -1), b.minus());
 
@@ -930,10 +930,10 @@ contract LibDecimalFloatPowTest is LogTest {
     function testPowMostNegativeFloat() external {
         Float most = LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
 
-        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.invParts(2, 0);
+        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.invPayload(2, 0);
         vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
         this.powExternal(LibDecimalFloat.packLossless(2, 0), most);
-        (signedCoefficient, exponent) = LibTestExactDecimal.invParts(5, -1);
+        (signedCoefficient, exponent) = LibTestExactDecimal.invPayload(5, -1);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         this.powExternal(LibDecimalFloat.packLossless(5, -1), most);
 

@@ -352,7 +352,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         int256 exponentB
     ) internal {
         (int256 expectedSignedCoefficient, int256 normalisedExponent) =
-            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+            LibTestExactDecimal.productInt256(signedCoefficientA, signedCoefficientB);
         // exponentA is non-negative and exponentB + normalisedExponent small,
         // so neither side wraps.
         if (exponentB + normalisedExponent > type(int256).max - exponentA) {
@@ -406,7 +406,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         exponentA = bound(exponentA, 0, type(int256).max);
         exponentB = bound(exponentB, 0, type(int256).max);
         (int256 expectedSignedCoefficient, int256 normalisedExponent) =
-            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+            LibTestExactDecimal.productInt256(signedCoefficientA, signedCoefficientB);
         if (exponentB > type(int256).max - exponentA - normalisedExponent) {
             checkMulExponentOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         } else {
@@ -445,7 +445,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
     ) internal view {
         bool overflows = false;
         if (signedCoefficientA != 0 && signedCoefficientB != 0) {
-            (, int256 lift) = LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+            (, int256 lift) = LibTestExactDecimal.productInt256(signedCoefficientA, signedCoefficientB);
             overflows = exceedsCeiling(exponentA, exponentB, lift);
         }
         try this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) {

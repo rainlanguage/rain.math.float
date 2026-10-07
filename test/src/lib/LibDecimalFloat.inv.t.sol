@@ -6,7 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatInvTest is Test {
     using LibDecimalFloat for Float;
@@ -59,8 +59,9 @@ contract LibDecimalFloatInvTest is Test {
     }
 
     /// Reverts only on zero, or where the exact inverse is below the smallest
-    /// positive Float, and otherwise agrees with the unpacked path. No inverse
-    /// overflows: the smallest magnitude is `1e-2147483648`, whose inverse is
+    /// positive Float, otherwise is the nearest Float towards zero to the exact
+    /// inverse, and agrees with the unpacked path. No inverse overflows: the
+    /// smallest magnitude is `1e-2147483648`, whose inverse is
     /// `10 × 10^int32.max`.
     function testInvMem(Float float) external {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
@@ -72,7 +73,7 @@ contract LibDecimalFloatInvTest is Test {
         assertFalse(LibTestExactDecimal.divOverflows(1, 0, signedCoefficient, exponent), "inverse overflows");
         if (LibTestExactDecimal.divUnderflows(1, 0, signedCoefficient, exponent)) {
             (int256 signedCoefficientInv, int256 exponentInv) =
-                LibTestExactDecimal.invParts(signedCoefficient, exponent);
+                LibTestExactDecimal.invPayload(signedCoefficient, exponent);
             vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficientInv, exponentInv));
             this.invExternal(float);
             return;
@@ -83,5 +84,12 @@ contract LibDecimalFloatInvTest is Test {
         (int256 signedCoefficientResultUnpacked, int256 exponentResultUnpacked) = floatInv.unpack();
         assertEq(signedCoefficientResultUnpacked, signedCoefficientResult);
         assertEq(exponentResultUnpacked, exponentResult);
+        (U512 memory magnitude, int256 exponentExact) = LibTestExactDecimal.quotient(1, 0, signedCoefficient, exponent);
+        assertTrue(
+            LibTestExactDecimal.isNearestTowardZero(
+                signedCoefficient < 0, magnitude, exponentExact, signedCoefficientResultUnpacked, exponentResultUnpacked
+            ),
+            "nearest Float towards zero"
+        );
     }
 }

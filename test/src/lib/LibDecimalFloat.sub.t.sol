@@ -68,14 +68,15 @@ contract LibDecimalFloatSubTest is Test {
     }
 
     /// Reverts only where the exact difference is beyond the largest Float of
-    /// its sign, and otherwise agrees with the unpacked path.
+    /// its sign, otherwise is the documented rounding of the exact difference
+    /// (#340), and agrees with the unpacked path.
     function testSubPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         // a - b is a + (-b), and -b of an int224 coefficient is exact in int256.
         if (LibTestExactDecimal.addOverflows(signedCoefficientA, exponentA, -signedCoefficientB, exponentB)) {
             (int256 signedCoefficientDifference, int256 exponentDifference) =
-                LibTestExactDecimal.addParts(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
+                LibTestExactDecimal.addPayload(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
             vm.expectRevert(
                 abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientDifference, exponentDifference)
             );
@@ -87,6 +88,24 @@ contract LibDecimalFloatSubTest is Test {
         (Float float,) = this.packLossyExternal(signedCoefficient, exponent);
         Float floatImplementation = this.subExternal(a, b);
         assertTrue(float.eq(floatImplementation));
+        checkSubValue(signedCoefficientA, exponentA, signedCoefficientB, exponentB, floatImplementation);
+    }
+
+    /// The documented rounding of the exact sum of `a` and `-b` (#340).
+    function checkSubValue(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        Float result
+    ) internal pure {
+        (int256 signedCoefficient, int256 exponent) = result.unpack();
+        assertTrue(
+            LibTestExactDecimal.isSumResult(
+                signedCoefficientA, exponentA, -signedCoefficientB, exponentB, signedCoefficient, exponent
+            ),
+            "documented rounding of the exact difference"
+        );
     }
 
     /// #332: 0 - int224.min is 2^223, which packs as int224.max at the same

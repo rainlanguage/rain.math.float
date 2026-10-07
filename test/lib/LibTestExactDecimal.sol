@@ -13,7 +13,9 @@ struct U512 {
 
 /// Exact decimal comparisons, independent of the library under test. Values
 /// are `magnitude × 10^exponent` with a 512 bit magnitude, and every
-/// comparison is decided in exact integer arithmetic.
+/// comparison is decided in exact integer arithmetic. The `*Payload` functions
+/// are the exception: they copy implementation steps to predict revert
+/// payloads, and are never expected values.
 library LibTestExactDecimal {
     /// A result packs iff the magnitude of its floor at `10^int32.max` is at
     /// most `2^223 + 1`: that far past the int224 bound of its sign, shedding a
@@ -52,6 +54,16 @@ library LibTestExactDecimal {
             carry = lo < a.lo ? 1 : 0;
         }
         return U512(a.hi + b.hi + carry, lo);
+    }
+
+    /// Checked: `b` above `a` panics rather than wrapping.
+    function sub(U512 memory a, U512 memory b) internal pure returns (U512 memory) {
+        uint256 borrow = a.lo < b.lo ? 1 : 0;
+        uint256 lo;
+        unchecked {
+            lo = a.lo - b.lo;
+        }
+        return U512(a.hi - b.hi - borrow, lo);
     }
 
     function cmp(U512 memory a, U512 memory b) internal pure returns (int256) {
@@ -279,10 +291,17 @@ library LibTestExactDecimal {
         return (maximized, maximizedExponent);
     }
 
+    /// REVERT PAYLOAD ONLY, NEVER A VALUE ORACLE. This and the `*Payload`
+    /// functions below rebuild the unpacked parts the implementation hands to
+    /// packing, which its `ExponentOverflow` and `ExponentUnderflow` carry.
+    /// They copy the implementation's steps, so agreeing with them says
+    /// nothing about a result's value. Expected values come from
+    /// `isNearestTowardZero` over exact math.
+    ///
     /// A non-negative magnitude and a sign as int256 parts. A magnitude past
     /// int256 sheds one digit and raises the exponent, except `2^255` negative,
     /// which is `type(int256).min` exactly.
-    function signedParts(bool negative, uint256 magnitude, int256 exponent) internal pure returns (int256, int256) {
+    function signedPayload(bool negative, uint256 magnitude, int256 exponent) internal pure returns (int256, int256) {
         if (negative && magnitude == uint256(type(int256).max) + 1) {
             return (type(int256).min, exponent);
         }
@@ -295,12 +314,13 @@ library LibTestExactDecimal {
         return (negative ? -signedMagnitude : signedMagnitude, exponent);
     }
 
+    /// Revert payload only, never a value oracle: see `signedPayload`.
     /// The parts `mul` of two Floats hands to packing, which are what its
     /// `ExponentOverflow` and `ExponentUnderflow` carry: the exact product
-    /// floored to the fewest digits shed that fit 256 bits, as `signedParts`.
+    /// floored to the fewest digits shed that fit 256 bits, as `signedPayload`.
     /// The 512 bit product is below `10^k × 2^256` iff its high word is below
     /// `10^k`.
-    function mulParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+    function mulPayload(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         if (ca == 0 || cb == 0) {
             return (0, 0);
         }
@@ -313,14 +333,15 @@ library LibTestExactDecimal {
         // The product is at most 2^510, so its high word is at most 2^254 and
         // shed is at most 77.
         // forge-lint: disable-next-line(unsafe-typecast)
-        return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(shed));
+        return signedPayload((ca < 0) != (cb < 0), magnitude, ea + eb + int256(shed));
     }
 
+    /// Revert payload only, never a value oracle: see `signedPayload`.
     /// The parts `div` of two Floats hands to packing, for a non-zero `cb`:
     /// both operands maximized, the dividend's magnitude scaled by the largest
     /// power of ten not above the divisor's and floor divided by it, as
-    /// `signedParts`.
-    function divParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+    /// `signedPayload`.
+    function divPayload(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         if (ca == 0) {
             return (0, 0);
         }
@@ -334,20 +355,22 @@ library LibTestExactDecimal {
         uint256 magnitude = Math.mulDiv(abs(maximizedA), 10 ** scaleDigits, magnitudeB);
         // scaleDigits is at most 76.
         // forge-lint: disable-next-line(unsafe-typecast)
-        return signedParts((ca < 0) != (cb < 0), magnitude, exponentA - int256(scaleDigits) - exponentB);
+        return signedPayload((ca < 0) != (cb < 0), magnitude, exponentA - int256(scaleDigits) - exponentB);
     }
 
+    /// Revert payload only, never a value oracle: see `signedPayload`.
     /// The parts `inv` of a non-zero Float hands to packing: `1e76 × 10^-76`
     /// divided by it.
-    function invParts(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        return divParts(1e76, -76, signedCoefficient, exponent);
+    function invPayload(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        return divPayload(1e76, -76, signedCoefficient, exponent);
     }
 
+    /// Revert payload only, never a value oracle: see `signedPayload`.
     /// The parts `add` of two Floats hands to packing. Both operands are
     /// maximized and the one at the lower exponent is truncated towards zero
     /// to the other's, or dropped 77 or more digits below it. A sum past int256
     /// has each addend shed a digit before summing, at one exponent higher.
-    function addParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+    function addPayload(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         if (ca == 0) {
             return (cb, eb);
         }
@@ -395,5 +418,184 @@ library LibTestExactDecimal {
             return false;
         }
         return cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) == 0;
+    }
+
+    /// The largest coefficient magnitude a Float of the sign holds.
+    function coefficientLimit(bool negative) internal pure returns (uint256) {
+        return negative ? 2 ** 223 : 2 ** 223 - 1;
+    }
+
+    /// Whether the Float `(rc, re)` is what the general rule packs the exact
+    /// `±magnitude × 10^exponent` to: zero for zero, otherwise the closest
+    /// Float of the same sign that does not exceed it in magnitude. The caller
+    /// rules out values that `overflows` or `underflows`, which no Float is.
+    /// Magnitudes must be below 10^154.
+    function isNearestTowardZero(bool negative, U512 memory magnitude, int256 exponent, int256 rc, int256 re)
+        internal
+        pure
+        returns (bool)
+    {
+        if (isZero(magnitude)) {
+            return rc == 0;
+        }
+        if (rc == 0 || (rc < 0) != negative) {
+            return false;
+        }
+        uint256 r = abs(rc);
+        if (cmpScaled(u512(r), re, magnitude, exponent) > 0) {
+            return false;
+        }
+        uint256 limit = coefficientLimit(negative);
+        // At its lowest exponent, the next larger Float is one unit up, or the
+        // smallest past the limit one exponent higher.
+        while (re > type(int32).min && r * 10 <= limit) {
+            r *= 10;
+            --re;
+        }
+        if (r < limit) {
+            return cmpScaled(magnitude, exponent, u512(r + 1), re) < 0;
+        }
+        if (re == type(int32).max) {
+            return true;
+        }
+        return cmpScaled(magnitude, exponent, u512(limit / 10 + 1), re + 1) < 0;
+    }
+
+    /// Whether the Float `(rc, re)` is the next Float away from zero after
+    /// the one `isNearestTowardZero` accepts for the exact
+    /// `±magnitude × 10^exponent`: it exceeds that value in magnitude, and the
+    /// largest Float of its sign below it in magnitude does not. Same
+    /// preconditions as `isNearestTowardZero`.
+    function isNextAwayFromZero(bool negative, U512 memory magnitude, int256 exponent, int256 rc, int256 re)
+        internal
+        pure
+        returns (bool)
+    {
+        if (isZero(magnitude) || rc == 0 || (rc < 0) != negative) {
+            return false;
+        }
+        uint256 r = abs(rc);
+        if (cmpScaled(u512(r), re, magnitude, exponent) <= 0) {
+            return false;
+        }
+        uint256 limit = coefficientLimit(negative);
+        while (re > type(int32).min && r * 10 <= limit) {
+            r *= 10;
+            --re;
+        }
+        // The largest Float below `r × 10^re` is one unit down at `re`, or at
+        // most the limit one exponent lower. Lower still holds less, as
+        // `100 r` exceeds the limit.
+        U512 memory below = u512(r - 1);
+        int256 belowExponent = re;
+        if (re > type(int32).min) {
+            uint256 finer = r * 10 - 1 < limit ? r * 10 - 1 : limit;
+            if (cmpScaled(u512(finer), re - 1, below, belowExponent) > 0) {
+                (below, belowExponent) = (u512(finer), re - 1);
+            }
+        }
+        return cmpScaled(magnitude, exponent, below, belowExponent) > 0;
+    }
+
+    /// `±magnitude × 10^exponent` standing in for the exact
+    /// `ca × 10^ea + cb × 10^eb`, with a magnitude below 10^146. An operand
+    /// whose unit is more than 145 digits below the other's leading digit is
+    /// replaced by one unit 145 digits below that leading digit, of its sign.
+    /// Both are under 10^-77 of the other operand, far inside the gap between
+    /// it and either neighbouring Float, so the stand-in lies strictly between
+    /// the same two Floats as the exact sum.
+    function exactSum(int256 ca, int256 ea, int256 cb, int256 eb)
+        internal
+        pure
+        returns (bool negative, U512 memory magnitude, int256 exponent)
+    {
+        if (ca == 0) {
+            return (cb < 0, u512(abs(cb)), eb);
+        }
+        if (cb == 0) {
+            return (ca < 0, u512(abs(ca)), ea);
+        }
+        if (digits(u512(abs(ca))) + ea < digits(u512(abs(cb))) + eb) {
+            (ca, ea, cb, eb) = (cb, eb, ca, ea);
+        }
+        int256 top = digits(u512(abs(ca))) + ea;
+        U512 memory small = u512(abs(cb));
+        if (top - eb > 145) {
+            (small, eb) = (u512(1), top - 145);
+        }
+        exponent = ea < eb ? ea : eb;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory large = mulPow10(u512(abs(ca)), uint256(ea - exponent));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        small = mulPow10(small, uint256(eb - exponent));
+        negative = ca < 0;
+        if ((ca < 0) == (cb < 0)) {
+            return (negative, add(large, small), exponent);
+        }
+        if (cmp(large, small) >= 0) {
+            return (negative, sub(large, small), exponent);
+        }
+        return (!negative, sub(small, large), exponent);
+    }
+
+    /// Whether the Float `(rc, re)` is what `add` documents for the exact
+    /// `ca × 10^ea + cb × 10^eb` (#340). Where the magnitudes add, it is the
+    /// nearest Float towards zero. Where they cancel, the operand truncated
+    /// before summing leaves the sum under one unit of the larger operand away
+    /// from zero, which packing then truncates towards zero: either Float
+    /// adjacent to the exact sum. Exact sums are exact either way. The caller
+    /// rules out sums that `addOverflows`.
+    function isSumResult(int256 ca, int256 ea, int256 cb, int256 eb, int256 rc, int256 re)
+        internal
+        pure
+        returns (bool)
+    {
+        (bool negative, U512 memory magnitude, int256 exponent) = exactSum(ca, ea, cb, eb);
+        if (isNearestTowardZero(negative, magnitude, exponent, rc, re)) {
+            return true;
+        }
+        bool cancel = ca != 0 && cb != 0 && (ca < 0) != (cb < 0);
+        return cancel && isNextAwayFromZero(negative, magnitude, exponent, rc, re);
+    }
+
+    /// `|ca / cb|` for a non-zero `cb`, truncated to 71 or 72 significant
+    /// digits, more than any Float holds, as `q × 10^exponent`. The closest
+    /// Float not above the exact quotient is the closest not above `q` there.
+    function quotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (U512 memory, int256) {
+        (uint256 a, uint256 b) = (abs(ca), abs(cb));
+        if (a == 0) {
+            return (u512(0), 0);
+        }
+        // a × 10^k is in [10^70 b, 10^72 b), with k in [4, 138].
+        int256 k = 71 + digits(u512(b)) - digits(u512(a));
+        // a × 10^k1 is below 10^76, and k - k1 is at most 63 when positive.
+        int256 k1 = 76 - digits(u512(a));
+        uint256 q;
+        if (k <= k1) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            q = a * 10 ** uint256(k) / b;
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            q = Math.mulDiv(a * 10 ** uint256(k1), 10 ** uint256(k - k1), b);
+        }
+        return (u512(q), ea - eb - k);
+    }
+
+    /// `ca × cb` with the fewest digits shed, truncating towards zero, that
+    /// leave it in int256 of the product's sign, and the number shed.
+    function productInt256(int256 ca, int256 cb) internal pure returns (int256, int256) {
+        bool negative = (ca < 0) != (cb < 0);
+        U512 memory product = mul(abs(ca), abs(cb));
+        // floor(product / 10^k) is within the bound iff product < (bound + 1) × 10^k.
+        uint256 aboveBound = negative ? 2 ** 255 + 1 : 2 ** 255;
+        uint256 shed = 0;
+        while (cmp(product, mul(aboveBound, 10 ** shed)) >= 0) {
+            shed++;
+        }
+        uint256 m = Math.mulDiv(abs(ca), abs(cb), 10 ** shed);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signed = m == 2 ** 255 ? type(int256).min : (negative ? -int256(m) : int256(m));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (signed, int256(shed));
     }
 }
