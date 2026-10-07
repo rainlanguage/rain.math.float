@@ -190,5 +190,27 @@
       "testsAfter": 73,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-07T21:26:43Z",
+    "commit": "2889ea87444d6b960a3dc086a47313f5183c0530",
+    "testsAfterCommit": "90655a15019f154e388d2a7986c8f1bf98724b1e",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 1,
+    "scope": "issue #306 inline-series change: LibDecimalFloatImplementation.log10Ratio (7 fixed atanh terms, mulDivFixed written out for the first three, native multiplies after) and exp10Fixed (26 mulDivFixed calls written out). 86 mutants. Probe suite: forge test --mc 'Log10|Pow|Sqrt|Exp10|Precision|Transcend', plus SeriesMain for the after numbers; test counts are that suite. All 86 were probed against the pre-existing suite at commit (79 killed); the 7 survivors were re-probed with the new tests. Equivalent: E56 (step 1 multiplies 1e50 or 10^0.5 1e50, and neither product borrows), E52 (exhaustive modular search over all 65536 step results and every series value finds no carry in the final multiply), E115 (the series at x = 2^-16 floors to exactly the last step's constant, checked for all 32768 prefixes). Survived: R41 (the z^2 carry needs z^2 mod 2^256 within floor(z^2 / 2^256) < 2^55 of 2^256 for z < 5.1e46; heuristically about 3e-15 such z exist in the domain, but this was not exhaustively proven and no input was constructed).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 86,
+      "killedBefore": 79,
+      "killedAfter": 3,
+      "equivalent": 3,
+      "survived": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 136,
+      "testsAfter": 146,
+      "filed": []
+    }
   }
 ]
