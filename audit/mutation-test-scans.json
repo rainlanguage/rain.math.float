@@ -255,5 +255,26 @@
       "testsAfter": 735,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-07T23:24:35Z",
+    "commit": "caf8a24f994131876a3e5bbd54cc44833be09c7d",
+    "testsAfterCommit": "c9fa7b557aad5d9b083ac16dde0a293fa105cfa7",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 17,
+    "scope": "PR for #348: the log10Ratio relative-branch power-of-ten cascade that replaces maximizeFull in LibDecimalFloatImplementation. Probe suite: forge test. M01-M37 were probed against the pre-existing suite at commit: M03, M07, M11, M15, M19, M23 and M27 (each step <= changed to <) survived. Those seven were re-probed at testsAfterCommit, after the #336 head 5210e11 was merged in and the byte-equivalence tests against it were added; all seven were killed by testLog10RatioPr336EquivalenceEdges.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 37,
+      "killedBefore": 30,
+      "killedAfter": 7,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 751,
+      "testsAfter": 763,
+      "filed": []
+    }
   }
 ]
