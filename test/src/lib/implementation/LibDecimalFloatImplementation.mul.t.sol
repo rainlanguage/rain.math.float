@@ -298,6 +298,14 @@ contract LibDecimalFloatImplementationMulTest is Test {
         checkMulExponentOverflow(1, max, 1, max);
     }
 
+    /// Both repros from #325, and the second with its operands swapped.
+    function testMulIssue325Repros() external {
+        int256 max = type(int256).max;
+        checkMulExponentOverflow(1, max, 1, 1);
+        checkMulExponentOverflow(type(int256).min, max, -1, 0);
+        checkMulExponentOverflow(-1, 0, type(int256).min, max);
+    }
+
     /// The sum fits but the normalisation lift of up to 77 does not.
     function testMulExponentLiftAboveCeiling() external {
         int256 max = type(int256).max;
@@ -410,6 +418,86 @@ contract LibDecimalFloatImplementationMulTest is Test {
                 expectedSignedCoefficient,
                 exponentA + exponentB + normalisedExponent
             );
+        }
+    }
+
+    /// True iff `exponentA + exponentB + lift` is above `type(int256).max`,
+    /// for `lift` in [0, 78].
+    function exceedsCeiling(int256 exponentA, int256 exponentB, int256 lift) internal pure returns (bool) {
+        if (exponentA >= 0) {
+            if (exponentB > type(int256).max - exponentA) {
+                return true;
+            }
+        } else if (exponentB < type(int256).min - exponentA) {
+            return false;
+        }
+        return exponentA + exponentB > type(int256).max - lift;
+    }
+
+    /// Any operands: `mul` either returns or reverts `ExponentOverflow` with
+    /// the first operand, and reverts iff the exact result exponent is above
+    /// `type(int256).max`. Never a panic.
+    function checkMulRevertsOnlyExponentOverflow(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal view {
+        bool overflows = false;
+        if (signedCoefficientA != 0 && signedCoefficientB != 0) {
+            (, int256 lift) = LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+            overflows = exceedsCeiling(exponentA, exponentB, lift);
+        }
+        try this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) {
+            assertFalse(overflows, "returned past the ceiling");
+        } catch (bytes memory err) {
+            assertEq(err, abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA, exponentA), "revert");
+            assertTrue(overflows, "reverted below the ceiling");
+        }
+    }
+
+    function testMulRevertsOnlyExponentOverflow(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external view {
+        checkMulRevertsOnlyExponentOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    /// The same over every pairing of edge operands.
+    function testMulRevertsOnlyExponentOverflowEdges() external view {
+        int256 min = type(int256).min;
+        int256 max = type(int256).max;
+        int256[10] memory coefficients = [min, min + 1, -1e76, -10, -1, 1, 9, 1e76, max - 1, max];
+        int256[16] memory exponents = [
+            min,
+            min + 1,
+            min + 77,
+            -(2 ** 254) - 1,
+            -(2 ** 254),
+            -(2 ** 253) - 1,
+            -(2 ** 253),
+            -1,
+            0,
+            1,
+            2 ** 253 - 1,
+            2 ** 253,
+            2 ** 254,
+            max - 78,
+            max - 77,
+            max
+        ];
+        for (uint256 ia = 0; ia < coefficients.length; ia++) {
+            for (uint256 ib = 0; ib < coefficients.length; ib++) {
+                for (uint256 ja = 0; ja < exponents.length; ja++) {
+                    for (uint256 jb = 0; jb < exponents.length; jb++) {
+                        checkMulRevertsOnlyExponentOverflow(
+                            coefficients[ia], exponents[ja], coefficients[ib], exponents[jb]
+                        );
+                    }
+                }
+            }
         }
     }
 }

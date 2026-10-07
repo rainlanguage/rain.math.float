@@ -5,21 +5,20 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LogTest} from "../../abstract/LogTest.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-contract LibDecimalFloatLog10Test is LogTest {
+contract LibDecimalFloatLog10Test is Test {
     using LibDecimalFloat for Float;
 
-    function log10External(int256 signedCoefficient, int256 exponent) external returns (Float) {
-        address tables = logTables();
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.log10(tables, signedCoefficient, exponent);
+    function log10External(int256 signedCoefficient, int256 exponent) external pure returns (Float) {
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.log10(signedCoefficient, exponent);
         (Float float, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         (lossless);
         return float;
     }
 
-    function log10External(Float float) external returns (Float) {
-        return float.log10(logTables());
+    function log10External(Float float) external pure returns (Float) {
+        return float.log10();
     }
 
     /// log10 matches its implementation packed, and reverts only for 0 or a
