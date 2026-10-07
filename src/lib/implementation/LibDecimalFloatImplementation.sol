@@ -1007,18 +1007,21 @@ library LibDecimalFloatImplementation {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
         uint256 sum = a + b;
-        uint256 z = mulDiv(difference, POW_FIXED_ONE, sum);
+        uint256 z;
         int256 exponent = -50;
         if (relative) {
             if (sum < POW_FIXED_ONE) {
                 revert Log10RatioRelativeSumTooSmall(a, b);
             }
+            z = mulDiv(difference, POW_FIXED_ONE, sum);
             // difference is below 1e76 so it fits and maximizes in place.
             // forge-lint: disable-next-line(unsafe-typecast)
             (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
             // forge-lint: disable-next-line(unsafe-typecast)
             difference = uint256(differenceCoefficient);
             exponent += differenceExponent;
+        } else {
+            z = mulDiv(difference, POW_FIXED_ONE, sum);
         }
         uint256 zSquared = mulDivFixed(z, z);
         // atanh(z) / z
