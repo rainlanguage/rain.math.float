@@ -1003,6 +1003,7 @@ library LibDecimalFloatImplementation {
     /// the `POW_FIXED_ONE` scale.
     /// @return signedCoefficient The signed coefficient of the log.
     /// @return exponent The exponent of the log.
+    //slither-disable-next-line cyclomatic-complexity
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
