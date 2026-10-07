@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, ExponentOverflow, NegativeFixedDecimalConversion, Float} from "src/lib/LibDecimalFloat.sol";
 import {FixedDecimalOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatDecimalTest is Test {
     using LibDecimalFloat for Float;
@@ -34,20 +35,27 @@ contract LibDecimalFloatDecimalTest is Test {
         assertEq(floatLossless, lossless, "lossless");
     }
 
-    /// Memory version of to behaves same as stack version.
+    /// Memory version of to behaves same as stack version, and both match the
+    /// exact `coefficient × 10^(exponent + decimals)`: a negative value
+    /// reverts, a value at or above 2^256 overflows, and anything else is
+    /// that value truncated, lossless iff nothing was truncated.
     function testToFixedDecimalLossyPacked(Float float, uint8 decimals) external {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
-        try this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals) returns (
-            uint256 value, bool lossless
-        ) {
-            (uint256 valueOut, bool losslessOut) = float.toFixedDecimalLossy(decimals);
-            assertEq(value, valueOut, "value");
-            assertEq(lossless, losslessOut, "lossless");
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            (uint256 valueOut, bool losslessOut) = this.toFixedDecimalLossyExternal(float, decimals);
-            (valueOut, losslessOut);
+        (bytes memory expectedError, uint256 expectedValue, bool expectedLossless) =
+            LibTestExactDecimal.toFixedDecimal(signedCoefficient, exponent, decimals);
+        if (expectedError.length > 0) {
+            vm.expectRevert(expectedError);
+            this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
+            vm.expectRevert(expectedError);
+            this.toFixedDecimalLossyExternal(float, decimals);
+            return;
         }
+        (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
+        assertEq(value, expectedValue, "value");
+        assertEq(lossless, expectedLossless, "lossless");
+        (uint256 valueOut, bool losslessOut) = this.toFixedDecimalLossyExternal(float, decimals);
+        assertEq(valueOut, expectedValue, "packed value");
+        assertEq(losslessOut, expectedLossless, "packed lossless");
     }
 
     /// Round trip from/to decimal values without precision loss

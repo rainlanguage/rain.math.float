@@ -10,6 +10,7 @@ import {
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMulTest is Test {
     function checkMul(
@@ -343,7 +344,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         int256 exponentB
     ) internal {
         (int256 expectedSignedCoefficient, int256 normalisedExponent) =
-            LibDecimalFloatSlow.mulSlow(signedCoefficientA, 0, signedCoefficientB, 0);
+            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
         // exponentA is non-negative and exponentB + normalisedExponent small,
         // so neither side wraps.
         if (exponentB + normalisedExponent > type(int256).max - exponentA) {
@@ -397,7 +398,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         exponentA = bound(exponentA, 0, type(int256).max);
         exponentB = bound(exponentB, 0, type(int256).max);
         (int256 expectedSignedCoefficient, int256 normalisedExponent) =
-            LibDecimalFloatSlow.mulSlow(signedCoefficientA, 0, signedCoefficientB, 0);
+            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
         if (exponentB > type(int256).max - exponentA - normalisedExponent) {
             checkMulExponentOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         } else {

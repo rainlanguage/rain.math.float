@@ -10,6 +10,7 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {console2} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatPowTest is LogTest {
     using LibDecimalFloat for Float;
@@ -66,19 +67,20 @@ contract LibDecimalFloatPowTest is LogTest {
     /// where no result is representable.
     function expectedPowError(Float a, Float b) internal pure returns (bool mayReturn, bytes memory err) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        if (b.isZero()) {
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        if (signedCoefficientB == 0) {
             // forge-lint: disable-next-line(boolean-cst)
             return (true, "");
         } else if (signedCoefficientA == 0) {
-            return b.lt(LibDecimalFloat.FLOAT_ZERO)
+            return signedCoefficientB < 0
                 // forge-lint: disable-next-line(boolean-cst)
                 ? (false, abi.encodeWithSelector(ZeroNegativePower.selector, b))
                 // forge-lint: disable-next-line(boolean-cst)
                 : (true, bytes(""));
-        } else if (signedCoefficientA < 0 && !b.frac().isZero()) {
+        } else if (signedCoefficientA < 0 && !LibTestExactDecimal.isWhole(signedCoefficientB, exponentB)) {
             // forge-lint: disable-next-line(boolean-cst)
             return (false, abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA));
-        } else if (LibDecimalFloatImplementation.eq(
+        } else if (LibTestExactDecimal.eq(
                 signedCoefficientA < 0 ? -signedCoefficientA : signedCoefficientA, exponentA, 1, 0
             )) {
             // forge-lint: disable-next-line(boolean-cst)
@@ -273,12 +275,15 @@ contract LibDecimalFloatPowTest is LogTest {
     /// A negative base with a fractional exponent has no real result.
     function testNegativePowError(Float a, Float b) external {
         // We can't simply minus 0 to get a negative base.
-        vm.assume(!a.isZero());
-        vm.assume(!b.frac().isZero());
-        if (a.gt(LibDecimalFloat.FLOAT_ZERO)) {
-            a = a.minus();
-        }
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        vm.assume(signedCoefficientA != 0);
+        vm.assume(!LibTestExactDecimal.isWhole(signedCoefficientB, exponentB));
+        if (signedCoefficientA > 0) {
+            // A positive int224 coefficient negates exactly.
+            a = LibDecimalFloat.packLossless(-signedCoefficientA, exponentA);
+            signedCoefficientA = -signedCoefficientA;
+        }
         vm.expectRevert(abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA));
         this.powExternal(a, b);
     }
@@ -377,7 +382,8 @@ contract LibDecimalFloatPowTest is LogTest {
 
     /// 0^a is error for all a < 0.
     function testPowAZeroNegative(Float b) external {
-        vm.assume(b.lt(LibDecimalFloat.FLOAT_ZERO));
+        (int256 signedCoefficientB,) = b.unpack();
+        vm.assume(signedCoefficientB < 0);
         vm.expectRevert(abi.encodeWithSelector(ZeroNegativePower.selector, b));
         this.powExternal(LibDecimalFloat.FLOAT_ZERO, b);
     }
@@ -896,10 +902,10 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(below, wide);
 
         // A negative b inverts a first.
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.inv(2, 0);
+        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.invParts(2, 0);
         vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
         this.powExternal(LibDecimalFloat.packLossless(2, 0), b.minus());
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(5, -1);
+        (signedCoefficient, exponent) = LibTestExactDecimal.invParts(5, -1);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         this.powExternal(LibDecimalFloat.packLossless(5, -1), b.minus());
 
@@ -924,10 +930,10 @@ contract LibDecimalFloatPowTest is LogTest {
     function testPowMostNegativeFloat() external {
         Float most = LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
 
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.inv(2, 0);
+        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.invParts(2, 0);
         vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
         this.powExternal(LibDecimalFloat.packLossless(2, 0), most);
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(5, -1);
+        (signedCoefficient, exponent) = LibTestExactDecimal.invParts(5, -1);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         this.powExternal(LibDecimalFloat.packLossless(5, -1), most);
 

@@ -93,15 +93,16 @@ contract LibDecimalFloatSqrtTest is LogTest {
 
     function testSqrtNegative(Float a) external {
         // We can't simply minus 0 to get a negative base.
-        vm.assume(!a.isZero());
-
-        if (a.gt(LibDecimalFloat.FLOAT_ZERO)) {
-            a = a.minus();
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        vm.assume(signedCoefficient != 0);
+        if (signedCoefficient > 0) {
+            // A positive int224 coefficient negates exactly.
+            signedCoefficient = -signedCoefficient;
+            a = LibDecimalFloat.packLossless(signedCoefficient, exponent);
         }
 
         address tables = logTables();
 
-        (int256 signedCoefficient, int256 exponent) = a.unpack();
         vm.expectRevert(abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficient, exponent));
         this.sqrtExternal(a, tables);
     }

@@ -8,6 +8,7 @@ import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {UnformatableExponent} from "src/error/ErrFormat.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
+import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 /// @title LibFormatDecimalFloatToDecimalStringTest
 /// @notice Test contract for verifying the functionality of LibFormatDecimalFloat
@@ -510,29 +511,29 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         assertTrue(float.eq(parsed), "round-trip mismatch");
     }
 
-    /// Fuzz: for every non-zero int224 coefficient and positive exponent where
-    /// the formatter does NOT revert (i.e. absCoef × 10^exponent <= int224.max),
-    /// the output round-trips through parse. Uses the same limit computation as
-    /// the formatter to skip cases that correctly revert.
+    /// Fuzz: for every int224 coefficient and positive exponent, the
+    /// non-scientific output round-trips through parse when the integer
+    /// `absCoef × 10^exponent` fits int224, and otherwise the formatter reverts
+    /// `UnformatableExponent(exponent)`.
     /// forge-config: default.fuzz.runs = 100
-    function testFormatParseRoundTripNonScientificSafePosExp(int224 coefficient, int32 exponent) external pure {
-        vm.assume(coefficient != 0);
-        vm.assume(exponent > 0);
-        // Mirror the formatter's guard: skip if exponent >= 68 or absCoef > limit.
+    function testFormatParseRoundTripNonScientificSafePosExp(int224 coefficient, int32 exponent) external {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        exponent = int32(bound(exponent, 1, type(int32).max));
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 uExp = uint256(uint32(exponent));
-        vm.assume(uExp < 68);
-        uint256 limit = uint256(int256(type(int224).max));
-        for (uint256 i = 0; i < uExp; i++) {
-            limit /= 10;
-        }
         // Casting to `uint256` is safe because the sign test on the same line makes
         // the operand non-negative before it is cast.
         //forge-lint: disable-next-line(unsafe-typecast)
         uint256 absCoef = coefficient < 0 ? uint256(-int256(coefficient)) : uint256(int256(coefficient));
-        vm.assume(absCoef <= limit);
+        // 10^78 exceeds uint256, and any non-zero multiple of it exceeds int224.
+        (bool fitsUint256, uint256 integer) = uExp < 78 ? Math.tryMul(absCoef, 10 ** uExp) : (absCoef == 0, 0);
         Float float = LibDecimalFloat.packLossless(coefficient, exponent);
-        string memory s = LibFormatDecimalFloat.toDecimalString(float, false);
+        if (!fitsUint256 || integer > uint256(int256(type(int224).max))) {
+            vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, int256(exponent)));
+            this.formatExternal(float, false);
+            return;
+        }
+        string memory s = this.formatExternal(float, false);
         (bytes4 err, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(s);
         assertEq(err, bytes4(0), string.concat("Parse error on: ", s));
         assertTrue(float.eq(parsed), string.concat("Round trip mismatch on: ", s));
@@ -546,9 +547,6 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     ///   as the positive case.
     function testFormatNonScientificOutputShape(int224 coefficient, int32 exponent) external pure {
         vm.assume(coefficient != 0);
-        // int224.min negated exceeds int224.max, so skip it for the
-        // negation-symmetry check below.
-        vm.assume(coefficient != type(int224).min);
         int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
         // Bound to [-cap, 0]: non-positive exponents never trigger the
         // positive-exponent int224 overflow guard, so the formatter never
@@ -584,10 +582,51 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
             // Casting a single byte to `uint8` is exact.
             //forge-lint: disable-next-line(unsafe-typecast)
             assertEq(uint8(s[0]), uint8(bytes1("-")));
-            Float positive = LibDecimalFloat.packLossless(-int256(coefficient), exponent);
-            string memory pos = LibFormatDecimalFloat.toDecimalString(positive, false);
+            string memory pos;
+            if (coefficient == type(int224).min) {
+                // 2^223 is no int224, and it ends in 8 so no other
+                // representation exists: place its point directly.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                pos = placeDecimalPoint(Strings.toString(uint256(2 ** 223)), uint256(-int256(exponent)));
+            } else {
+                Float positive = LibDecimalFloat.packLossless(-int256(coefficient), exponent);
+                pos = LibFormatDecimalFloat.toDecimalString(positive, false);
+            }
             assertEq(string(s), string.concat("-", pos));
         }
+    }
+
+    /// `digits` (no trailing zero) shifted right by `fractionDigits` places.
+    function placeDecimalPoint(string memory digits, uint256 fractionDigits) internal pure returns (string memory) {
+        bytes memory d = bytes(digits);
+        if (fractionDigits == 0) {
+            return digits;
+        }
+        if (fractionDigits < d.length) {
+            bytes memory integral = new bytes(d.length - fractionDigits);
+            bytes memory fraction = new bytes(fractionDigits);
+            for (uint256 i = 0; i < d.length; i++) {
+                if (i < integral.length) {
+                    integral[i] = d[i];
+                } else {
+                    fraction[i - integral.length] = d[i];
+                }
+            }
+            return string.concat(string(integral), ".", string(fraction));
+        }
+        bytes memory zeros = new bytes(fractionDigits - d.length);
+        for (uint256 i = 0; i < zeros.length; i++) {
+            zeros[i] = "0";
+        }
+        return string.concat("0.", string(zeros), digits);
+    }
+
+    /// The most negative coefficient formats as `-` and the digits of 2^223.
+    function testFormatNonScientificInt224Min() external pure {
+        assertEq(
+            LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(type(int224).min, -3), false),
+            "-13479973333575319897333507543509815336818572211270286240551805124.608"
+        );
     }
 
     /// Constants format as expected in both modes.
