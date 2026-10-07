@@ -8,7 +8,8 @@ import {
     Log10Zero,
     MulDivOverflow,
     DivisionByZero,
-    MaximizeOverflow
+    MaximizeOverflow,
+    Log10RatioRelativeSumTooSmall
 } from "../../error/ErrDecimalFloat.sol";
 import {LOG_TABLE_SIZE_BYTES, LOG_TABLE_SIZE_BASE} from "../table/LibLogTable.sol";
 
@@ -1036,15 +1037,31 @@ library LibDecimalFloatImplementation {
     /// @param a The numerator, at most 1e76.
     /// @param b The denominator, at most 1e76.
     /// @param relative `true` for at least 48 significant digits however small
-    /// the log, which needs a + b of at least 1e50, `false` for a coefficient
-    /// at the `POW_FIXED_ONE` scale.
+    /// the log, which needs a + b of at least 1e50 and reverts
+    /// `Log10RatioRelativeSumTooSmall` below it, `false` for a coefficient at
+    /// the `POW_FIXED_ONE` scale.
     /// @return signedCoefficient The signed coefficient of the log.
     /// @return exponent The exponent of the log.
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
         uint256 sum = a + b;
-        uint256 z = mulDiv(difference, POW_FIXED_ONE, sum);
+        uint256 z;
+        int256 exponent = -50;
+        if (relative) {
+            if (sum < POW_FIXED_ONE) {
+                revert Log10RatioRelativeSumTooSmall(a, b);
+            }
+            z = mulDiv(difference, POW_FIXED_ONE, sum);
+            // difference is below 1e76 so it fits and maximizes in place.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            difference = uint256(differenceCoefficient);
+            exponent += differenceExponent;
+        } else {
+            z = mulDiv(difference, POW_FIXED_ONE, sum);
+        }
         uint256 zSquared = mulDivFixed(z, z);
         // atanh(z) / z
         uint256 series = POW_FIXED_ONE;
@@ -1052,15 +1069,6 @@ library LibDecimalFloatImplementation {
         for (uint256 k = 3; term > 0; k += 2) {
             term = mulDivFixed(term, zSquared);
             series += term / k;
-        }
-        int256 exponent = -50;
-        if (relative) {
-            // difference is below 1e76 so it fits and maximizes in place.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
-            // forge-lint: disable-next-line(unsafe-typecast)
-            difference = uint256(differenceCoefficient);
-            exponent += differenceExponent;
         }
         // The scaled series is below 0.8686e50, so the quotient is below it
         // when not relative, and below int256.max / 1e50 times it when

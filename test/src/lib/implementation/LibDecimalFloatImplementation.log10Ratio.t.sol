@@ -6,7 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
+import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 
 /// Bounds from the `log10Ratio` NatSpec: 1.005 units of 1e-50 for a
 /// coefficient at that scale, or C / 1e49 + 2 units of its exponent when
@@ -131,13 +131,10 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         assertEq(exponent, -81, "exponent");
     }
 
-    /// #311: below a + b of 1e50 relative is outside the domain.
+    /// #311: below a + b of 1e50 relative reverts with its inputs, where it
+    /// reverted `MulDivOverflow` before.
     function testLog10RatioRelativeBelowDomain() external {
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                MulDivOverflow.selector, 1e76, 86858896453025541590786522955046089009035348062649, 20001
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, 10001, 10000));
         this.ratio(10001, 10000, true);
     }
 
