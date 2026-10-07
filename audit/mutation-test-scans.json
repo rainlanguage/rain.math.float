@@ -211,5 +211,26 @@
       "testsAfter": 741,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-07T22:55:29Z",
+    "commit": "7be46249a6dec0b3262949cb053bd591d7620511",
+    "testsAfterCommit": "7be46249a6dec0b3262949cb053bd591d7620511",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 1,
+    "scope": "issue #343 error rules: the changed lines of LibParseDecimalFloat.parseDecimalFloatInline (exponent wrap guard and selector), LibDecimalFloat.toFixedDecimalLossy (wrap guard, error, args), packLossless (guard, error, args), fromFixedDecimalLossless and fromFixedDecimalLosslessPacked; and the reference.rs and decimal_oracle.py error rules for pack_lossless, from_fixed_decimal_lossless, to_fixed_decimal_lossy_unpacked and parse_inline. S01-S14 probed against forge test --mc LibDecimalFloatDecimalLosslessTest|LibDecimalFloatDecimalTest|LibDecimalFloatPackTest|LibParseDecimalFloatTest (83 tests); R01-R08 and P01-P04 against cargo test -p rain-math-float-tests (145 tests). The tests were written in the same commit as the change, before the probe, so killedBefore credits them. Equivalent: S02 (eValue < 0 makes newExponent == exponent impossible), R07 (a zero coefficient has an empty trimmed fraction, so its exponent is the exponent digits, already bounded to int256 by ParseDecimalOverflow).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 26,
+      "killedBefore": 24,
+      "killedAfter": 0,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 228,
+      "testsAfter": 228,
+      "filed": []
+    }
   }
 ]
