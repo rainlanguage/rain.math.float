@@ -90,6 +90,24 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         checkMidpoint(31622776601683793319988935444327185337196, 0);
     }
 
+    /// N = r (r + 1) is a quarter below the midpoint (r + 1/2)^2, so its root
+    /// rounds down to r, wherever Newton lands. r = k 10^5 makes N a 76-digit
+    /// coefficient times 1e5, the odd scale, and r = k 10^6 one times 1e6, the
+    /// even scale. r = k 10^s - 1 puts the factor of 10^s on r + 1 instead.
+    function testSqrtProductOfNeighbours(uint256 k, bool even, bool below) external pure {
+        uint256 s = even ? 1e6 : 1e5;
+        k = even
+            ? bound(k, 31622776601683793319988935444327186, 1e35 - 1)
+            : bound(k, 1e35 + 1, 316227766016837933199889354443271853);
+        uint256 r = below ? k * s - 1 : k * s;
+        uint256 c = Math.mulDiv(r, r + 1, s);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(int256(c), even ? int256(0) : int256(1));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(root, int256(r), "root");
+        assertEq(rootExponent, even ? int256(-3) : int256(-2), "exponent");
+    }
+
     /// r^2 10^2k has root r 10^k exactly, for r below 1e38 so r^2 is a
     /// coefficient below 1e76.
     function testSqrtExactSquares(uint256 r, int256 k) external pure {

@@ -10,6 +10,7 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 contract LibDecimalFloatPowTest is Test {
     using LibDecimalFloat for Float;
@@ -293,6 +294,26 @@ contract LibDecimalFloatPowTest is Test {
         checkPowExact(999, -2, 25, -1, 31543778943002358670330350761941590124385, -38);
         checkPowExact(7, -30, 15, -1, 18520259177452134133511310275474822979972, -84);
         checkPowExact(5, -1, -25, -1, 56568542494923801952067548968387923142787, -40);
+    }
+
+    /// A = floor((2c + 1)^2 / 4e16) has a root just below the midpoint
+    /// (c + 1/2) 1e-8 and A + 1 one just above it, so a half power of each
+    /// rounds to c 1e-8 and (c + 1) 1e-8, in every representation of a half
+    /// down to the most digits a packed coefficient holds, 5e66 10^-67.
+    function testPowHalfMidpoint(uint256 c) external view {
+        c = bound(c, 1e40, 1e41 - 1);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 a = int256(Math.mulDiv(2 * c + 1, 2 * c + 1, 4e16));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedC = int256(c);
+        int256[4] memory digits = [int256(0), 30, 65, 66];
+        for (uint256 i = 0; i < digits.length; i++) {
+            int256 j = digits[i];
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 half = 5 * int256(10 ** uint256(j));
+            checkPowExact(a, 0, half, -j - 1, signedC, -8);
+            checkPowExact(a + 1, 0, half, -j - 1, signedC + 1, -8);
+        }
     }
 
     /// A half in any representation takes the same root.
