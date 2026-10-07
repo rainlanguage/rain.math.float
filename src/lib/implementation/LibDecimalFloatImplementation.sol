@@ -69,12 +69,8 @@ uint256 constant LOG10_RAW_ERROR = 2;
 /// packing and unpacking having fundamental bit size limitations.
 library LibDecimalFloatImplementation {
     /// Inline assembly takes only literal constants.
-    uint256 private constant E4 = 1e4;
-    uint256 private constant E9 = 1e9;
     uint256 private constant E10 = 1e10;
-    uint256 private constant E18 = 1e18;
     uint256 private constant E19 = 1e19;
-    uint256 private constant E37 = 1e37;
     uint256 private constant E38 = 1e38;
     uint256 private constant E57 = 1e57;
     uint256 private constant E66 = 1e66;
@@ -248,27 +244,27 @@ library LibDecimalFloatImplementation {
             // Scale the product down by 10 to the digit count of `prod1`, the
             // least power of ten that brings it into 256 bits.
             uint256 adjustExponent = 0;
-            assembly ("memory-safe") {
-                let remaining := prod1
-                if gt(remaining, E37) {
-                    remaining := div(remaining, E37)
-                    adjustExponent := 37
+            unchecked {
+                uint256 remaining = prod1;
+                if (remaining > 1e37) {
+                    remaining /= 1e37;
+                    adjustExponent = 37;
                 }
-                if gt(remaining, E18) {
-                    remaining := div(remaining, E18)
-                    adjustExponent := add(adjustExponent, 18)
+                if (remaining > 1e18) {
+                    remaining /= 1e18;
+                    adjustExponent += 18;
                 }
-                if gt(remaining, E9) {
-                    remaining := div(remaining, E9)
-                    adjustExponent := add(adjustExponent, 9)
+                if (remaining > 1e9) {
+                    remaining /= 1e9;
+                    adjustExponent += 9;
                 }
-                if gt(remaining, E4) {
-                    remaining := div(remaining, E4)
-                    adjustExponent := add(adjustExponent, 4)
+                if (remaining > 1e4) {
+                    remaining /= 1e4;
+                    adjustExponent += 4;
                 }
-                for {} remaining {} {
-                    remaining := div(remaining, 10)
-                    adjustExponent := add(adjustExponent, 1)
+                while (remaining > 0) {
+                    remaining /= 10;
+                    adjustExponent++;
                 }
             }
 
@@ -1484,14 +1480,14 @@ library LibDecimalFloatImplementation {
                         maximizedExponent := sub(maximizedExponent, 1)
                     }
                 }
-                // Maybe we can fit in one more OOM without overflow, but we
-                // won't know until we try. This pushes us into
-                // [1e76,type(int256).max] and [-type(int256).max,-1e76] ranges,
-                // if that's possible.
-                if lt(add(signedCoefficient, TIMES_TEN_MAX), TIMES_TEN_SPAN) {
-                    signedCoefficient := mul(signedCoefficient, 10)
-                    maximizedExponent := sub(maximizedExponent, 1)
-                }
+            }
+
+            // One more order of magnitude, if it fits: `|c| <= TIMES_TEN_MAX`
+            // as one unsigned comparison.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (uint256(signedCoefficient) + TIMES_TEN_MAX < TIMES_TEN_SPAN) {
+                signedCoefficient *= 10;
+                maximizedExponent -= 1;
             }
 
             // The shift is at most 76, so the exponent wrapped past the floor
