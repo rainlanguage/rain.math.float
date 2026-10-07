@@ -551,6 +551,24 @@ contract LibDecimalFloatPowTest is LogTest {
         this.powExternal(a, LibDecimalFloat.packLossless(2, 0));
     }
 
+    /// A fractional power's unrounded value is wider than int224, so the carry
+    /// fallback sheds digits to pack it. This a is the largest at its exponent
+    /// whose a^1.5 does not overflow.
+    function testPowCarryShedsTheUnrounded() external {
+        int256 signedCoefficientA = 2629012728145285679841056168393364475926807479622600963406791093691;
+        int256 exponentA = 1431655743;
+        Float b = LibDecimalFloat.packLossless(15, -1);
+        (bool returned, Float c) = powChecked(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
+        assertTrue(returned, "returned");
+        (int256 signedCoefficient, int256 exponent) = c.unpack();
+        assertEq(exponent, type(int32).max);
+        // Above the largest Float's 41 digit rounding, so not a rounded value.
+        assertEq(signedCoefficient, 13479973333575319897333507543509815336818572211270286240551805124605);
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA + 1, exponentA));
+        this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA + 1, exponentA), b);
+    }
+
     /// Issue #297 review: a^1 kept all 67 digits of a, and 2 - 1e-50 put a
     /// 51 digit product above a^2, a 41 digit leg times a.
     function testPowRoundsAtFortyOneDigits() external {
