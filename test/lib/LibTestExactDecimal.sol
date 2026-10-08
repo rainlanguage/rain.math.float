@@ -15,12 +15,11 @@ struct U512 {
 /// are `magnitude × 10^exponent` with a 512 bit magnitude, and every
 /// comparison is decided in exact integer arithmetic.
 library LibTestExactDecimal {
-    /// A positive result packs iff its floor at `10^int32.max` fits int224, so
-    /// it overflows from `2^223 × 10^int32.max` up.
-    uint256 internal constant POSITIVE_OVERFLOW_FLOOR = 2 ** 223;
-    /// A negative result is truncated towards zero and `-2^223` fits int224, so
-    /// it overflows from `(2^223 + 1) × 10^int32.max` up.
-    uint256 internal constant NEGATIVE_OVERFLOW_FLOOR = 2 ** 223 + 1;
+    /// A result packs iff the magnitude of its floor at `10^int32.max` is at
+    /// most `2^223 + 1`: that far past the int224 bound of its sign, shedding a
+    /// digit would land below the bound, so it takes the bound (#332). Either
+    /// sign overflows from `(2^223 + 2) × 10^int32.max` up in magnitude.
+    uint256 internal constant OVERFLOW_FLOOR = 2 ** 223 + 2;
 
     function u512(uint256 x) internal pure returns (U512 memory) {
         return U512(0, x);
@@ -108,17 +107,12 @@ library LibTestExactDecimal {
         return x < 0 ? uint256(-(x + 1)) + 1 : uint256(x);
     }
 
-    function overflowFloor(bool negative) internal pure returns (uint256) {
-        return negative ? NEGATIVE_OVERFLOW_FLOOR : POSITIVE_OVERFLOW_FLOOR;
-    }
-
-    /// Whether the exact non-zero `magnitude × 10^exponent`, with the given
-    /// sign, is beyond the largest Float of that sign once truncated towards
-    /// zero.
+    /// Whether the exact non-zero `magnitude × 10^exponent`, of either sign,
+    /// packs past every Float.
     /// Exponents far enough from int32.max decide alone, as the magnitude has
     /// at most 155 digits, which also keeps `cmpScaled` clear of int256
     /// overflow for any exponent.
-    function overflows(U512 memory magnitude, int256 exponent, bool negative) internal pure returns (bool) {
+    function overflows(U512 memory magnitude, int256 exponent) internal pure returns (bool) {
         if (isZero(magnitude)) {
             return false;
         }
@@ -128,7 +122,7 @@ library LibTestExactDecimal {
         if (exponent < int256(type(int32).max) - 400) {
             return false;
         }
-        return cmpScaled(magnitude, exponent, u512(overflowFloor(negative)), type(int32).max) >= 0;
+        return cmpScaled(magnitude, exponent, u512(OVERFLOW_FLOOR), type(int32).max) >= 0;
     }
 
     /// Whether the exact non-zero `magnitude × 10^exponent` is below the
@@ -149,7 +143,7 @@ library LibTestExactDecimal {
         if (ca == 0 || cb == 0) {
             return false;
         }
-        return overflows(mul(abs(ca), abs(cb)), ea + eb, (ca < 0) != (cb < 0));
+        return overflows(mul(abs(ca), abs(cb)), ea + eb);
     }
 
     /// `|a × b|` underflows, given Float operands.
@@ -163,8 +157,7 @@ library LibTestExactDecimal {
         if (ca == 0) {
             return false;
         }
-        return
-            cmpScaled(u512(abs(ca)), ea - eb, mul(overflowFloor((ca < 0) != (cb < 0)), abs(cb)), type(int32).max) >= 0;
+        return cmpScaled(u512(abs(ca)), ea - eb, mul(OVERFLOW_FLOOR, abs(cb)), type(int32).max) >= 0;
     }
 
     /// `|a / b|` underflows, given Float operands and a non-zero `b`.
@@ -182,7 +175,6 @@ library LibTestExactDecimal {
         if (ca == 0 || cb == 0 || (ca < 0) != (cb < 0)) {
             return false;
         }
-        bool negative = ca < 0;
         if (ea < eb) {
             (ca, ea, cb, eb) = (cb, eb, ca, ea);
         }
@@ -191,14 +183,14 @@ library LibTestExactDecimal {
         if (gap <= 67) {
             // Exact: |ca| × 10^gap + |cb| at eb, below 2^223 × 10^68.
             U512 memory sum = add(mulPow10(u512(abs(ca)), gap), u512(abs(cb)));
-            return overflows(sum, eb, negative);
+            return overflows(sum, eb);
         }
         // |cb| < 10^68 <= 10^gap, so b is below one unit of a's exponent. Below
         // a's exponent no multiple of 10^int32.max lies between a and a + b.
         // At or above it, a is such a multiple and b adds its own floor.
         int256 m = type(int32).max;
         if (ea <= m) {
-            return overflows(u512(abs(ca)), ea, negative);
+            return overflows(u512(abs(ca)), ea);
         }
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 lift = uint256(ea - m);
@@ -209,7 +201,7 @@ library LibTestExactDecimal {
         uint256 drop = uint256(m - eb);
         uint256 bFloor = drop > 77 ? 0 : abs(cb) / 10 ** drop;
         U512 memory floorAtMax = add(mulPow10(u512(abs(ca)), lift), u512(bFloor));
-        return cmp(floorAtMax, u512(overflowFloor(negative))) >= 0;
+        return cmp(floorAtMax, u512(OVERFLOW_FLOOR)) >= 0;
     }
 
     /// The exact `coefficient × 10^(exponent + decimals)` as a fixed point
