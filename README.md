@@ -248,17 +248,16 @@ rather than simply return a bool, with a standard default error message.
 The log/pow calculations are not simply truncated on precision loss, they are
 inherently approximations in many cases.
 
-`log10` reads no tables. It divides the input by powers 10^(2^-i) down to within
-10^(2^-16) of a power of ten and closes the gap with a fixed point series.
-Before rounding it is within 2e-50 of the true value, and within 3.3e-49
-relative of it for an input within a factor 1.001 of a power of ten, so a log
-near zero keeps its precision. The result is rounded to 41 significant digits,
-so it is within half a unit in the 41st digit plus 2e-50. A power of ten has an
-exact log.
+`log10` divides the input by powers 10^(2^-i) down to within 10^(2^-16) of a
+power of ten and closes the gap with a fixed point series. Before rounding it is
+within 2e-50 of the true value, and within 3.3e-49 relative of it for an input
+within a factor 1.001 of a power of ten, so a log near zero keeps its precision.
+The result is rounded to 41 significant digits, so it is within half a unit in
+the 41st digit plus 2e-50. A power of ten has an exact log.
 
-`pow10` reads no tables. It computes the power in fixed point and rounds it to
-41 significant digits, so it is within half a unit in the 41st digit plus
-3.28e-8 of a unit, and an exactly representable power such as `10^2` is exact.
+`pow10` computes the power in fixed point and rounds it to 41 significant
+digits, so it is within half a unit in the 41st digit plus 3.28e-8 of a unit,
+and an exactly representable power such as `10^2` is exact.
 
 `pow` calculates an integer exponent by squaring, and the fractional component
 of a non-integer exponent as `pow10(frac(b) * log10(a))` with its guard digits,

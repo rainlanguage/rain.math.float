@@ -215,6 +215,27 @@
     }
   },
   {
+    "timestamp": "2026-10-07T16:49:30Z",
+    "commit": "adb2903293ba920e3ee3490186519a2b22b8c012",
+    "testsAfterCommit": "adb2903293ba920e3ee3490186519a2b22b8c012",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 1,
+    "scope": "issue #298: pure deletion of LibDecimalFloatImplementation.lookupLogTableVal (no caller in src since #309), its LOG_TABLE_SIZE_* import, its two test files and test/lib/LibTestPrecision.sol. The diff adds no src line, so there is no mutation target. The adversarial check: nothing in src, test or crates still references a deleted symbol, and the full forge suite passes.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 0,
+      "killedBefore": 0,
+      "killedAfter": 0,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 741,
+      "testsAfter": 741,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-07T23:55:24Z",
     "commit": "0312b68d23e8d229dd18f5d95522b4f67ce135fa",
     "testsAfterCommit": "0312b68d23e8d229dd18f5d95522b4f67ce135fa",
