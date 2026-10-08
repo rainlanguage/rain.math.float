@@ -75,4 +75,13 @@ contract LibDecimalFloatMulTest is Test {
         assertEq(signedCoefficientParts, signedCoefficientUnpacked);
         assertEq(exponentParts, exponentUnpacked);
     }
+
+    /// #332: int224.min × -1 is 2^223, which packs as int224.max at the same
+    /// exponent, as `minus` does.
+    function testMulInt224MinNegativeOne() external pure {
+        Float min = LibDecimalFloat.packLossless(type(int224).min, 0);
+        Float product = min.mul(LibDecimalFloat.packLossless(-1, 0));
+        assertEq(Float.unwrap(product), Float.unwrap(LibDecimalFloat.packLossless(type(int224).max, 0)));
+        assertEq(Float.unwrap(product), Float.unwrap(min.minus()));
+    }
 }

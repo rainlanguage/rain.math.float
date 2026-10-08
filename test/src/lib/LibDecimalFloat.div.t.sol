@@ -99,4 +99,13 @@ contract LibDecimalFloatDivTest is Test {
             negativeOne *= 10;
         }
     }
+
+    /// #332: int224.min / -1 is 2^223, which packs as int224.max at the same
+    /// exponent, as `minus` does.
+    function testDivInt224MinNegativeOne() external pure {
+        Float min = LibDecimalFloat.packLossless(type(int224).min, 0);
+        Float quotient = min.div(LibDecimalFloat.packLossless(-1, 0));
+        assertEq(Float.unwrap(quotient), Float.unwrap(LibDecimalFloat.packLossless(type(int224).max, 0)));
+        assertEq(Float.unwrap(quotient), Float.unwrap(min.minus()));
+    }
 }

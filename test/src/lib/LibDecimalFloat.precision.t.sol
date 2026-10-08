@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LogTest} from "../../abstract/LogTest.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
@@ -11,23 +11,23 @@ import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 /// log10, pow10, pow and sqrt against the `bc` constant oracle, within 1e-67,
 /// and against each other, each within the proven bound LibTestErrorBound
 /// gives it.
-contract LibDecimalFloatPrecisionTest is LogTest {
+contract LibDecimalFloatPrecisionTest is Test {
     using LibDecimalFloat for Float;
 
-    function log10External(Float a) external returns (Float) {
-        return a.log10(logTables());
+    function log10External(Float a) external pure returns (Float) {
+        return a.log10();
     }
 
-    function pow10External(Float a) external returns (Float) {
-        return a.pow10(logTables());
+    function pow10External(Float a) external pure returns (Float) {
+        return a.pow10();
     }
 
-    function powExternal(Float a, Float b) external returns (Float) {
-        return a.pow(b, logTables());
+    function powExternal(Float a, Float b) external pure returns (Float) {
+        return a.pow(b);
     }
 
-    function sqrtExternal(Float a) external returns (Float) {
-        return a.sqrt(logTables());
+    function sqrtExternal(Float a) external pure returns (Float) {
+        return a.sqrt();
     }
 
     function assertWithin(int256 errorCoefficient, int256 errorExponent, Float bound, string memory what)
@@ -163,7 +163,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
 
     /// log10 a within half a unit plus `LOG10_RAW_ERROR` units of 1e-50, plus
     /// the oracle's 1e-67.
-    function assertLog10Reference(Float a, string memory what) internal {
+    function assertLog10Reference(Float a, string memory what) internal view {
         Float actual = this.log10External(a);
         (int256 actualCoefficient, int256 actualExponent) = actual.unpack();
         (int256 expectedCoefficient, int256 expectedExponent) = oracleLog10(a);
@@ -222,7 +222,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     }
 
     /// |log10(a b) - log10 a - log10 b| within the three logs' bounds.
-    function assertLog10Product(Float a, Float b) internal {
+    function assertLog10Product(Float a, Float b) internal view {
         Float logA = this.log10External(a);
         Float logB = this.log10External(b);
         Float logProduct = this.log10External(a.mul(b));
@@ -236,7 +236,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
 
     /// pow10(log10 a) / a - 1. The log is within E of log10 a, which moves
     /// the power by under 2.3027 E relative for E below 1e-30.
-    function assertPow10Log10(Float a) internal {
+    function assertPow10Log10(Float a) internal view {
         Float log = this.log10External(a);
         assertWithin(
             relativeError(this.pow10External(log), a),
@@ -249,7 +249,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     /// pow(a, b) pow(a, c) / pow(a, b + c) - 1, within the three powers'
     /// bounds. Packing b + c moves the exponent by under 1e-66 of it, at most
     /// 2e6 times log10 a at most 210, so the power by under 1e-57.
-    function assertPowProduct(Float a, Float b, Float c) internal {
+    function assertPowProduct(Float a, Float b, Float c) internal view {
         Float sum = b.add(c);
         assertWithin(
             relativeError(this.powExternal(a, b).mul(this.powExternal(a, c)), this.powExternal(a, sum)),
@@ -260,7 +260,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     }
 
     /// sqrt(a)^2 / a - 1, within twice the root's bound plus its square.
-    function assertSqrtSquare(Float a) internal {
+    function assertSqrtSquare(Float a) internal view {
         Float root = this.sqrtExternal(a);
         Float error = LibTestErrorBound.sqrt();
         assertWithin(
@@ -297,7 +297,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     /// pow10 over every antilog table input, x = idx / 1e4 for idx 0-9999.
     /// Neighbours differ by 2.3e-4 relative, far above the 41 digit rounding,
     /// so the grid strictly increases.
-    function testPow10Grid() external {
+    function testPow10Grid() external view {
         Float previous = LibDecimalFloat.FLOAT_ZERO;
         for (uint256 idx = 0; idx < 10000; idx++) {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -311,7 +311,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
 
     /// log10 is non decreasing over every four digit mantissa. Neighbours'
     /// logs differ by over 4.3e-5, far above twice its error bound.
-    function testLog10GridMonotone() external {
+    function testLog10GridMonotone() external view {
         Float previous = this.log10External(LibDecimalFloat.packLossless(1000, 0));
         for (uint256 n = 1001; n < 10000; n++) {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -321,13 +321,13 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         }
     }
 
-    function testLog10Reference(int224 coefficient, int32 exponent, uint8 region) external {
+    function testLog10Reference(int224 coefficient, int32 exponent, uint8 region) external view {
         assertLog10Reference(positive(coefficient, exponent, region), "log10");
     }
 
     /// log10(10^k) is exactly k, for every k a Float can hold, whatever power
     /// of ten carries it.
-    function testLog10Anchors(int32 k, uint8 digits) external {
+    function testLog10Anchors(int32 k, uint8 digits) external view {
         int256 shift = int256(bound(digits, 0, 66));
         int256 exponent = bound(k, int256(type(int32).min), int256(type(int32).max) - shift);
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -335,7 +335,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         assertTrue(this.log10External(a).eq(LibDecimalFloat.packLossless(exponent + shift, 0)), "log10 anchor");
     }
 
-    function assertLog10Monotone(Float a, Float b, string memory what) internal {
+    function assertLog10Monotone(Float a, Float b, string memory what) internal view {
         Float low = this.log10External(a);
         Float high = this.log10External(b);
         assertTrue(
@@ -344,7 +344,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         );
     }
 
-    function testLog10Monotone(int224 coefficient, int32 exponent, uint8 region, uint256 step) external {
+    function testLog10Monotone(int224 coefficient, int32 exponent, uint8 region, uint256 step) external view {
         Float a = positive(coefficient, exponent, region);
         assertLog10Monotone(a, stepUp(a, step), "log10 monotone");
     }
@@ -355,7 +355,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         int224 coefficientB,
         int32 exponentB,
         uint8 region
-    ) external {
+    ) external view {
         Float a = positive(coefficientA, exponentA, region);
         Float b = positive(coefficientB, exponentB, region);
         if (a.gt(b)) {
@@ -364,26 +364,29 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         assertLog10Monotone(a, b, "log10 monotone pairs");
     }
 
-    function testLog10Product(int224 coefficientA, int32 exponentA, int224 coefficientB, int32 exponentB) external {
+    function testLog10Product(int224 coefficientA, int32 exponentA, int224 coefficientB, int32 exponentB)
+        external
+        view
+    {
         Float a = positive(coefficientA, exponentA, 0);
         Float b = positive(coefficientB, exponentB, 0);
         assertLog10Product(a, b);
     }
 
-    function testPow10Reference(int256 coefficient, int256 exponent, uint256 digits) external {
+    function testPow10Reference(int256 coefficient, int256 exponent, uint256 digits) external view {
         Float x = exponentInput(coefficient, exponent, digits);
         assertPow10Reference(x, this.pow10External(x), "pow10");
     }
 
     /// pow10(k) is exactly 10^k for every whole k whose power packs.
-    function testPow10Anchors(int32 k) external {
+    function testPow10Anchors(int32 k) external view {
         assertTrue(
             this.pow10External(LibDecimalFloat.packLossless(k, 0)).eq(LibDecimalFloat.packLossless(1, k)),
             "pow10 anchor"
         );
     }
 
-    function assertPow10Monotone(Float x, Float y, string memory what) internal {
+    function assertPow10Monotone(Float x, Float y, string memory what) internal view {
         assertTrue(
             LibTestErrorBound.monotoneRelative(
                 this.pow10External(x), this.pow10External(y), LibTestErrorBound.pow10(), LibTestErrorBound.pow10()
@@ -392,7 +395,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         );
     }
 
-    function testPow10Monotone(int256 coefficient, int256 exponent, uint256 digits, uint256 step) external {
+    function testPow10Monotone(int256 coefficient, int256 exponent, uint256 digits, uint256 step) external view {
         Float x = exponentInput(coefficient, exponent, digits);
         Float y = stepUp(x, step).min(LibDecimalFloat.packLossless(POW10_TOP, 0));
         assertPow10Monotone(x, y, "pow10 monotone");
@@ -400,6 +403,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
 
     function testPow10MonotonePairs(int256 coefficientX, int256 coefficientY, int256 exponent, uint256 digits)
         external
+        view
     {
         Float x = exponentInput(coefficientX, exponent, digits);
         Float y = exponentInput(coefficientY, exponent, digits);
@@ -409,13 +413,14 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         assertPow10Monotone(x, y, "pow10 monotone pairs");
     }
 
-    function testPow10Log10(int224 coefficient, int32 exponent) external {
+    function testPow10Log10(int224 coefficient, int32 exponent) external view {
         Float a = positive(coefficient, exponent, 0);
         assertPow10Log10(a);
     }
 
     function testPowReference(int224 coefficientA, int32 exponentA, uint8 region, int256 coefficientB, int256 exponentB)
         external
+        view
     {
         (Float a, Float b) = powInputs(coefficientA, exponentA, region, coefficientB, exponentB);
         assertPowReference(a, b, this.powExternal(a, b), "pow");
@@ -425,7 +430,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
     /// of [-2147483660, -2147483600], across the floor region: within the
     /// proven bound plus the floor's 1e-2147483648 absolute, or reverting
     /// `ExponentUnderflow` only for a true value below 1e-2147483648.
-    function testPowFloor(int256 coefficientA, int256 target, int256 coefficientB) external {
+    function testPowFloor(int256 coefficientA, int256 target, int256 coefficientB) external view {
         coefficientA = bound(coefficientA, 1, 1e67);
         target = bound(target, -2147483660, -2147483600);
         coefficientB = bound(coefficientB, 1e18, 2e18);
@@ -463,7 +468,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         int256 coefficientB,
         int256 coefficientC,
         int256 exponentB
-    ) external {
+    ) external view {
         (Float a, Float b) = powInputs(coefficientA, exponentA, 0, coefficientB, exponentB);
         (, Float c) = powInputs(coefficientA, exponentA, 0, coefficientC, exponentB);
         assertPowProduct(a, b, c);
@@ -476,7 +481,7 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         uint256 step,
         int256 coefficientB,
         int256 exponentB
-    ) external {
+    ) external view {
         (Float a, Float b) = powInputs(coefficientA, exponentA, 0, coefficientB, exponentB);
         b = b.abs();
         Float error = LibTestErrorBound.pow(b);
@@ -488,16 +493,16 @@ contract LibDecimalFloatPrecisionTest is LogTest {
         );
     }
 
-    function testSqrtReference(int224 coefficient, int32 exponent, uint8 region) external {
+    function testSqrtReference(int224 coefficient, int32 exponent, uint8 region) external view {
         Float a = positive(coefficient, exponent, region);
         assertPowReference(a, LibDecimalFloat.FLOAT_HALF, this.sqrtExternal(a), "sqrt");
     }
 
-    function testSqrtSquare(int224 coefficient, int32 exponent, uint8 region) external {
+    function testSqrtSquare(int224 coefficient, int32 exponent, uint8 region) external view {
         assertSqrtSquare(positive(coefficient, exponent, region));
     }
 
-    function testSqrtMonotone(int224 coefficient, int32 exponent, uint8 region, uint256 step) external {
+    function testSqrtMonotone(int224 coefficient, int32 exponent, uint8 region, uint256 step) external view {
         Float a = positive(coefficient, exponent, region);
         assertTrue(this.sqrtExternal(a).lte(this.sqrtExternal(stepUp(a, step))), "sqrt monotone");
     }

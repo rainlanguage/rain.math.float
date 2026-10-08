@@ -742,7 +742,7 @@ fn a_log10() -> BoxedStrategy<Dec> {
         4 => float(),
         // Powers of ten, the exact anchors, in every representation.
         1 => (0u64..=66, crate::exact::exponent()).prop_map(|(j, e)| Dec::new(pow10(j), e)),
-        // Next to a power of ten, and within a table step of one.
+        // Within 1000 units of a power of ten.
         2 => (0u64..=66, -1000i64..=1000, crate::exact::exponent()).prop_map(|(j, d, e)| Dec::new(pow10(j) + d, e)),
     ]
     .boxed()
