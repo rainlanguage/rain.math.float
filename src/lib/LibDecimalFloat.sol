@@ -354,17 +354,7 @@ library LibDecimalFloat {
     /// exponent.
     /// @return lossless True iff every digit shed was zero, so the packed value
     /// equals the input.
-    function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float, bool) {
-        return packLossy(signedCoefficient, exponent, signedCoefficient, exponent);
-    }
-
-    /// `packLossy`, its `ExponentOverflow` reporting `reportedCoefficient` and
-    /// `reportedExponent`.
-    function packLossy(int256 signedCoefficient, int256 exponent, int256 reportedCoefficient, int256 reportedExponent)
-        private
-        pure
-        returns (Float float, bool lossless)
-    {
+    function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {
             int256 initialSignedCoefficient = signedCoefficient;
             int256 initialExponent = exponent;
@@ -452,7 +442,7 @@ library LibDecimalFloat {
                     // representable Float.
                     int256 excess = exponent - type(int32).max;
                     if (!fits || excess > 67) {
-                        revert ExponentOverflow(reportedCoefficient, reportedExponent);
+                        revert ExponentOverflow(initialSignedCoefficient, initialExponent);
                     }
                     // excess is in [1, 67] so 10 ** excess fits int256 and the
                     // casts cannot truncate.
@@ -464,7 +454,7 @@ library LibDecimalFloat {
                         initialSignedCoefficient > type(int224).max / scale
                             || initialSignedCoefficient < type(int224).min / scale
                     ) {
-                        revert ExponentOverflow(reportedCoefficient, reportedExponent);
+                        revert ExponentOverflow(initialSignedCoefficient, initialExponent);
                     }
                     signedCoefficient = initialSignedCoefficient * scale;
                     exponent = type(int32).max;
@@ -1157,14 +1147,36 @@ library LibDecimalFloat {
     }
 
     /// `packArithmeticResult` for pow and pow10, its range errors reporting
-    /// the call's input.
+    /// the call's input. `packLossy` sheds at most ten digits, so an exponent
+    /// ten below int32.max cannot overflow.
     function packPowResult(int256 signedCoefficient, int256 exponent, Float input) private pure returns (Float) {
-        (int256 inputCoefficient, int256 inputExponent) = input.unpack();
-        (Float c, bool lossless) = packLossy(signedCoefficient, exponent, inputCoefficient, inputExponent);
+        int256 ceilingLessTen;
+        // A checked subtraction is computed at run time, for over 100 gas.
+        unchecked {
+            ceilingLessTen = int256(type(int32).max) - 10;
+        }
+        if (exponent > ceilingLessTen) {
+            revertIfPastLargestFloat(signedCoefficient, exponent, input);
+        }
+        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless && Float.unwrap(c) == bytes32(0)) {
-            revert ExponentUnderflow(inputCoefficient, inputExponent);
+            revertPast(false, input);
         }
         return c;
+    }
+
+    /// `packLossy` reverts `ExponentOverflow` exactly when the value is at
+    /// least (int224.max / 10 + 1) 10^(int32.max + 1) in magnitude: there the
+    /// closest Float not above it is past int224.max 10^int32.max.
+    function revertIfPastLargestFloat(int256 signedCoefficient, int256 exponent, Float input) private pure {
+        int256 overCoefficient = type(int224).max / 10 + 1;
+        int256 overExponent = int256(type(int32).max) + 1;
+        if (
+            LibDecimalFloatImplementation.gte(signedCoefficient, exponent, overCoefficient, overExponent)
+                || LibDecimalFloatImplementation.lte(signedCoefficient, exponent, -overCoefficient, overExponent)
+        ) {
+            revertPast(true, input);
+        }
     }
 
     function isOne(int256 signedCoefficient, int256 exponent) private pure returns (bool) {
