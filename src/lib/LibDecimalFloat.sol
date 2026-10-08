@@ -922,7 +922,19 @@ library LibDecimalFloat {
             revertPast(signedCoefficient > 0, float);
         }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
-        return packPowResult(signedCoefficient, exponent, float);
+        // packPowResult, inlined to keep a call off the common path.
+        int256 ceilingLessTen;
+        unchecked {
+            ceilingLessTen = int256(type(int32).max) - 10;
+        }
+        if (exponent > ceilingLessTen) {
+            revertIfPastLargestFloat(signedCoefficient, exponent, float);
+        }
+        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
+        if (!lossless && Float.unwrap(c) == bytes32(0)) {
+            revertPast(false, float);
+        }
+        return c;
     }
 
     /// Same as log10, but accepts a Float struct instead of separate values.
@@ -1146,9 +1158,9 @@ library LibDecimalFloat {
         revert ExponentUnderflow(signedCoefficient, exponent);
     }
 
-    /// `packArithmeticResult` for pow and pow10, its range errors reporting
-    /// the call's input. `packLossy` sheds at most ten digits, so an exponent
-    /// ten below int32.max cannot overflow.
+    /// `packArithmeticResult` for pow and pow10 (inlined there), its range
+    /// errors reporting the call's input. `packLossy` sheds at most ten
+    /// digits, so an exponent ten below int32.max cannot overflow.
     function packPowResult(int256 signedCoefficient, int256 exponent, Float input) private pure returns (Float) {
         int256 ceilingLessTen;
         // A checked subtraction is computed at run time, for over 100 gas.
