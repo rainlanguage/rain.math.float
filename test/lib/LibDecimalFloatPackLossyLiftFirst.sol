@@ -7,7 +7,8 @@ import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 
 /// `packLossy` verbatim from `src/lib/LibDecimalFloat.sol` at
 /// 4d2d1e8ea388257fb9a5526748f15ea935c82002, which lifts an exponent above
-/// int32.max before any shedding. Equivalence tests only.
+/// int32.max before any shedding, with the nearest-bound rule of #332 added
+/// after shedding. Equivalence tests only.
 library LibDecimalFloatPackLossyLiftFirst {
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {
@@ -57,6 +58,26 @@ library LibDecimalFloatPackLossyLiftFirst {
                 while (int224(signedCoefficient) != signedCoefficient) {
                     signedCoefficient /= 10;
                     ++exponent;
+                }
+
+                // The nearest-bound rule from #332, as in the source.
+                int256 unshed = signedCoefficient * 10;
+                // forge-lint: disable-next-line(unsafe-typecast)
+                if (int224(unshed) == unshed) {
+                    int256 boundExponent = exponent - 1;
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    if (int32(boundExponent) == boundExponent) {
+                        int256 bound = type(int224).max;
+                        uint256 boundMask = type(uint224).max;
+                        assembly ("memory-safe") {
+                            // int224.max, or int224.min as its complement.
+                            bound := xor(sar(255, signedCoefficient), bound)
+                            float := or(and(bound, boundMask), shl(0xe0, boundExponent))
+                        }
+                        // The literal is the bool this function returns, not a condition operand.
+                        //forge-lint: disable-next-line(boolean-cst)
+                        return (float, false);
+                    }
                 }
             } else {
                 if (signedCoefficient == 0) {
