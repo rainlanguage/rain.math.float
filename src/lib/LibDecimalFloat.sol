@@ -336,48 +336,24 @@ library LibDecimalFloat {
         return toFixedDecimalLossless(signedCoefficient, exponent, decimals);
     }
 
-    /// Pack a signed coefficient and exponent into a single `Float`.
-    /// Clearly this involves fitting 64 bytes into 32 bytes, so there will be
-    /// data loss.
+    /// Pack a signed coefficient and exponent into a single `Float`, returning
+    /// the Float closest to the value that does not exceed its magnitude.
     ///
-    /// The coefficient is divided by ten (rounding towards zero) and the
-    /// exponent raised by one, as many times as it takes to fit the coefficient
-    /// in int224 AND the exponent in int32. When int224.max (or int224.min) one
-    /// exponent below that is closer to the value, it is the result instead:
-    /// a value that does not fit packs to the Float closest to it that does
-    /// not exceed its magnitude, so `2^223` packs as int224.max, not as
-    /// `2^223 - 8` at the next exponent. Both directions of the trade are
-    /// the same operation, so the packing never gives up on the exponent while
-    /// it still has coefficient digits to spend: a value whose exponent is
-    /// below the floor is brought up to the floor by shedding its low digits,
-    /// and only when every digit has been shed (the value is smaller than any
-    /// representable Float) does it become `FLOAT_ZERO`. This matches the
-    /// README's stated policy for underflow: lose precision by rounding towards
-    /// zero rather than erroring, because in absolute terms the amount lost is
-    /// negligible. The inverse trade covers an exponent above the ceiling: the
-    /// coefficient is multiplied by ten and the exponent lowered by one until
-    /// the exponent is int32.max, which is exact, so `1` at int32.max + 1 packs
-    /// losslessly as `10` at int32.max. Multiplying grows the coefficient, so
-    /// this only works while it has int224 headroom; exponent OVERFLOW reverts
-    /// when it does not.
-    ///
-    /// The packing is lossless if and only if every digit shed was a zero, so
-    /// `lossless` reports whether the packed value is numerically equal to the
-    /// input, not whether the input already fitted. A coefficient that does not
-    /// fit int224 but is an exact multiple of the power of ten it was divided
-    /// by packs losslessly. This matters at the exponent floor in particular:
-    /// the arithmetic operations maximise their operands (multiplying the
-    /// coefficient up to ~1e76 and lowering the exponent to match), so a value
-    /// AT the floor reaches this function as a huge coefficient dozens of
-    /// exponent steps BELOW the floor, and the trailing zeros maximisation
-    /// added are exactly what must be shed to get back to it.
+    /// A coefficient past int224 sheds digits, truncating toward zero, until it
+    /// fits. If the result fits ten times over, the int224 bound one exponent
+    /// down is closer (`2^223` packs as int224.max at the same exponent, not
+    /// `2^223 / 10` at the next) and is returned instead. An exponent below the
+    /// int32 floor sheds digits up to it, and is `FLOAT_ZERO` once every digit
+    /// is gone. An exponent above the ceiling is lowered by multiplying the
+    /// coefficient by ten, which is exact; `ExponentOverflow` when int224 has no
+    /// headroom for that.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// representation.
     /// @param exponent The exponent of the floating point representation.
     /// @return float The packed representation of the signed coefficient and
     /// exponent.
-    /// @return lossless True if the packed value is numerically equal to the
-    /// input, false otherwise.
+    /// @return lossless True iff every digit shed was zero, so the packed value
+    /// equals the input.
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {
             int256 initialSignedCoefficient = signedCoefficient;
@@ -389,8 +365,10 @@ library LibDecimalFloat {
             bool fits = int224(signedCoefficient) == signedCoefficient;
 
             if (!fits) {
-                // Shed digits that must go anyway: 1e72 or more is past int224
-                // after shedding 4, and 1e75 or more after shedding 7.
+                // int224.max is ~1.35e67, so 1e75 or more must shed at least 8
+                // digits and 1e72 or more at least 5. Cut those in one division
+                // to skip loop iterations. `/` truncates toward zero, so the
+                // result never exceeds the magnitude.
                 if (signedCoefficient / 1e72 != 0) {
                     if (signedCoefficient / 1e75 != 0) {
                         signedCoefficient /= 1e8;
@@ -409,20 +387,28 @@ library LibDecimalFloat {
                     ++exponent;
                 }
 
-                // The last digit shed left a coefficient that fits ten times
-                // over, so the int224 bound one exponent down is the closer
-                // Float. int224.max / 10 is also 2^223 / 10, so the range is
-                // symmetric.
+                // Before the last division the coefficient did not fit at
+                // `exponent - 1`, so |value| >= int224.max * 10^(exponent - 1).
+                // If |c| <= int224.max / 10 then c * 10 <= int224.max - 7, so
+                // that bound is closer than c and still does not exceed the
+                // value; otherwise c * 10 > int224.max and c is closer.
+                // Adding tenFold maps [-tenFold, tenFold] onto [0, 2 * tenFold]
+                // and anything outside wraps huge as uint256: one compare for
+                // both signs, since int224.max / 10 == 2^223 / 10.
                 int256 tenFold = type(int224).max / 10;
                 // forge-lint: disable-next-line(unsafe-typecast)
                 if (uint256(signedCoefficient + tenFold) <= uint256(tenFold + tenFold)) {
                     int256 boundExponent = exponent - 1;
+                    // Below the int32 floor the bound is skipped and the floor
+                    // path below keeps shedding.
                     // forge-lint: disable-next-line(unsafe-typecast)
                     if (int32(boundExponent) == boundExponent) {
                         int256 bound = type(int224).max;
                         uint256 boundMask = type(uint224).max;
                         assembly ("memory-safe") {
-                            // int224.max, or int224.min as its complement.
+                            // sar(255, c) is all ones when c < 0, so the xor
+                            // gives ~int224.max == int224.min for a negative
+                            // value and int224.max otherwise, without a branch.
                             bound := xor(sar(255, signedCoefficient), bound)
                             float := or(and(bound, boundMask), shl(0xe0, boundExponent))
                         }
@@ -905,7 +891,6 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
-    /// The tables address is unused, and kept so that callers need not change.
     /// @return The result of 10^float, rounded to nearest at 41 significant
     /// digits, within half a unit in the 41st digit plus 3.28e-8 of a unit,
     /// under 5.0000004e-41 relative. A result below 1e-2147483608 sheds digits
@@ -916,7 +901,7 @@ library LibDecimalFloat {
     /// place, only when both true values lie within the raw error of the same
     /// rounding tie, and never by more. Callers must not rely on strict
     /// ordering at one-ulp resolution. 10^k is exactly 10^k for an integer k.
-    function pow10(Float float, address) internal pure returns (Float) {
+    function pow10(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         // A zero of any exponent, which the integer part below cannot rescale.
         if (signedCoefficient == 0) {
@@ -945,8 +930,6 @@ library LibDecimalFloat {
     /// Same as log10, but accepts a Float struct instead of separate values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
-    /// @param tablesDataContract Unused, and kept so that callers need not
-    /// change.
     /// @param a The float to log10.
     /// @return The base-10 logarithm of a, rounded to nearest at 41
     /// significant digits, within half a unit in the 41st digit plus 2e-50
@@ -955,10 +938,9 @@ library LibDecimalFloat {
     /// true values lie within the raw error of the same rounding tie, and
     /// never by more. Callers must not rely on strict ordering at one-ulp
     /// resolution. log10(10^k) is exactly k.
-    function log10(Float a, address tablesDataContract) internal pure returns (Float) {
+    function log10(Float a) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
-        (signedCoefficient, exponent) =
-            LibDecimalFloatImplementation.log10(tablesDataContract, signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.log10(signedCoefficient, exponent);
         // We don't care if log10 is lossy because it's an approximation anyway.
         Float result = packArithmeticResult(signedCoefficient, exponent);
         return result;
@@ -1002,22 +984,16 @@ library LibDecimalFloat {
     /// fractional `b` reverts `PowNegativeBase`.
     /// @param a The float `a` in `a^b`.
     /// @param b The float `b` in `a^b`.
-    /// @param tablesDataContract Unused, and kept so that callers need not
-    /// change.
     /// @return The result of a^b.
-    function pow(Float a, Float b, address tablesDataContract) internal pure returns (Float) {
+    function pow(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
+        (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b);
         return packRoundedSignificant(signedCoefficientA, exponentA);
     }
 
     /// `pow` before rounding and packing, so a negative base and an odd power
     /// are negated unpacked: int224.min at int32.max has no packed negation.
-    function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b, address tablesDataContract)
-        private
-        pure
-        returns (int256, int256)
-    {
+    function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b) private pure returns (int256, int256) {
         if (b.isZero()) {
             (signedCoefficientA, exponentA) = FLOAT_ONE.unpack();
             return (signedCoefficientA, exponentA);
@@ -1039,7 +1015,7 @@ library LibDecimalFloat {
                     revert PowNegativeBase(signedCoefficientA, exponentA);
                 }
                 (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
-                (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b, tablesDataContract);
+                (signedCoefficientA, exponentA) = powUnrounded(signedCoefficientA, exponentA, b);
                 if (b.isOdd()) {
                     (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.minus(signedCoefficientA, exponentA);
                 }
@@ -1107,7 +1083,7 @@ library LibDecimalFloat {
 
         if (fractionB != 0) {
             (int256 signedCoefficientC, int256 exponentC) =
-                LibDecimalFloatImplementation.log10Unrounded(tablesDataContract, signedCoefficientA, exponentA);
+                LibDecimalFloatImplementation.log10Unrounded(signedCoefficientA, exponentA);
             (signedCoefficientC, exponentC) =
                 LibDecimalFloatImplementation.mul(signedCoefficientC, exponentC, fractionB, exponentB);
             (signedCoefficientC, exponentC) =
@@ -1180,13 +1156,10 @@ library LibDecimalFloat {
     /// Doesn't lose precision due to the exponent, for a wide range of
     /// exponents.
     /// @param a The float to take the square root of.
-    /// @param tablesDataContract Unused, and kept so that callers need not
-    /// change.
     /// @return The square root of a.
-    function sqrt(Float a, address tablesDataContract) internal pure returns (Float) {
+    function sqrt(Float a) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (int256 signedCoefficient, int256 exponent) =
-            powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF, tablesDataContract);
+        (int256 signedCoefficient, int256 exponent) = powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF);
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
         if (signedCoefficient > 0) {
             (signedCoefficient, exponent) = roundRoot(signedCoefficientA, exponentA, signedCoefficient, exponent);

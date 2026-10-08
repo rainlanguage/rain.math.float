@@ -20,6 +20,4 @@ mod precise;
 #[cfg(test)]
 mod reference;
 #[cfg(test)]
-mod tables;
-#[cfg(test)]
 mod transcendental;
