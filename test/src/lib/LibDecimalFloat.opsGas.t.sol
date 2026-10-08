@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LogTest, console2} from "../../abstract/LogTest.sol";
+import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
@@ -10,7 +10,7 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 /// the results that shed digits or take the int224 bound. Run with
 /// `forge test --mc LibDecimalFloatOpsGasTest -vv`; each line is the gas of
 /// the call through an internal function pointer alone.
-contract LibDecimalFloatOpsGasTest is LogTest {
+contract LibDecimalFloatOpsGasTest is Test {
     using LibDecimalFloat for Float;
 
     function f(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
@@ -30,14 +30,6 @@ contract LibDecimalFloatOpsGasTest is LogTest {
     function log1(string memory name, function(Float) internal pure returns (Float) op, Float a) internal view {
         uint256 before = gasleft();
         op(a);
-        uint256 used = before - gasleft();
-        console2.log(name, used);
-    }
-
-    function logT(string memory name, function(Float, address) internal view returns (Float) op, Float a) internal {
-        address tables = logTables();
-        uint256 before = gasleft();
-        op(a, tables);
         uint256 used = before - gasleft();
         console2.log(name, used);
     }
@@ -104,10 +96,10 @@ contract LibDecimalFloatOpsGasTest is LogTest {
         logPack("packLossy bound below floor", two223, int256(type(int32).min) - 1);
     }
 
-    function testGasTables() external {
+    function testGasTranscendental() external view {
         Float a = f(15, -1);
-        logT("log10 packed", LibDecimalFloat.log10, a);
-        logT("pow10 packed", LibDecimalFloat.pow10, a);
-        logT("sqrt packed", LibDecimalFloat.sqrt, f(2, 0));
+        log1("log10 packed", LibDecimalFloat.log10, a);
+        log1("pow10 packed", LibDecimalFloat.pow10, a);
+        log1("sqrt packed", LibDecimalFloat.sqrt, f(2, 0));
     }
 }
