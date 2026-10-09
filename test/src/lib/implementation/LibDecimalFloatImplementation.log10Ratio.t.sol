@@ -6,6 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 
 /// Bounds from the `log10Ratio` NatSpec: 1.005 units of 1e-50 for a
@@ -25,14 +26,17 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, relative);
         assertTrue(expectedCoefficient < 0 ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
-        (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(signedCoefficient, exponent, expectedCoefficient, expectedExponent);
-        (int256 boundCoefficient, int256 boundExponent) =
+        int256[] memory coefficients = new int256[](2);
+        int256[] memory exponents = new int256[](2);
+        (coefficients[0], exponents[0]) = (signedCoefficient, exponent);
+        (coefficients[1], exponents[1]) = (-expectedCoefficient, expectedExponent);
+        int256[] memory boundCoefficients = new int256[](2);
+        int256[] memory boundExponents = new int256[](2);
+        (boundCoefficients[0], boundExponents[0]) =
             relative ? (abs(signedCoefficient) + 2e49, exponent - 49) : (int256(1005), int256(-53));
-        (boundCoefficient, boundExponent) =
-            LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, expectedExponent);
+        (boundCoefficients[1], boundExponents[1]) = (1, expectedExponent);
         assertTrue(
-            LibDecimalFloatImplementation.lte(abs(errorCoefficient), errorExponent, boundCoefficient, boundExponent),
+            LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents),
             "log10Ratio error"
         );
         if (relative) {

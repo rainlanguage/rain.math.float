@@ -348,7 +348,7 @@ library LibTestExactDecimal {
     function int256Unit(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
         uint256 magnitude = abs(signedCoefficient);
         int256 n = digits(u512(magnitude));
-        // n is at most 68, and a 77 digit magnitude fits uint256.
+        // n is at most 77, and a 77 digit magnitude fits uint256.
         // forge-lint: disable-next-line(unsafe-typecast)
         bool fits77 = magnitude * 10 ** uint256(77 - n) <= uint256(type(int256).max);
         return exponent + n - (fits77 ? int256(77) : int256(76));
@@ -379,8 +379,8 @@ library LibTestExactDecimal {
             // |cb| × 10^(eb - unit) is at most |a|'s 77 digits.
             // forge-lint: disable-next-line(unsafe-typecast)
             smallUnits = abs(cb) * 10 ** uint256(eb - unit);
-        } else if (unit - eb > 68) {
-            // |cb| has at most 68 digits, so it is under one unit.
+        } else if (unit - eb > 77) {
+            // |cb| has at most 77 digits, so it is under one unit.
             smallFraction = true;
         } else {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -427,5 +427,76 @@ library LibTestExactDecimal {
             return false;
         }
         return cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) == 0;
+    }
+
+    /// Compares `ca × 10^ea` with `cb × 10^eb` for any int256 parts, returning
+    /// -1, 0 or 1.
+    function cmpSigned(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256) {
+        int256 signA = ca < 0 ? int256(-1) : ca == 0 ? int256(0) : int256(1);
+        int256 signB = cb < 0 ? int256(-1) : cb == 0 ? int256(0) : int256(1);
+        if (signA != signB) {
+            return signA < signB ? int256(-1) : int256(1);
+        }
+        if (signA == 0) {
+            return 0;
+        }
+        return signA * cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb);
+    }
+
+    /// Whether `ca × 10^ea × cb × 10^eb` is exactly `cc × 10^ec`.
+    function productEq(int256 ca, int256 ea, int256 cb, int256 eb, int256 cc, int256 ec) internal pure returns (bool) {
+        if (ca == 0 || cb == 0 || cc == 0) {
+            return (ca == 0 || cb == 0) && cc == 0;
+        }
+        if (((ca < 0) != (cb < 0)) != (cc < 0)) {
+            return false;
+        }
+        return cmpScaled(mul(abs(ca), abs(cb)), ea + eb, u512(abs(cc)), ec) == 0;
+    }
+
+    /// Whether `|Σ cᵢ × 10^eᵢ| <= Σ bⱼ × 10^fⱼ` exactly, for non-negative
+    /// `bⱼ`. Every term is scaled to the least exponent of a non-zero term,
+    /// so every magnitude scaled there must stay below 2^512.
+    function absSumLte(
+        int256[] memory coefficients,
+        int256[] memory exponents,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) internal pure returns (bool) {
+        int256 floor = type(int256).max;
+        for (uint256 i = 0; i < coefficients.length; i++) {
+            if (coefficients[i] != 0 && exponents[i] < floor) {
+                floor = exponents[i];
+            }
+        }
+        for (uint256 i = 0; i < boundCoefficients.length; i++) {
+            require(boundCoefficients[i] >= 0, "negative bound");
+            if (boundCoefficients[i] != 0 && boundExponents[i] < floor) {
+                floor = boundExponents[i];
+            }
+        }
+        U512 memory positive = u512(0);
+        U512 memory negative = u512(0);
+        U512 memory bound = u512(0);
+        for (uint256 i = 0; i < coefficients.length; i++) {
+            if (coefficients[i] == 0) {
+                continue;
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            U512 memory scaled = mulPow10(u512(abs(coefficients[i])), uint256(exponents[i] - floor));
+            if (coefficients[i] < 0) {
+                negative = add(negative, scaled);
+            } else {
+                positive = add(positive, scaled);
+            }
+        }
+        for (uint256 i = 0; i < boundCoefficients.length; i++) {
+            if (boundCoefficients[i] == 0) {
+                continue;
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bound = add(bound, mulPow10(u512(abs(boundCoefficients[i])), uint256(boundExponents[i] - floor)));
+        }
+        return cmp(positive, add(negative, bound)) <= 0 && cmp(negative, add(positive, bound)) <= 0;
     }
 }

@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 /// `lt`, `gt`, `gte` and `min` on unpacked values. `lte` and `max` have their
 /// own files; these are the rest of the set, so the unpacked surface carries
@@ -72,23 +73,19 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
         assertTrue(gte(signedCoefficient, exponent, signedCoefficient, exponent));
     }
 
-    /// `gt` is `lt` with the operands swapped, and `gte` is `lte` swapped, for
-    /// every pair. This is what pins the four to one another rather than each
-    /// being independently plausible.
-    function testDualities(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
+    /// Every comparison is the exact order of the pair.
+    function testAgainstExactOrder(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
         cA = bound(cA, type(int224).min, type(int224).max);
         cB = bound(cB, type(int224).min, type(int224).max);
         eA = bound(eA, -50, 50);
         eB = bound(eB, -50, 50);
 
-        assertEq(gt(cA, eA, cB, eB), lt(cB, eB, cA, eA));
-        assertEq(gte(cA, eA, cB, eB), lte(cB, eB, cA, eA));
-        // Exactly one of <, ==, > holds.
-        assertEq(lt(cA, eA, cB, eB), !gte(cA, eA, cB, eB));
-        assertEq(gt(cA, eA, cB, eB), !lte(cA, eA, cB, eB));
-        // The inclusive forms are the strict form or equality.
-        assertEq(lte(cA, eA, cB, eB), lt(cA, eA, cB, eB) || eq(cA, eA, cB, eB));
-        assertEq(gte(cA, eA, cB, eB), gt(cA, eA, cB, eB) || eq(cA, eA, cB, eB));
+        int256 order = LibTestExactDecimal.cmpSigned(cA, eA, cB, eB);
+        assertEq(lt(cA, eA, cB, eB), order < 0, "lt");
+        assertEq(lte(cA, eA, cB, eB), order <= 0, "lte");
+        assertEq(gt(cA, eA, cB, eB), order > 0, "gt");
+        assertEq(gte(cA, eA, cB, eB), order >= 0, "gte");
+        assertEq(eq(cA, eA, cB, eB), order == 0, "eq");
     }
 
     /// `lt` is transitive across rescaling.
@@ -102,7 +99,7 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
         }
     }
 
-    /// `min` returns an operand, and one that is <= both.
+    /// `min` returns A, unchanged, when A is exactly below B, else B.
     function testMin(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
         cA = bound(cA, type(int224).min, type(int224).max);
         cB = bound(cB, type(int224).min, type(int224).max);
@@ -110,16 +107,13 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
         eB = bound(eB, -50, 50);
 
         (int256 c, int256 e) = LibDecimalFloatImplementation.min(cA, eA, cB, eB);
-
-        // It is one of the two operands, unchanged.
-        assertTrue((c == cA && e == eA) || (c == cB && e == eB));
-        // And it is no greater than either.
-        assertTrue(lte(c, e, cA, eA));
-        assertTrue(lte(c, e, cB, eB));
+        bool isA = LibTestExactDecimal.cmpSigned(cA, eA, cB, eB) < 0;
+        assertEq(c, isA ? cA : cB, "coefficient");
+        assertEq(e, isA ? eA : eB, "exponent");
     }
 
-    /// `min` and `max` pick opposite ends of the same pair: the pair of results
-    /// is the pair of inputs, whichever order they arrive in.
+    /// `min` and `max` pick opposite ends of the same pair, both taking B on
+    /// a tie.
     function testMinMaxPartitionThePair(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
         cA = bound(cA, type(int224).min, type(int224).max);
         cB = bound(cB, type(int224).min, type(int224).max);
@@ -129,11 +123,11 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
         (int256 lowC, int256 lowE) = LibDecimalFloatImplementation.min(cA, eA, cB, eB);
         (int256 highC, int256 highE) = LibDecimalFloatImplementation.max(cA, eA, cB, eB);
 
-        assertTrue(lte(lowC, lowE, highC, highE));
-        // Numerically the multiset {min, max} is the multiset {A, B}.
-        assertTrue(
-            (eq(lowC, lowE, cA, eA) && eq(highC, highE, cB, eB)) || (eq(lowC, lowE, cB, eB) && eq(highC, highE, cA, eA))
-        );
+        int256 order = LibTestExactDecimal.cmpSigned(cA, eA, cB, eB);
+        assertEq(lowC, order < 0 ? cA : cB, "min coefficient");
+        assertEq(lowE, order < 0 ? eA : eB, "min exponent");
+        assertEq(highC, order > 0 ? cA : cB, "max coefficient");
+        assertEq(highE, order > 0 ? eA : eB, "max exponent");
     }
 
     /// Ties return B, matching `max`, so the choice is stable and documented

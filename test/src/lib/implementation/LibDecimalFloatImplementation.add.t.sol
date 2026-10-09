@@ -10,6 +10,7 @@ import {
     ADD_MAX_EXPONENT_DIFF
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationAddTest is Test {
     function addExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -291,8 +292,9 @@ contract LibDecimalFloatImplementationAddTest is Test {
         assertEq(exponent, expectedExponent, "exponent mismatch");
     }
 
-    /// a + b == b + a for all in-range inputs (compared via eq, since zero
-    /// can have different exponent representations).
+    /// a + b and b + a are both the exact sum rounded by the documented rule,
+    /// compared by value since zero can have different exponents. Both are
+    /// equal when either operand is `type(int256).min`.
     function testAddCommutative(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -307,7 +309,16 @@ contract LibDecimalFloatImplementationAddTest is Test {
         (int256 coeffBA, int256 expBA) =
             LibDecimalFloatImplementation.add(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
 
-        assertTrue(LibDecimalFloatImplementation.eq(coeffAB, expAB, coeffBA, expBA), "add not commutative");
+        // `addParts` takes an operand to be whole int256 units, which
+        // `type(int256).min` is not.
+        if (signedCoefficientA == type(int256).min || signedCoefficientB == type(int256).min) {
+            assertTrue(LibTestExactDecimal.eq(coeffAB, expAB, coeffBA, expBA), "add not commutative");
+            return;
+        }
+        (int256 expectedCoeff, int256 expectedExp) =
+            LibTestExactDecimal.addParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertTrue(LibTestExactDecimal.eq(coeffAB, expAB, expectedCoeff, expectedExp), "a + b");
+        assertTrue(LibTestExactDecimal.eq(coeffBA, expBA, expectedCoeff, expectedExp), "b + a");
     }
 
     /// Adding any zero to any value returns the non-zero value.

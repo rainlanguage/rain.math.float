@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationLteTest is Test {
     function lte(int256 coefficientA, int256 exponentA, int256 coefficientB, int256 exponentB)
@@ -50,8 +51,8 @@ contract LibDecimalFloatImplementationLteTest is Test {
         assertTrue(lte(signedCoefficient, exponent, signedCoefficient, exponent));
     }
 
-    /// For any pair, at least one direction holds, and both hold only when
-    /// they are numerically equal.
+    /// Both directions are the exact order of the pair, and `eq` is its
+    /// equality.
     function testLteTotalOrder(int256 coefficientA, int256 exponentA, int256 coefficientB, int256 exponentB)
         external
         pure
@@ -61,11 +62,9 @@ contract LibDecimalFloatImplementationLteTest is Test {
         exponentA = bound(exponentA, -50, 50);
         exponentB = bound(exponentB, -50, 50);
 
-        bool forward = lte(coefficientA, exponentA, coefficientB, exponentB);
-        bool backward = lte(coefficientB, exponentB, coefficientA, exponentA);
-        assertTrue(forward || backward);
-        assertEq(
-            forward && backward, LibDecimalFloatImplementation.eq(coefficientA, exponentA, coefficientB, exponentB)
-        );
+        int256 order = LibTestExactDecimal.cmpSigned(coefficientA, exponentA, coefficientB, exponentB);
+        assertEq(lte(coefficientA, exponentA, coefficientB, exponentB), order <= 0, "forward");
+        assertEq(lte(coefficientB, exponentB, coefficientA, exponentA), order >= 0, "backward");
+        assertEq(LibDecimalFloatImplementation.eq(coefficientA, exponentA, coefficientB, exponentB), order == 0, "eq");
     }
 }
