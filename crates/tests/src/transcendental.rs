@@ -1111,6 +1111,45 @@ mod checker {
         assert!(largest(false).eq_value(&Dec::new(r::int224_max(), I32_MAX)));
     }
 
+    /// An exact power one unit in the last place off is within pow's bound,
+    /// so only exactness rejects it, for every q and every count of decimals.
+    #[test]
+    fn pow_exact_past_small_ratios() {
+        for (a, b, want) in [
+            ("42535295865117307932921825928971026432", "0.008", "2"),
+            ("42535295865117307932921825928971026432", "-0.008", "0.5"),
+            (
+                "42535295865117307932921825928971026432",
+                "1.056",
+                "5444517870735015415413993718908291383296",
+            ),
+            (
+                "11790184577738583171520872861412518665678211592275841109096961",
+                "0.0078125",
+                "3",
+            ),
+            ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
+        ] {
+            let (a, b, want) = (
+                r::literal_value(a),
+                r::literal_value(b),
+                r::literal_value(want),
+            );
+            let bound = Bound::Pow(integer_part(&b));
+            let ulp = Dec::new(1, order(&want) - 40);
+            let off = sum(&want, &ulp.neg());
+            assert!(
+                accepts(&near(want.clone()), &bound, Ok(off.clone())),
+                "{off:?}"
+            );
+            assert!(
+                !accepts(&truth_pow(&a, &b), &bound, Ok(off.clone())),
+                "{off:?}"
+            );
+            assert!(accepts(&truth_pow(&a, &b), &bound, Ok(want)));
+        }
+    }
+
     #[test]
     fn exact_and_errors() {
         let two = Truth::exact(Dec::new(2, 0));
