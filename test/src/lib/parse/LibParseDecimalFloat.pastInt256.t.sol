@@ -14,6 +14,7 @@ import {
     ParseDecimalFloatExcessCharacters
 } from "src/error/ErrParse.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibParseDecimalFloatPastInt256Test is Test {
     using LibDecimalFloat for Float;
@@ -192,7 +193,8 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         if (c == 0) {
             assertEq(Float.unwrap(float), bytes32(0), "zero");
         } else {
-            assertTrue(float.eq(LibDecimalFloat.packLossless(c, int256(uint256(z)))), "value");
+            (int256 actualC, int256 actualE) = float.unpack();
+            assertTrue(LibTestExactDecimal.eq(actualC, actualE, c, int256(uint256(z))), "value");
         }
     }
 }

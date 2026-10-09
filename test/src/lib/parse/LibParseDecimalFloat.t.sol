@@ -16,8 +16,25 @@ import {
 } from "src/error/ErrParse.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestParseLiteral, Expected, Outcome} from "test/lib/LibTestParseLiteral.sol";
+
+struct LiteralSeed {
+    bool isNeg;
+    uint8 leadingZeros;
+    uint256 intValue;
+    uint8 intDigits;
+    uint8 intZeros;
+    bool hasFrac;
+    uint8 fracLeadingZeros;
+    uint256 fracValue;
+    uint8 fracDigits;
+    uint8 fracZeros;
+    uint8 expKind;
+    int256 expRaw;
+    bool upper;
+    bool plus;
+}
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
@@ -52,47 +69,39 @@ contract LibParseDecimalFloatTest is Test {
         }
     }
 
-    /// The wrapper's outcome for `data`, tagged as `parseOutcome` tags it, from
-    /// the inline parse with overflow decided by the exact oracle.
-    function expectedParseOutcome(string memory data) internal view returns (bytes memory) {
-        // The inline parse reports every malformed input as a selector. Its only
-        // revert is a zero start pointer, which no memory string has.
-        (bytes4 errorSelector, uint256 cursorMove, int256 signedCoefficient, int256 exponent) =
-            this.parseDecimalFloatInlineExternal(data);
-        // Inline parsing doesn't treat a partially consumed string as an
-        // error, but the external parsing does, so we have to special case
-        // that check.
-        if (errorSelector != bytes4(0)) {
-            return abi.encode("return", errorSelector, Float.wrap(0));
-        } else if (cursorMove != bytes(data).length) {
-            return abi.encode("return", ParseDecimalFloatExcessCharacters.selector, Float.wrap(0));
-        } else if (
-            signedCoefficient != 0
-                && LibTestExactDecimal.overflows(
-                    LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)), exponent
-                )
-        ) {
-            // The parsed value is beyond the largest Float of its sign.
-            return abi.encode("revert", abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+    /// `parseDecimalFloat` against `LibTestParseLiteral`'s independent reading
+    /// of `data`: a Float compares by exact value, an `ExponentOverflow`
+    /// revert by the exact value of its parts.
+    function checkParse(string memory data) internal view {
+        Expected memory expected = LibTestParseLiteral.expected(data);
+        try this.parseDecimalFloatExternal(data) returns (bytes4 err, Float float) {
+            assertTrue(expected.outcome != Outcome.Revert, "expected ExponentOverflow revert");
+            if (expected.outcome == Outcome.Selector) {
+                assertEq(err, expected.selector, "selector");
+                assertEq(Float.unwrap(float), bytes32(0), "zero on error");
+            } else {
+                assertEq(err, bytes4(0), "no error");
+                (int256 signedCoefficient, int256 exponent) = float.unpack();
+                // forge-lint: disable-next-line(unsafe-typecast)
+                int256 m = expected.negative ? -int256(expected.m) : int256(expected.m);
+                assertEq(expected.exponent.band, int8(0), "Float exponent band");
+                assertTrue(LibTestExactDecimal.eq(signedCoefficient, exponent, m, expected.exponent.v), "parsed value");
+            }
+        } catch (bytes memory revertData) {
+            assertTrue(expected.outcome == Outcome.Revert, "unexpected revert");
+            assertEq(bytes4(revertData), ExponentOverflow.selector, "revert selector");
+            bytes memory args = new bytes(revertData.length - 4);
+            for (uint256 i = 0; i < args.length; i++) {
+                args[i] = revertData[i + 4];
+            }
+            (int256 signedCoefficient, int256 exponent) = abi.decode(args, (int256, int256));
+            assertTrue(LibTestParseLiteral.equalsParts(expected, signedCoefficient, exponent), "revert parts value");
         }
-        (Float packed, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-        if (!lossless) {
-            return abi.encode("return", ParseDecimalPrecisionLoss.selector, Float.wrap(0));
-        }
-        // A lossless pack may still have shed trailing zeros, to fit the
-        // coefficient in int224 or to lift the exponent to int32.min, so the
-        // representation can differ from the inline parse. The VALUE cannot.
-        (int256 packedCoefficient, int256 packedExponent) = packed.unpack();
-        assertTrue(
-            LibDecimalFloatImplementation.eq(signedCoefficient, exponent, packedCoefficient, packedExponent),
-            "lossless pack changed the value"
-        );
-        return abi.encode("return", bytes4(0), packed);
     }
 
-    /// Check that the packed version matches the inline version.
+    /// Any string parses as its independent reading says.
     function testParsePacked(string memory data) external view {
-        assertEq(parseOutcome(data), expectedParseOutcome(data), "parse outcome");
+        checkParse(data);
     }
 
     function checkParseDecimalFloat(
@@ -662,9 +671,8 @@ contract LibParseDecimalFloatTest is Test {
         for (uint256 i = 0; i < fracs.length; i++) {
             string memory s = string.concat(nines, fracs[i], "e2200000000");
             checkParseDecimalFloat(s, ninesValue, 2200000000, bytes(s).length);
-            bytes memory expected = expectedParseOutcome(s);
-            assertEq(expected, overflow, "oracle overflow");
-            assertEq(parseOutcome(s), expected, "parse outcome");
+            assertEq(parseOutcome(s), overflow, "parse outcome");
+            checkParse(s);
         }
     }
 
@@ -703,9 +711,9 @@ contract LibParseDecimalFloatTest is Test {
             assertEq(fracCursor, bytes(frac).length, "frac cursor");
         }
 
-        bytes memory expected = expectedParseOutcome(bare);
-        assertEq(parseOutcome(bare), expected, "bare outcome");
-        assertEq(parseOutcome(frac), expected, "frac outcome");
+        checkParse(bare);
+        checkParse(frac);
+        assertEq(parseOutcome(frac), parseOutcome(bare), "frac outcome");
     }
 
     /// Can't have more than max total precision. Add decimals after the max int.
@@ -725,5 +733,103 @@ contract LibParseDecimalFloatTest is Test {
             ParseDecimalPrecisionLoss.selector,
             69
         );
+    }
+
+    /// The literal's exponent part: none, small, about either int32 bound,
+    /// about either int256 bound, or any int256.
+    function exponentPart(uint8 kind, int256 raw, bool upper, bool plus) internal pure returns (string memory) {
+        kind = kind % 7;
+        if (kind == 0) {
+            return "";
+        }
+        int256 e;
+        if (kind == 1) {
+            e = bound(raw, -200, 200);
+        } else if (kind == 2) {
+            e = int256(type(int32).max) + bound(raw, -150, 150);
+        } else if (kind == 3) {
+            e = int256(type(int32).min) + bound(raw, -150, 150);
+        } else if (kind == 4) {
+            e = type(int256).max - bound(raw, 0, 150);
+        } else if (kind == 5) {
+            e = type(int256).min + bound(raw, 0, 150);
+        } else {
+            e = raw;
+        }
+        string memory digits = Strings.toStringSigned(e);
+        if (plus && e >= 0) {
+            digits = string.concat("+", digits);
+        }
+        return string.concat(upper ? "E" : "e", digits);
+    }
+
+    /// `digits` digits of `value`, at most 78, then `trailing` zeros.
+    function digitRun(uint256 value, uint8 digits, uint256 trailing) internal pure returns (string memory) {
+        digits = uint8(bound(digits, 1, 78));
+        if (digits < 78) {
+            value = bound(value, 0, 10 ** digits - 1);
+        }
+        return string.concat(value.toString(), zeros(trailing));
+    }
+
+    /// Well formed literals across every size of integer part, fraction and
+    /// exponent parse as their independent reading says.
+    function testParseStructuredFuzz(LiteralSeed memory seed) external view {
+        string memory s = string.concat(
+            seed.isNeg ? "-" : "",
+            zeros(seed.leadingZeros % 4),
+            digitRun(seed.intValue, seed.intDigits, bound(seed.intZeros, 0, 90))
+        );
+        if (seed.hasFrac) {
+            s = string.concat(
+                s,
+                ".",
+                zeros(bound(seed.fracLeadingZeros, 0, 70)),
+                digitRun(seed.fracValue, seed.fracDigits, bound(seed.fracZeros, 0, 4))
+            );
+        }
+        checkParse(string.concat(s, exponentPart(seed.expKind, seed.expRaw, seed.upper, seed.plus)));
+    }
+
+    /// The edges of the documented rule, each parsed as its independent
+    /// reading says.
+    function testParseRuleEdges() external view {
+        string memory int224Max = Strings.toStringSigned(type(int224).max);
+        string memory int224Min = Strings.toStringSigned(type(int224).min);
+        string memory int224MaxPlusOne = Strings.toStringSigned(int256(type(int224).max) + 1);
+        string memory int224MinMinusOne = Strings.toStringSigned(int256(type(int224).min) - 1);
+        string[24] memory literals = [
+            // The largest Float of each sign, and one unit past it.
+            string.concat(int224Max, "e2147483647"),
+            string.concat(int224Min, "e2147483647"),
+            string.concat(int224MaxPlusOne, "e2147483647"),
+            string.concat(int224MinMinusOne, "e2147483647"),
+            string.concat(int224Max, "0e2147483646"),
+            string.concat(int224Max, "1e2147483646"),
+            string.concat(int224Max, ".1e2147483647"),
+            string.concat(int224Max, "e2147483648"),
+            // Shifting down to int32.max.
+            "1e2147483714",
+            "1e2147483715",
+            "1e2147483648",
+            // The smallest Float, and below it.
+            "1e-2147483648",
+            "1e-2147483649",
+            "10e-2147483649",
+            "0.1e-2147483647",
+            "-0.01e-2147483647",
+            // Values that are no Float within range.
+            string.concat(int224MaxPlusOne, "e0"),
+            "1.00000000000000000000000000000000000000000000000000000000000000000001",
+            "5", // a well formed baseline
+            "-0",
+            "1e+5",
+            "1E-5",
+            "0.5e1",
+            "-12.340e2"
+        ];
+        for (uint256 i = 0; i < literals.length; i++) {
+            checkParse(literals[i]);
+        }
     }
 }
