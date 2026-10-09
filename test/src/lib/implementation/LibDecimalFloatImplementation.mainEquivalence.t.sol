@@ -210,6 +210,7 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
     function checkDiv(int256 a, int256 ea, int256 b, int256 eb) internal view {
         (bool mOk, bytes memory m) = run(abi.encodeCall(this.mainDiv, (a, ea, b, eb)));
         (bool pOk, bytes memory p) = run(abi.encodeCall(this.prDiv, (a, ea, b, eb)));
+        checkDivExact(a, ea, b, eb, pOk, p);
         if (mOk == pOk && keccak256(m) == keccak256(p)) return;
 
         if (!pOk) {

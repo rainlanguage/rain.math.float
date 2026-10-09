@@ -59,6 +59,12 @@ contract LibDecimalFloatInvTest is Test {
         assertEq(exponent, int256(type(int32).max), "exponent");
     }
 
+    /// Every zero reverts `DivisionByZero` with itself, whatever its exponent.
+    function testInvZeroReportsTheInput(int32 exponent) external {
+        vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, int256(0), int256(exponent)));
+        this.invExternal(LibDecimalFloat.packLossless(0, exponent));
+    }
+
     /// Reverts only on zero, or where the exact inverse is below the smallest
     /// positive Float, with the input as the range error's payload. Otherwise
     /// the inverse is the Float closest to the exact one that does not exceed
@@ -67,7 +73,7 @@ contract LibDecimalFloatInvTest is Test {
     function testInvMem(Float float) external {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         if (signedCoefficient == 0) {
-            vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, int256(1e76), int256(-76)));
+            vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, signedCoefficient, exponent));
             this.invExternal(float);
             return;
         }

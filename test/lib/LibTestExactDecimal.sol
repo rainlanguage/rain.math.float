@@ -328,15 +328,15 @@ library LibTestExactDecimal {
         }
     }
 
-    /// `|ca| / |cb|` at `10^(-lift(ca) + digits(cb) - 1)` relative to
-    /// `10^(ea - eb)`, truncated: the dividend lifted to its int256 unit over
-    /// the divisor's leading digit. At most `2^255`.
+    /// `|ca| / |cb|` in units of `10^-offset`, truncated: the dividend
+    /// lifted to its int256 unit over the divisor's leading digit, so `offset`
+    /// is `lift(ca) + digits(cb) - 1`. At most `2^255`.
     function quotientAtUnit(int256 ca, int256 cb) internal pure returns (uint256 magnitude, int256 offset) {
         int256 lift = int256Lift(ca);
         int256 leadB = digits(u512(abs(cb))) - 1;
         // forge-lint: disable-next-line(unsafe-typecast)
         magnitude = Math.mulDiv(abs(ca) * 10 ** uint256(lift), 10 ** uint256(leadB), abs(cb));
-        offset = leadB - lift;
+        offset = lift + leadB;
     }
 
     /// The parts `div` of two Floats returns, for a non-zero `cb`, as its
@@ -357,7 +357,7 @@ library LibTestExactDecimal {
         return divParts(1e76, -76, signedCoefficient, exponent);
     }
 
-    /// `divParts` for any int256 parts and a non-zero `cb`, or `overflows`
+    /// `divParts` for any int256 parts and a non-zero `cb`, or `overflowed`
     /// where `ua - lb` is above `type(int256).max`. A positive 2^255 sheds its
     /// last digit, which overflows at `type(int256).max`. Below
     /// `type(int256).min` the exact quotient truncates toward zero at it, and
@@ -365,32 +365,27 @@ library LibTestExactDecimal {
     function divPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
-        returns (bool overflows, int256 c, int256 e)
+        returns (bool overflowed, int256 c, int256 e)
     {
         if (ca == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (false, 0, 0);
         }
         bool negative = (ca < 0) != (cb < 0);
         (uint256 magnitude, int256 offset) = quotientAtUnit(ca, cb);
-        (int256 cls, int256 value) = wideExponent(ea, eb, 0, -offset);
-        if (cls == 1) {
+        int256 cls;
+        (cls, e) = wideExponent(ea, eb, 0, -offset);
+        if (cls == 1 || (cls == 0 && !negative && magnitude > uint256(type(int256).max) && e == type(int256).max)) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (true, 0, 0);
         }
-        if (cls == 0) {
-            if (!negative && magnitude > uint256(type(int256).max) && value == type(int256).max) {
-                return (true, 0, 0);
-            }
-            (c, e) = signedParts(negative, magnitude, value);
-            return (false, c, e);
+        if (cls == -1) {
+            // The unit is `e` digits below the floor: shed them from the
+            // truncated quotient, which truncates the exact one there.
+            magnitude = shed(magnitude, e);
+            e = magnitude == 0 ? int256(0) : type(int256).min;
         }
-        // The unit is `value` digits below the floor: shed them from the
-        // truncated quotient, which truncates the exact one there.
-        magnitude = shed(magnitude, value);
-        if (magnitude == 0) {
-            return (false, 0, 0);
-        }
-        (c, e) = signedParts(negative, magnitude, type(int256).min);
-        return (false, c, e);
+        (c, e) = signedParts(negative, magnitude, e);
     }
 
     /// Whether `(c, e)` is `a / b` truncated toward zero at `10^e`, decided in

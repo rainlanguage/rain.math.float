@@ -3,6 +3,7 @@
 pragma solidity ^0.8.25;
 
 import {
+    DivisionByZero,
     ExponentOverflow,
     ExponentUnderflow,
     FixedDecimalOverflow,
@@ -787,11 +788,15 @@ library LibDecimalFloat {
     /// The multiplicative inverse, `1 / float`, as `div` of one by `float`.
     /// No inverse is past every Float: the least magnitude, 1e-2147483648,
     /// inverts to 10 10^int32.max, so packing never overflows.
-    /// `ExponentUnderflow` reports `float`, unpacked.
+    /// A zero `float` reverts `DivisionByZero`. Both errors report `float`,
+    /// unpacked.
     /// @param float The float to invert.
     /// @return The multiplicative inverse (1 / float).
     function inv(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
+        if (signedCoefficient == 0) {
+            revert DivisionByZero(signedCoefficient, exponent);
+        }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless && Float.unwrap(c) == bytes32(0)) {
