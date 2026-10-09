@@ -411,10 +411,15 @@ contract LibDecimalFloatImplementationAddTest is Test {
         checkAdd(max, 0, 9, 0, 5789604461865809771178549250434395392663499233282028201972879200395656481997, 1);
         checkAdd(min, 0, -9, 0, -5789604461865809771178549250434395392663499233282028201972879200395656481997, 1);
         checkAdd(-9, 0, min, 0, -5789604461865809771178549250434395392663499233282028201972879200395656481997, 1);
+        // Last digits summing to 9 do not carry.
+        checkAdd(max, 0, 2, 0, 5789604461865809771178549250434395392663499233282028201972879200395656481996, 1);
+        checkAdd(min, 0, -1, 0, -5789604461865809771178549250434395392663499233282028201972879200395656481996, 1);
         checkAddExact(max, 0, max, 0);
         checkAddExact(min, 0, min, 0);
         checkAddExact(max, 0, 9, 0);
         checkAddExact(min, 0, -9, 0);
+        checkAddExact(max, 0, 2, 0);
+        checkAddExact(min, 0, -1, 0);
         checkAddExact(min, 0, max, 0);
         checkAddExact(min, 0, min, 1);
         checkAddExact(min, min, min, min);
