@@ -137,11 +137,15 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         checkAgainstBc(a, b, true, 26057668922012410337547610399529953336038179692555075595894572145948150, -75);
     }
 
-    /// a / b = 1 - 1 / 9.9e16 leaves one series term after 1, and an
-    /// allowance above the log of under a tenth of a unit.
+    /// a / b = 1 - 1 / 9.9e16 or 1 - 1 / 8.9e18 leaves at most one series
+    /// term after 1, and an allowance above the log of under a tenth of a
+    /// unit.
     function testLog10RatioRelativeSingleTerm() external pure {
         checkAgainstBc(
             9.9e75 - 1e59, 9.9e75, true, -4386812948517695250954902961368209206711636146525587715889593569661493, -87
+        );
+        checkAgainstBc(
+            8.9e75 - 1e57, 8.9e75, true, -4879713279811818288489072868715327794801115417300392678358697535622065, -89
         );
     }
 
