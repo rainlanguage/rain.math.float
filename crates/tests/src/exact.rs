@@ -236,12 +236,8 @@ fn check_float_reporting(
     input: &Dec,
 ) -> Result<(), TestCaseError> {
     if let (Err(Fail::Revert(out)), Err(w)) = (&sol, &want) {
-        prop_assert_eq!(
-            out.as_ref(),
-            revert_data(*w, input, None).as_slice(),
-            "{}: revert data",
-            case
-        );
+        let data = revert_data(*w, input, None);
+        prop_assert_eq!(out.as_ref(), data.as_slice(), "{}: revert data", case);
     }
     check_float(case, sol, want, py)
 }
