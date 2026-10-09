@@ -517,11 +517,11 @@
   },
   {
     "timestamp": "2026-10-09T13:25:22Z",
-    "commit": "900bd97aaf8a5f306bab19b06efb16fac886d1e9",
-    "testsAfterCommit": "1188372d2e6b506fa8c9d2d148caaa8d7bada4be",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "03b4466bb7469128018177fa85fd5408e32af981",
     "publishedTag": "sol-v0.2.30",
-    "commitsAheadOfTag": 14,
-    "scope": "Issue #362: the helpers mul shares with the deleted mulSlow replay, which mulSlow co-mutated: mul512 (M01 drop the borrow from high, M02 low off by one), absUnsignedSignedCoefficient (M03 int256.min, M04 negatives off by one) and unabsUnsignedMulOrDivLossy (M05 sign test <=, M06 int256.min edge exponent, M07/M08 rescale exponent, M09/M10 sign of the fitting branch). Probe suite: testMulNotRevertAnyExpectation alone, --fuzz-seed 0x362, 20000 runs, against mulSlow at 900bd97 and against LibTestExactDecimal.mulParts at 1188372. mulSlow killed M02 only; mulParts killed all ten.",
+    "commitsAheadOfTag": 37,
+    "scope": "Issue #362: the helpers mul shares with the deleted mulSlow replay, which mulSlow co-mutated: mul512 (M01 drop the borrow from high, M02 low off by one), absUnsignedSignedCoefficient (M03 int256.min, M04 negatives off by one) and unabsUnsignedMulOrDivLossy (M05 sign test <=, M06 int256.min edge exponent, M07/M08 rescale exponent, M09/M10 sign of the fitting branch). Probe suite: testMulNotRevertAnyExpectation alone, --fuzz-seed 0x362, 20000 runs, against mulSlow at main 8fcfeb3 and against LibTestExactDecimal.mulParts at 03b4466. mulSlow killed M02 only; mulParts killed all ten.",
     "tool": "adversarial-mutation-test",
     "skillVersion": "0.35.0",
     "summary": {
@@ -531,8 +531,8 @@
       "equivalent": 0,
       "candidates": 0,
       "confirmed": 0,
-      "testsBefore": 820,
-      "testsAfter": 820,
+      "testsBefore": 826,
+      "testsAfter": 826,
       "filed": []
     }
   }
