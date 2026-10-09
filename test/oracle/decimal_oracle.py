@@ -17,6 +17,7 @@ from decimal import (
     ROUND_DOWN,
     ROUND_FLOOR,
     ROUND_HALF_EVEN,
+    ROUND_UP,
     Context,
     Decimal,
     Inexact,
@@ -72,33 +73,36 @@ def fits224(c):
     return INT224_MIN <= c <= INT224_MAX
 
 
+def nearest_within(x, lo, hi):
+    """The largest in magnitude of c * 10^f not exceeding |x|, over int224 c
+    and f in [lo, hi]. Below x's 70th digit the clamp only shrinks, above its
+    66th truncation only shrinks, so that window and the two ends hold it."""
+    top = x.adjusted() + 1
+    best = Decimal(0)
+    for f in [*range(top - 70, top - 65), lo, hi]:
+        f = min(max(f, lo), hi)
+        c = x.scaleb(-f, EXACT).to_integral_value(ROUND_DOWN, EXACT)
+        c = min(max(c, Decimal(INT224_MIN)), Decimal(INT224_MAX))
+        w = c.scaleb(f, EXACT)
+        if abs(w) > abs(best):
+            best = w
+    return best
+
+
 def pack(x):
-    """Truncate towards zero to the largest int224 coefficient, lift the
-    exponent to the int32 floor, grow it down to the int32 ceiling.
+    """The Float closest to x that does not exceed its magnitude. Overflow
+    when that Float, with an unbounded exponent, is past every Float of its sign;
+    underflow when it is zero within int32.
     Returns (value, lossless) or the error name."""
     if x.is_zero():
         return Decimal(0), True
-    sign, digits, exp = x.as_tuple()
-    c = int("".join(map(str, digits)))
-    if sign:
-        c = -c
-    k = 0
-    while not fits224(int(Decimal(c).scaleb(-k, EXACT).to_integral_value(ROUND_DOWN, EXACT))):
-        k += 1
-    c = int(Decimal(c).scaleb(-k, EXACT).to_integral_value(ROUND_DOWN, EXACT))
-    e = exp + k
-    if e > INT32_MAX:
-        grow = e - INT32_MAX
-        if k == 0 and grow <= 68 and fits224(c * 10**grow):
-            c, e = c * 10**grow, INT32_MAX
-        else:
-            return "ExponentOverflow"
-    if e < INT32_MIN:
-        c = int(Decimal(c).scaleb(e - INT32_MIN, EXACT).to_integral_value(ROUND_DOWN, EXACT))
-        e = INT32_MIN
-        if c == 0:
-            return "ExponentUnderflow"
-    v = Decimal(c).scaleb(e, EXACT)
+    top = x.adjusted() + 1
+    unbounded = nearest_within(x, top - 70, top - 66)
+    if not Decimal(INT224_MIN).scaleb(INT32_MAX, EXACT) <= unbounded <= Decimal(INT224_MAX).scaleb(INT32_MAX, EXACT):
+        return "ExponentOverflow"
+    v = nearest_within(x, INT32_MIN, INT32_MAX)
+    if v.is_zero():
+        return "ExponentUnderflow"
     return v, v == x
 
 
@@ -109,28 +113,42 @@ def arithmetic(x):
     return {"ok": out(p[0])}
 
 
-def maximize(x):
+def int256_unit(x):
+    """The exponent of x's int256 unit: its last digit when written with as
+    many digits as an int256 coefficient holds, 77 or 76."""
     sign, digits, exp = x.as_tuple()
     c = int("".join(map(str, digits)))
     if sign:
         c = -c
-    while INT256_MIN <= c * 10 <= INT256_MAX:
-        c *= 10
-        exp -= 1
-    return c, exp
+    top = exp + len(digits)
+    if INT256_MIN <= c * 10 ** (77 - len(digits)) <= INT256_MAX:
+        return top - 77
+    return top - 76
+
+
+def rounded_sum(a, b):
+    """add's sum before packing, as its NatSpec states it: the exact sum
+    rounded to a multiple of the larger operand's int256 unit, towards zero
+    when the signs agree and away from zero when they differ."""
+    if a.is_zero():
+        return b
+    if b.is_zero():
+        return a
+    big, small = (b, a) if EXACT.abs(a) < EXACT.abs(b) else (a, b)
+    unit = int256_unit(big)
+    # Under one unit, small leaves the exact sum strictly within a unit of
+    # big, a multiple of it: outwards when the signs agree, so towards zero is
+    # big, and inwards when they differ, so away from zero is big.
+    if small.adjusted() < unit:
+        return big
+    rounding = ROUND_DOWN if a.is_signed() == b.is_signed() else ROUND_UP
+    # to_integral_value rounds without signalling Inexact.
+    units = EXACT.add(a, b).scaleb(-unit, EXACT).to_integral_value(rounding, EXACT)
+    return units.scaleb(unit, EXACT)
 
 
 def add(a, b):
-    if a.is_zero():
-        return arithmetic(b)
-    if b.is_zero():
-        return arithmetic(a)
-    (ca, ea), (cb, eb) = maximize(a), maximize(b)
-    if eb > ea:
-        (ca, ea), (cb, eb) = (cb, eb), (ca, ea)
-    unit = Decimal(1).scaleb(ea, EXACT)
-    aligned = EXACT.divide(Decimal(cb).scaleb(eb, EXACT), unit).to_integral_value(ROUND_DOWN, EXACT)
-    return arithmetic(EXACT.multiply(EXACT.add(Decimal(ca), aligned), unit))
+    return arithmetic(rounded_sum(a, b))
 
 
 def div(a, b):
@@ -175,26 +193,12 @@ def canonical(f):
     return [str(c), e]
 
 
-def aligned_sum(a, b):
-    """add's documented alignment, before packing."""
-    if a.is_zero():
-        return b
-    if b.is_zero():
-        return a
-    (ca, ea), (cb, eb) = maximize(a), maximize(b)
-    if eb > ea:
-        (ca, ea), (cb, eb) = (cb, eb), (ca, ea)
-    unit = Decimal(1).scaleb(ea, EXACT)
-    aligned = EXACT.divide(Decimal(cb).scaleb(eb, EXACT), unit).to_integral_value(ROUND_DOWN, EXACT)
-    return EXACT.multiply(EXACT.add(Decimal(ca), aligned), unit)
-
-
 def agree(absolute, proportional, lowest, highest):
     if absolute < 0 or proportional < 0:
         return {"err": "AgreeToleranceNegative"}
     if not absolute > 0 and not proportional > 0:
         return {"err": "AgreeNoPositiveTolerance"}
-    spread = aligned_sum(highest, EXACT.minus(lowest))
+    spread = rounded_sum(highest, EXACT.minus(lowest))
     anchor = max(EXACT.abs(lowest), EXACT.abs(highest))
     limit = max(absolute, EXACT.multiply(proportional, anchor))
     return {"ok": spread <= limit}
@@ -285,13 +289,8 @@ def handle(req):
         v, lossless = fixed_lossy(int(req["value"]), req["decimals"])
         return {"ok": [out(v), lossless]}
     if op == "from_fixed_lossless":
-        value, decimals = int(req["value"]), req["decimals"]
-        v, lossless = fixed_lossy(value, decimals)
-        if lossless:
-            return {"ok": out(v)}
-        if value > INT256_MAX and value % 10 != 0:
-            return {"err": "LossyConversionToFloat"}
-        return {"err": "CoefficientOverflow"}
+        v, lossless = fixed_lossy(int(req["value"]), req["decimals"])
+        return {"ok": out(v)} if lossless else {"err": "LossyConversionToFloat"}
     if op in ("to_fixed_lossy", "to_fixed_lossless"):
         r, lossless = to_fixed(a, req["decimals"])
         if lossless is None:
@@ -300,7 +299,17 @@ def handle(req):
             return {"ok": [str(r), lossless]}
         return {"ok": str(r)} if lossless else {"err": "LossyConversionFromFloat"}
     if op == "parse_value":
-        # The value a literal denotes, packed losslessly or not at all.
+        # The value a literal denotes, packed losslessly or not at all. Past
+        # RANGE digits from 1 it is past every Float on its side, decided
+        # here because the module's exponent range ends near 1e18.
+        mantissa, _, exp = req["s"].lower().partition("e")
+        m = Decimal(mantissa)
+        if not m.is_zero():
+            adjusted = m.adjusted() + int(exp or "0")
+            if adjusted > RANGE:
+                return {"err": "ExponentOverflow"}
+            if adjusted < -RANGE:
+                return {"err": "ParseDecimalPrecisionLoss"}
         p = pack(literal(req["s"]))
         if isinstance(p, str):
             return {"err": "ExponentOverflow" if p == "ExponentOverflow" else "ParseDecimalPrecisionLoss"}
@@ -325,7 +334,7 @@ def handle(req):
         if p == "ExponentOverflow":
             return {"err": p}
         if isinstance(p, str) or not p[1]:
-            return {"err": "CoefficientOverflow"}
+            return {"err": "LossyConversionToFloat"}
         return {"ok": out(p[0])}
     if op == "pack_arithmetic":
         return arithmetic(a)

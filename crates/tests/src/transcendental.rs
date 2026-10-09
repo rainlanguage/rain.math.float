@@ -31,11 +31,35 @@ use serde_json::{Value, json};
 
 // ----------------------------------------------------------------- the EVM
 
-/// A result, or the selector of the error it reverted with.
-type Sol = Result<Dec, [u8; 4]>;
+/// A result, or the data it reverted with.
+type Sol = Result<Dec, Vec<u8>>;
 
 fn call<C: SolCall<Return = B256>>(c: C) -> Sol {
-    evm::float(c).map_err(|output| output[..4].try_into().unwrap())
+    evm::float(c).map_err(|output| output.to_vec())
+}
+
+/// `x` as an int256 word.
+fn word(x: &BigInt) -> [u8; 32] {
+    let mut w = [if x.is_negative() { 0xff } else { 0 }; 32];
+    let b = x.to_signed_bytes_be();
+    w[32 - b.len()..].copy_from_slice(&b);
+    w
+}
+
+/// The revert data of `e` from a call whose first input is `a`. Every error
+/// reports `a` as its coefficient and exponent, but `Log10Zero`, which reports
+/// nothing, and `ZeroNegativePower`, which reports pow's `b` packed.
+fn revert_data(e: RefError, a: &Dec, b: Option<&Dec>) -> Vec<u8> {
+    let mut out = e.selector().to_vec();
+    match e {
+        RefError::Log10Zero => {}
+        RefError::ZeroNegativePower => out.extend_from_slice(bytes(b.expect("pow's b")).as_slice()),
+        _ => {
+            out.extend_from_slice(&word(&a.c));
+            out.extend_from_slice(&word(&BigInt::from(a.e)));
+        }
+    }
+    out
 }
 
 fn bytes(a: &Dec) -> B256 {
@@ -327,8 +351,15 @@ fn floor_carve(lowest: &Dec) -> Dec {
     }
 }
 
-fn check_sol(case: &str, sol: Sol, truth: &Truth, bound: &Bound) -> Result<(), TestCaseError> {
-    let reverted = |e: RefError| matches!(&sol, Err(s) if *s == e.selector());
+/// `want` is the revert data of each error from this call.
+fn check_sol(
+    case: &str,
+    sol: Sol,
+    truth: &Truth,
+    bound: &Bound,
+    want: impl Fn(RefError) -> Vec<u8>,
+) -> Result<(), TestCaseError> {
+    let reverted = |e: RefError| matches!(&sol, Err(s) if *s == want(e));
     let t = match &truth.value {
         Err(e) => {
             prop_assert!(reverted(*e), "{case}: solidity {sol:?}, want {e:?}");
@@ -425,7 +456,9 @@ pub fn check_log10(a: &Dec) -> Result<(), TestCaseError> {
         &truth,
         &ask(json!({"op": "log10", "a": float_json(a)})),
     )?;
-    check_sol(&case, sol_log10(a), &truth, &Bound::Log10)
+    check_sol(&case, sol_log10(a), &truth, &Bound::Log10, |e| {
+        revert_data(e, a, None)
+    })
 }
 
 /// floor(x) for |x| at most RANGE. Past it the truth is an error and the
@@ -451,6 +484,7 @@ pub fn check_pow10(x: &Dec) -> Result<(), TestCaseError> {
         sol_pow10(x),
         &truth,
         &Bound::Pow10(floor_in_range(x)),
+        |e| revert_data(e, x, None),
     )
 }
 
@@ -474,7 +508,9 @@ pub fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     } else {
         BigInt::zero()
     };
-    check_sol(&case, sol_pow(a, b), &truth, &Bound::Pow(n))
+    check_sol(&case, sol_pow(a, b), &truth, &Bound::Pow(n), |e| {
+        revert_data(e, a, Some(b))
+    })
 }
 
 pub fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
@@ -483,7 +519,9 @@ pub fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
     let truth = truth_pow(a, &half);
     let py = ask(json!({"op": "pow", "a": float_json(a), "b": float_json(&half)}));
     check_python(&case, &truth, &py)?;
-    check_sol(&case, sol_sqrt(a), &truth, &Bound::Sqrt)
+    check_sol(&case, sol_sqrt(a), &truth, &Bound::Sqrt, |e| {
+        revert_data(e, a, None)
+    })
 }
 
 // ------------------------------------------------------------ monotonicity
@@ -860,8 +898,21 @@ mod checker {
         Truth::near(Approx { value, err })
     }
 
+    /// The input of every made-up call.
+    fn input() -> Dec {
+        Dec::new(-3, -1)
+    }
+
+    /// The revert data of `e` from a made-up call.
+    fn reverting(e: RefError) -> Sol {
+        Err(revert_data(e, &input(), None))
+    }
+
     fn accepts(truth: &Truth, bound: &Bound, sol: Sol) -> bool {
-        check_sol("checker", sol, truth, bound).is_ok()
+        check_sol("checker", sol, truth, bound, |e| {
+            revert_data(e, &input(), None)
+        })
+        .is_ok()
     }
 
     /// `v + within - err` is the furthest result the bound admits, and a
@@ -911,7 +962,7 @@ mod checker {
             &Dec::new(1, -310),
         );
         // Never past every Float.
-        let under = || -> Sol { Err(RefError::ExponentUnderflow.selector()) };
+        let under = || -> Sol { reverting(RefError::ExponentUnderflow) };
         assert!(!accepts(&near(Dec::new(1, I32_MIN)), &Bound::Sqrt, under()));
     }
 
@@ -957,8 +1008,8 @@ mod checker {
     /// A revert is accepted only where the bound reaches past every Float.
     #[test]
     fn reverts() {
-        let under = || -> Sol { Err(RefError::ExponentUnderflow.selector()) };
-        let over = || -> Sol { Err(RefError::ExponentOverflow.selector()) };
+        let under = || -> Sol { reverting(RefError::ExponentUnderflow) };
+        let over = || -> Sol { reverting(RefError::ExponentOverflow) };
         let ordinary = near(Dec::new(5, -100));
         assert!(!accepts(&ordinary, &Bound::Pow(BigInt::zero()), under()));
         assert!(!accepts(&ordinary, &Bound::Pow(BigInt::zero()), over()));
@@ -1013,36 +1064,57 @@ mod checker {
         assert!(accepts(
             &past,
             &Bound::Pow10(0),
-            Err(RefError::ExponentOverflow.selector())
+            reverting(RefError::ExponentOverflow)
         ));
         assert!(!accepts(
             &past,
             &Bound::Pow10(0),
-            Err(RefError::ExponentUnderflow.selector())
+            reverting(RefError::ExponentUnderflow)
         ));
         let gone = Truth::exact(Dec::new(1, I32_MIN - 1));
         assert!(accepts(
             &gone,
             &Bound::Pow10(0),
-            Err(RefError::ExponentUnderflow.selector())
+            reverting(RefError::ExponentUnderflow)
         ));
         assert!(!accepts(
             &gone,
             &Bound::Pow10(0),
-            Err(RefError::ExponentOverflow.selector())
+            reverting(RefError::ExponentOverflow)
         ));
         let e = Truth::err(RefError::Log10Zero);
-        assert!(accepts(
-            &e,
-            &Bound::Log10,
-            Err(RefError::Log10Zero.selector())
-        ));
+        assert!(accepts(&e, &Bound::Log10, reverting(RefError::Log10Zero)));
         assert!(!accepts(
             &e,
             &Bound::Log10,
-            Err(RefError::Log10Negative.selector())
+            reverting(RefError::Log10Negative)
         ));
         assert!(!accepts(&e, &Bound::Log10, Ok(Dec::zero())));
+    }
+
+    /// A revert is accepted only with the call's input as its arguments.
+    #[test]
+    fn revert_args() {
+        let past = Truth::exact(Dec::new(1, I32_MAX + 68));
+        let over = RefError::ExponentOverflow;
+        let bare = Err(over.selector().to_vec());
+        assert!(!accepts(&past, &Bound::Pow10(0), bare));
+        let other = Err(revert_data(over, &Dec::new(-3, 0), None));
+        assert!(!accepts(&past, &Bound::Pow10(0), other));
+        let e = Truth::err(RefError::Log10Negative);
+        let bare = Err(RefError::Log10Negative.selector().to_vec());
+        assert!(!accepts(&e, &Bound::Log10, bare));
+        let other = Err(revert_data(
+            RefError::Log10Negative,
+            &Dec::new(-3, -2),
+            None,
+        ));
+        assert!(!accepts(&e, &Bound::Log10, other));
+        assert!(accepts(
+            &e,
+            &Bound::Log10,
+            reverting(RefError::Log10Negative)
+        ));
     }
 
     #[test]

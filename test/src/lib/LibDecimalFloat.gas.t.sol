@@ -5,8 +5,9 @@ pragma solidity =0.8.25;
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 
-/// Gas of log10, pow10, pow, sqrt and mul on packed inputs, the common shape
+/// Gas of log10, pow10, pow, sqrt, mul, the conversions and parse on packed inputs, the common shape
 /// as values arrive packed, and on each function's worst case. Run with
 /// `forge test --mc LibDecimalFloatGasTest -vv`; each line is the gas of the
 /// internal call alone.
@@ -114,5 +115,53 @@ contract LibDecimalFloatGasTest is Test {
             f(14142135623730950488016887242096980785697, -40)
         );
         logMul("int224 max", f(type(int224).max, 0), f(type(int224).max, 0));
+    }
+
+    function logPackLossless(string memory name, int256 signedCoefficient, int256 exponent) internal view {
+        uint256 before = gasleft();
+        LibDecimalFloat.packLossless(signedCoefficient, exponent);
+        uint256 used = before - gasleft();
+        console2.log(string.concat("packLossless ", name), used);
+    }
+
+    function logFromFixed(string memory name, uint256 value, uint8 decimals) internal view {
+        uint256 before = gasleft();
+        LibDecimalFloat.fromFixedDecimalLosslessPacked(value, decimals);
+        uint256 used = before - gasleft();
+        console2.log(string.concat("fromFixedDecimalLosslessPacked ", name), used);
+    }
+
+    function logToFixed(string memory name, Float a, uint8 decimals) internal view {
+        uint256 before = gasleft();
+        a.toFixedDecimalLossy(decimals);
+        uint256 used = before - gasleft();
+        console2.log(string.concat("toFixedDecimalLossy ", name), used);
+    }
+
+    function logParse(string memory s) internal view {
+        uint256 before = gasleft();
+        LibParseDecimalFloat.parseDecimalFloat(s);
+        uint256 used = before - gasleft();
+        console2.log(string.concat("parseDecimalFloat ", s), used);
+    }
+
+    function testGasConversions() external view {
+        logPackLossless("1", 1, 0);
+        logPackLossless("1e18 scale", 1234567890123456789, -18);
+        logPackLossless("int256 multiple of 1e9", 1e76, -9);
+        logFromFixed("1e18", 1e18, 18);
+        logFromFixed("1.234567890123456789", 1234567890123456789, 18);
+        logFromFixed("int224 max", uint256(int256(type(int224).max)), 6);
+        logToFixed("1 to 18", f(1, 0), 18);
+        logToFixed("1.234567890123456789 to 6", f(1234567890123456789, -18), 6);
+        logToFixed("1e18 scale to 18", f(1234567890123456789, -18), 18);
+    }
+
+    function testGasParse() external view {
+        logParse("1");
+        logParse("1.5");
+        logParse("1.234567890123456789");
+        logParse("-1.5e-10");
+        logParse("1e18");
     }
 }

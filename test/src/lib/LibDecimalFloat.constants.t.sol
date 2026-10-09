@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT
@@ -28,28 +28,16 @@ contract LibDecimalFloatConstantsTest is Test {
         assertEq(Float.unwrap(minValue), Float.unwrap(expected));
     }
 
-    function absExternal(Float a) external pure returns (Float) {
-        return a.abs();
+    /// Every non-zero magnitude is at least the smallest positive value.
+    function testFloatMinPositiveValueIsMin(Float a) external pure {
+        assertEq(a.abs().gte(LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE), !a.isZero());
     }
 
-    /// Every non-zero magnitude is at least the smallest positive value. The
-    /// one Float with no absolute value is `int224.min × 10^int32.max`, the
-    /// only representation of the most negative value, as `2^223 × 10^int32.max`
-    /// exceeds every Float.
-    function testFloatMinPositiveValueIsMin(Float a) external {
-        (int256 signedCoefficient, int256 exponent) = a.unpack();
-        if (signedCoefficient == type(int224).min && exponent == type(int32).max) {
-            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2 ** 223), exponent));
-            this.absExternal(a);
-            return;
-        }
-        Float magnitude = this.absExternal(a);
-        assertEq(magnitude.gte(LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE), signedCoefficient != 0);
-    }
-
-    function testFloatMinNegativeValueHasNoAbs() external {
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2 ** 223), int256(type(int32).max)));
-        this.absExternal(LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE);
+    function testFloatMinNegativeValueAbsIsMaxPositiveValue() external pure {
+        assertEq(
+            Float.unwrap(LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE.abs()),
+            Float.unwrap(LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE)
+        );
     }
 
     function testFloatMaxNegativeValue() external pure {
