@@ -10,6 +10,7 @@ import {
     ADD_MAX_EXPONENT_DIFF
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationAddTest is Test {
     function addExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -140,8 +141,126 @@ contract LibDecimalFloatImplementationAddTest is Test {
         this.addExternal(type(int256).max, type(int256).max, 1, type(int256).max);
     }
 
-    /// Provided our exponents are in range we should never revert.
-    function testAddNeverRevert(
+    /// `|x| × 10^k`.
+    function magnitudeAt(int256 x, uint256 k) internal pure returns (U512 memory) {
+        return LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(LibTestExactDecimal.abs(x)), k);
+    }
+
+    /// `a - b` for `a >= b`.
+    function sub512(U512 memory a, U512 memory b) internal pure returns (U512 memory) {
+        uint256 borrow = a.lo < b.lo ? 1 : 0;
+        unchecked {
+            return U512(a.hi - b.hi - borrow, a.lo - b.lo);
+        }
+    }
+
+    /// Exact value equality of two non-overflowing parts, independent of `eq`.
+    function sameValue(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
+        if (ca == 0 || cb == 0) {
+            return ca == cb;
+        }
+        return (ca < 0) == (cb < 0)
+            && LibTestExactDecimal.cmpScaled(
+                LibTestExactDecimal.u512(LibTestExactDecimal.abs(ca)),
+                ea,
+                LibTestExactDecimal.u512(LibTestExactDecimal.abs(cb)),
+                eb
+            ) == 0;
+    }
+
+    /// For in-range exponents and every int256 coefficient, `add` is the
+    /// exact sum rounded to a multiple of the larger operand's int256 unit T,
+    /// towards zero when the signs agree and away from zero when they differ
+    /// (README, "Addition and subtraction"). Where that does not fit an int256
+    /// coefficient, the sum is shed to a multiple of 10^(T+1) towards zero,
+    /// within two units: the operands are each truncated by a digit, under a
+    /// unit apiece.
+    function checkAddRoundsTheExactSum(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal pure {
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+
+        if (signedCoefficientA == 0 || signedCoefficientB == 0) {
+            (int256 other, int256 otherExponent) = signedCoefficientA == 0
+                ? (signedCoefficientB, exponentB)
+                : (signedCoefficientA, exponentA);
+            assertTrue(sameValue(signedCoefficient, exponent, other, otherExponent), "zero operand");
+            return;
+        }
+
+        // The int256 unit of each operand is the exponent of its maximized
+        // form, which the exponent bounds keep clear of the int256 floor.
+        (int256 big, int256 unit, int256 shortfallA) = LibTestExactDecimal.maximize(signedCoefficientA, exponentA);
+        (int256 small, int256 smallUnit, int256 shortfallB) =
+            LibTestExactDecimal.maximize(signedCoefficientB, exponentB);
+        assertEq(shortfallA, 0);
+        assertEq(shortfallB, 0);
+        if (smallUnit > unit) {
+            (big, unit, small, smallUnit) = (small, smallUnit, big, unit);
+        }
+        bool sameSign = (big < 0) == (small < 0);
+
+        if (unit - smallUnit > 77) {
+            // |small| < 2^255 10^(T-78) is under a unit, so the sum lies
+            // strictly within a unit of big, outwards when the signs agree
+            // and inwards when they differ: either way it rounds to big.
+            assertTrue(sameValue(signedCoefficient, exponent, big, unit), "beyond the unit");
+            return;
+        }
+
+        // Exact sum in units of 10^(T-77). Each term is under 2^255 10^77.
+        U512 memory bigUnits = magnitudeAt(big, 77);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory smallUnits = magnitudeAt(small, uint256(smallUnit - (unit - 77)));
+        U512 memory sum;
+        bool sumNegative;
+        if (sameSign) {
+            sum = LibTestExactDecimal.add(bigUnits, smallUnits);
+            sumNegative = big < 0;
+        } else if (LibTestExactDecimal.cmp(bigUnits, smallUnits) >= 0) {
+            sum = sub512(bigUnits, smallUnits);
+            sumNegative = big < 0;
+        } else {
+            sum = sub512(smallUnits, bigUnits);
+            sumNegative = small < 0;
+        }
+
+        if (LibTestExactDecimal.isZero(sum)) {
+            assertEq(signedCoefficient, 0, "cancelled");
+            return;
+        }
+        assertEq(signedCoefficient < 0, sumNegative, "sign");
+
+        if (exponent == unit) {
+            U512 memory result = magnitudeAt(signedCoefficient, 77);
+            U512 memory unitSize = LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(1), 77);
+            if (sameSign) {
+                assertTrue(LibTestExactDecimal.cmp(result, sum) <= 0, "towards zero");
+                assertTrue(LibTestExactDecimal.cmp(sum, LibTestExactDecimal.add(result, unitSize)) < 0, "within a unit");
+            } else {
+                assertTrue(LibTestExactDecimal.cmp(sum, result) <= 0, "away from zero");
+                assertTrue(LibTestExactDecimal.cmp(result, LibTestExactDecimal.add(sum, unitSize)) < 0, "within a unit");
+            }
+        } else {
+            assertEq(exponent, unit + 1, "exponent");
+            assertTrue(sameSign, "only a same signed sum sheds");
+            // The sum rounded towards zero at T does not fit int256.
+            U512 memory limit = LibTestExactDecimal.mulPow10(
+                LibTestExactDecimal.u512(uint256(type(int256).max) + (sumNegative ? 2 : 1)), 77
+            );
+            assertTrue(LibTestExactDecimal.cmp(sum, limit) >= 0, "shed only past int256");
+            U512 memory result = magnitudeAt(signedCoefficient, 78);
+            U512 memory twoUnits = LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(2), 78);
+            assertTrue(LibTestExactDecimal.cmp(result, sum) <= 0, "shed towards zero");
+            assertTrue(LibTestExactDecimal.cmp(sum, LibTestExactDecimal.add(result, twoUnits)) < 0, "within two units");
+        }
+    }
+
+    function testAddRoundsTheExactSum(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
@@ -149,10 +268,20 @@ contract LibDecimalFloatImplementationAddTest is Test {
     ) external pure {
         exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        checkAddRoundsTheExactSum(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
 
-        (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (signedCoefficient, exponent);
+    /// Independent exponents are almost never within a unit's reach of each
+    /// other, so this reaches the aligned, cancelling and shedding sums.
+    function testAddRoundsTheExactSumNearbyExponents(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 gap
+    ) external pure {
+        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10 - 80);
+        int256 exponentB = exponentA + bound(gap, -80, 80);
+        checkAddRoundsTheExactSum(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     function testAddingSmallToLargeReturnsLargeFuzz(

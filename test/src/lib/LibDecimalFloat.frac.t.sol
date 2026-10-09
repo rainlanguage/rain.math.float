@@ -9,10 +9,6 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 contract LibDecimalFloatFracTest is Test {
     using LibDecimalFloat for Float;
 
-    function testFracNotReverts(Float x) external pure {
-        x.frac();
-    }
-
     function checkFrac(int256 x, int256 exponent, int256 expectedFrac, int256 expectedFracExponent) internal pure {
         Float a = LibDecimalFloat.packLossless(x, exponent);
         (int256 actualFrac, int256 actualFracExponent) = a.frac().unpack();

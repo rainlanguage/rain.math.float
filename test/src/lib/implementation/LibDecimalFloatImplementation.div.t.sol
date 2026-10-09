@@ -11,7 +11,7 @@ import {
     ExponentOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationDivTest is Test {
     function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -42,8 +42,67 @@ contract LibDecimalFloatImplementationDivTest is Test {
         this.divExternal(signedCoefficient, exponent, 0, 0);
     }
 
-    function testDivMaxPositiveValueDenominatorNotRevert(int256 signedCoefficient, int256 exponent) external pure {
-        LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
+    /// Dividing every int256 value by the largest Float magnitude,
+    /// `type(int256).max × 10^int32.max`, truncates the exact quotient Q
+    /// towards zero at the result's own unit, keeping 76 digits (README,
+    /// "Approach to preserving precision") unless the unit is the int256
+    /// floor. Below 10^int256.min the quotient truncates to zero.
+    function testDivMaxPositiveValueDenominatorTruncatesTheExactQuotient(int256 signedCoefficient, int256 exponent)
+        external
+        pure
+    {
+        (int256 q, int256 qExponent) =
+            LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
+        uint256 denominator = uint256(type(int256).max);
+        uint256 magnitude = LibTestExactDecimal.abs(signedCoefficient);
+
+        if (signedCoefficient == 0) {
+            assertEq(q, 0, "zero dividend");
+            return;
+        }
+        if (q == 0) {
+            // |Q| < 10^int256.min iff |c| 10^x < max with
+            // x = exponent - int32.max - int256.min.
+            uint256 aboveFloor;
+            unchecked {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                aboveFloor = uint256(exponent) - uint256(type(int256).min);
+            }
+            assertTrue(aboveFloor < uint256(int256(type(int32).max)) + 200, "zero far above the floor");
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 x = int256(aboveFloor) - type(int32).max;
+            assertTrue(
+                LibTestExactDecimal.cmpScaled(
+                    LibTestExactDecimal.u512(magnitude), x, LibTestExactDecimal.u512(denominator), 0
+                ) < 0,
+                "zero quotient at or above the floor"
+            );
+            return;
+        }
+
+        assertEq(q < 0, signedCoefficient < 0, "sign");
+        assertTrue(qExponent <= exponent, "unit above the dividend");
+        // |r| <= |Q| < |r| + 10^qExponent is |q| max <= |c| 10^d < (|q| + 1) max
+        // with d = exponent - int32.max - qExponent.
+        uint256 drop;
+        unchecked {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            drop = uint256(exponent) - uint256(qExponent);
+        }
+        assertTrue(drop >= uint256(int256(type(int32).max)) && drop - uint256(int256(type(int32).max)) <= 200, "unit");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 d = int256(drop - uint256(int256(type(int32).max)));
+        uint256 qMagnitude = LibTestExactDecimal.abs(q);
+        U512 memory scaledC = LibTestExactDecimal.u512(magnitude);
+        assertTrue(
+            LibTestExactDecimal.cmpScaled(LibTestExactDecimal.mul(qMagnitude, denominator), 0, scaledC, d) <= 0,
+            "towards zero"
+        );
+        assertTrue(
+            LibTestExactDecimal.cmpScaled(LibTestExactDecimal.mul(qMagnitude + 1, denominator), 0, scaledC, d) > 0,
+            "within a unit"
+        );
+        assertTrue(qExponent == type(int256).min || qMagnitude >= 1e75, "76 digits");
     }
 
     /// A ±1 divisor at the floor divides exactly when the quotient exponent

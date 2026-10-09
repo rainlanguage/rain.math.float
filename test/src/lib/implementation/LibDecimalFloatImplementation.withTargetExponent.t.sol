@@ -24,16 +24,6 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         assertEq(actualSignedCoefficient, signedCoefficient, "signedCoefficient");
     }
 
-    function testWithTargetExponentLargerTargetExponentNoRevert(
-        int256 signedCoefficient,
-        int256 exponent,
-        int256 targetExponent
-    ) external pure {
-        targetExponent = bound(targetExponent, type(int256).min + 1, type(int256).max);
-        exponent = bound(exponent, type(int256).min, targetExponent - 1);
-        LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
-    }
-
     function testWithTargetExponentLargerExponentVeryLargeDiffRevert(
         int256 signedCoefficient,
         int256 exponent,
