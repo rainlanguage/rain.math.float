@@ -343,18 +343,21 @@ library LibTestExactDecimal {
         return divParts(1e76, -76, signedCoefficient, exponent);
     }
 
-    /// The exponent of a non-zero Float's int256 unit: its last digit when
-    /// written with as many digits as an int256 coefficient holds, 77 or 76.
+    /// The exponent of a non-zero coefficient's int256 unit: its last digit
+    /// when written with as many digits as an int256 coefficient of its sign
+    /// holds, 77 or 76.
     function int256Unit(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
         uint256 magnitude = abs(signedCoefficient);
         int256 n = digits(u512(magnitude));
-        // n is at most 68, and a 77 digit magnitude fits uint256.
+        uint256 bound = signedCoefficient < 0 ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
+        // n is at most 77, and a 77 digit magnitude fits uint256.
         // forge-lint: disable-next-line(unsafe-typecast)
-        bool fits77 = magnitude * 10 ** uint256(77 - n) <= uint256(type(int256).max);
+        bool fits77 = magnitude * 10 ** uint256(77 - n) <= bound;
         return exponent + n - (fits77 ? int256(77) : int256(76));
     }
 
-    /// The parts `add` of two Floats hands to packing, as its NatSpec states
+    /// The parts `add` of two int256 coefficients hands to packing, as its
+    /// NatSpec states
     /// them: the exact sum in units of the larger operand's int256 unit,
     /// rounded towards zero when the signs agree and away from zero when they
     /// differ, as `signedParts`. The larger operand is a whole number of
@@ -379,8 +382,8 @@ library LibTestExactDecimal {
             // |cb| × 10^(eb - unit) is at most |a|'s 77 digits.
             // forge-lint: disable-next-line(unsafe-typecast)
             smallUnits = abs(cb) * 10 ** uint256(eb - unit);
-        } else if (unit - eb > 68) {
-            // |cb| has at most 68 digits, so it is under one unit.
+        } else if (unit - eb > 77) {
+            // |cb| has at most 77 digits, so it is under one unit.
             smallFraction = true;
         } else {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -391,8 +394,14 @@ library LibTestExactDecimal {
         bool sameSign = (ca < 0) == (cb < 0);
         uint256 units;
         if (sameSign) {
-            // Towards zero drops the fraction.
-            units = bigUnits + smallUnits;
+            // Towards zero drops the fraction. Only two int256.min sum past
+            // uint256, so that sum sheds its digit before it is formed.
+            if (bigUnits > type(uint256).max - smallUnits) {
+                units = bigUnits / 10 + smallUnits / 10 + (bigUnits % 10 + smallUnits % 10) / 10;
+                unit += 1;
+            } else {
+                units = bigUnits + smallUnits;
+            }
         } else {
             // |b| <= |a|, so this is at least zero: the whole units of the
             // exact difference, then away from zero rounds a remaining

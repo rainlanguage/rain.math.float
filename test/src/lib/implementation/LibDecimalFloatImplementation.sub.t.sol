@@ -8,44 +8,73 @@ import {
     EXPONENT_MAX,
     EXPONENT_MIN
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationSubTest is Test {
-    /// Sub is the same as add, but with the second coefficient negated.
-    function testSubIsAdd(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+    /// `a - b` is `a + (-b)` rounded by the add rule, from the exact sum.
+    function checkSubMatchesRule(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal pure {
+        // -b by the representable-range rule: exact, but for int256.min, whose
+        // negation 2^255 sheds a digit.
+        (int256 negatedCoefficientB, int256 negatedExponentB) = LibTestExactDecimal.signedParts(
+            signedCoefficientB > 0, LibTestExactDecimal.abs(signedCoefficientB), exponentB
+        );
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.addParts(signedCoefficientA, exponentA, negatedCoefficientB, negatedExponentB);
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(signedCoefficient, expectedSignedCoefficient, "coefficient");
+        assertEq(exponent, expectedExponent, "exponent");
+    }
+
+    function testSubMatchesRule(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external pure {
+        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        checkSubMatchesRule(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    /// As `testSubMatchesRule`, with the operands' digits overlapping or
+    /// adjacent.
+    function testSubMatchesRuleNearby(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 gap
+    ) external pure {
+        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        checkSubMatchesRule(signedCoefficientA, exponentA, signedCoefficientB, exponentA + bound(gap, -80, 80));
+    }
+
+    /// As `testSubMatchesRuleNearby`, with `b` int256.min.
+    function testSubMinSignedValue(int256 signedCoefficientA, int256 exponentA, int256 gap) external pure {
+        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        checkSubMatchesRule(signedCoefficientA, exponentA, type(int256).min, exponentA + bound(gap, -80, 80));
+    }
+
+    /// As `testSubMatchesRuleNearby`, with `a` within two of `b`'s leading
+    /// digits, so that the difference cancels down to `b`'s trailing digits.
+    function testSubMatchesRuleCancelling(int256 signedCoefficientB, int256 exponentB, uint256 gap, int256 delta)
         external
         pure
     {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-
-        // The min signed value cannot be negated directly so we can't test it
-        // in this function.
-        vm.assume(signedCoefficientB != type(int256).min);
-
-        (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
-        assertEq(signedCoefficient, expectedSignedCoefficient);
-        assertEq(exponent, expectedExponent);
-    }
-
-    /// We can sub the min signed value as it will be normalized.
-    function testSubMinSignedValue(int256 signedCoefficientA, int256 exponentA, int256 exponentB) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-
-        // Able to sub the non-normalized min signed value.
-        int256 signedCoefficientB = type(int256).min;
-        (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-
-        // Minus will just shift the max min value one exponent internally.
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, -(signedCoefficientB / 10), exponentB + 1);
-
-        assertEq(signedCoefficient, expectedSignedCoefficient);
-        assertEq(exponent, expectedExponent);
+        uint256 shed = bound(gap, 0, 76);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 leading = signedCoefficientB / int256(10 ** shed);
+        delta = bound(delta, -2, 2);
+        vm.assume(delta >= 0 ? leading <= type(int256).max - delta : leading >= type(int256).min - delta);
+        int256 signedCoefficientA = leading + delta;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkSubMatchesRule(signedCoefficientA, exponentB + int256(shed), signedCoefficientB, exponentB);
     }
 
     function checkSub(
@@ -60,6 +89,11 @@ contract LibDecimalFloatImplementationSubTest is Test {
             LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertEq(signedCoefficient, expectedSignedCoefficient, "LibDecimalFloatImplementation.sub coefficient");
         assertEq(exponent, expectedExponent, "LibDecimalFloatImplementation.sub exponent");
+    }
+
+    /// `(5e76 + 5) - -(5e76 + 5)` is `1e77 + 10`, exactly `(1e76 + 1)e1`.
+    function testSubCarryPastInt256() external pure {
+        checkSub(5e76 + 5, 0, -(5e76 + 5), 0, 1e76 + 1, 1);
     }
 
     function testSubOneFromMax() external pure {
