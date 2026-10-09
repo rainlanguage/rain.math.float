@@ -4,6 +4,8 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTranscendentalOracle, ORACLE_LN10} from "test/lib/LibTranscendentalOracle.sol";
+import {Float} from "src/lib/LibDecimalFloat.sol";
+import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 
 /// Where a power 10^L, computed within a slack of L in log10, can land against the
 /// Float range. Only `Inside` demands a value; `Over` and `Under` demand the
@@ -83,5 +85,18 @@ library LibTestPowRange {
             return PowRange.Inside;
         }
         return signedCoefficient > 0 ? PowRange.OverEdge : PowRange.UnderEdge;
+    }
+
+    /// The revert of pow or pow10 past the range on the `over` side: the
+    /// call's input `x`, its coefficient and exponent read from its bits.
+    function rangeError(bool over, Float x) internal pure returns (bytes memory) {
+        uint256 bits = uint256(Float.unwrap(x));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = int224(uint224(bits));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponent = int32(uint32(bits >> 224));
+        return abi.encodeWithSelector(
+            over ? ExponentOverflow.selector : ExponentUnderflow.selector, signedCoefficient, exponent
+        );
     }
 }

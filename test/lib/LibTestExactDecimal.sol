@@ -365,37 +365,6 @@ library LibTestExactDecimal {
         return divPayload(1e76, -76, signedCoefficient, exponent);
     }
 
-    /// Revert payload only, never a value oracle: see `signedPayload`.
-    /// The parts `add` of two Floats hands to packing. Both operands are
-    /// maximized and the one at the lower exponent is truncated towards zero
-    /// to the other's, or dropped 77 or more digits below it. A sum past int256
-    /// has each addend shed a digit before summing, at one exponent higher.
-    function addPayload(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
-        if (ca == 0) {
-            return (cb, eb);
-        }
-        if (cb == 0) {
-            return (ca, ea);
-        }
-        (int256 a, int256 exponentA) = maximizeFloat(ca, ea);
-        (int256 b, int256 exponentB) = maximizeFloat(cb, eb);
-        if (exponentB > exponentA) {
-            (a, exponentA, b, exponentB) = (b, exponentB, a, exponentA);
-        }
-        int256 gap = exponentA - exponentB;
-        if (gap > 76) {
-            return (a, exponentA);
-        }
-        // gap is in [0, 76].
-        // forge-lint: disable-next-line(unsafe-typecast)
-        b /= int256(10 ** uint256(gap));
-        bool sumOverflows = (a > 0 && b > 0 && a > type(int256).max - b) || (a < 0 && b < 0 && a < type(int256).min - b);
-        if (sumOverflows) {
-            return (a / 10 + b / 10, exponentA + 1);
-        }
-        return (a + b, exponentA);
-    }
-
     /// Whether a Float's parts are a whole number. Below `10^-67` every
     /// non-zero int224 coefficient leaves a fraction.
     function isWhole(int256 signedCoefficient, int256 exponent) internal pure returns (bool) {
@@ -535,6 +504,13 @@ library LibTestExactDecimal {
     {
         (bool negative, uint256 units, int256 unit) = sumRule(ca, ea, cb, eb);
         return isNearestTowardZero(negative, u512(units), unit, rc, re);
+    }
+
+    /// The parts `add` hands to packing, as its NatSpec states them: `sumRule`
+    /// as int256 parts, as `signedPayload`.
+    function addParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        (bool negative, uint256 units, int256 unit) = sumRule(ca, ea, cb, eb);
+        return signedPayload(negative, units, unit);
     }
 
     /// `|ca / cb|` for a non-zero `cb`, truncated to 71 or 72 significant

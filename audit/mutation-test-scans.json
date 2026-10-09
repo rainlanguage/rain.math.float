@@ -236,6 +236,51 @@
     }
   },
   {
+    "timestamp": "2026-10-07T17:26:31Z",
+    "commit": "80790d1e4d7e3716bfe76d6396a545aec7d2e213",
+    "testsAfterCommit": "77a1f3ef50100a9b3a11d62923b1ff5d23d452c4",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 0,
+    "scope": "issue #311: LibDecimalFloatImplementation.log10Ratio (the src change is NatSpec and a comment only: relative mode needs a + b of at least 1e50; deployed bytecode identical to main). Probe suite: forge test (full). M01-M16 were probed against the pre-existing suite at commit; M02 survived and was re-probed with forge test --nmc MainEquivalence after the new tests, because testMainEquivalenceDivNearFloor went red on a fuzz input unrelated to log10Ratio (#335).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 16,
+      "killedBefore": 15,
+      "killedAfter": 1,
+      "equivalent": 0,
+      "candidates": 1,
+      "confirmed": 0,
+      "testsBefore": 743,
+      "testsAfter": 747,
+      "filed": [
+        335
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-10-07T18:35:36Z",
+    "commit": "e8b9ae8b5e8c506cd85906821cce0e91cff0bda8",
+    "testsAfterCommit": "a14aed040a7962085a251fea49e15c535b818761",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 4,
+    "scope": "issue #329 fix: the changed lines of LibDecimalFloat pow/pow10/powUnrounded/packRoundedSignificant, the new revertPast and packPowResult, and the Rust reference revert data in crates/tests/src/transcendental.rs. Probe suite: forge test --mc LibDecimalFloat(Pow|Pow10|Sqrt|Precision)Test then cargo test -p rain-math-float-tests; test counts are that suite. 39 mutants (M01-M37, R01, R02). M20 (shed-loop exponent) survived the suite at commit and is killed by testPowCarryShedsTheUnrounded. Equivalent: M11 (bound 76 -> 77: at exponentB 77, int256(10**77) wraps negative so int256.max over it is -3 and every positive integer b still reverts), M12 (> -> >=: at the boundary b of about 5.79e76 the squaring loop reverts with the same payload for the closest a on either side of 1, pinned in testPowHugeExponentDirection), M23 (!fits dropped: an unfitted initial coefficient is past int224.max / scale for every scale >= 10, so the lift check reverts the same), M24 (67 -> 68: int224 / 1e68 is 0, so every nonzero initial coefficient fails the lift check the same). Not applied: M19, M26, M27, M29, M30, M31, M36, M37 (HARNESS-ERROR, their targets also match packLossy; the mutant file still needs unique targets).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 39,
+      "killedBefore": 26,
+      "killedAfter": 1,
+      "equivalent": 4,
+      "notApplied": 8,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 237,
+      "testsAfter": 238,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-07T22:03:31Z",
     "commit": "a5561f85600ab9aaeaf7b077c862c5a8a5a417f7",
     "testsAfterCommit": "2194fbe9c6cdc7c17cda6401e041515b9c6d6815",
@@ -253,6 +298,69 @@
       "confirmed": 0,
       "testsBefore": 33,
       "testsAfter": 52,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-07T22:50:40Z",
+    "commit": "5b9f4d5c787fcaf437c30c7402563d2c8858880b",
+    "testsAfterCommit": "5b9f4d5c787fcaf437c30c7402563d2c8858880b",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 2,
+    "scope": "issue #341: the changed lines of LibParseDecimalFloat (parseIntegerPastInt256 and its call, the zero-coefficient guard on exponent digits past int256), crates/tests/src/reference.rs parse_inline and test/oracle/decimal_oracle.py parse_value. 16 Solidity mutants (S01-S16) probed twice under forge: main's tests over the PR source kill 0/16, the PR's tests kill 16/16. 10 oracle mutants (R01-R06, P01-P04) probed under cargo test kill 9/10; P04 (Python range rule ignores the mantissa) is equivalent: it changes a verdict only for a mantissa of about 8.5e8 digits, since elsewhere the fallthrough pack gives the same error. Adversarial pass over the issue's rule (every representable literal parses exactly) found no candidate.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 26,
+      "killedBefore": 25,
+      "killedAfter": 0,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 902,
+      "testsAfter": 902,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-07T22:55:29Z",
+    "commit": "7be46249a6dec0b3262949cb053bd591d7620511",
+    "testsAfterCommit": "7be46249a6dec0b3262949cb053bd591d7620511",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 1,
+    "scope": "issue #343 error rules: the changed lines of LibParseDecimalFloat.parseDecimalFloatInline (exponent wrap guard and selector), LibDecimalFloat.toFixedDecimalLossy (wrap guard, error, args), packLossless (guard, error, args), fromFixedDecimalLossless and fromFixedDecimalLosslessPacked; and the reference.rs and decimal_oracle.py error rules for pack_lossless, from_fixed_decimal_lossless, to_fixed_decimal_lossy_unpacked and parse_inline. S01-S14 probed against forge test --mc LibDecimalFloatDecimalLosslessTest|LibDecimalFloatDecimalTest|LibDecimalFloatPackTest|LibParseDecimalFloatTest (83 tests); R01-R08 and P01-P04 against cargo test -p rain-math-float-tests (145 tests). The tests were written in the same commit as the change, before the probe, so killedBefore credits them. Equivalent: S02 (eValue < 0 makes newExponent == exponent impossible), R07 (a zero coefficient has an empty trimmed fraction, so its exponent is the exponent digits, already bounded to int256 by ParseDecimalOverflow).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 26,
+      "killedBefore": 24,
+      "killedAfter": 0,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 228,
+      "testsAfter": 228,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-07T23:00:19Z",
+    "commit": "057be36f9a85299a4bfc53d9945b1d0cef998f55",
+    "testsAfterCommit": "fb62ad89199de00551123720871f182d3ade981a",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 4,
+    "scope": "PR #336: the log10Ratio relative guard Log10RatioRelativeSumTooSmall (a + b < 1e50) in LibDecimalFloatImplementation. Probe suite: forge test --nmc MainEquivalence (#335). G01-G18 were probed against the pre-existing suite at commit: G03 and G04 (guard floor 1e50 - 1 and 1e49), G12 (guard after z) and G13 (relative z divided by a + b + 1) survived. G01-G21 were probed at 0ae75af (src identical to f2fe44a), after the tests of 38cde50: G03, G04 and G12 were killed, and G13 survived until testLog10RatioRelativeZOnFloorBoundary (fb62ad8). G19 (relative branch inverted) and G21 (revert args zeroed) were first probed there and killed. G20 (guard moved after maximizeFull) is equivalent: below 1e50 maximizeFull neither reverts nor changes what the guard reads.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 21,
+      "killedBefore": 14,
+      "killedAfter": 6,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 729,
+      "testsAfter": 735,
       "filed": []
     }
   },
@@ -275,6 +383,51 @@
       "confirmed": 0,
       "testsBefore": 924,
       "testsAfter": 924,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T08:40:00Z",
+    "commit": "02a621b0b4894c52b2f1f71164d9401d8e0b744b",
+    "testsAfterCommit": "73e61ca7b803bed4d6b71ecad3e6eee169e85291",
+    "publishedTag": "sol-v0.2.24",
+    "commitsAheadOfTag": 11,
+    "scope": "PR #338 after b8e9b7d/02a621b (pow packs through packLossy, pow10 inlines packPowResult): pow10 range checks and its inlined pack (P01, P02, Q01-Q07), the integer-b and squaring range checks (P03-P10), packRoundedSignificant and packPowResult (P11-P12, P16-P26), revertPast (P13-P15), sqrt input (P27), Rust reference and checker (R01-R03). Suite: full forge test + cargo test -p rain-math-float-tests --release. P20 (overflow threshold gte -> gt) survived and is killed by testPowExactlyAtTheOverflowThreshold: a = (int224.max / 10 + 1) 10^int32.max, b = 1 + 465661273184989617541055125131739873881019438247110325622e-66 makes the leg exactly 10^1, so the unrounded power is exactly the threshold. Equivalent: Q02 (pow10 window 10 -> 9: the pow10 coefficient is 1 or at most 1e41, so at exponent int32.max - 9 the value is at most 10^(int32.max + 32), far below the threshold), Q04 (pow10 drops lossless: its coefficient is 1 or at least 1e40, never zero, and packLossy returns a lossless zero only for a zero coefficient), P07 (76 -> 77: int256(10**77) wraps negative, so every positive integer b still reverts; as M11), P08 (> -> >=: at the boundary b is at least 5e76 and every a but 1 is at least 1e-67 from 1, so |b log10 a| >= 2.17e9, past both range ends by 2.4e7 decades against under 75 decades of truncation; the squaring and pack path reverts the same side and payload; as M12), P27 (sqrt reports one half: b = 0.5 has integer part 0, so neither the integer-b check nor the squaring loop runs, and a negative a reverts PowNegativeBase first; input is never read). Open: P21 (negative side lte -> lt) differs only at exactly -(int224.max / 10 + 1) 10^(int32.max + 1), reachable only through a negative a, which forces an integer b. b = 1 returns a, which is packable. An exact c^N needs the squarefree M = 13 149 593 3109 184481113 231769777 1398316729 4345052821 1453030298001690873541 to be an Nth power. b = -1 has no maximized divisor (a multiple of 1e9) inside the inverse window. A truncated product for N >= 2 is not ruled out, so it is neither killed nor proven. threshold.log killed it only through a test that widened revertIfPastLargestFloat to internal; that was discarded with its two proptest seeds, which a mutant run had written.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 37,
+      "killedBefore": 30,
+      "killedAfter": 1,
+      "equivalent": 5,
+      "open": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 914,
+      "testsAfter": 915,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T10:05:00Z",
+    "commit": "573d863b45b87a9489df301f64da89b70a193cc7",
+    "testsAfterCommit": "ea722456c1ea88e12495f810b72d2ef2913b7081",
+    "publishedTag": "sol-v0.2.27",
+    "commitsAheadOfTag": 16,
+    "scope": "PR #338 after 573d863: packRoundedSignificant now packs itself and checks the overflow threshold only above int32.max (S01-S09, S16-S18), revertIfPastLargestFloat compares the magnitude once for both signs (S10-S15), and pow10's inlined pack (S19-S22). Suite: full forge test + cargo test -p rain-math-float-tests --release. P21 (negative side lte -> lt) of the 02a621b entry has no target any more: there is one gte on |value|, and S13 (gte -> gt) is killed by testPowExactlyAtTheOverflowThreshold, so the exact threshold is pinned for both signs. S11 (negation dropped) was killed only by fuzz (testRoundTripFuzzPow, exact_pow); testPowNegativeOddPowerPastTheRange now kills it deterministically: (-2e715827905)^3 overflows through the carry-fallback check and (-2e715827950)^3 through the rounded check, each reporting a, and (-2e715827904)^3 is -8e65 10^int32.max. Equivalent, all from |rounded| <= 1e41 (roundSignificant keeps at most 41 digits): S01 (excess > 0 -> >= 0) and S02 (> 0 -> > 1): for excess up to 25 the lift check needs |rounded| > int224.max / 10^excess >= 1.3e42 and the threshold needs |rounded| 10^excess >= 1.3e67, so neither fires and the same packLossy runs. S03 (excess <= 67 -> < 67): at excess 67, |rounded| >= 2 overflows on the rounded check, and the unrounded is at least 1.5 10^(int32.max + 67), past the threshold of 1.35 10^(int32.max + 67), so the fallback reverts the same; |rounded| = 1 lifts on both. S04 (67 -> 68, as M24): int224.max / 1e68 is 0, so every nonzero rounded value fails the lift, and both it and its unrounded value overflow. S10 (< 0 -> <= 0): negating zero is zero. S21 (pow10 window 10 -> 9, as Q02) and S22 (10 -> 11): the check reverts only past the threshold, which packLossy also refuses, and the pow10 coefficient is at most 1e41, so at exponent int32.max - 9 or lower the value is at most 10^(int32.max + 32) and the check never fires.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 22,
+      "killedBefore": 15,
+      "killedAfter": 0,
+      "strengthened": 1,
+      "equivalent": 7,
+      "open": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 945,
+      "testsAfter": 946,
       "filed": []
     }
   }

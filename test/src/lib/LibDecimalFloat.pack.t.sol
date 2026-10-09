@@ -3,7 +3,8 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
-import {CoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LossyConversionToFloat} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatPackTest is Test {
@@ -45,14 +46,37 @@ contract LibDecimalFloatPackTest is Test {
         return LibDecimalFloat.packLossless(signedCoefficient, exponent);
     }
 
-    /// packLossless reverts with CoefficientOverflow when lossy.
-    function testPackLosslessCoefficientOverflow() external {
+    /// packLossless reverts LossyConversionToFloat when lossy.
+    function testPackLosslessLossyConversionToFloat() external {
         // int224.max + 1 can't fit losslessly — packLossy would normalize it
         // but packLossless must revert.
         int256 signedCoefficient = int256(type(int224).max) + 1;
         int256 exponent = 0;
-        vm.expectRevert(abi.encodeWithSelector(CoefficientOverflow.selector, signedCoefficient, exponent));
+        vm.expectRevert(abi.encodeWithSelector(LossyConversionToFloat.selector, signedCoefficient, exponent));
         this.packLosslessExternal(signedCoefficient, exponent);
+    }
+
+    /// packLossless reverts ExponentOverflow for a value past every Float, at
+    /// the first exponent no int224 coefficient can lift and above it, and
+    /// LossyConversionToFloat for one that rounds to zero.
+    function testPackLosslessErrorByMagnitude() external {
+        int256 past = int256(type(int32).max) + 68;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), past));
+        this.packLosslessExternal(1, past);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-1), type(int256).max));
+        this.packLosslessExternal(-1, type(int256).max);
+        // One below the ceiling's reach still lifts.
+        Float lifted = this.packLosslessExternal(1, past - 1);
+        (int256 liftedCoefficient, int256 liftedExponent) = LibDecimalFloat.unpack(lifted);
+        assertEq(liftedCoefficient, 1e67, "lifted coefficient");
+        assertEq(liftedExponent, int256(type(int32).max), "lifted exponent");
+
+        vm.expectRevert(abi.encodeWithSelector(LossyConversionToFloat.selector, int256(1), type(int256).min));
+        this.packLosslessExternal(1, type(int256).min);
+        vm.expectRevert(
+            abi.encodeWithSelector(LossyConversionToFloat.selector, int256(-9), int256(type(int32).min) - 1)
+        );
+        this.packLosslessExternal(-9, int256(type(int32).min) - 1);
     }
 
     function checkPackLossy(
@@ -96,6 +120,53 @@ contract LibDecimalFloatPackTest is Test {
         int256 exponent = type(int32).max;
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         this.packLossyExternal(signedCoefficient, exponent);
+    }
+
+    /// The overflow rule pow and pow10 check before packing: near int32.max,
+    /// packLossy reverts exactly when the value is at least
+    /// (int224.max / 10 + 1) 10^(int32.max + 1) in magnitude.
+    function checkPackLossyOverflowThreshold(int256 signedCoefficient, int256 exponent) internal view {
+        int256 overCoefficient = type(int224).max / 10 + 1;
+        int256 overExponent = int256(type(int32).max) + 1;
+        bool over = LibDecimalFloatImplementation.gte(signedCoefficient, exponent, overCoefficient, overExponent)
+            || LibDecimalFloatImplementation.lte(signedCoefficient, exponent, -overCoefficient, overExponent);
+        bool reverted;
+        try this.packLossyExternal(signedCoefficient, exponent) {}
+        catch {
+            reverted = true;
+        }
+        assertEq(reverted, over, "reverted");
+    }
+
+    function testPackLossyOverflowThreshold(int256 signedCoefficient, int256 exponent) external view {
+        exponent = bound(exponent, int256(type(int32).max) - 10, int256(type(int32).max) + 69);
+        checkPackLossyOverflowThreshold(signedCoefficient, exponent);
+    }
+
+    function testPackLossyOverflowThresholdEdges() external view {
+        int256 overCoefficient = type(int224).max / 10 + 1;
+        int256 overExponent = int256(type(int32).max) + 1;
+        for (uint256 k = 0; k <= 10; k++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 scale = int256(10 ** k);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 exponent = overExponent - int256(k);
+            int256 edge = overCoefficient * scale;
+            checkPackLossyOverflowThreshold(edge, exponent);
+            checkPackLossyOverflowThreshold(edge - 1, exponent);
+            checkPackLossyOverflowThreshold(-edge, exponent);
+            checkPackLossyOverflowThreshold(-edge + 1, exponent);
+        }
+        for (uint256 k = 1; k <= 67; k++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 lift = type(int224).max / int256(10 ** k);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 exponent = int256(type(int32).max) + int256(k);
+            checkPackLossyOverflowThreshold(lift, exponent);
+            checkPackLossyOverflowThreshold(lift + 1, exponent);
+            checkPackLossyOverflowThreshold(-lift, exponent);
+            checkPackLossyOverflowThreshold(-lift - 1, exponent);
+        }
     }
 
     /// packLossless(x, 0) is a bitwise identity for non-negative integers
@@ -179,7 +250,7 @@ contract LibDecimalFloatPackTest is Test {
         assertEq(unpackedCoefficient, 7, "coefficient");
         assertEq(unpackedExponent, int256(type(int32).min), "exponent");
 
-        vm.expectRevert(abi.encodeWithSelector(CoefficientOverflow.selector, int256(7), int256(type(int32).min) - 1));
+        vm.expectRevert(abi.encodeWithSelector(LossyConversionToFloat.selector, int256(7), int256(type(int32).min) - 1));
         this.packLosslessExternal(7, int256(type(int32).min) - 1);
     }
 }
