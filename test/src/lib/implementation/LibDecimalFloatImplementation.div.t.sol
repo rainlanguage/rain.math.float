@@ -387,10 +387,9 @@ contract LibDecimalFloatImplementationDivTest is Test {
         checkDiv(1, type(int256).min, 3, type(int256).min + 76, THREES, -152);
     }
 
-    /// Moving both exponents down by the same amount does not change the
-    /// quotient, so a numerator at the floor, full or not, matches its
-    /// maximizable equivalent.
-    function testDivFloorNumeratorMatchesShifted(int256 signedCoefficientA, int256 signedCoefficientB, int256 shift)
+    /// A numerator at the floor, full or not, divides to the exact quotient
+    /// floored as `divParts`, which only the exponent difference reaches.
+    function testDivFloorNumeratorExact(int256 signedCoefficientA, int256 signedCoefficientB, int256 shift)
         external
         pure
     {
@@ -398,7 +397,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         vm.assume(signedCoefficientB != 0);
         shift = bound(shift, 76, type(int128).max);
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.div(signedCoefficientA, 0, signedCoefficientB, shift);
+            LibTestExactDecimal.divParts(signedCoefficientA, 0, signedCoefficientB, shift);
         checkDiv(
             signedCoefficientA,
             type(int256).min,
@@ -410,8 +409,8 @@ contract LibDecimalFloatImplementationDivTest is Test {
     }
 
     /// Both operands near the floor, either one short of its full shift,
-    /// divide as the same operands shifted up by `-type(int256).min`.
-    function testDivNearFloorMatchesShifted(
+    /// divide to the exact quotient floored as `divParts`.
+    function testDivNearFloorExact(
         int256 signedCoefficientA,
         int256 signedCoefficientB,
         uint256 headroomA,
@@ -424,7 +423,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = int256(bound(headroomB, 0, 80));
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibTestExactDecimal.divParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         checkDiv(
             signedCoefficientA,
             type(int256).min + exponentA,
