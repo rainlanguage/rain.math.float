@@ -259,6 +259,27 @@
     }
   },
   {
+    "timestamp": "2026-10-07T22:50:40Z",
+    "commit": "5b9f4d5c787fcaf437c30c7402563d2c8858880b",
+    "testsAfterCommit": "5b9f4d5c787fcaf437c30c7402563d2c8858880b",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 2,
+    "scope": "issue #341: the changed lines of LibParseDecimalFloat (parseIntegerPastInt256 and its call, the zero-coefficient guard on exponent digits past int256), crates/tests/src/reference.rs parse_inline and test/oracle/decimal_oracle.py parse_value. 16 Solidity mutants (S01-S16) probed twice under forge: main's tests over the PR source kill 0/16, the PR's tests kill 16/16. 10 oracle mutants (R01-R06, P01-P04) probed under cargo test kill 9/10; P04 (Python range rule ignores the mantissa) is equivalent: it changes a verdict only for a mantissa of about 8.5e8 digits, since elsewhere the fallthrough pack gives the same error. Adversarial pass over the issue's rule (every representable literal parses exactly) found no candidate.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 26,
+      "killedBefore": 25,
+      "killedAfter": 0,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 902,
+      "testsAfter": 902,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-07T23:00:19Z",
     "commit": "057be36f9a85299a4bfc53d9945b1d0cef998f55",
     "testsAfterCommit": "fb62ad89199de00551123720871f182d3ade981a",

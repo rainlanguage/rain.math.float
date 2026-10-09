@@ -799,9 +799,12 @@ pub fn literal_value(s: &str) -> Dec {
     }
 }
 
-/// `LibParseDecimalFloat.parseDecimalFloat` over a well formed literal: the
-/// integer part, fraction digits (trailing zeros dropped) and exponent are
-/// each read as int256 (`ParseDecimalOverflow`); a non-zero integer part
+/// `LibParseDecimalFloat.parseDecimalFloat` over a well formed literal: an
+/// integer part past int256 moves its trailing zeros into the exponent, and
+/// then its significant digits, fraction digits (trailing zeros dropped) and
+/// a nonzero coefficient's exponent are each read as int256
+/// (`ParseDecimalOverflow`); a fraction digit after an integer part past
+/// int256 is `ParseDecimalPrecisionLoss`; a non-zero integer part
 /// takes at most 67 fraction digits and the combined coefficient must fit
 /// int224 (`ParseDecimalPrecisionLoss`); the exponent sum must fit int256
 /// (`ExponentOverflow`); then the value packs, where any lost digit is
@@ -855,48 +858,55 @@ pub fn parse_inline(s: &str) -> Result<(BigInt, BigInt), RefError> {
     };
     let negative = int_str.starts_with('-');
     let int: BigInt = int_str.parse().unwrap();
-    let int_limit = if negative {
-        -int256_min()
-    } else {
-        int256_max()
-    };
-    if int.abs() > int_limit {
-        return Err(RefError::ParseDecimalOverflow);
-    }
+    let frac = frac_str
+        .map(|f| f.trim_end_matches('0'))
+        .filter(|f| !f.is_empty());
     let mut c = int.clone();
     let mut e: BigInt = BigInt::zero();
-    if let Some(frac_str) = frac_str {
-        let trimmed = frac_str.trim_end_matches('0');
-        if !trimmed.is_empty() {
-            let f: BigInt = trimmed.parse().unwrap();
-            if f > int256_max() {
-                return Err(RefError::ParseDecimalOverflow);
+    if !fits_int256(&int) {
+        // Its trailing zeros move into the exponent. Significant digits past
+        // int256, or any fraction digit after them, need a coefficient past
+        // int256, so neither is a Float.
+        let mut zeros = 0u64;
+        while (&c % 10u32).is_zero() {
+            c /= 10u32;
+            zeros += 1;
+        }
+        if !fits_int256(&c) {
+            return Err(RefError::ParseDecimalOverflow);
+        }
+        if frac.is_some() {
+            return Err(RefError::ParseDecimalPrecisionLoss);
+        }
+        e = BigInt::from(zeros);
+    } else if let Some(trimmed) = frac {
+        let f: BigInt = trimmed.parse().unwrap();
+        if f > int256_max() {
+            return Err(RefError::ParseDecimalOverflow);
+        }
+        let f = if negative { -f } else { f };
+        let scale = trimmed.len() as u64;
+        e = -BigInt::from(scale);
+        if int.is_zero() {
+            c = f;
+        } else {
+            if scale > 67 {
+                return Err(RefError::ParseDecimalPrecisionLoss);
             }
-            let f = if negative { -f } else { f };
-            let scale = trimmed.len() as u64;
-            e = -BigInt::from(scale);
-            if int.is_zero() {
-                c = f;
-            } else {
-                if scale > 67 {
-                    return Err(RefError::ParseDecimalPrecisionLoss);
-                }
-                let rescaled = &int * pow10(scale);
-                if !fits_int224(&rescaled) {
-                    return Err(RefError::ParseDecimalPrecisionLoss);
-                }
-                c = rescaled + f;
+            let rescaled = &int * pow10(scale);
+            if !fits_int224(&rescaled) {
+                return Err(RefError::ParseDecimalPrecisionLoss);
             }
+            c = rescaled + f;
         }
     }
     if let Some(exp_str) = exp_str {
         let x: BigInt = exp_str.trim_start_matches('+').parse().unwrap();
-        let limit = if x.is_negative() {
-            -int256_min()
-        } else {
-            int256_max()
-        };
-        if x.abs() > limit {
+        // Zero is zero at any exponent; past int256 nothing else is a Float.
+        if c.is_zero() {
+            return Ok((BigInt::zero(), BigInt::zero()));
+        }
+        if !fits_int256(&x) {
             return Err(RefError::ParseDecimalOverflow);
         }
         e += x;
