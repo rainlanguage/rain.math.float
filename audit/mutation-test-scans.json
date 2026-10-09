@@ -727,5 +727,26 @@
       "testsAfter": 16,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-09T17:46:22Z",
+    "commit": "0d5de9dda81724bc18a961a261ef6d657b06d583",
+    "testsAfterCommit": "0ee354401b5e1fb03b8ce40e2e2433c22699bf58",
+    "publishedTag": "sol-v0.2.34",
+    "commitsAheadOfTag": 9,
+    "scope": "Issue #366 add/sub half (PR #393): LibDecimalFloatImplementation.add and sub near the exponent floor. Before = testAddNearFloorMatchesShifted and testSubNearFloorMatchesShifted at 0d5de9d, which compare the library with itself on operands shifted up by -type(int256).min. After = testAddNearFloorExact and testSubNearFloorExact at 0ee3544, expected parts from LibTestExactDecimal.addPartsWide. Probe suite: forge test restricted to the two tests in each tree. Floor mutants: F1 shed ignores the overflow lift, F2 shed keeps the exponent, F3 swap ignores the shortfall tie-break, F4 early return ignores the shortfall difference, F5 alignment ignores the shortfall difference, F6 shed skipped, F7 shed one digit short, F8 minus of int256.min keeps the exponent. Shared-path mutants: G1 aligned sum one unit up, G2 positive overflow shed rounds away from zero, G3 negative overflow shed offset 3 to 0, G4 positive overflow shed drops the carry, G5 early return boundary > to >=. Survivors before: F8 and G1-G5; none after. The mul/div half (M01-M10) was probed on main 8fcfeb3: 4/10 killed before, 10/10 after.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 13,
+      "killedBefore": 7,
+      "killedAfter": 13,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 842,
+      "testsAfter": 842,
+      "filed": []
+    }
   }
 ]
