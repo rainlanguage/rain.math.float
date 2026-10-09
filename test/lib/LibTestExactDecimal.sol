@@ -305,15 +305,15 @@ library LibTestExactDecimal {
             return (0, 0);
         }
         U512 memory product = mul(abs(ca), abs(cb));
-        uint256 shed = 0;
-        while (product.hi >= 10 ** shed) {
-            shed++;
+        uint256 dropped = 0;
+        while (product.hi >= 10 ** dropped) {
+            dropped++;
         }
-        uint256 magnitude = Math.mulDiv(abs(ca), abs(cb), 10 ** shed);
+        uint256 magnitude = Math.mulDiv(abs(ca), abs(cb), 10 ** dropped);
         // The product is at most 2^510, so its high word is at most 2^254 and
-        // shed is at most 77.
+        // dropped is at most 77.
         // forge-lint: disable-next-line(unsafe-typecast)
-        return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(shed));
+        return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(dropped));
     }
 
     /// The parts `div` of two Floats hands to packing, for a non-zero `cb`:
@@ -481,12 +481,14 @@ library LibTestExactDecimal {
     function addPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
-        returns (bool overflows, int256 c, int256 e)
+        returns (bool overflowed, int256 c, int256 e)
     {
         if (ca == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (false, cb, eb);
         }
         if (cb == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (false, ca, ea);
         }
         if (cmpWide(u512(abs(ca)), ea, eb, 0, 0, u512(abs(cb))) < 0) {
@@ -496,6 +498,7 @@ library LibTestExactDecimal {
         int256 cls;
         (cls, e) = wideExponent(ea, 0, 0, offset);
         if (cls == 1) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (true, 0, 0);
         }
         if (cls == -1) {

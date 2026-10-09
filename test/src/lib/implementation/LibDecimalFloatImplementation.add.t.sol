@@ -531,12 +531,13 @@ contract LibDecimalFloatImplementationAddTest is Test {
             assertEq(exponent, expectedExponent, "exact exponent");
         } catch (bytes memory err) {
             assertTrue(overflows, "exact sum returns");
+            // forge-lint: disable-next-line(unsafe-typecast)
             assertEq(bytes4(err), ExponentOverflow.selector, "ExponentOverflow");
         }
     }
 
     /// `c` with its last `shift % 78` digits dropped.
-    function digits(int256 c, uint8 shift) internal pure returns (int256) {
+    function dropDigits(int256 c, uint8 shift) internal pure returns (int256) {
         return c / int256(10 ** (uint256(shift) % 78));
     }
 
@@ -567,14 +568,14 @@ contract LibDecimalFloatImplementationAddTest is Test {
     }
 
     function testAddMatchesExact(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external view {
-        checkAddExact(digits(a, sa), ea, digits(b, sb), eb);
+        checkAddExact(dropDigits(a, sa), ea, dropDigits(b, sb), eb);
     }
 
     /// Exponents close enough that the sum can carry past int256.
     function testAddNearbyMatchesExact(int256 a, int256 ea, int256 b, uint256 gap, uint8 sa, uint8 sb) external view {
         ea = bound(ea, type(int256).min + 80, type(int256).max);
         // forge-lint: disable-next-line(unsafe-typecast)
-        checkAddExact(digits(a, sa), ea, digits(b, sb), ea - int256(bound(gap, 0, 80)));
+        checkAddExact(dropDigits(a, sa), ea, dropDigits(b, sb), ea - int256(bound(gap, 0, 80)));
     }
 
     /// Exponents at or near the floor, where the sum sheds what it cannot
@@ -587,7 +588,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
         int256 exponentA = type(int256).min + int256(bound(ea, 0, 160));
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = type(int256).min + int256(bound(eb, 0, 160));
-        checkAddExact(digits(a, sa), exponentA, digits(b, sb), exponentB);
+        checkAddExact(dropDigits(a, sa), exponentA, dropDigits(b, sb), exponentB);
     }
 
     /// Float operands maximize to coefficients with a zero last digit, so no
