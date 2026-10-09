@@ -599,6 +599,31 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         assertTrue(float.eq(parsed), "round-trip mismatch");
     }
 
+    /// For every positive exponent below 68 the largest coefficient whose
+    /// integer `|c| × 10^e` fits int224 formats as the oracle renders it, and
+    /// one more reverts `UnformatableExponent`, at both signs.
+    function testFormatNonScientificPositiveExponentBoundary() external {
+        uint256 max = uint256(int256(type(int224).max));
+        for (uint256 e = 1; e < 68; e++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 c = int256(max / 10 ** e);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 exponent = int256(e);
+            assertEq(
+                this.formatExternal(LibDecimalFloat.packLossless(c, exponent), false),
+                expectedFormat(c, exponent, false)
+            );
+            assertEq(
+                this.formatExternal(LibDecimalFloat.packLossless(-c, exponent), false),
+                expectedFormat(-c, exponent, false)
+            );
+            vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, exponent));
+            this.formatExternal(LibDecimalFloat.packLossless(c + 1, exponent), false);
+            vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, exponent));
+            this.formatExternal(LibDecimalFloat.packLossless(-c - 1, exponent), false);
+        }
+    }
+
     /// Fuzz: for every int224 coefficient and positive exponent, the
     /// non-scientific output round-trips through parse when the integer
     /// `absCoef × 10^exponent` fits int224, and otherwise the formatter reverts
