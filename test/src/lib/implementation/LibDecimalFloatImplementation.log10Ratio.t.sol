@@ -137,6 +137,14 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         checkAgainstBc(a, b, true, 26057668922012410337547610399529953336038179692555075595894572145948150, -75);
     }
 
+    /// a / b = 1 - 1 / 9.9e16 leaves one series term after 1, and an
+    /// allowance above the log of under a tenth of a unit.
+    function testLog10RatioRelativeSingleTerm() external pure {
+        checkAgainstBc(
+            9.9e75 - 1e59, 9.9e75, true, -4386812948517695250954902961368209206711636146525587715889593569661493, -87
+        );
+    }
+
     /// The guard boundary: a + b = 1e50 - 1 reverts with its inputs.
     function testLog10RatioRelativeSumJustBelowMin() external {
         uint256 a = 50002894802230932904885589274625217197696331749615;
