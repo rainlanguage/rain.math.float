@@ -5,7 +5,6 @@ pragma solidity ^0.8.25;
 import {
     ExponentOverflow,
     ExponentUnderflow,
-    CoefficientOverflow,
     FixedDecimalOverflow,
     NegativeFixedDecimalConversion,
     LossyConversionFromFloat,
@@ -163,8 +162,9 @@ library LibDecimalFloat {
         return (float, lossless && losslessPack);
     }
 
-    /// Lossless version of `fromFixedDecimalLossy`. This will revert if the
-    /// conversion is lossy.
+    /// Lossless version of `fromFixedDecimalLossy`. A value that is not exactly
+    /// an int256 coefficient at an exponent reverts `LossyConversionToFloat`
+    /// with `fromFixedDecimalLossy`'s coefficient and exponent.
     /// @param value As per `fromFixedDecimalLossy`.
     /// @param decimals As per `fromFixedDecimalLossy`.
     /// @return signedCoefficient As per `fromFixedDecimalLossy`.
@@ -177,8 +177,10 @@ library LibDecimalFloat {
         return (signedCoefficient, exponent);
     }
 
-    /// Lossless version of `fromFixedDecimalLossyPacked`. This will revert if the
-    /// conversion is lossy.
+    /// Lossless version of `fromFixedDecimalLossyPacked`. A value that is not
+    /// exactly a Float reverts `LossyConversionToFloat` with
+    /// `fromFixedDecimalLossy`'s coefficient and exponent, whichever step finds
+    /// it. No value of a uint256 at most 255 decimals is past every Float.
     /// @param value As per `fromFixedDecimalLossyPacked`.
     /// @param decimals As per `fromFixedDecimalLossyPacked`.
     /// @return float The Float struct containing the signed coefficient and
@@ -188,12 +190,12 @@ library LibDecimalFloat {
         return packLossless(signedCoefficient, exponent);
     }
 
-    /// Convert a signed coefficient and exponent to a fixed point decimal value.
-    /// The conversion is impossible and will revert if the signed coefficient is
-    /// negative. If the conversion overflows it will also revert.
-    /// The conversion can be lossy if the floating point representation is not
-    /// able to fit in the fixed point representation, and will truncate
-    /// precision.
+    /// Convert a signed coefficient and exponent to a fixed point decimal value,
+    /// `coefficient × 10^(exponent + decimals)` truncated towards zero. A
+    /// negative coefficient reverts `NegativeFixedDecimalConversion`. A value
+    /// at or above 2^256 reverts `FixedDecimalOverflow`, whatever the size of
+    /// `exponent + decimals`, int256 overflow included. Otherwise it returns
+    /// the truncated value and whether nothing was truncated.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// representation.
     /// @param exponent The exponent of the floating point representation.
@@ -221,12 +223,11 @@ library LibDecimalFloat {
             uint256 unsignedCoefficient = uint256(signedCoefficient);
             int256 finalExponent;
 
-            // Ye olde "safe math" to give a better error if this edge case
-            // overflow is ever hit. Normal use should never overflow here.
+            // A wrapped sum is past int256.max, so the value is past uint256.
             unchecked {
                 finalExponent = exponent + int256(uint256(decimals));
                 if (finalExponent < exponent) {
-                    revert ExponentOverflow(signedCoefficient, exponent);
+                    revert FixedDecimalOverflow(signedCoefficient, exponent, decimals);
                 }
             }
 
@@ -515,15 +516,17 @@ library LibDecimalFloat {
         }
     }
 
-    /// Lossless version of `packLossy`. This will revert if the conversion is
-    /// lossy.
+    /// Lossless version of `packLossy`. A value larger in magnitude than every
+    /// Float reverts `ExponentOverflow`; any other value that is not exactly a
+    /// Float, one smaller than every Float included, reverts
+    /// `LossyConversionToFloat` with the inputs.
     /// @param signedCoefficient As per `packLossy`.
     /// @param exponent As per `packLossy`.
     /// @return float As per `packLossy`.
     function packLossless(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless) {
-            revert CoefficientOverflow(signedCoefficient, exponent);
+            revert LossyConversionToFloat(signedCoefficient, exponent);
         }
         return c;
     }

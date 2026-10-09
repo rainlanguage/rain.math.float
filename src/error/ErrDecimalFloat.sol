@@ -4,9 +4,6 @@ pragma solidity ^0.8.25;
 
 import {Float} from "../lib/LibDecimalFloat.sol";
 
-/// @dev Thrown when a coefficient overflows.
-error CoefficientOverflow(int256 signedCoefficient, int256 exponent);
-
 /// @dev Thrown when an exponent overflows.
 error ExponentOverflow(int256 signedCoefficient, int256 exponent);
 
@@ -34,8 +31,9 @@ error Log10Zero();
 /// @dev Thrown when attempting to calculate the log of a negative number.
 error Log10Negative(int256 signedCoefficient, int256 exponent);
 
-/// @dev Thrown when converting some value to a float when the conversion
-/// is lossy.
+/// @dev Thrown by a lossless conversion to a Float when the value is not
+/// exactly a Float and is not past the largest one, which is
+/// `ExponentOverflow`. A value smaller than every Float is this error.
 error LossyConversionToFloat(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when converting a float to some value when the conversion
