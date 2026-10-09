@@ -430,5 +430,26 @@
       "testsAfter": 763,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-09T11:20:37Z",
+    "commit": "3fcfcc303dc80b6d3f19b3ea81d38dd474ee16ee",
+    "testsAfterCommit": "ea9d9887e7bbfbb1c81656da22072dbccd051de7",
+    "publishedTag": "sol-v0.2.29",
+    "commitsAheadOfTag": 9,
+    "scope": "PR #358 after merging main (#338): the powUnrounded integer-b range check inlined by the merge (H01-H06), half detection (H07-H09), powHalf (H10-H17) and the squaring guards' payload (H18, H19). Probe suite: full forge test, 820 tests, at b64565c, which is 3fcfcc3 plus a slither suppression comment. Equivalent: H01 (exponentB > 77), H03 (coefficient >=), H11 (always squares and multiplies), H14 (1e76 drop > for >=). H02 (exponentB > 75) survived there and was killed at ea9d988 by testPowHugeExponentDirection, whose (1 - 1e-67)^(+-1e76) assertions land inside the range. Killers: H04/H05 testPowHugeExponentDirection, testPowMostNegativeFloat, testRoundTripFuzzPow(Bounded); H06 testPowMostNegativeFloat, testRoundTripFuzzPow; H07/H09 testPowHalfMidpoint, testPowHalfPastTheThreshold; H08 testPowExactRoots, testPowFloor, testPowFractionExact, testPowProduct, testPowReference; H10/H12 testPowExactRoots, testPowFloor, testPowFractionExact, testPowHalfPastTheRange, testPowHalfPastTheThreshold; H13 testPowExactRoots, testPowFractionPrecision, testPowHalfIsSqrt, testPowProduct, testPowReference; H15 testPowExactRoots; H16 testPowExactRoots, testPowHalfPastTheThreshold, testPowHalfReference, testPowHalfRepresentations, testPowNegativeExponentIsInverseFuzz; H17 testPowExactRoots, testPowFloor, testPowFractionExact, testPowFractionPrecision, testPowHalfIsSqrt; H18 testPowHalfPastTheRange, testPowNegativeExponentTinyBaseOverflows, testPowSquaringPastInt256Overflow, testRoundTripFuzzPow(Bounded); H19 testPowHalfPastTheRange, testPowIssue276Counterexample, testPowSquaringPastInt256Underflow, testRoundTripFuzzPow(Bounded).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 19,
+      "killedBefore": 14,
+      "killedAfter": 1,
+      "equivalent": 4,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 820,
+      "testsAfter": 820,
+      "filed": []
+    }
   }
 ]
