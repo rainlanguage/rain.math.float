@@ -322,5 +322,27 @@
       "testsAfter": 238,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-09T08:40:00Z",
+    "commit": "02a621b0b4894c52b2f1f71164d9401d8e0b744b",
+    "testsAfterCommit": "73e61ca7b803bed4d6b71ecad3e6eee169e85291",
+    "publishedTag": "sol-v0.2.24",
+    "commitsAheadOfTag": 11,
+    "scope": "PR #338 after b8e9b7d/02a621b (pow packs through packLossy, pow10 inlines packPowResult): pow10 range checks and its inlined pack (P01, P02, Q01-Q07), the integer-b and squaring range checks (P03-P10), packRoundedSignificant and packPowResult (P11-P12, P16-P26), revertPast (P13-P15), sqrt input (P27), Rust reference and checker (R01-R03). Suite: full forge test + cargo test -p rain-math-float-tests --release. P20 (overflow threshold gte -> gt) survived and is killed by testPowExactlyAtTheOverflowThreshold: a = (int224.max / 10 + 1) 10^int32.max, b = 1 + 465661273184989617541055125131739873881019438247110325622e-66 makes the leg exactly 10^1, so the unrounded power is exactly the threshold. Equivalent: Q02 (pow10 window 10 -> 9: the pow10 coefficient is 1 or at most 1e41, so at exponent int32.max - 9 the value is at most 10^(int32.max + 32), far below the threshold), Q04 (pow10 drops lossless: its coefficient is 1 or at least 1e40, never zero, and packLossy returns a lossless zero only for a zero coefficient), P07 (76 -> 77: int256(10**77) wraps negative, so every positive integer b still reverts; as M11), P08 (> -> >=: at the boundary b is at least 5e76 and every a but 1 is at least 1e-67 from 1, so |b log10 a| >= 2.17e9, past both range ends by 2.4e7 decades against under 75 decades of truncation; the squaring and pack path reverts the same side and payload; as M12), P27 (sqrt reports one half: b = 0.5 has integer part 0, so neither the integer-b check nor the squaring loop runs, and a negative a reverts PowNegativeBase first; input is never read). Open: P21 (negative side lte -> lt) differs only at exactly -(int224.max / 10 + 1) 10^(int32.max + 1), reachable only through a negative a, which forces an integer b. b = 1 returns a, which is packable. An exact c^N needs the squarefree M = 13 149 593 3109 184481113 231769777 1398316729 4345052821 1453030298001690873541 to be an Nth power. b = -1 has no maximized divisor (a multiple of 1e9) inside the inverse window. A truncated product for N >= 2 is not ruled out, so it is neither killed nor proven. threshold.log killed it only through a test that widened revertIfPastLargestFloat to internal; that was discarded with its two proptest seeds, which a mutant run had written.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 37,
+      "killedBefore": 30,
+      "killedAfter": 1,
+      "equivalent": 5,
+      "open": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 914,
+      "testsAfter": 915,
+      "filed": []
+    }
   }
 ]
