@@ -654,16 +654,29 @@ contract LibDecimalFloatPowTest is Test {
         );
     }
 
-    /// b's fraction times log10(a) truncates to exactly 1 at 1e-50, so the
-    /// leg is exactly 10 and the unrounded power is exactly a 10, which is
-    /// (int224.max / 10 + 1) 10^(int32.max + 1): the least value that
-    /// overflows, reported as a.
-    function testPowExactlyAtTheOverflowThreshold() external {
+    /// a is c 10^int32.max for c = int224.max / 10 + 1, so the overflow
+    /// threshold T is 10 a. No Float power is exactly T: c is squarefree, so
+    /// a^b = T forces b = ±1/q and a = T^±q, none of them a Float. From
+    /// `bc -l` at scale 200, b one ulp apart straddles T: a^b is
+    /// T (1 + 2.604e-57) and a^(b - 1e-66) is T (1 - 2.340e-57), which
+    /// truncates to coefficient
+    /// 13479973333575319897333507543509815336818572211270286240520255866692 at
+    /// int32.max, within the raw bound 3.33e-48 + 3e-75 relative of N = 1 plus
+    /// one unit of truncation.
+    function testPowEitherSideOfTheOverflowThreshold() external {
         int256 signedCoefficientA = type(int224).max / 10 + 1;
         int256 exponentA = type(int32).max;
+        Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
         Float b = LibDecimalFloat.packLossless(1000000000465661273184989617541055125131739873881019438247110325622, -66);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA, exponentA));
-        this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
+        this.powExternal(a, b);
+
+        b = LibDecimalFloat.packLossless(1000000000465661273184989617541055125131739873881019438247110325621, -66);
+        (int256 signedCoefficient, int256 exponent) = this.powExternal(a, b).unpack();
+        assertEq(exponent, type(int32).max);
+        assertApproxEqAbs(
+            signedCoefficient, 13479973333575319897333507543509815336818572211270286240520255866692, 44888311200805815260
+        );
     }
 
     /// A negative base to an odd power is past the range on its magnitude.
