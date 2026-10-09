@@ -418,6 +418,16 @@ library LibTestExactDecimal {
         return signedCoefficient % int256(10 ** uint256(-exponent)) == 0;
     }
 
+    /// Exact numeric order of two Floats' parts: -1, 0 or 1.
+    function cmpParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256) {
+        int256 sa = ca < 0 ? int256(-1) : ca > 0 ? int256(1) : int256(0);
+        int256 sb = cb < 0 ? int256(-1) : cb > 0 ? int256(1) : int256(0);
+        if (sa != sb || sa == 0) {
+            return sa < sb ? int256(-1) : sa > sb ? int256(1) : int256(0);
+        }
+        return sa * cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb);
+    }
+
     /// Exact numeric equality of two Floats' parts.
     function eq(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
         if (ca == 0 || cb == 0) {
