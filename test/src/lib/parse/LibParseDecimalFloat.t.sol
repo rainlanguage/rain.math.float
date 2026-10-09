@@ -524,6 +524,26 @@ contract LibParseDecimalFloatTest is Test {
         );
     }
 
+    /// An integer past int256 moves its trailing zeros into the exponent, so
+    /// adding a positive e-notation exponent can wrap past int256.max: a value
+    /// larger than every Float, so `ExponentOverflow` from both entry points.
+    /// One below, the sum fits and the inline parse returns it.
+    function testParseExponentSumAboveInt256() external view {
+        // 1e77 written out moves 77 zeros into the exponent; 77 + int256.max
+        // wraps. "1" + 77 zeros + "e" + 77 digits = 156.
+        string memory wraps =
+            "100000000000000000000000000000000000000000000000000000000000000000000000000000e57896044618658097711785492504343953926634992332820282019728792003956564819967";
+        checkParseDecimalFloatFail(wraps, ExponentOverflow.selector, bytes(wraps).length);
+        (bytes4 err, Float float) = this.parseDecimalFloatExternal(wraps);
+        assertEq(err, ExponentOverflow.selector, "wrapper");
+        assertEq(Float.unwrap(float), bytes32(0), "zero");
+
+        // 77 + (int256.max - 77) is int256.max exactly.
+        string memory fits =
+            "100000000000000000000000000000000000000000000000000000000000000000000000000000e57896044618658097711785492504343953926634992332820282019728792003956564819890";
+        checkParseDecimalFloat(fits, 1, type(int256).max, bytes(fits).length);
+    }
+
     /// ParseDecimalPrecisionLoss from the wrapper when packLossy returns
     /// lossless=false. The inline parse succeeds but the coefficient exceeds
     /// int224, so packLossy normalizes it lossily. (A10-8)
