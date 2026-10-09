@@ -68,6 +68,8 @@ contract LibDecimalFloatImplementationInvTest is Test {
     /// Powers of ten, where `1 / x` is exact and a power of ten.
     function testInvExactPowerOfTen(uint256 digits, bool negative, int256 exponent) external pure {
         digits = bound(digits, 0, 76);
+        // 10^76 < 2^255.
+        // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedCoefficient = int256(10 ** digits);
         if (negative) {
             signedCoefficient = -signedCoefficient;
