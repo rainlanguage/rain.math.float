@@ -624,6 +624,27 @@
     }
   },
   {
+    "timestamp": "2026-10-09T15:12:29Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "2c7608736899bbe5a53881f3a3d7fe119138914d",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #383: sqrt (LibDecimalFloat.sqrt, LibDecimalFloatImplementation.sqrt and the mul512 it reaches through mulDiv), probing the sqrt test contract before and after its oracles moved to exact arithmetic. Probe suite: forge test --mc LibDecimalFloatSqrtTest, 13 tests at 8fcfeb3, 15 at 2c76087. H1 (mul512 borrow dropped) was killed at 8fcfeb3 only by testSqrtRoundTrip, testRoundTripFuzzSqrt and testSqrtUlpFuzz through their own pow and Implementation mul/div oracles: the exact testSqrtRoundTrip at 2c76087 passes on the same eight inputs under H1, so sqrt was right there and the oracles were wrong. At 2c76087 H1 is killed by testImplementationSqrtLowWordBorrow and testImplementationSqrtReferenceFuzz, on coefficients whose 512 bit product borrows. Equivalent: S4 (512 bit Newton step divides by root + 1: its half unit drop is absorbed by the round up, 200000 fuzz runs green), S5 (round up past r + 1: differs only at N = r^2 + r + 1, which is odd, while N = A 10^s is even). Killers at 2c76087: H2 testImplementationSqrtLowWordBorrow, testSqrt, testSqrtCorrectlyRoundedFuzz; S1 testImplementationSqrtReferenceFuzz, testSqrtMidpointEnds, testSqrtReferenceFuzz; S2 testImplementationSqrtReferenceFuzz, testRoundTripFuzzSqrt, testSqrt; S3, S6, S7 testImplementationSqrtLowWordBorrow, testImplementationSqrtReferenceFuzz, testSqrt.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 9,
+      "killedBefore": 6,
+      "killedAfter": 1,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 13,
+      "testsAfter": 15,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-09T15:33:08Z",
     "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
     "testsAfterCommit": "a92db03ee1f2104ac248b419f3ec2e4a11c4a50b",
