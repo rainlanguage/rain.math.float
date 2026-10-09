@@ -55,9 +55,12 @@ contract LibDecimalFloatDivTest is Test {
         }
         (int256 signedCoefficientExpected, int256 exponentExpected) =
             LibTestExactDecimal.divFloat(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (int256 signedCoefficient, int256 exponent) = this.divExternal(a, b).unpack();
+        (int256 signedCoefficientResult, int256 exponentResult) = this.divExternal(a, b).unpack();
         assertTrue(
-            LibTestExactDecimal.eq(signedCoefficient, exponent, signedCoefficientExpected, exponentExpected), "quotient"
+            LibTestExactDecimal.eq(
+                signedCoefficientResult, exponentResult, signedCoefficientExpected, exponentExpected
+            ),
+            "quotient"
         );
     }
 
