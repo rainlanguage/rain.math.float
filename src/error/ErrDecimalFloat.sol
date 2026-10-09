@@ -42,6 +42,12 @@ error LossyConversionToFloat(int256 signedCoefficient, int256 exponent);
 /// is lossy.
 error LossyConversionFromFloat(int256 signedCoefficient, int256 exponent);
 
+/// @dev Thrown when `log10Ratio` is asked for a relative log with a + b below
+/// 1e50, where its result is unproven or overflows.
+/// @param a The numerator.
+/// @param b The denominator.
+error Log10RatioRelativeSumTooSmall(uint256 a, uint256 b);
+
 /// @dev Thrown when attempting to exponentiate 0^b where b is negative.
 error ZeroNegativePower(Float b);
 

@@ -236,6 +236,50 @@
     }
   },
   {
+    "timestamp": "2026-10-07T17:26:31Z",
+    "commit": "80790d1e4d7e3716bfe76d6396a545aec7d2e213",
+    "testsAfterCommit": "77a1f3ef50100a9b3a11d62923b1ff5d23d452c4",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 0,
+    "scope": "issue #311: LibDecimalFloatImplementation.log10Ratio (the src change is NatSpec and a comment only: relative mode needs a + b of at least 1e50; deployed bytecode identical to main). Probe suite: forge test (full). M01-M16 were probed against the pre-existing suite at commit; M02 survived and was re-probed with forge test --nmc MainEquivalence after the new tests, because testMainEquivalenceDivNearFloor went red on a fuzz input unrelated to log10Ratio (#335).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 16,
+      "killedBefore": 15,
+      "killedAfter": 1,
+      "equivalent": 0,
+      "candidates": 1,
+      "confirmed": 0,
+      "testsBefore": 743,
+      "testsAfter": 747,
+      "filed": [
+        335
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-10-07T23:00:19Z",
+    "commit": "057be36f9a85299a4bfc53d9945b1d0cef998f55",
+    "testsAfterCommit": "fb62ad89199de00551123720871f182d3ade981a",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 4,
+    "scope": "PR #336: the log10Ratio relative guard Log10RatioRelativeSumTooSmall (a + b < 1e50) in LibDecimalFloatImplementation. Probe suite: forge test --nmc MainEquivalence (#335). G01-G18 were probed against the pre-existing suite at commit: G03 and G04 (guard floor 1e50 - 1 and 1e49), G12 (guard after z) and G13 (relative z divided by a + b + 1) survived. G01-G21 were probed at 0ae75af (src identical to f2fe44a), after the tests of 38cde50: G03, G04 and G12 were killed, and G13 survived until testLog10RatioRelativeZOnFloorBoundary (fb62ad8). G19 (relative branch inverted) and G21 (revert args zeroed) were first probed there and killed. G20 (guard moved after maximizeFull) is equivalent: below 1e50 maximizeFull neither reverts nor changes what the guard reads.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 21,
+      "killedBefore": 14,
+      "killedAfter": 6,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 729,
+      "testsAfter": 735,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-07T23:55:24Z",
     "commit": "0312b68d23e8d229dd18f5d95522b4f67ce135fa",
     "testsAfterCommit": "0312b68d23e8d229dd18f5d95522b4f67ce135fa",
