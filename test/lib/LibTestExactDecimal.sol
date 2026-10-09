@@ -418,6 +418,211 @@ library LibTestExactDecimal {
         return signedCoefficient % int256(10 ** uint256(-exponent)) == 0;
     }
 
+    /// `p - q + r + k` against the int256 range, for `|k|` below 1000. `cls` is
+    /// 1 above it, -1 below it with `value` the distance under
+    /// `type(int256).min`, saturated at 10^6, and otherwise 0 with `value` the
+    /// sum. Quarters of int256 sum without overflow.
+    function wideExponent(int256 p, int256 q, int256 r, int256 k) internal pure returns (int256 cls, int256 value) {
+        int256 h = (p >> 2) - (q >> 2) + (r >> 2);
+        int256 l = (p & 3) - (q & 3) + (r & 3) + k;
+        int256 dMax = h - (type(int256).max >> 2);
+        if (dMax > 1000) {
+            return (1, 0);
+        }
+        if (dMax >= -1000) {
+            int256 t = 4 * dMax + l - 3;
+            return t > 0 ? (int256(1), int256(0)) : (int256(0), type(int256).max + t);
+        }
+        int256 dMin = h - (type(int256).min >> 2);
+        if (dMin < -1000) {
+            return (-1, 1e6);
+        }
+        if (dMin <= 1000) {
+            int256 t = 4 * dMin + l;
+            return t < 0 ? (int256(-1), -t) : (int256(0), type(int256).min + t);
+        }
+        return (0, 4 * h + l);
+    }
+
+    /// Compares `x × 10^(p - q + r + k)` with `y`, for `|k|` below 1000.
+    function cmpWide(U512 memory x, int256 p, int256 q, int256 r, int256 k, U512 memory y)
+        internal
+        pure
+        returns (int256)
+    {
+        if (isZero(x) || isZero(y)) {
+            return cmp(x, y);
+        }
+        (int256 cls, int256 d) = wideExponent(p, q, r, k);
+        // Both magnitudes are below 10^155, so a shift past 400 decides.
+        if (cls == 1 || (cls == 0 && d > 400)) {
+            return 1;
+        }
+        if (cls == -1 || d < -400) {
+            return -1;
+        }
+        return cmpScaled(x, d, y, 0);
+    }
+
+    /// The truncated magnitude of `|c| / 10^u`, zero from `u = 78`.
+    function shed(uint256 magnitude, int256 u) internal pure returns (uint256) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return u >= 78 ? 0 : magnitude / 10 ** uint256(u);
+    }
+
+    /// The parts `LibDecimalFloatImplementation.div` returns for any int256
+    /// parts and a non-zero `cb`, or `overflows` where its exponent is above
+    /// `type(int256).max`. It is `divParts` at an unbounded exponent: both
+    /// coefficients maximized, the dividend's magnitude scaled by the largest
+    /// power of ten not above the divisor's and floor divided by it, as
+    /// `signedParts`. Below `type(int256).min` the quotient truncates towards
+    /// zero to that exponent, and zero is `(0, 0)`.
+    function divPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
+        internal
+        pure
+        returns (bool overflows, int256 c, int256 e)
+    {
+        if (ca == 0) {
+            return (false, 0, 0);
+        }
+        bool negative = (ca < 0) != (cb < 0);
+        int256 offset;
+        (c, offset) = divCoefficient(ca, cb);
+        (int256 cls, int256 value) = wideExponent(ea, eb, 0, offset);
+        if (cls == 1) {
+            return (true, 0, 0);
+        }
+        if (cls == 0) {
+            return (false, c, value);
+        }
+        uint256 kept = shed(abs(c), value);
+        if (kept == 0) {
+            return (false, 0, 0);
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (false, negative ? -int256(kept) : int256(kept), type(int256).min);
+    }
+
+    /// `divPartsWide`'s coefficient at `10^(ea - eb + offset)`, for non-zero
+    /// operands.
+    function divCoefficient(int256 ca, int256 cb) internal pure returns (int256 c, int256 offset) {
+        (int256 maximizedA, int256 offsetA,) = maximize(ca, 0);
+        (int256 maximizedB, int256 offsetB,) = maximize(cb, 0);
+        uint256 magnitudeB = abs(maximizedB);
+        uint256 scaleDigits = 0;
+        while (10 ** (scaleDigits + 1) <= magnitudeB) {
+            scaleDigits++;
+        }
+        uint256 magnitude = Math.mulDiv(abs(maximizedA), 10 ** scaleDigits, magnitudeB);
+        int256 lift;
+        (c, lift) = signedParts((ca < 0) != (cb < 0), magnitude, 0);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        offset = offsetA - offsetB - int256(scaleDigits) + lift;
+    }
+
+    /// Whether `(c, e)` is `a / b` truncated towards zero at `10^e`, to at
+    /// least 75 digits unless `e` is the int256 floor, decided in exact
+    /// integer arithmetic for any int256 parts and a non-zero `cb`. Zero is
+    /// only below `10^type(int256).min`.
+    function isTruncatedQuotient(int256 ca, int256 ea, int256 cb, int256 eb, int256 c, int256 e)
+        internal
+        pure
+        returns (bool)
+    {
+        if (c != 0 && (c < 0) != ((ca < 0) != (cb < 0))) {
+            return false;
+        }
+        U512 memory a = u512(abs(ca));
+        uint256 b = abs(cb);
+        if (c == 0) {
+            // |a| 10^ea < |b| 10^(eb + int256.min).
+            return ca == 0 || cmpWide(u512(b), eb, ea, type(int256).min, 0, a) > 0;
+        }
+        // |c| |b| 10^(e + eb) <= |a| 10^ea < (|c| + 1) |b| 10^(e + eb).
+        if (cmpWide(mul(abs(c), b), e, ea, eb, 0, a) > 0) {
+            return false;
+        }
+        if (cmpWide(mul(abs(c) + 1, b), e, ea, eb, 0, a) <= 0) {
+            return false;
+        }
+        return e == type(int256).min || abs(c) >= 1e74;
+    }
+
+    /// The parts `LibDecimalFloatImplementation.add` returns for any int256
+    /// parts, or `overflows` where its exponent is above `type(int256).max`,
+    /// as its NatSpec states them: the exact sum in units of the larger
+    /// operand's int256 unit, or ten of them past int256, rounded towards zero
+    /// when the signs agree and away from zero when they differ. The int256
+    /// unit is the last digit's place when written with as many digits as an
+    /// int256 coefficient of its sign holds, so `type(int256).min` holds 77.
+    /// Below `type(int256).min` the sum then truncates towards zero to that
+    /// exponent.
+    function addPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
+        internal
+        pure
+        returns (bool overflows, int256 c, int256 e)
+    {
+        if (ca == 0) {
+            return (false, cb, eb);
+        }
+        if (cb == 0) {
+            return (false, ca, ea);
+        }
+        if (cmpWide(u512(abs(ca)), ea, eb, 0, 0, u512(abs(cb))) < 0) {
+            (ca, ea, cb, eb) = (cb, eb, ca, ea);
+        }
+        (uint256 magnitude, int256 offset) = addUnits(ca, ea, cb, eb);
+        int256 cls;
+        (cls, e) = wideExponent(ea, 0, 0, offset);
+        if (cls == 1) {
+            return (true, 0, 0);
+        }
+        if (cls == -1) {
+            magnitude = shed(magnitude, e);
+            e = type(int256).min;
+        }
+        (c, e) = signedParts(ca < 0, magnitude, e);
+    }
+
+    /// `addPartsWide`'s magnitude in units of `10^(ea + offset)`, for
+    /// non-zero operands with `|a| >= |b|`.
+    function addUnits(int256 ca, int256 ea, int256 cb, int256 eb)
+        internal
+        pure
+        returns (uint256 magnitude, int256 offset)
+    {
+        uint256 limit = ca < 0 ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
+        uint256 magnitudeA = abs(ca);
+        int256 n = digits(u512(magnitudeA));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 unitShift = magnitudeA * 10 ** uint256(77 - n) <= limit ? 77 - n : 76 - n;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory units = u512(magnitudeA * 10 ** uint256(unitShift));
+        U512 memory smallUnits;
+        // eb - unit, where unit is ea - unitShift.
+        (int256 cls, int256 gap) = wideExponent(eb, ea, 0, unitShift);
+        if (cls == 0 && gap >= 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            smallUnits = mulPow10(u512(abs(cb)), uint256(gap));
+        } else if (cls == 0 && gap > -78) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            smallUnits = u512(abs(cb) / 10 ** uint256(-gap));
+        }
+        if ((ca < 0) == (cb < 0)) {
+            units = add(units, smallUnits);
+        } else {
+            // |b| <= |a|. Away from zero rounds a fraction of a unit of the
+            // exact difference up to the whole units the floors leave.
+            units = U512(0, units.lo - smallUnits.lo);
+        }
+        offset = -unitShift;
+        if (cmp(units, u512(limit)) > 0) {
+            // At most 2^256, so 6 hi + lo does not overflow.
+            return (units.hi * (type(uint256).max / 10) + (units.hi * 6 + units.lo) / 10, offset + 1);
+        }
+        return (units.lo, offset);
+    }
+
     /// Exact numeric equality of two Floats' parts.
     function eq(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
         if (ca == 0 || cb == 0) {

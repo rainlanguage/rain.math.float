@@ -5,15 +5,15 @@ pragma solidity =0.8.25;
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloatImplementationMain} from "test/lib/LibDecimalFloatImplementationMain.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {MaximizeOverflow, ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {MaximizeOverflow, ExponentOverflow, DivisionByZero} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 /// Wherever main returns, the PR returns the same bytes, and wherever main
 /// reverts, the PR reverts the same bytes, except in the floor shortfall
-/// classes each `check*` names. Those are asserted against an oracle.
+/// classes each `check*` names. Every div, inv, add and sub result is also
+/// asserted against the exact parts in `LibTestExactDecimal` (#368), so a
+/// defect main shares cannot pass.
 contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
-    /// Lifts a floor operand clear of every maximize shift.
-    int256 constant SHIFT = 200;
-
     function mainMaximize(int256 c, int256 e) external pure returns (int256, int256, bool) {
         return LibDecimalFloatImplementationMain.maximize(c, e);
     }
@@ -119,12 +119,54 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         return c == 1 || c == -1;
     }
 
-    /// `qe + ea - eb > type(int256).max` for `ea > 0 > eb`, without overflow.
-    function exponentPastMax(int256 ea, int256 eb, int256 qe) internal pure returns (bool) {
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 d = uint256(ea) + (eb == type(int256).min ? uint256(1) << 255 : uint256(-eb));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return qe >= 0 ? d + uint256(qe) > uint256(type(int256).max) : d > uint256(type(int256).max) + uint256(-qe);
+    /// The PR's div against the exact parts, and the exact quotient they
+    /// truncate.
+    function checkDivExact(int256 a, int256 ea, int256 b, int256 eb, bool ok, bytes memory ret) internal pure {
+        if (b == 0) {
+            assertFalse(ok, "divide by zero");
+            assertEq(ret, abi.encodeWithSelector(DivisionByZero.selector, a, ea), "DivisionByZero");
+            return;
+        }
+        (bool overflows, int256 ec, int256 ee) = LibTestExactDecimal.divPartsWide(a, ea, b, eb);
+        if (overflows) {
+            assertFalse(ok, "exact div overflows");
+            assertEq(selector(ret), ExponentOverflow.selector, "div ExponentOverflow");
+            return;
+        }
+        assertTrue(ok, "exact div returns");
+        (int256 c, int256 e) = pair(ret);
+        assertTrue(LibTestExactDecimal.isTruncatedQuotient(a, ea, b, eb, c, e), "truncated quotient");
+        assertEq(c, ec, "exact div coefficient");
+        assertEq(e, ee, "exact div exponent");
+    }
+
+    /// The PR's add or sub against the exact parts. Negating
+    /// `type(int256).min` sheds its last digit.
+    function checkAddSubExact(bool isSub, int256 a, int256 ea, int256 b, int256 eb, bool ok, bytes memory ret)
+        internal
+        pure
+    {
+        if (isSub) {
+            if (b == type(int256).min) {
+                if (eb == type(int256).max) {
+                    assertEq(ret, abi.encodeWithSelector(ExponentOverflow.selector, b, eb), "minus ExponentOverflow");
+                    return;
+                }
+                b /= 10;
+                eb += 1;
+            }
+            b = -b;
+        }
+        (bool overflows, int256 ec, int256 ee) = LibTestExactDecimal.addPartsWide(a, ea, b, eb);
+        if (overflows) {
+            assertFalse(ok, "exact add overflows");
+            assertEq(selector(ret), ExponentOverflow.selector, "add ExponentOverflow");
+            return;
+        }
+        assertTrue(ok, "exact add returns");
+        (int256 c, int256 e) = pair(ret);
+        assertEq(c, ec, "exact add coefficient");
+        assertEq(e, ee, "exact add exponent");
     }
 
     function checkMaximize(int256 c, int256 e) internal view {
@@ -188,6 +230,7 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
     function checkDiv(int256 a, int256 ea, int256 b, int256 eb) internal view {
         (bool mOk, bytes memory m) = run(abi.encodeCall(this.mainDiv, (a, ea, b, eb)));
         (bool pOk, bytes memory p) = run(abi.encodeCall(this.prDiv, (a, ea, b, eb)));
+        checkDivExact(a, ea, b, eb, pOk, p);
         if (mOk == pOk && keccak256(m) == keccak256(p)) return;
 
         if (!pOk) {
@@ -196,9 +239,8 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             // MaximizeOverflow on a ±1 divisor at the floor (#291).
             assertEq(selector(p), ExponentOverflow.selector, "PR overflow");
             assertTrue(ea > 0 && eb < 0, "signs");
-            (int256 qc, int256 qe) = this.mainDiv(a, 0, b, 0);
-            assertTrue(exponentPastMax(ea, eb, qe), "true exponent past max");
             if (mOk) {
+                (int256 qc, int256 qe) = this.mainDiv(a, 0, b, 0);
                 (int256 mc, int256 me) = pair(m);
                 assertTrue(me < 0, "main wrapped");
                 // #291: a power of ten divisor main cannot lift to 1e75 at
@@ -223,13 +265,8 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             return;
         }
 
-        // By design: main reverts or keeps fewer digits (#291, #292), the PR
-        // matches main on the same operands lifted off the floor.
+        // By design: main reverts or keeps fewer digits (#291, #292).
         assertTrue(atFloor(a, ea, b, eb), "differs off the floor");
-        assertTrue(ea <= type(int256).max - SHIFT && eb <= type(int256).max - SHIFT, "liftable");
-        (bool sOk, bytes memory s) = run(abi.encodeCall(this.mainDiv, (a, ea + SHIFT, b, eb + SHIFT)));
-        assertTrue(sOk, "lifted main returns");
-        assertEq(p, s, "PR matches lifted main");
     }
 
     function testMainEquivalenceDiv(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external view {
@@ -358,6 +395,7 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             run(isSub ? abi.encodeCall(this.mainSub, (a, ea, b, eb)) : abi.encodeCall(this.mainAdd, (a, ea, b, eb)));
         (bool pOk, bytes memory p) =
             run(isSub ? abi.encodeCall(this.prSub, (a, ea, b, eb)) : abi.encodeCall(this.prAdd, (a, ea, b, eb)));
+        checkAddSubExact(isSub, a, ea, b, eb, pOk, p);
         if (mOk == pOk && keccak256(m) == keccak256(p)) return;
 
         // By design: main reverts MaximizeOverflow at the floor, the PR adds
@@ -367,23 +405,6 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         assertEq(selector(m), MaximizeOverflow.selector, "main MaximizeOverflow");
         assertTrue(atFloor(a, ea, b, eb), "differs off the floor");
         assertTrue(pOk, "PR returns");
-        if (isSub) (b, eb) = LibDecimalFloatImplementation.minus(b, eb);
-        (int256 pc, int256 pe) = pair(p);
-        (int256 ec, int256 ee) = expectedAdd(a, ea, b, eb);
-        assertEq(pc, ec, "coefficient");
-        assertEq(pe, ee, "exponent");
-    }
-
-    function expectedAdd(int256 a, int256 ea, int256 b, int256 eb) internal view returns (int256, int256) {
-        // The other operand is more than 76 digits above the floor one.
-        if (ea > type(int256).max - SHIFT) return this.mainMaximizeFull(a, ea);
-        if (eb > type(int256).max - SHIFT) return this.mainMaximizeFull(b, eb);
-        (int256 c, int256 e) = this.mainAdd(a, ea + SHIFT, b, eb + SHIFT);
-        if (e >= type(int256).min + SHIFT) return (c, e - SHIFT);
-        int256 shed = type(int256).min + SHIFT - e;
-        assertTrue(shed <= 76, "shed");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return (c / int256(10 ** uint256(shed)), type(int256).min);
     }
 
     function testMainEquivalenceAdd(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb, bool isSub)
@@ -411,6 +432,59 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
 
     function testMainEquivalenceAddPacked(int224 a, int32 ea, int224 b, int32 eb, bool isSub) external view {
         checkAddSub(isSub, a, ea, b, eb);
+    }
+
+    /// Operand digits overlapping or adjacent, where the sum can carry past
+    /// int256 and the smaller operand's trailing digits are kept.
+    function testMainEquivalenceAddNearby(int256 a, int256 ea, int256 b, uint256 gap, uint8 sa, uint8 sb, bool isSub)
+        external
+        view
+    {
+        ea = bound(ea, type(int256).min + 80, type(int256).max);
+        checkAddSub(isSub, digits(a, sa), ea, digits(b, sb), ea - int256(bound(gap, 0, 80)));
+    }
+
+    /// #368: the sum of two full coefficients carries past int256, and the
+    /// exact sum truncated at ten units keeps the carry of their last digits.
+    function testMainEquivalenceAddCarryExamples() external view {
+        int256 max = type(int256).max;
+        int256 min = type(int256).min;
+        (int256 c, int256 e) = this.prAdd(max, 0, max, 0);
+        assertEq(c, int256(uint256(max) * 2 / 10), "coefficient");
+        assertEq(e, 1, "exponent");
+        checkAddSub(false, max, 0, max, 0);
+        checkAddSub(false, min, 0, min, 0);
+        checkAddSub(false, max, 0, max - 2, 0);
+        checkAddSub(true, max, 0, min + 2, 0);
+    }
+
+    /// Power of ten divisors at any exponent: the 2^255 quotient of
+    /// `type(int256).min` sheds a digit, at the floor too.
+    function testMainEquivalenceDivPowerOfTen(int256 a, int256 ea, uint256 k, int256 eb, bool negative, uint8 sa)
+        external
+        view
+    {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 b = int256(10 ** bound(k, 0, 76));
+        checkDiv(digits(a, sa), ea, negative ? -b : b, eb);
+    }
+
+    /// #368: the exact quotient is 2^255 × 10^(int256.min - 5). Truncated at
+    /// the floor it keeps 72 digits, 2^255 / 10^5.
+    function testMainEquivalenceDivMinByMinusOneBelowFloorExample() external view {
+        int256 min = type(int256).min;
+        (int256 c, int256 e) = this.prDiv(min, min, -1, 5);
+        assertEq(c, int256(uint256(1 << 255) / 1e5), "coefficient");
+        assertEq(e, min, "exponent");
+        checkDiv(min, min, -1, 5);
+    }
+
+    /// #368: `type(int256).min` over a negative power of ten, with the
+    /// quotient's exponent at and below the floor.
+    function testMainEquivalenceDivMinByPowerOfTenNearFloor(int256 eb, uint256 k) external view {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 b = -int256(10 ** bound(k, 0, 76));
+        checkDiv(type(int256).min, type(int256).min, b, bound(eb, -200, 200));
     }
 
     function assertDiffers(bytes memory mainCall, bytes memory prCall) internal view {
