@@ -643,5 +643,26 @@
       "testsAfter": 831,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-09T17:46:11Z",
+    "commit": "783048c0806005267756acef831ee1fae14be3f8",
+    "testsAfterCommit": "65f6e4d8094ae3f1aab42000f896637f2e7dbc7d",
+    "publishedTag": "sol-v0.2.33",
+    "commitsAheadOfTag": 39,
+    "scope": "issue #363 (PR branch test/363-sub-minus-oracle): LibDecimalFloatImplementation.minus and .sub, plus the add rounding sub inherits as add(a, -b). Before = main 783048c minus.t.sol + sub.t.sol (10 tests); after = 65f6e4d minus.t.sol + sub.t.sol (16 tests), probe suite forge test --match-path on those two files. M01 minus int256.min guard never taken, M02 overflow guard removed, M03 overflow error args swapped, M04 int256.min sheds two digits, M05 exponent not bumped, M06 shed rounds away from zero, M07 no negation, M08 coefficient off by one, M09 sub negates b naively, M10 sub skips minus, M11 sub adds b at a exponent, M12 add carry past int256 rounds up, M13 add drops b one digit early, M14 add aligns b rounding away from zero. Survivors before: M12 and M14, because testSubIsAdd takes add as its oracle and co-mutates. Both killed after by the exact addPartsWide oracle. Before, M04-M06 were killed only by testSubMinSignedValue, which replayed minus; after, by rule-derived tests. M01-M11 also probed on the full forge suite: 11/11 killed before (840 tests) and after (846 tests).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 14,
+      "killedBefore": 12,
+      "killedAfter": 2,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 10,
+      "testsAfter": 16,
+      "filed": []
+    }
   }
 ]
