@@ -3,7 +3,7 @@
 
 use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
 use crate::exact::show;
-use crate::reference::Dec;
+use crate::reference::{Dec, int224_max};
 use T::TestDecimalFloatErrors as Errors;
 use alloy::primitives::I256;
 use alloy::primitives::aliases::I224;
@@ -477,32 +477,35 @@ proptest! {
 
 proptest! {
     #[test]
-    /// a * inv(a) ≈ 1 within ±1e-37 for nonzero a.
+    /// a * inv(a) is in (1 - 2 / c_min, 1] for nonzero a.
     fn test_inv_prod(float in reasonable_float()) {
         let zero = Float::parse("0".to_string()).unwrap();
         prop_assume!(!float.eq(zero).unwrap());
 
         let inv = float.inv().unwrap();
-        let product = (float * inv).unwrap();
-        let one = Float::parse("1".to_string()).unwrap();
+        let product = Dec::from_bytes((float * inv).unwrap().0);
 
-        // Allow for minor rounding errors introduced by the lossy
-        // `inv` implementation. We consider the property to
-        // hold if the product is within `±1e-37` of 1.
-
-        let eps = Float::parse("1e-37".to_string()).unwrap();
-        let one_plus_eps = (one + eps).unwrap();
-        let one_minus_eps = (one - eps).unwrap();
-
-        let within_upper = !product.gt(one_plus_eps).unwrap();
-        let within_lower = !product.lt(one_minus_eps).unwrap();
-
+        // inv and mul each give the Float closest to the exact result that
+        // does not exceed its magnitude. That is the exact result, or has a
+        // coefficient above int224 max / 10 (else one more digit fits), so
+        // each loses a relative error below 1 / c_min. The product is
+        // (1 - d1)(1 - d2): at most 1, and above 1 - 2 / c_min.
+        let one = Dec::new(1, 0);
         prop_assert!(
-            within_upper && within_lower,
-            "float: {}, inv: {}, product: {} (not within ±ε)",
+            product.cmp_value(&one).is_le(),
+            "float: {}, inv: {}, product: {} above 1",
             float.show_unpacked().unwrap(),
             inv.show_unpacked().unwrap(),
-            product.show_unpacked().unwrap(),
+            show(&product),
+        );
+        let c_min = Dec::new(int224_max() / 10 + 1, 0);
+        let shortfall = one.add_exact(&product.neg()).unwrap();
+        prop_assert!(
+            shortfall.mul_exact(&c_min).cmp_value(&Dec::new(2, 0)).is_lt(),
+            "float: {}, inv: {}, product: {} not above 1 - 2 / c_min",
+            float.show_unpacked().unwrap(),
+            inv.show_unpacked().unwrap(),
+            show(&product),
         );
     }
 }
