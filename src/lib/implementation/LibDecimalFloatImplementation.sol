@@ -509,7 +509,7 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// mulDiv(x, y, 10^n) for n in [0, 76] and a quotient below 2^256. The
+    /// mulDiv(x, y, 10^n) for n in [0, 77] and a quotient below 2^256. The
     /// remainder is subtracted so 10^n divides the product exactly, the 2^n
     /// is shifted out and the 5^n divided out by its inverse modulo 2^256.
     function mulDivPow10(uint256 x, uint256 y, uint256 n) internal pure returns (uint256 result) {
