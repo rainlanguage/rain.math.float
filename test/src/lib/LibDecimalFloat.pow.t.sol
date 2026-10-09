@@ -578,6 +578,23 @@ contract LibDecimalFloatPowTest is Test {
         this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
     }
 
+    /// A negative base to an odd power is past the range on its magnitude.
+    /// (-2e715827904)^3 is -8e65 10^int32.max, inside it. (-2e715827905)^3 is
+    /// -8e2147483715, past (int224.max / 10 + 1) 10^(int32.max + 1), and rounds
+    /// at an excess of 28, where the carry fallback checks the unrounded value.
+    /// (-2e715827950)^3 rounds at an excess of 163, past the fallback.
+    function testPowNegativeOddPowerPastTheRange() external {
+        Float three = LibDecimalFloat.packLossless(3, 0);
+        (int256 signedCoefficient, int256 exponent) =
+            this.powExternal(LibDecimalFloat.packLossless(-2, 715827904), three).unpack();
+        assertTrue(LibDecimalFloatImplementation.eq(signedCoefficient, exponent, -8e65, type(int32).max), "inside");
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-2), int256(715827905)));
+        this.powExternal(LibDecimalFloat.packLossless(-2, 715827905), three);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-2), int256(715827950)));
+        this.powExternal(LibDecimalFloat.packLossless(-2, 715827950), three);
+    }
+
     /// Issue #297 review: a^1 kept all 67 digits of a, and 2 - 1e-50 put a
     /// 51 digit product above a^2, a 41 digit leg times a.
     function testPowRoundsAtFortyOneDigits() external view {
