@@ -405,6 +405,21 @@ library LibTestExactDecimal {
         return signedParts(ca < 0, units, unit);
     }
 
+    /// `signedCoefficient × 10^(type(int256).min + headroom)` held at the
+    /// int256 exponent floor: a negative headroom truncates that many digits
+    /// towards zero, and a coefficient that truncates to zero is `(0, 0)`.
+    function atFloor(int256 signedCoefficient, int256 headroom) internal pure returns (int256, int256) {
+        if (headroom < 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            signedCoefficient = headroom < -76 ? int256(0) : signedCoefficient / int256(10 ** uint256(-headroom));
+            headroom = 0;
+        }
+        if (signedCoefficient == 0) {
+            return (0, 0);
+        }
+        return (signedCoefficient, type(int256).min + headroom);
+    }
+
     /// Whether a Float's parts are a whole number. Below `10^-67` every
     /// non-zero int224 coefficient leaves a fraction.
     function isWhole(int256 signedCoefficient, int256 exponent) internal pure returns (bool) {

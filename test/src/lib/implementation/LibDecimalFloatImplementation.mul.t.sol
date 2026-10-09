@@ -181,27 +181,16 @@ contract LibDecimalFloatImplementationMulTest is Test {
         assertEq(exponent - 2 * bound, 77);
     }
 
-    /// `mul` in a frame shifted up by 2^254 per operand, with the exponent
-    /// moved back down and lifted to `type(int256).min` by shedding digits.
+    /// The exact product floored to 256 bits as `mulParts`, with the digits
+    /// below `10^type(int256).min` truncated towards zero.
     function mulBelowFloorExpected(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
     ) internal pure returns (int256, int256) {
-        int256 shift = 2 ** 254;
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(
-            signedCoefficientA, exponentA + shift, signedCoefficientB, exponentB + shift
-        );
-        if (exponent >= 0) {
-            return (signedCoefficient, exponent + type(int256).min);
-        }
-        if (exponent < -76) {
-            return (0, 0);
-        }
-        // forge-lint: disable-next-line(unsafe-typecast)
-        signedCoefficient /= int256(10 ** uint256(-exponent));
-        return (signedCoefficient, signedCoefficient == 0 ? int256(0) : type(int256).min);
+        (int256 signedCoefficient, int256 shed) = LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+        return LibTestExactDecimal.atFloor(signedCoefficient, exponentA - type(int256).min + exponentB + shed);
     }
 
     function checkMulBelowFloor(
@@ -245,7 +234,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         checkMul(type(int256).min, min, type(int256).min, min, 0, 0);
     }
 
-    function testMulExponentSumBelowFloorMatchesShifted(
+    function testMulExponentSumBelowFloorExact(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
@@ -259,7 +248,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
 
     /// Exponent sums within 80 of the floor, where the lift and the digit
     /// shedding meet.
-    function testMulExponentSumNearFloorMatchesShifted(
+    function testMulExponentSumNearFloorExact(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
