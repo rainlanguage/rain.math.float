@@ -4,18 +4,11 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatInvTest is Test {
     using LibDecimalFloat for Float;
-
-    function invExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
-        Float float = LibDecimalFloat.packArithmeticResult(signedCoefficient, exponent);
-        return float;
-    }
 
     function invExternal(Float float) external pure returns (Float) {
         return LibDecimalFloat.inv(float);
@@ -59,7 +52,8 @@ contract LibDecimalFloatInvTest is Test {
     }
 
     /// Reverts only on zero, or where the exact inverse is below the smallest
-    /// positive Float, and otherwise agrees with the unpacked path. No inverse
+    /// positive Float, and otherwise is the Float closest to the exact inverse
+    /// that does not exceed its magnitude. No inverse
     /// overflows: the smallest magnitude is `1e-2147483648`, whose inverse is
     /// `10 × 10^int32.max`.
     function testInvMem(Float float) external {
@@ -77,11 +71,14 @@ contract LibDecimalFloatInvTest is Test {
             this.invExternal(float);
             return;
         }
-        Float floatParts = this.invExternal(signedCoefficient, exponent);
-        (int256 signedCoefficientResult, int256 exponentResult) = floatParts.unpack();
-        Float floatInv = this.invExternal(float);
-        (int256 signedCoefficientResultUnpacked, int256 exponentResultUnpacked) = floatInv.unpack();
-        assertEq(signedCoefficientResultUnpacked, signedCoefficientResult);
-        assertEq(exponentResultUnpacked, exponentResult);
+        (int256 signedCoefficientExpected, int256 exponentExpected) =
+            LibTestExactDecimal.divFloat(1, 0, signedCoefficient, exponent);
+        (int256 signedCoefficientResult, int256 exponentResult) = this.invExternal(float).unpack();
+        assertTrue(
+            LibTestExactDecimal.eq(
+                signedCoefficientResult, exponentResult, signedCoefficientExpected, exponentExpected
+            ),
+            "inverse"
+        );
     }
 }

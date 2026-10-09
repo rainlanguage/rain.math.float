@@ -5,23 +5,11 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatDivTest is Test {
     using LibDecimalFloat for Float;
-
-    function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
-        external
-        pure
-        returns (Float)
-    {
-        (int256 signedCoefficientC, int256 exponentC) =
-            LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        Float c = LibDecimalFloat.packArithmeticResult(signedCoefficientC, exponentC);
-        return c;
-    }
 
     function divExternal(Float floatA, Float floatB) external pure returns (Float) {
         return LibDecimalFloat.div(floatA, floatB);
@@ -41,7 +29,8 @@ contract LibDecimalFloatDivTest is Test {
 
     /// Reverts only on a zero divisor, or where the exact quotient is beyond
     /// the largest Float of its sign or below the smallest positive Float, and
-    /// otherwise agrees with the unpacked path.
+    /// otherwise is the Float closest to the exact quotient that does not
+    /// exceed its magnitude.
     function testDivPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -64,12 +53,12 @@ contract LibDecimalFloatDivTest is Test {
             this.divExternal(a, b);
             return;
         }
-        Float resultParts = this.divExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (int256 signedCoefficientParts, int256 exponentParts) = LibDecimalFloat.unpack(resultParts);
-        Float float = this.divExternal(a, b);
-        (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
-        assertEq(signedCoefficientParts, signedCoefficientFloat);
-        assertEq(exponentParts, exponentFloat);
+        (int256 signedCoefficientExpected, int256 exponentExpected) =
+            LibTestExactDecimal.divFloat(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficient, int256 exponent) = this.divExternal(a, b).unpack();
+        assertTrue(
+            LibTestExactDecimal.eq(signedCoefficient, exponent, signedCoefficientExpected, exponentExpected), "quotient"
+        );
     }
 
     function testDivByOneFloat(int224 signedCoefficient, int32 exponent) external pure {
