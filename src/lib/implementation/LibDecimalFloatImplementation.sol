@@ -1854,7 +1854,9 @@ library LibDecimalFloatImplementation {
     }
 
     /// Sets the coefficient so that exponent is the target exponent. Truncates
-    /// the coefficient if shrinking, will error on overflow when growing.
+    /// toward zero when shrinking. Growing by d digits returns c 10^d and
+    /// reverts `WithTargetExponentOverflow` iff c 10^d is outside int256, so
+    /// zero grows to zero by any d.
     /// @param signedCoefficient The signed coefficient.
     /// @param exponent The exponent.
     /// @param targetExponent The target exponent.
@@ -1878,6 +1880,9 @@ library LibDecimalFloatImplementation {
             } else {
                 int256 exponentDiff = exponent - targetExponent;
                 if (exponentDiff > 76 || exponentDiff <= 0) {
+                    if (signedCoefficient == 0) {
+                        return 0;
+                    }
                     revert WithTargetExponentOverflow(signedCoefficient, exponent, targetExponent);
                 }
                 // exponentDiff [1, 76]

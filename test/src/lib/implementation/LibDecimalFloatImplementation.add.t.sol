@@ -34,22 +34,162 @@ contract LibDecimalFloatImplementationAddTest is Test {
         }
     }
 
-    /// This is copypasta from the internals of add.
-    function willOverflow2(int256 a, int256 b) internal pure returns (bool didOverflow) {
-        unchecked {
-            int256 c = a + b;
-            assembly ("memory-safe") {
-                let sameSignAB := iszero(shr(0xff, xor(a, b)))
-                let sameSignAC := iszero(shr(0xff, xor(a, c)))
-                didOverflow := and(sameSignAB, iszero(sameSignAC))
-            }
-        }
+    /// A same signed sum of Floats past int256 at the larger operand's int256
+    /// unit sheds one digit towards zero (#364). `a` is the larger, `b` is at
+    /// or above `a`'s unit, and together they carry past int256.
+    function testAddOverflowMatchesExact(
+        uint256 unitsSeed,
+        uint256 shiftSeed,
+        int32 exponentA,
+        bool negative,
+        uint256 magnitudeB,
+        uint256 gap,
+        bool swap
+    ) external pure {
+        // `a` is `|a| × 10^shiftA` units of `10^(exponentA - shiftA)`, with
+        // `77 - shiftA` digits and its units past half of int256.
+        uint256 shiftA = bound(shiftSeed, 10, 76);
+        uint256 magnitudeA = bound(unitsSeed, 2 ** 254 + 10 ** shiftA, uint256(type(int256).max)) / 10 ** shiftA;
+        uint256 unitsA = magnitudeA * 10 ** shiftA;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficientA = negative ? -int256(magnitudeA) : int256(magnitudeA);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 unit = int256(exponentA) - int256(shiftA);
+
+        (int256 signedCoefficientB, int256 exponentB) =
+            overflowingB(negative, exponentA, shiftA, unitsA, magnitudeB, gap);
+        checkAddOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB, unit, swap);
     }
 
-    function testOverflowChecks(int256 a, int256 b) external pure {
-        bool expected = willOverflow(a, b);
-        bool actual = willOverflow2(a, b);
-        assertEq(actual, expected, "Overflow check mismatch");
+    /// `a + b` is past int256 at `unit`, `a`'s int256 unit, and `add` returns
+    /// the parts the rule states in either order.
+    function checkAddOverflow(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        int256 unit,
+        bool swap
+    ) internal pure {
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.addParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(LibTestExactDecimal.int256Unit(signedCoefficientA, exponentA), unit, "unit");
+        assertEq(expectedExponent, unit + 1, "sum past int256");
+        if (swap) {
+            (signedCoefficientA, exponentA, signedCoefficientB, exponentB) =
+            (signedCoefficientB, exponentB, signedCoefficientA, exponentA);
+        }
+        checkAdd(
+            signedCoefficientA, exponentA, signedCoefficientB, exponentB, expectedSignedCoefficient, expectedExponent
+        );
+    }
+
+    /// A `b` of `a`'s sign, at or above `a`'s int256 unit, no larger than `a`,
+    /// with at least the fewest units that carry `a + b` past int256.
+    function overflowingB(
+        bool negative,
+        int256 exponentA,
+        uint256 shiftA,
+        uint256 unitsA,
+        uint256 magnitudeB,
+        uint256 gap
+    ) internal pure returns (int256, int256) {
+        // `-(int256.max + 1)` units still fit.
+        uint256 need = uint256(type(int256).max) + 1 - unitsA + (negative ? 1 : 0);
+        uint256 shift = bound(gap, 0, shiftA - fewestDigitsAboveUnit(need));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentB = exponentA - int256(shift);
+        vm.assume(exponentB >= type(int32).min);
+        uint256 scale = 10 ** (shiftA - shift);
+        uint256 maxB = unitsA / scale;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (maxB > uint256(int256(type(int224).max))) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            maxB = uint256(int256(type(int224).max));
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficientB = int256(bound(magnitudeB, (need + scale - 1) / scale, maxB));
+        return (negative ? -signedCoefficientB : signedCoefficientB, exponentB);
+    }
+
+    /// The fewest digits below the int256 unit's place that bring `units` of
+    /// it within an int224 coefficient, rounding up.
+    function fewestDigitsAboveUnit(uint256 units) internal pure returns (uint256) {
+        uint256 digits = 0;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        while ((units + 10 ** digits - 1) / 10 ** digits > uint256(int256(type(int224).max))) {
+            digits++;
+        }
+        return digits;
+    }
+
+    /// `c = 5789604461865809771178549250434395392663499233282028201972879200395`
+    /// is `int256.max / 1e10` floored, and `int256.max = c × 1e10 + 6564819967`.
+    /// `c` is 67 digits, so its int256 unit is `1e-10`, where `b` adds whole,
+    /// or drops what is below it.
+    /// Past `int256.max` units of either sign the sum sheds one digit towards
+    /// zero, and `int256.min` units hold `-(int256.max + 1)` unshed (#364).
+    function testAddOverflowBoundary() external pure {
+        int256 c = 5789604461865809771178549250434395392663499233282028201972879200395;
+        checkAdd(c, 0, 6564819967, -10, type(int256).max, -10);
+        checkAdd(
+            c, 0, 6564819968, -10, 5789604461865809771178549250434395392663499233282028201972879200395656481996, -9
+        );
+        checkAdd(
+            c, 0, 6564819975, -10, 5789604461865809771178549250434395392663499233282028201972879200395656481997, -9
+        );
+        checkAdd(
+            6564819975, -10, c, 0, 5789604461865809771178549250434395392663499233282028201972879200395656481997, -9
+        );
+        // b below the unit: the exact sums are max + 0.9 and max + 8.9 units.
+        checkAdd(c, 0, 65648199679, -11, type(int256).max, -10);
+        checkAdd(
+            c, 0, 65648199759, -11, 5789604461865809771178549250434395392663499233282028201972879200395656481997, -9
+        );
+
+        checkAdd(-c, 0, -6564819967, -10, -type(int256).max, -10);
+        checkAdd(-c, 0, -6564819968, -10, type(int256).min, -10);
+        checkAdd(
+            -c, 0, -6564819969, -10, -5789604461865809771178549250434395392663499233282028201972879200395656481996, -9
+        );
+        checkAdd(
+            -c, 0, -6564819975, -10, -5789604461865809771178549250434395392663499233282028201972879200395656481997, -9
+        );
+        checkAdd(
+            -6564819975, -10, -c, 0, -5789604461865809771178549250434395392663499233282028201972879200395656481997, -9
+        );
+    }
+
+    /// `3e66 + 3e66 = 6e66`, past int256 at the int256 unit `1e-10`, so
+    /// `6e75 × 1e-9`. `5e75 + 5e75 = 1e76` likewise at `1e-1`.
+    function testAddOverflowExamples() external pure {
+        checkAdd(3e66, 0, 3e66, 0, 6e75, -9);
+        checkAdd(-3e66, 0, -3e66, 0, -6e75, -9);
+        checkAdd(5e75, 0, 5e75, 0, 1e76, 0);
+        checkAdd(-5e75, 0, -5e75, 0, -1e76, 0);
+        checkAdd(5e66, 0, 9e66, -1, 59e74, -9);
+    }
+
+    /// `(int256.max - 6) + 5e76` past int256 at the unit `1`: the dropped
+    /// digit of `a` is 1 and of `b` is 0, so the sum truncates towards zero to
+    /// `(int256.max - 6) / 10 + 5e75` at `10`.
+    function testAddOverflowDropsDigitTowardsZero() external pure {
+        checkAdd(
+            type(int256).max - 6,
+            0,
+            5e76,
+            0,
+            10789604461865809771178549250434395392663499233282028201972879200395656481996,
+            1
+        );
+        checkAdd(
+            -(type(int256).max - 6),
+            0,
+            -5e76,
+            0,
+            -10789604461865809771178549250434395392663499233282028201972879200395656481996,
+            1
+        );
     }
 
     function checkAdd(
