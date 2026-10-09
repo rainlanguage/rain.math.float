@@ -142,4 +142,15 @@ contract LibDecimalFloatDecimalAddTest is Test {
         sum = LibDecimalFloat.packLossless(1, 100).add(LibDecimalFloat.packLossless(-(15e32 + 1), 0));
         assertTrue(sum.eq(LibDecimalFloat.packLossless(1e67 - 2, 33)));
     }
+
+    /// #332: int224.max + 1 is 2^223, which packs as int224.max at the same
+    /// exponent, so adding a positive number does not lower the value.
+    function testAddInt224MaxPlusOne() external pure {
+        Float max = LibDecimalFloat.packLossless(type(int224).max, 0);
+        Float sum = max.add(LibDecimalFloat.packLossless(1, 0));
+        assertEq(Float.unwrap(sum), Float.unwrap(max));
+        assertEq(Float.unwrap(max.add(LibDecimalFloat.packLossless(2, 0))), Float.unwrap(max));
+        Float min = LibDecimalFloat.packLossless(type(int224).min, -7);
+        assertEq(Float.unwrap(min.add(LibDecimalFloat.packLossless(-1, -7))), Float.unwrap(min));
+    }
 }

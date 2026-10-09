@@ -111,4 +111,13 @@ contract LibDecimalFloatSubTest is Test {
         Float difference = LibDecimalFloat.packLossless(1, 0).sub(LibDecimalFloat.packLossless(-1, -100));
         assertTrue(difference.eq(LibDecimalFloat.packLossless(1, 0)));
     }
+
+    /// #332: 0 - int224.min is 2^223, which packs as int224.max at the same
+    /// exponent, as `minus` does.
+    function testSubZeroInt224Min() external pure {
+        Float min = LibDecimalFloat.packLossless(type(int224).min, 0);
+        Float difference = LibDecimalFloat.FLOAT_ZERO.sub(min);
+        assertEq(Float.unwrap(difference), Float.unwrap(LibDecimalFloat.packLossless(type(int224).max, 0)));
+        assertEq(Float.unwrap(difference), Float.unwrap(min.minus()));
+    }
 }
