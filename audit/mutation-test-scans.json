@@ -664,5 +664,26 @@
       "testsAfter": 822,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-09T17:24:27Z",
+    "commit": "783048c0806005267756acef831ee1fae14be3f8",
+    "testsAfterCommit": "0afe3ddc85d4ef8349fc81555c766516ef6a83b0",
+    "publishedTag": "sol-v0.2.33",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #370 follow-up after #414 (PR #403, fix/370-oracle): the overflow-shed value restored in checkAddRoundsTheExactSum (testAddRoundsTheExactSum, testAddRoundsTheExactSumNearbyExponents), now asserted as the exact sum rounded towards zero to ten units at T + 1. Mutants S1-S7 on add's overflow branch: S1/S2 positive/negative shed drops the carry (per-operand A/10 + B/10), S3 negative offset +3 to +0, S4/S5 positive/negative shed rounds away from zero, S6 exponent not lifted, S7 overflow never detected. Before = the add test file on main 783048c (28 tests): 7/7 killed. After = the restored tests alone (2 tests): 7/7 killed; the add test file on the branch (29 tests): 7/7 killed. Full suites at the after tree: forge 836 passed, crates/tests 152 passed.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 7,
+      "killedBefore": 7,
+      "killedAfter": 0,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 840,
+      "testsAfter": 836,
+      "filed": []
+    }
   }
 ]
