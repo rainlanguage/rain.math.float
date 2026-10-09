@@ -800,10 +800,11 @@ library LibDecimalFloatImplementation {
                     revert ExponentOverflow(signedCoefficientA, exponentA);
                 }
 
-                signedCoefficientA /= 10;
-                signedCoefficientB /= 10;
+                // Shed the sum's last digit, not each operand's, so their
+                // last digits carry. Same signs keep every term towards zero.
+                signedCoefficientA = signedCoefficientA / 10 + signedCoefficientB / 10
+                    + (signedCoefficientA % 10 + signedCoefficientB % 10) / 10;
                 exponentA++;
-                signedCoefficientA += signedCoefficientB;
             } else {
                 signedCoefficientA = c;
             }
