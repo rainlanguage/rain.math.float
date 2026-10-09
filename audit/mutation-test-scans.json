@@ -537,6 +537,29 @@
     }
   },
   {
+    "timestamp": "2026-10-09T14:05:39Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "d9a5ca9056f65e93bd1a818c32b1463e7dddc8e9",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "#364: LibDecimalFloatImplementation.add overflow detection and shed (A01-A13). Probe suite: forge test --mc LibDecimalFloatImplementationAddTest. Before (main): 12/13 killed, A10 (shed rounds A away from zero) survived; the removed testOverflowChecks alone killed 0/13, as it never called add. After: 13/13 killed; the four new testAddOverflow* tests alone kill 10/13, A10 by testAddOverflowDropsDigitTowardsZero. A01 (sameSignAB forced true) and A04 (sign shift 0xfe) act on opposite signed or non-overflowing sums and are killed by testAddCommutative and testAddSameExponent; A12 (int256.max exponent guard) by testAddRevertMaxA. Candidate: add sheds each maximized operand rather than the sum, one unit below its NatSpec for int256 operands past Float range (#394); Float operands cannot reach it.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 13,
+      "killedBefore": 12,
+      "killedAfter": 1,
+      "equivalent": 0,
+      "candidates": 1,
+      "confirmed": 1,
+      "testsBefore": 20,
+      "testsAfter": 23,
+      "filed": [
+        394
+      ]
+    }
+  },
+  {
     "timestamp": "2026-10-09T14:15:05Z",
     "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
     "testsAfterCommit": "867b13de69bf5038d03bd03bfdc3b5d1f95ba897",
