@@ -129,6 +129,27 @@
     }
   },
   {
+    "timestamp": "2026-10-06T18:57:02Z",
+    "commit": "e9ee203bb017a07b279d1c56c36d83a90c373df9",
+    "testsAfterCommit": "e9ee203bb017a07b279d1c56c36d83a90c373df9",
+    "publishedTag": "sol-v0.2.18",
+    "commitsAheadOfTag": 8,
+    "scope": "pr:321 merge resolution with main 2e1f884: packLossy's 8/5-digit pre-shed composed with #304's ceiling lift, and mul's prod1 == 0 early return and unchecked lift addition behind #307's range guard. Probe suite: full forge suite minus LibDecimalFloatGasMainEquivalenceTest and the #320 tests; the 8 survivors were re-probed with the main equivalence fuzz included.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 21,
+      "killedBefore": 13,
+      "killedAfter": 0,
+      "equivalent": 8,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 710,
+      "testsAfter": 710,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-06T20:13:44Z",
     "commit": "c9d432debfd400ea5f38c84fb883d66952c37dc6",
     "testsAfterCommit": "32adda2d9d125f82bbadd185f7968faa10e732ec",
@@ -167,6 +188,27 @@
       "candidates": 0,
       "confirmed": 0,
       "testsAfter": 76,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-06T20:57:07Z",
+    "commit": "d1040e010af35a02b18347eea7f53675645feab9",
+    "testsAfterCommit": "d1040e010af35a02b18347eea7f53675645feab9",
+    "publishedTag": "sol-v0.2.18",
+    "commitsAheadOfTag": 47,
+    "scope": "pr:321 merge resolution with main a8df3d3 (#309): mul's large path running mulDivPow10's division inline on the existing mul512 product (remainder, borrow, shift fold, FIVE_INVERSE power) and the prod1 == 0 return. Probe suite: full forge suite minus LibDecimalFloatGasMainEquivalenceTest and the #320 tests; the 2 survivors (K09 or->xor on disjoint bits, K12 prod1 == 0 return through the n = 0 division) were re-probed with the main equivalence fuzz included (736 tests) and still survived.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 12,
+      "killedBefore": 10,
+      "killedAfter": 0,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 730,
+      "testsAfter": 730,
       "filed": []
     }
   },
@@ -259,6 +301,49 @@
     }
   },
   {
+    "timestamp": "2026-10-07T18:35:36Z",
+    "commit": "e8b9ae8b5e8c506cd85906821cce0e91cff0bda8",
+    "testsAfterCommit": "a14aed040a7962085a251fea49e15c535b818761",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 4,
+    "scope": "issue #329 fix: the changed lines of LibDecimalFloat pow/pow10/powUnrounded/packRoundedSignificant, the new revertPast and packPowResult, and the Rust reference revert data in crates/tests/src/transcendental.rs. Probe suite: forge test --mc LibDecimalFloat(Pow|Pow10|Sqrt|Precision)Test then cargo test -p rain-math-float-tests; test counts are that suite. 39 mutants (M01-M37, R01, R02). M20 (shed-loop exponent) survived the suite at commit and is killed by testPowCarryShedsTheUnrounded. Equivalent: M11 (bound 76 -> 77: at exponentB 77, int256(10**77) wraps negative so int256.max over it is -3 and every positive integer b still reverts), M12 (> -> >=: at the boundary b of about 5.79e76 the squaring loop reverts with the same payload for the closest a on either side of 1, pinned in testPowHugeExponentDirection), M23 (!fits dropped: an unfitted initial coefficient is past int224.max / scale for every scale >= 10, so the lift check reverts the same), M24 (67 -> 68: int224 / 1e68 is 0, so every nonzero initial coefficient fails the lift check the same). Not applied: M19, M26, M27, M29, M30, M31, M36, M37 (HARNESS-ERROR, their targets also match packLossy; the mutant file still needs unique targets).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 39,
+      "killedBefore": 26,
+      "killedAfter": 1,
+      "equivalent": 4,
+      "notApplied": 8,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 237,
+      "testsAfter": 238,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-07T22:22:05Z",
+    "commit": "af2bd178bd46a8223de3c6d3c4bd47577838362b",
+    "testsAfterCommit": "af2bd178bd46a8223de3c6d3c4bd47577838362b",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 20,
+    "scope": "pr:321 lines moved from assembly to plain Solidity at af2bd17: mul's digit cascade over prod1 (C01-C15) and maximize's tail bound plus TIMES_TEN_MAX/TIMES_TEN_SPAN (T01-T07). Probe suite: full forge suite minus LibDecimalFloatGasMainEquivalenceTest, cache/fuzz cleared per run, 747 tests. The first probe run was killed externally during T03; the tree was restored from af2bd17 and T03-T07 re-probed. The 3 survivors (C01/C05 step threshold > to >=, C04 1e37 step removed: the digit count and so the result are unchanged, only gas) were re-probed with the main equivalence fuzz included (753 tests) and still survived.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 22,
+      "killedBefore": 19,
+      "killedAfter": 0,
+      "equivalent": 3,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 747,
+      "testsAfter": 747,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-07T22:50:40Z",
     "commit": "5b9f4d5c787fcaf437c30c7402563d2c8858880b",
     "testsAfterCommit": "5b9f4d5c787fcaf437c30c7402563d2c8858880b",
@@ -340,28 +425,6 @@
       "confirmed": 0,
       "testsBefore": 924,
       "testsAfter": 924,
-      "filed": []
-    }
-  },
-  {
-    "timestamp": "2026-10-07T18:35:36Z",
-    "commit": "e8b9ae8b5e8c506cd85906821cce0e91cff0bda8",
-    "testsAfterCommit": "a14aed040a7962085a251fea49e15c535b818761",
-    "publishedTag": "sol-v0.2.22",
-    "commitsAheadOfTag": 4,
-    "scope": "issue #329 fix: the changed lines of LibDecimalFloat pow/pow10/powUnrounded/packRoundedSignificant, the new revertPast and packPowResult, and the Rust reference revert data in crates/tests/src/transcendental.rs. Probe suite: forge test --mc LibDecimalFloat(Pow|Pow10|Sqrt|Precision)Test then cargo test -p rain-math-float-tests; test counts are that suite. 39 mutants (M01-M37, R01, R02). M20 (shed-loop exponent) survived the suite at commit and is killed by testPowCarryShedsTheUnrounded. Equivalent: M11 (bound 76 -> 77: at exponentB 77, int256(10**77) wraps negative so int256.max over it is -3 and every positive integer b still reverts), M12 (> -> >=: at the boundary b of about 5.79e76 the squaring loop reverts with the same payload for the closest a on either side of 1, pinned in testPowHugeExponentDirection), M23 (!fits dropped: an unfitted initial coefficient is past int224.max / scale for every scale >= 10, so the lift check reverts the same), M24 (67 -> 68: int224 / 1e68 is 0, so every nonzero initial coefficient fails the lift check the same). Not applied: M19, M26, M27, M29, M30, M31, M36, M37 (HARNESS-ERROR, their targets also match packLossy; the mutant file still needs unique targets).",
-    "tool": "adversarial-mutation-test",
-    "skillVersion": "0.35.0",
-    "summary": {
-      "behaviours": 39,
-      "killedBefore": 26,
-      "killedAfter": 1,
-      "equivalent": 4,
-      "notApplied": 8,
-      "candidates": 0,
-      "confirmed": 0,
-      "testsBefore": 237,
-      "testsAfter": 238,
       "filed": []
     }
   },
