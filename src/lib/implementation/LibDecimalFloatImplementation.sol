@@ -241,10 +241,18 @@ library LibDecimalFloatImplementation {
                 return unabsUnsignedMulOrDivLossy(signedCoefficientA, signedCoefficientB, prod0, exponent);
             }
 
-            // Scale the product down by 10 to the digit count of `prod1`, the
-            // least power of ten that brings it into 256 bits.
+            // Scale the product P = prod1 2^256 + prod0 down by 10^n, n the
+            // digit count of `prod1`. prod1 < 10^n makes P < 10^n 2^256, so
+            // P / 10^n fits a word, and prod1 >= 10^(n - 1) makes
+            // P / 10^(n - 1) >= 2^256, so no smaller power does. Both
+            // magnitudes are at most 2^255, so prod1 is at most 2^254, under
+            // 2.9e76, and n is in [1, 77].
             uint256 adjustExponent = 0;
             unchecked {
+                // Each step keeps adjustExponent + digits(remaining) equal to
+                // n, as r > 10^k has digits(r / 10^k) = digits(r) - k.
+                // remaining has at most 77 digits, then 40, 22, 13 and 9
+                // after the steps, so the loop runs at most nine times.
                 uint256 remaining = prod1;
                 if (remaining > 1e37) {
                     remaining /= 1e37;
@@ -274,7 +282,13 @@ library LibDecimalFloatImplementation {
                 exponent += int256(adjustExponent);
             }
 
-            // `mulDivPow10`'s division, on the product already taken.
+            // q = floor(P / 10^n), as `mulDivPow10` on the product already
+            // taken. P less its remainder mod 10^n is a multiple of
+            // 10^n = 2^n 5^n, so its low n bits are zero and shifting both
+            // words right by n divides by 2^n exactly, keeping the low word of
+            // 5^n q. 5 is odd, so FIVE_INVERSE^n is the inverse of 5^n mod
+            // 2^256, and multiplying by it gives q mod 2^256, which is q as
+            // q < 2^256. 10^n <= 1e77 < 2^256, so `exp(10, n)` does not wrap.
             assembly ("memory-safe") {
                 let remainder := mulmod(signedCoefficientAAbs, signedCoefficientBAbs, exp(10, adjustExponent))
                 prod1 := sub(prod1, gt(remainder, prod0))
@@ -1434,25 +1448,35 @@ library LibDecimalFloatImplementation {
 
             int256 maximizedExponent = exponent;
             assembly ("memory-safe") {
-                // Check if already maximized before dropping into a block full
-                // of jumps.
+                // `sdiv` truncates toward zero, so `sdiv(c, 10^m)` is zero iff
+                // |c| < 10^m, for either sign. Let s = 76 - digits(|c|), the
+                // digits short of 76. Each step multiplies by 10^k iff
+                // |c| < 10^(76 - k), that is s >= k, so |c| stays below 1e76
+                // and inside int256 (max ~5.79e76). Steps of 38, 19 and 10
+                // each about halve the range of s, then twos and a one finish.
+                // Inside, s is in [1, 75]; outside, |c| >= 1e75 already.
                 if iszero(sdiv(signedCoefficient, E75)) {
+                    // s in [1, 75] -> [0, 37].
                     if iszero(sdiv(signedCoefficient, E38)) {
                         signedCoefficient := mul(signedCoefficient, E38)
                         maximizedExponent := sub(maximizedExponent, 38)
                     }
+                    // s in [0, 37] -> [0, 18].
                     if iszero(sdiv(signedCoefficient, E57)) {
                         signedCoefficient := mul(signedCoefficient, E19)
                         maximizedExponent := sub(maximizedExponent, 19)
                     }
+                    // s in [0, 18] -> [0, 9].
                     if iszero(sdiv(signedCoefficient, E66)) {
                         signedCoefficient := mul(signedCoefficient, E10)
                         maximizedExponent := sub(maximizedExponent, 10)
                     }
+                    // s in [0, 9] -> [0, 1], in at most four rounds.
                     for {} iszero(sdiv(signedCoefficient, E74)) {} {
                         signedCoefficient := mul(signedCoefficient, 100)
                         maximizedExponent := sub(maximizedExponent, 2)
                     }
+                    // s in [0, 1] -> 0: |c| in [1e75, 1e76).
                     if iszero(sdiv(signedCoefficient, E75)) {
                         signedCoefficient := mul(signedCoefficient, 10)
                         maximizedExponent := sub(maximizedExponent, 1)
@@ -1460,8 +1484,12 @@ library LibDecimalFloatImplementation {
                 }
             }
 
-            // One more order of magnitude, if it fits: `|c| <= TIMES_TEN_MAX`
-            // as one unsigned comparison.
+            // One more order of magnitude, if it fits. 10 c fits int256 iff
+            // |c| <= TIMES_TEN_MAX (T, ~5.79e75) for either sign, as
+            // 10 T = 2^255 - 8. Adding T maps [-T, T] onto [0, 2T], and any
+            // other int256 lands above 2T as uint256 without wrapping, so one
+            // comparison covers both signs. A fit takes |c| from [1e75, T]
+            // into [1e76, 10 T].
             // forge-lint: disable-next-line(unsafe-typecast)
             if (uint256(signedCoefficient) + TIMES_TEN_MAX < TIMES_TEN_SPAN) {
                 signedCoefficient *= 10;
