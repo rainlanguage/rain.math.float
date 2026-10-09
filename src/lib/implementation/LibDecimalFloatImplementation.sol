@@ -1009,9 +1009,14 @@ library LibDecimalFloatImplementation {
         uint256 difference = below ? b - a : a - b;
         uint256 sum = a + b;
         uint256 z = mulDiv(difference, POW_FIXED_ONE, sum);
-        // atanh(z) / z, with `mulDivFixed` written out in place. The first term
-        // is zSquared itself, and from the third term zSquared is under 4.6e73
-        // so fits a word.
+        // atanh(z) = z + z^3/3 + z^5/5 + ..., so atanh(z) / z = 1 + z^2/3 +
+        // z^4/5 + ...: each term is the last times z^2 (at most 2.6e-7 here)
+        // over the next odd k. Summing atanh(z) / z keeps 50 digits however
+        // small z is; z and 2 / ln 10 are applied once at the end. z^16 is
+        // below 1e-50, so the eighth term floors to zero and the loop is
+        // unrolled to seven. term * zSquared can pass 2^256 for the second
+        // and third terms, so those divide by 1e50 across 512 bits (as
+        // `mulDivFixed`); from the fourth term the product fits a word.
         uint256 series;
         uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
         assembly ("memory-safe") {
@@ -1029,6 +1034,12 @@ library LibDecimalFloatImplementation {
                     )
                 )
             series := add(100000000000000000000000000000000000000000000000000, div(zSquared, 3))
+            // floor(x y / 1e50) for a quotient below 2^256: mm and prod0 give
+            // the product's high word (with borrow) and low word. Subtracting
+            // the remainder mod 1e50 makes it an exact multiple of 1e50 =
+            // 2^50 5^50, so shifting 50 bits across both words divides by
+            // 2^50 and multiplying by 5^50's inverse mod 2^256 divides by
+            // 5^50 exactly.
             let mm := mulmod(zSquared, zSquared, not(0))
             let prod0 := mul(zSquared, zSquared)
             let remainder := mulmod(zSquared, zSquared, 100000000000000000000000000000000000000000000000000)
@@ -1052,6 +1063,7 @@ library LibDecimalFloatImplementation {
                 inverse
             )
             series := add(series, div(term, 7))
+            // term is now below z^6, so term * zSquared fits a word.
             term := div(mul(term, zSquared), 100000000000000000000000000000000000000000000000000)
             series := add(series, div(term, 9))
             term := div(mul(term, zSquared), 100000000000000000000000000000000000000000000000000)
@@ -1338,11 +1350,16 @@ library LibDecimalFloatImplementation {
     function exp10Fixed(uint256 x) internal pure returns (uint256 result) {
         uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
         // Each multiply is `mulDivFixed` written out in place, which costs less
-        // than calling it.
+        // than calling it: floor(a b / 1e50) across 512 bits, as in
+        // `log10Ratio`.
         assembly ("memory-safe") {
             let mm := 0
             let prod0 := 0
             let remainder := 0
+            // 10^x = prod 10^(2^-i) over the binary digits of x, times 10^r
+            // for what is left. Each step tests the next digit, x >= 2^-i,
+            // and if set takes it off x and multiplies in 10^(2^-i). The
+            // first step starts from 1, so it sets result to 10^0.5 directly.
             result := 100000000000000000000000000000000000000000000000000
             if iszero(lt(x, 50000000000000000000000000000000000000000000000000)) {
                 x := sub(x, 50000000000000000000000000000000000000000000000000)
@@ -1603,6 +1620,12 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
+            // r = x is now below 2^-16. 10^r = e^(r ln 10) = sum over k of
+            // r^k (ln 10)^k / k!, and each constant below is (ln 10)^k / k!
+            // at the 1e50 scale, from k = 9 down to 0. Horner's rule
+            // evaluates it as (((c9 r + c8) r + c7) r ...) r + 1: one
+            // multiply and one add per term, no powers of r. r ln 10 is under
+            // 3.6e-5, so the tenth term is past 50 digits and nine suffice.
             let series := 501392883377544009807090987164215453583108663277
             mm := mulmod(series, x, not(0))
             prod0 := mul(series, x)
@@ -1703,6 +1726,7 @@ library LibDecimalFloatImplementation {
                 inverse
             )
             series := add(100000000000000000000000000000000000000000000000000, series)
+            // The binary digits' product times 10^r.
             mm := mulmod(result, series, not(0))
             prod0 := mul(result, series)
             remainder := mulmod(result, series, 100000000000000000000000000000000000000000000000000)
