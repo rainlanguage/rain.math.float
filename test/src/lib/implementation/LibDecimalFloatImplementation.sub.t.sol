@@ -3,70 +3,103 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {
-    LibDecimalFloatImplementation,
-    EXPONENT_MAX,
-    EXPONENT_MIN
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationSubTest is Test {
-    /// `a - b` is `a + (-b)` rounded by the add rule, from the exact sum.
+    function subExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (int256, int256)
+    {
+        return LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    /// `a - b` is `add(a, -b)` from the exact sum, for any int256 parts. `-b`
+    /// is exact but for int256.min, whose negation 2^255 is no int256 and
+    /// sheds a digit to `(2^255 / 10, e + 1)`, which is past int256 at
+    /// `e = type(int256).max`. Past int256 is `ExponentOverflow`.
     function checkSubMatchesRule(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
-    ) internal pure {
-        // -b by the representable-range rule: exact, but for int256.min, whose
-        // negation 2^255 sheds a digit.
+    ) internal view {
+        if (signedCoefficientB == type(int256).min && exponentB == type(int256).max) {
+            try this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) {
+                revert("-int256.min at int256.max returns");
+            } catch (bytes memory err) {
+                assertEq(err, abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientB, exponentB));
+            }
+            return;
+        }
         (int256 negatedCoefficientB, int256 negatedExponentB) = LibTestExactDecimal.signedParts(
             signedCoefficientB > 0, LibTestExactDecimal.abs(signedCoefficientB), exponentB
         );
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.addParts(signedCoefficientA, exponentA, negatedCoefficientB, negatedExponentB);
-        (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        assertEq(signedCoefficient, expectedSignedCoefficient, "coefficient");
-        assertEq(exponent, expectedExponent, "exponent");
+        (bool overflows, int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, negatedCoefficientB, negatedExponentB);
+        try this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
+            int256 signedCoefficient, int256 exponent
+        ) {
+            assertFalse(overflows, "exact difference overflows");
+            assertEq(signedCoefficient, expectedSignedCoefficient, "coefficient");
+            assertEq(exponent, expectedExponent, "exponent");
+        } catch (bytes memory err) {
+            assertTrue(overflows, "exact difference returns");
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertEq(bytes4(err), ExponentOverflow.selector, "ExponentOverflow");
+        }
     }
 
-    function testSubMatchesRule(
-        int256 signedCoefficientA,
-        int256 exponentA,
-        int256 signedCoefficientB,
-        int256 exponentB
-    ) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        checkSubMatchesRule(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    /// `c` with its last `shift % 78` digits dropped.
+    function dropDigits(int256 c, uint8 shift) internal pure returns (int256) {
+        return c / int256(10 ** (uint256(shift) % 78));
+    }
+
+    function testSubMatchesRule(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external view {
+        checkSubMatchesRule(dropDigits(a, sa), ea, dropDigits(b, sb), eb);
     }
 
     /// As `testSubMatchesRule`, with the operands' digits overlapping or
-    /// adjacent.
-    function testSubMatchesRuleNearby(
-        int256 signedCoefficientA,
-        int256 exponentA,
-        int256 signedCoefficientB,
-        int256 gap
-    ) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        checkSubMatchesRule(signedCoefficientA, exponentA, signedCoefficientB, exponentA + bound(gap, -80, 80));
+    /// adjacent, so the difference can carry past int256.
+    function testSubMatchesRuleNearby(int256 a, int256 ea, int256 b, int256 gap, uint8 sa, uint8 sb) external view {
+        ea = bound(ea, type(int256).min + 80, type(int256).max - 80);
+        checkSubMatchesRule(dropDigits(a, sa), ea, dropDigits(b, sb), ea + bound(gap, -80, 80));
+    }
+
+    /// As `testSubMatchesRule`, with exponents at or near the floor, where the
+    /// difference sheds what it cannot hold.
+    function testSubNearFloorMatchesRule(int256 a, uint256 ea, int256 b, uint256 eb, uint8 sa, uint8 sb) external view {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentA = type(int256).min + int256(bound(ea, 0, 160));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentB = type(int256).min + int256(bound(eb, 0, 160));
+        checkSubMatchesRule(dropDigits(a, sa), exponentA, dropDigits(b, sb), exponentB);
     }
 
     /// As `testSubMatchesRuleNearby`, with `b` int256.min.
-    function testSubMinSignedValue(int256 signedCoefficientA, int256 exponentA, int256 gap) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        checkSubMatchesRule(signedCoefficientA, exponentA, type(int256).min, exponentA + bound(gap, -80, 80));
+    function testSubMinSignedValue(int256 a, int256 ea, int256 gap, uint8 sa) external view {
+        ea = bound(ea, type(int256).min + 80, type(int256).max - 80);
+        checkSubMatchesRule(dropDigits(a, sa), ea, type(int256).min, ea + bound(gap, -80, 80));
+    }
+
+    /// `b` int256.min at the extreme exponents.
+    function testSubMinSignedValueExtremes(int256 a, int256 ea) external view {
+        checkSubMatchesRule(a, ea, type(int256).min, type(int256).max);
+        checkSubMatchesRule(a, ea, type(int256).min, type(int256).max - 1);
+        checkSubMatchesRule(a, ea, type(int256).min, type(int256).min);
+        checkSubMatchesRule(type(int256).max, type(int256).max, type(int256).min, type(int256).max - 1);
+        checkSubMatchesRule(type(int256).min, type(int256).max - 1, type(int256).min, type(int256).max - 1);
     }
 
     /// As `testSubMatchesRuleNearby`, with `a` within two of `b`'s leading
     /// digits, so that the difference cancels down to `b`'s trailing digits.
     function testSubMatchesRuleCancelling(int256 signedCoefficientB, int256 exponentB, uint256 gap, int256 delta)
         external
-        pure
+        view
     {
-        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        exponentB = bound(exponentB, type(int256).min, type(int256).max - 76);
         uint256 shed = bound(gap, 0, 76);
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 leading = signedCoefficientB / int256(10 ** shed);

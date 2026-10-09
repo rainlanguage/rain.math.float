@@ -71,8 +71,9 @@ contract LibDecimalFloatImplementationAddTest is Test {
         int256 unit,
         bool swap
     ) internal pure {
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.addParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (bool overflowed, int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertFalse(overflowed, "sum past int256 exponent");
         assertEq(LibTestExactDecimal.int256Unit(signedCoefficientA, exponentA), unit, "unit");
         assertEq(expectedExponent, unit + 1, "sum past int256");
         if (swap) {
