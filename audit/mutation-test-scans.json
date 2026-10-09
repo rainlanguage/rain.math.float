@@ -407,6 +407,27 @@
     }
   },
   {
+    "timestamp": "2026-10-07T23:27:08Z",
+    "commit": "bf5317ec854deaf909f194dab9ad797e0f9c46f7",
+    "testsAfterCommit": "cee7bf9407a580f8a431a446cdebcfdb1803bba5",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 0,
+    "scope": "issues #346/#347 (PR branch 2026-10-07-issue-346-integer-sqrt): LibDecimalFloatImplementation.sqrt (scaling, Newton steps, low-word residual rounding), LibDecimalFloat.sqrt, and the powUnrounded b split with the sqrt(a^(2N+1)) half route. Probe suite: full forge test. The probed code does not exist at the scanned commit; kills are attributed to the tests at probe base 6b9aacd, where this PR's sqrt and pow-half tests were already written, and killedAfter counts the mutants that survived there and were killed by tests added in 42693f8 (M19, M20: testPowHalfMidpoint). Equivalent: M07 (initial guess 2^123), M17 (exponentB > 0 for the whole-b branch). M10-M14 targeted the assembly residual correction and are not counted: cee7bf9 replaced it with plain `if (residual > int256(root)) root += 1`, and its own M11 survivor was equivalent. The new line was re-probed at cee7bf9: M29 `>=`, M30 `+= 1` dropped, M31 `int256(root) - 1`, all killed by testSqrtMidpoint/testSqrtMidpointEnds/testSqrtBaseEquivalencePacked among others.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 26,
+      "killedBefore": 22,
+      "killedAfter": 2,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 747,
+      "testsAfter": 763,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-07T23:55:24Z",
     "commit": "0312b68d23e8d229dd18f5d95522b4f67ce135fa",
     "testsAfterCommit": "0312b68d23e8d229dd18f5d95522b4f67ce135fa",
@@ -474,27 +495,6 @@
     }
   },
   {
-    "timestamp": "2026-10-07T23:27:08Z",
-    "commit": "bf5317ec854deaf909f194dab9ad797e0f9c46f7",
-    "testsAfterCommit": "cee7bf9407a580f8a431a446cdebcfdb1803bba5",
-    "publishedTag": "sol-v0.2.23",
-    "commitsAheadOfTag": 0,
-    "scope": "issues #346/#347 (PR branch 2026-10-07-issue-346-integer-sqrt): LibDecimalFloatImplementation.sqrt (scaling, Newton steps, low-word residual rounding), LibDecimalFloat.sqrt, and the powUnrounded b split with the sqrt(a^(2N+1)) half route. Probe suite: full forge test. The probed code does not exist at the scanned commit; kills are attributed to the tests at probe base 6b9aacd, where this PR's sqrt and pow-half tests were already written, and killedAfter counts the mutants that survived there and were killed by tests added in 42693f8 (M19, M20: testPowHalfMidpoint). Equivalent: M07 (initial guess 2^123), M17 (exponentB > 0 for the whole-b branch). M10-M14 targeted the assembly residual correction and are not counted: cee7bf9 replaced it with plain `if (residual > int256(root)) root += 1`, and its own M11 survivor was equivalent. The new line was re-probed at cee7bf9: M29 `>=`, M30 `+= 1` dropped, M31 `int256(root) - 1`, all killed by testSqrtMidpoint/testSqrtMidpointEnds/testSqrtBaseEquivalencePacked among others.",
-    "tool": "adversarial-mutation-test",
-    "skillVersion": "0.35.0",
-    "summary": {
-      "behaviours": 26,
-      "killedBefore": 22,
-      "killedAfter": 2,
-      "equivalent": 2,
-      "candidates": 0,
-      "confirmed": 0,
-      "testsBefore": 747,
-      "testsAfter": 763,
-      "filed": []
-    }
-  },
-  {
     "timestamp": "2026-10-09T11:20:37Z",
     "commit": "3fcfcc303dc80b6d3f19b3ea81d38dd474ee16ee",
     "testsAfterCommit": "ea9d9887e7bbfbb1c81656da22072dbccd051de7",
@@ -512,6 +512,219 @@
       "confirmed": 0,
       "testsBefore": 820,
       "testsAfter": 820,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T13:25:22Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "03b4466bb7469128018177fa85fd5408e32af981",
+    "publishedTag": "sol-v0.2.30",
+    "commitsAheadOfTag": 37,
+    "scope": "Issue #362: the helpers mul shares with the deleted mulSlow replay, which mulSlow co-mutated: mul512 (M01 drop the borrow from high, M02 low off by one), absUnsignedSignedCoefficient (M03 int256.min, M04 negatives off by one) and unabsUnsignedMulOrDivLossy (M05 sign test <=, M06 int256.min edge exponent, M07/M08 rescale exponent, M09/M10 sign of the fitting branch). Probe suite: testMulNotRevertAnyExpectation alone, --fuzz-seed 0x362, 20000 runs, against mulSlow at main 8fcfeb3 and against LibTestExactDecimal.mulParts at 03b4466. mulSlow killed M02 only; mulParts killed all ten.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 10,
+      "killedBefore": 1,
+      "killedAfter": 9,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 826,
+      "testsAfter": 826,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T13:32:51Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "24d1a56dd1a715635d1490b7be055b4bb246ec58",
+    "publishedTag": "sol-v0.2.31",
+    "commitsAheadOfTag": 23,
+    "scope": "Issue #361: LibDecimalFloatImplementation.inv and the div path it runs (dividend literal, scale pick, adjustExponent, quotient, result exponent, sign). Probe suite: forge test --mc LibDecimalFloatImplementationInvTest, 4 tests at the scanned commit (testInvReference compared inv with invSlow, which is div again), 7 at testsAfterCommit (testInvExact* check an exact 512-bit floor of 1/x at a [1e75, 1e76] coefficient, then divParts). M01 (1e75e-75 dividend) is killed in both only by testInv0 payload. Killed only after: M04-M12, M14 (sign xor inverted). M06 (scale pick < to <=) is the 1e76 vs 1e75 tie at an exact power of ten, killed by the divParts comparison and testInvOne, not by the floor oracle. M13 (sign from A only) is NO-RUN: stack too deep. Killers: testInvExact, testInvExactSmall, testInvExactPowerOfTen, testInvExactExtremes, testInvOne.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 14,
+      "killedBefore": 3,
+      "killedAfter": 10,
+      "equivalent": 0,
+      "noRun": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 4,
+      "testsAfter": 7,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T14:02:20Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "ecfe8d629fe4a4c4a329579224f0866a9c1fb24b",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #377: inv and mul as a * inv(a) reaches them, through crates/tests float::test_inv_prod. Probe suite: forge build then cargo test test_inv_prod, the old test at 8fcfeb3 and the new tests at ecfe8d6. Mutants: M01 pack loop sheds two digits per step, M02 pack loop rounds magnitude up, M03 pack 1e75 prefix sheds 9 digits, M04 pack 1e72 prefix sheds 6 digits, M05 pack 1e75 prefix rounds magnitude up, M06/M07 inv numerator 1e10 ulps down/up, M08 inv numerator 1e40 ulps down (control). Old test (+-1e-37) killed M01, M03, M08. New: test_inv_prod (exact bound (1 - 2 / c_min, 1]) killed M01-M03, M05-M08; test_inv_prod_exact (a = +-2^i 5^j, exact inverse, product exactly 1) killed M01, M03-M08. M04 is reachable only at an exact product coefficient 1e72, e.g. a = 2^19.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 8,
+      "killedBefore": 3,
+      "killedAfter": 5,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 151,
+      "testsAfter": 152,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T14:05:39Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "d9a5ca9056f65e93bd1a818c32b1463e7dddc8e9",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "#364: LibDecimalFloatImplementation.add overflow detection and shed (A01-A13). Probe suite: forge test --mc LibDecimalFloatImplementationAddTest. Before (main): 12/13 killed, A10 (shed rounds A away from zero) survived; the removed testOverflowChecks alone killed 0/13, as it never called add. After: 13/13 killed; the four new testAddOverflow* tests alone kill 10/13, A10 by testAddOverflowDropsDigitTowardsZero. A01 (sameSignAB forced true) and A04 (sign shift 0xfe) act on opposite signed or non-overflowing sums and are killed by testAddCommutative and testAddSameExponent; A12 (int256.max exponent guard) by testAddRevertMaxA. Candidate: add sheds each maximized operand rather than the sum, one unit below its NatSpec for int256 operands past Float range (#394); Float operands cannot reach it.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 13,
+      "killedBefore": 12,
+      "killedAfter": 1,
+      "equivalent": 0,
+      "candidates": 1,
+      "confirmed": 1,
+      "testsBefore": 20,
+      "testsAfter": 23,
+      "filed": [
+        394
+      ]
+    }
+  },
+  {
+    "timestamp": "2026-10-09T14:15:05Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "867b13de69bf5038d03bd03bfdc3b5d1f95ba897",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #367: LibDecimalFloatImplementation.withTargetExponent, equal-exponent return (M01), shrink cutoff, wrap guard and divisor (M02-M05), grow cutoff, wrap guard, overflow check, scale and result (M06-M14), and the zero check added for #367 (Z01-Z04). Probe suite: forge test --mc LibDecimalFloatImplementationWithTargetExponentTest, main test file at the scanned commit, rewritten file at testsAfterCommit. Before: M11 and M12 (the fit check also rejecting int256.max / 10^d or int256.min / 10^d) survived, because the old overflow tests split cases by rerunning the implementation check under vm.assume and never pinned the edge coefficient. Z01 (zero check removed) is the scanned commit itself, which the old suite passes. After, all 18 are killed. Killers: M11/M12/M09/M10/M06 testWithTargetExponentScaleUpBoundaries; Z01/Z04 testWithTargetExponentExamples; Z02/Z03 testWithTargetExponentScaleUpBoundaries; M07/M13/M14 testWithTargetExponentExamples, testWithTargetExponentScaleUpBoundaries; M01/M05/M08 testWithTargetExponentExamples; M02-M04 fuzz suite.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 18,
+      "killedBefore": 12,
+      "killedAfter": 6,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 826,
+      "testsAfter": 825,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T14:56:56Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "afa60dd3ed09c82d7c700ba5d65749e0abdc3f83",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #381: LibDecimalFloat.floor (F01-F08) and ceil (C01-C08), plus the oracle the old tests used, LibDecimalFloatImplementation.eq (O01). Probe suite: forge test over LibDecimalFloat.floor.t.sol and LibDecimalFloat.ceil.t.sol, 15 tests, before and after the oracle swap. Equivalent in value and bytes: F01, C01 (identity guard >= to >), F05 (sign check < to <=), C03 (integer early return skipped). Equivalent in value only: F08, C08 (subtract/add one as (1, 0) instead of (1e76, -76)); F08 was killed before only by testFloorExamples pinning an undocumented representation, which #381 replaces with numeric comparison per the Float type docs (non-canonical, numeric equality), so it survives after. O01 (Implementation.eq always true) survives both: before, the floor/ceil verdicts rested on it unchecked; after, they do not call it. Killers after: F02 testFloorExamples, testFloorNonNegative; F03 testFloorExamples, testFloorInRangeNegative; F04 testFloorExamples, testFloorInRangeNonNegative, testFloorLessThanMin; F06/F07 testFloorExamples, testFloorInRangeNegative, testFloorLessThanMin; C02 testCeilExamples, testCeilNonNegative; C04-C07 testCeilExamples, testCeilInRange, testCeilLessThanMin. No single-site mutant is killed after that survived before.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 17,
+      "killedBefore": 11,
+      "killedAfter": 0,
+      "equivalent": 6,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 15,
+      "testsAfter": 15,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T15:12:29Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "2c7608736899bbe5a53881f3a3d7fe119138914d",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #383: sqrt (LibDecimalFloat.sqrt, LibDecimalFloatImplementation.sqrt and the mul512 it reaches through mulDiv), probing the sqrt test contract before and after its oracles moved to exact arithmetic. Probe suite: forge test --mc LibDecimalFloatSqrtTest, 13 tests at 8fcfeb3, 15 at 2c76087. H1 (mul512 borrow dropped) was killed at 8fcfeb3 only by testSqrtRoundTrip, testRoundTripFuzzSqrt and testSqrtUlpFuzz through their own pow and Implementation mul/div oracles: the exact testSqrtRoundTrip at 2c76087 passes on the same eight inputs under H1, so sqrt was right there and the oracles were wrong. At 2c76087 H1 is killed by testImplementationSqrtLowWordBorrow and testImplementationSqrtReferenceFuzz, on coefficients whose 512 bit product borrows. Equivalent: S4 (512 bit Newton step divides by root + 1: its half unit drop is absorbed by the round up, 200000 fuzz runs green), S5 (round up past r + 1: differs only at N = r^2 + r + 1, which is odd, while N = A 10^s is even). Killers at 2c76087: H2 testImplementationSqrtLowWordBorrow, testSqrt, testSqrtCorrectlyRoundedFuzz; S1 testImplementationSqrtReferenceFuzz, testSqrtMidpointEnds, testSqrtReferenceFuzz; S2 testImplementationSqrtReferenceFuzz, testRoundTripFuzzSqrt, testSqrt; S3, S6, S7 testImplementationSqrtLowWordBorrow, testImplementationSqrtReferenceFuzz, testSqrt.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 9,
+      "killedBefore": 6,
+      "killedAfter": 1,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 13,
+      "testsAfter": 15,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T15:22:08Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "b1223f41f651c77a94116fe1936522636dbf29d5",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "#385: function log10Ratio (src/lib/implementation/LibDecimalFloatImplementation.sol), 24 mutants M01-M24, probe suite LibDecimalFloatImplementationLog10RatioTest at FOUNDRY_FUZZ_SEED=0x385. Before = main with the implementation-output pins; after = pins dropped, checkAgainstBc on the NatSpec one-sided bounds (1.3e-51 relative above; 1.0043 units, or C 9.6e-50 plus a unit relative, below) plus testLog10RatioRelativeSingleTerm. Newly killed: M08 (zSquared + 1) by testLog10RatioRelativeSingleTerm. M15/M16 (scale constant nudged up) were killed only by the pins before and are killed by testLog10RatioRelativeSingleTerm after. M14 (series start - 3) was killed only by the pins and stays within the documented below bound at every probed input: a tighter below bound needs a NatSpec decision. Equivalent in the domain: M12 (series stops at term <= 1e6; z^2 < 2.6e-7 leaves no term in (1, 1e6] with a nonzero successor). M03/M05 (z + 1) move z^2 by under a unit and no input breaking the documented bound was found in 200000 fuzz runs each.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 24,
+      "killedBefore": 20,
+      "killedAfter": 1,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 16,
+      "testsAfter": 17,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T15:33:08Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "a92db03ee1f2104ac248b419f3ec2e4a11c4a50b",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "issue #394 (PR branch fix-394-add-overflow-carry): the overflow branch of LibDecimalFloatImplementation.add, which sheds the wrapped sum's last digit (positive: uint256(c) / 10; negative: (uint256(c) + 3) / 10 - type(uint256).max / 10) and lifts the exponent. The probed code does not exist at the scanned commit. Before = main's tests at 8fcfeb3 with a92db03's src, MainEquivalence excluded because it pins main's add (799 tests). After = a92db03's full suite (831 tests). Probe suite: full forge test --fuzz-seed 1. N01-N03 sign branch negated/forced, N04 positive divisor 9, N05 positive sum read signed, N06/N07 ceiling offset +2/+4, N08 negative divisor 9, N09/N10 2^256 term dropped/one unit off, N11 negative as -(uint256(-c) / 10), N12 exponent not lifted. Survivors before: N06 and N11. N06 is killed after by testAddOverflowKeepsCarry and testAddNearbyMatchesExact. N11 is killed after by testAddOverflowKeepsCarry. Not probed: the branch condition with >= instead of >, which is equivalent because a zero operand returns early. The superseded form A/10 + B/10 + (A%10 + B%10)/10 (671999a) was also probed: 3/10 killed before and 10/10 after.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 12,
+      "killedBefore": 10,
+      "killedAfter": 2,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 799,
+      "testsAfter": 831,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T17:46:22Z",
+    "commit": "0d5de9dda81724bc18a961a261ef6d657b06d583",
+    "testsAfterCommit": "0ee354401b5e1fb03b8ce40e2e2433c22699bf58",
+    "publishedTag": "sol-v0.2.34",
+    "commitsAheadOfTag": 9,
+    "scope": "Issue #366 add/sub half (PR #393): LibDecimalFloatImplementation.add and sub near the exponent floor. Before = testAddNearFloorMatchesShifted and testSubNearFloorMatchesShifted at 0d5de9d, which compare the library with itself on operands shifted up by -type(int256).min. After = testAddNearFloorExact and testSubNearFloorExact at 0ee3544, expected parts from LibTestExactDecimal.addPartsWide. Probe suite: forge test restricted to the two tests in each tree. Floor mutants: F1 shed ignores the overflow lift, F2 shed keeps the exponent, F3 swap ignores the shortfall tie-break, F4 early return ignores the shortfall difference, F5 alignment ignores the shortfall difference, F6 shed skipped, F7 shed one digit short, F8 minus of int256.min keeps the exponent. Shared-path mutants: G1 aligned sum one unit up, G2 positive overflow shed rounds away from zero, G3 negative overflow shed offset 3 to 0, G4 positive overflow shed drops the carry, G5 early return boundary > to >=. Survivors before: F8 and G1-G5; none after. The mul/div half (M01-M10) was probed on main 8fcfeb3: 4/10 killed before, 10/10 after.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 13,
+      "killedBefore": 7,
+      "killedAfter": 13,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 842,
+      "testsAfter": 842,
       "filed": []
     }
   }
