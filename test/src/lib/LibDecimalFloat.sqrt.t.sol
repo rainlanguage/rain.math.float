@@ -203,9 +203,10 @@ contract LibDecimalFloatSqrtTest is Test {
     function testImplementationSqrtReferenceFuzz(uint256 coefficient, int256 exponent) external pure {
         coefficient = bound(coefficient, 1, 1e76 - 1);
         exponent = bound(exponent, -1e9, 1e9);
+        // coefficient is below 1e76, so it fits int256.
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 rootCoefficient, int256 rootExponent) =
-            LibDecimalFloatImplementation.sqrt(int256(coefficient), exponent);
+        int256 signedCoefficient = int256(coefficient);
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
         checkReference(rootCoefficient, rootExponent, coefficient, exponent);
     }
 
