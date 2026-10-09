@@ -343,15 +343,19 @@ library LibTestExactDecimal {
         return divParts(1e76, -76, signedCoefficient, exponent);
     }
 
-    /// The exponent of a non-zero Float's int256 unit: its last digit when
-    /// written with as many digits as an int256 coefficient holds, 77 or 76.
-    function int256Unit(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
-        uint256 magnitude = abs(signedCoefficient);
-        int256 n = digits(u512(magnitude));
-        // n is at most 77, and a 77 digit magnitude fits uint256.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        bool fits77 = magnitude * 10 ** uint256(77 - n) <= uint256(type(int256).max);
-        return exponent + n - (fits77 ? int256(77) : int256(76));
+    /// `signedCoefficient × 10^(type(int256).min + headroom)` held at the
+    /// int256 exponent floor: a negative headroom truncates that many digits
+    /// towards zero, and a coefficient that truncates to zero is `(0, 0)`.
+    function atFloor(int256 signedCoefficient, int256 headroom) internal pure returns (int256, int256) {
+        if (headroom < 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            signedCoefficient = headroom < -76 ? int256(0) : signedCoefficient / int256(10 ** uint256(-headroom));
+            headroom = 0;
+        }
+        if (signedCoefficient == 0) {
+            return (0, 0);
+        }
+        return (signedCoefficient, type(int256).min + headroom);
     }
 
     /// Whether a Float's parts are a whole number. Below `10^-67` every
@@ -419,14 +423,32 @@ library LibTestExactDecimal {
         return u >= 78 ? 0 : magnitude / 10 ** uint256(u);
     }
 
-    /// The parts `add` hands to packing for any int256 parts, or `overflows`
-    /// where their exponent is above `type(int256).max`, as its NatSpec states
-    /// them: the exact sum in units of the larger operand's int256 unit, or ten
-    /// of them past int256, rounded towards zero when the signs agree and away
-    /// from zero when they differ. The int256 unit is the last digit's place
-    /// when written with as many digits as an int256 coefficient of its sign
-    /// holds, so `type(int256).min` holds 77. Below `type(int256).min` the sum
-    /// then truncates towards zero to that exponent.
+    /// How many digits a non-zero coefficient shifts left to its int256 unit:
+    /// as many digits as an int256 coefficient of its sign holds, 77 or 76,
+    /// less its own.
+    function int256UnitShift(int256 signedCoefficient) internal pure returns (int256) {
+        uint256 magnitude = abs(signedCoefficient);
+        uint256 limit = signedCoefficient < 0 ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
+        int256 n = digits(u512(magnitude));
+        // n is at most 77, and a 77 digit magnitude fits uint256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return magnitude * 10 ** uint256(77 - n) <= limit ? 77 - n : 76 - n;
+    }
+
+    /// The exponent of a non-zero coefficient's int256 unit.
+    function int256Unit(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+        return exponent - int256UnitShift(signedCoefficient);
+    }
+
+    /// The parts `add` of any two int256 coefficients hands to packing, or
+    /// `overflowed` where its exponent is above `type(int256).max`, as its
+    /// NatSpec states them: the exact sum in units of the larger
+    /// operand's int256 unit, or ten of them past int256, rounded towards zero
+    /// when the signs agree and away from zero when they differ. The int256
+    /// unit is the last digit's place when written with as many digits as an
+    /// int256 coefficient of its sign holds, so `type(int256).min` holds 77.
+    /// Below `type(int256).min` the sum then truncates towards zero to that
+    /// exponent.
     function addPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
@@ -465,12 +487,9 @@ library LibTestExactDecimal {
         returns (uint256 magnitude, int256 offset)
     {
         uint256 limit = ca < 0 ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
-        uint256 magnitudeA = abs(ca);
-        int256 n = digits(u512(magnitudeA));
+        int256 unitShift = int256UnitShift(ca);
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 unitShift = magnitudeA * 10 ** uint256(77 - n) <= limit ? 77 - n : 76 - n;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        U512 memory units = u512(magnitudeA * 10 ** uint256(unitShift));
+        U512 memory units = u512(abs(ca) * 10 ** uint256(unitShift));
         U512 memory smallUnits;
         // eb - unit, where unit is ea - unitShift.
         (int256 cls, int256 gap) = wideExponent(eb, ea, 0, unitShift);
