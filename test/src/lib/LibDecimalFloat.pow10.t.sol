@@ -165,11 +165,11 @@ contract LibDecimalFloatPow10Test is Test {
         uint256 magnitude = uint256(signedCoefficient);
         assertTrue(
             LibTestExactDecimal.cmpScaled(
-                    LibTestExactDecimal.u512(magnitude),
-                    exponent,
-                    LibTestExactDecimal.mul(power, 1e48 + 50000005),
-                    powerExponent - 48
-                ) <= 0,
+                LibTestExactDecimal.u512(magnitude),
+                exponent,
+                LibTestExactDecimal.mul(power, 1e48 + 50000005),
+                powerExponent - 48
+            ) <= 0,
             "pow10 above the bound"
         );
         if (exponent == type(int32).min && magnitude < 1e40) {
@@ -177,11 +177,11 @@ contract LibDecimalFloatPow10Test is Test {
         }
         assertTrue(
             LibTestExactDecimal.cmpScaled(
-                    LibTestExactDecimal.u512(magnitude),
-                    exponent,
-                    LibTestExactDecimal.mul(power, 1e48 - 50000005),
-                    powerExponent - 48
-                ) >= 0,
+                LibTestExactDecimal.u512(magnitude),
+                exponent,
+                LibTestExactDecimal.mul(power, 1e48 - 50000005),
+                powerExponent - 48
+            ) >= 0,
             "pow10 below the bound"
         );
     }

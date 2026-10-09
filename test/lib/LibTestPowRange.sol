@@ -138,11 +138,7 @@ library LibTestPowRange {
     }
 
     /// The signed bounds of L = sign magnitude, from magnitude bounds.
-    function signed(bool negative, uint256 lowMagnitude, uint256 highMagnitude)
-        internal
-        pure
-        returns (int256, int256)
-    {
+    function signed(bool negative, uint256 lowMagnitude, uint256 highMagnitude) internal pure returns (int256, int256) {
         // Both are at most CAP and so fit.
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 low, int256 high) = (int256(lowMagnitude), int256(highMagnitude));
