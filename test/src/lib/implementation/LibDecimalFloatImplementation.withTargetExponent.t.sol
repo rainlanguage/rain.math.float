@@ -102,12 +102,14 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
     }
 
     /// The fit bounds at every d, each side: the last coefficient that fits
-    /// and the first that does not. int256.max is 5.7896...e76, ending 19967.
+    /// and the first that does not.
     function testWithTargetExponentScaleUpBoundaries() external {
         assertEq(LibDecimalFloatImplementation.withTargetExponent(5, 76, 0), 5e76);
         assertEq(LibDecimalFloatImplementation.withTargetExponent(-5, 76, 0), -5e76);
         expectOverflow(6, 76, 0);
         expectOverflow(-6, 76, 0);
+        expectOverflow(1, 77, 0);
+        expectOverflow(-1, 77, 0);
         assertEq(
             LibDecimalFloatImplementation.withTargetExponent(
                 5789604461865809771178549250434395392663499233282028201972879200395656481996, 1, 0
