@@ -62,6 +62,17 @@ contract LibDecimalFloatImplementationDivTest is Test {
         checkDivByMaxTruncatesTheExactQuotient(signedCoefficient, exponent);
     }
 
+    /// `max × 10^(int256.min + int32.max)` over `max × 10^int32.max` is exactly
+    /// `10^int256.min`, the one unit at the floor that a 76 digit shed keeps.
+    function testDivMaxPositiveValueDenominatorOneUnitAtTheFloor() external pure {
+        int256 exponent = type(int256).min + type(int32).max;
+        (int256 q, int256 qExponent) =
+            LibDecimalFloatImplementation.div(type(int256).max, exponent, type(int256).max, type(int32).max);
+        assertEq(q, 1, "coefficient");
+        assertEq(qExponent, type(int256).min, "exponent");
+        checkDivByMaxTruncatesTheExactQuotient(type(int256).min, exponent);
+    }
+
     function checkDivByMaxTruncatesTheExactQuotient(int256 signedCoefficient, int256 exponent) internal pure {
         (int256 q, int256 qExponent) =
             LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
