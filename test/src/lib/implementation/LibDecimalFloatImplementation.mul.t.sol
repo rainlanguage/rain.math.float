@@ -189,7 +189,8 @@ contract LibDecimalFloatImplementationMulTest is Test {
         int256 signedCoefficientB,
         int256 exponentB
     ) internal pure returns (int256, int256) {
-        (int256 signedCoefficient, int256 shed) = LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+        (int256 signedCoefficient, int256 shed) =
+            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
         return LibTestExactDecimal.atFloor(signedCoefficient, exponentA - type(int256).min + exponentB + shed);
     }
 
