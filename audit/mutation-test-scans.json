@@ -245,7 +245,7 @@
     "summary": {
       "behaviours": 21,
       "killedBefore": null,
-      "killedAfter": 1,
+      "killedAfter": 20,
       "equivalent": 1,
       "candidates": 1,
       "confirmed": 0,
