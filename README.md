@@ -119,8 +119,10 @@ exponent and signed coefficient together into a single value.
 Necessarily there will be cases where packing 2 values into a single value of
 the same size results in loss of information.
 
-The information loss follows the rules explained here, truncation is allowed and
-rounds towards zero, exponents may underflow and exponent overflows will error.
+The information loss follows the rules explained here. A value that does not fit
+packs to the Float closest to it that does not exceed its magnitude, for every
+operation, so `2^223` packs as int224.max rather than `2^223 - 8` at the next
+exponent. Exponents may underflow and exponent overflows will error.
 
 There is a "lossless" version of packing provided in the library interface that
 doesn't magically resolve the information loss but converts all precision loss
