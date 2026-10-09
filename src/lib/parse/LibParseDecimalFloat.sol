@@ -18,9 +18,9 @@ import {
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters
 } from "../../error/ErrParse.sol";
-import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
+import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
 
 /// @title LibParseDecimalFloat
 /// @notice Library for parsing decimal floating point numbers from strings.
@@ -29,6 +29,9 @@ import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 /// implementations by standardizing in Solidity.
 library LibParseDecimalFloat {
     /// @notice Parses a decimal float from a substring defined by [start, end).
+    /// A literal whose exponent is below int256.min has a non-zero coefficient
+    /// and is smaller than every Float, so it is `ParseDecimalPrecisionLoss`,
+    /// as `parseDecimalFloat` reports any literal smaller than every Float.
     /// An integer part past int256 returns its trailing zeros in the exponent,
     /// and a zero coefficient takes exponent digits of any size.
     /// @param start The starting index of the substring (inclusive).
@@ -180,9 +183,15 @@ library LibParseDecimalFloat {
                 }
 
                 {
+                    // The sum wraps exactly when it moves against eValue's
+                    // sign. A fraction makes exponent negative and trailing
+                    // zeros past int256 make it positive, so either way can
+                    // wrap: below int256.min the value is smaller than every
+                    // Float, above int256.max it is larger than every Float.
                     int256 newExponent = exponent + eValue;
-                    if ((eValue > 0 && newExponent < exponent) || (eValue < 0 && newExponent > exponent)) {
-                        return (ExponentOverflow.selector, cursor, 0, 0);
+                    if ((newExponent < exponent) != (eValue < 0)) {
+                        return
+                            (eValue < 0 ? ParseDecimalPrecisionLoss.selector : ExponentOverflow.selector, cursor, 0, 0);
                     }
                     exponent = newExponent;
                 }
@@ -246,7 +255,10 @@ library LibParseDecimalFloat {
     /// @notice Parses a decimal float from a string. This a high-level wrapper
     /// around `parseDecimalFloatInline` that handles string memory layout and
     /// returns a packed `Float` amenable to subsequent operations with
-    /// `LibDecimalFloat`.
+    /// `LibDecimalFloat`. A literal larger in magnitude than every Float is
+    /// `ExponentOverflow`: a revert from packing, or the selector when its
+    /// exponent is past int256. Any other literal that is not exactly a Float, one
+    /// smaller than every Float included, returns `ParseDecimalPrecisionLoss`.
     /// @param str The string to parse.
     /// @return errorSelector The error selector if an error occurred, otherwise
     /// 0.
