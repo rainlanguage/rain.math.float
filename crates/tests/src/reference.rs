@@ -691,9 +691,6 @@ pub fn format_scientific(x: &Dec) -> Result<String, RefError> {
     let n = x.normalized();
     let digits_str = n.c.abs().to_string();
     let display = n.e + digits_str.len() as i64 - 1;
-    if !(I32_MIN..=I32_MAX).contains(&display) {
-        return Err(RefError::UnformatableExponent);
-    }
     let mut out = String::new();
     if n.is_negative() {
         out.push('-');
@@ -710,16 +707,12 @@ pub fn format_scientific(x: &Dec) -> Result<String, RefError> {
 }
 
 /// The documented string of `toDecimalString(x, false)`: plain decimal for
-/// `|exponent| <= 1000`, and for a positive exponent only while the integer
-/// it writes fits int224.
+/// `|exponent| <= 1000`.
 pub fn format_plain(x: &Dec) -> Result<String, RefError> {
     if x.is_zero() {
         return Ok("0".to_string());
     }
     if x.e.abs() > 1000 {
-        return Err(RefError::UnformatableExponent);
-    }
-    if x.e > 0 && (x.e >= 68 || x.c.abs() > int224_max() / pow10(x.e as u64)) {
         return Err(RefError::UnformatableExponent);
     }
     let n = x.normalized();
