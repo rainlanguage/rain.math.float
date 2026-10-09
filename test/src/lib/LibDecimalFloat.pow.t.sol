@@ -675,7 +675,9 @@ contract LibDecimalFloatPowTest is Test {
         (int256 signedCoefficient, int256 exponent) = this.powExternal(a, b).unpack();
         assertEq(exponent, type(int32).max);
         assertApproxEqAbs(
-            signedCoefficient, 13479973333575319897333507543509815336818572211270286240520255866692, 44888311200805815260
+            signedCoefficient,
+            13479973333575319897333507543509815336818572211270286240520255866692,
+            44888311200805815260
         );
     }
 
