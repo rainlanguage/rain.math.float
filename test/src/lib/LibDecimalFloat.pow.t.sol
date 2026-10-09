@@ -1046,6 +1046,15 @@ contract LibDecimalFloatPowTest is Test {
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-2), int256(0)));
         this.powExternal(LibDecimalFloat.packLossless(-2, 0), b);
 
+        // b = 1e76 fits int256, and (1 - 1e-67)^(±1e76) is 10^(∓434294481.9)
+        // with every truncation moving it under 9 in log10: inside the range.
+        Float c = this.powExternal(below, LibDecimalFloat.packLossless(1, 76));
+        assertTrue(c.gt(LibDecimalFloat.packLossless(1, -434294501)), "1e76 below floor");
+        assertTrue(c.lt(LibDecimalFloat.packLossless(1, -434294461)), "1e76 below ceiling");
+        c = this.powExternal(below, LibDecimalFloat.packLossless(-1, 76));
+        assertTrue(c.gt(LibDecimalFloat.packLossless(1, 434294461)), "-1e76 below floor");
+        assertTrue(c.lt(LibDecimalFloat.packLossless(1, 434294501)), "-1e76 below ceiling");
+
         // 5.7e76 still fits int256 and goes to the squaring loop.
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e67 + 1), int256(-67)));
         this.powExternal(above, LibDecimalFloat.packLossless(57, 75));
