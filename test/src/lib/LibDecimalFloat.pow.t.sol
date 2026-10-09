@@ -618,21 +618,40 @@ contract LibDecimalFloatPowTest is Test {
     }
 
     /// A fractional power's unrounded value is wider than int224, so the carry
-    /// fallback sheds digits to pack it. This a is the largest at its exponent
-    /// whose a^1.5 does not overflow.
+    /// fallback sheds digits to pack it. From `bc -l`, a^1.25 for this a is
+    /// 1.34799733335753198973335075435098153368185299...e2147483714: its 41
+    /// digit rounding carries above the largest Float, and it is below the
+    /// overflow threshold, (int224.max / 10 + 1) 10^(int32.max + 1). The leg
+    /// is within 3.34e-48 relative of it and the pack truncates, so the packed
+    /// coefficient at int32.max is within 4.51e19 of the true one. a (1 + 1e-39)
+    /// is past the threshold.
     function testPowCarryShedsTheUnrounded() external {
-        int256 signedCoefficientA = 2629012728145285679841056168393364475926807479622600963406791093691;
-        int256 exponentA = 1431655743;
-        Float b = LibDecimalFloat.packLossless(15, -1);
+        int256 signedCoefficientA = 2012571074104523405533623944864037356347794582055760651559118452;
+        int256 exponentA = 1717986908;
+        Float b = LibDecimalFloat.packLossless(125, -2);
         (bool returned, Float c) = powChecked(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
         assertTrue(returned, "returned");
         (int256 signedCoefficient, int256 exponent) = c.unpack();
         assertEq(exponent, type(int32).max);
-        // Above the largest Float's 41 digit rounding, so not a rounded value.
-        assertEq(signedCoefficient, 13479973333575319897333507543509815336818572211270286240551805124605);
+        int256 trueCoefficient = 13479973333575319897333507543509815336818529999999999999999999993262;
+        assertApproxEqAbs(signedCoefficient, trueCoefficient, 45023110934141568458);
 
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA + 1, exponentA));
-        this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA + 1, exponentA), b);
+        int256 signedCoefficientPast = 2012571074104523405533623944864037356349807153129865174964652075;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientPast, exponentA));
+        this.powExternal(LibDecimalFloat.packLossless(signedCoefficientPast, exponentA), b);
+    }
+
+    /// A half power is a correctly rounded root, so no carry fallback: this
+    /// a^1.5 is 1.34799733335753198973335075435098153368185722112713e2147483714
+    /// from `bc`, at or above the overflow threshold by c^3 against
+    /// (int224.max / 10 + 1)^2 10^67 exactly.
+    function testPowHalfPastTheThreshold() external {
+        int256 signedCoefficientA = 2629012728145285679841056168393364475926807479622600963406791093691;
+        int256 exponentA = 1431655743;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA, exponentA));
+        this.powExternal(
+            LibDecimalFloat.packLossless(signedCoefficientA, exponentA), LibDecimalFloat.packLossless(15, -1)
+        );
     }
 
     /// b's fraction times log10(a) truncates to exactly 1 at 1e-50, so the
