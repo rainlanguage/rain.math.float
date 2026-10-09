@@ -169,6 +169,28 @@ contract LibDecimalFloatImplementationAddTest is Test {
         checkAdd(5e66, 0, 9e66, -1, 59e74, -9);
     }
 
+    /// `(int256.max - 6) + 5e76` past int256 at the unit `1`: the dropped
+    /// digit of `a` is 1 and of `b` is 0, so the sum truncates towards zero to
+    /// `(int256.max - 6) / 10 + 5e75` at `10`.
+    function testAddOverflowDropsDigitTowardsZero() external pure {
+        checkAdd(
+            type(int256).max - 6,
+            0,
+            5e76,
+            0,
+            10789604461865809771178549250434395392663499233282028201972879200395656481996,
+            1
+        );
+        checkAdd(
+            -(type(int256).max - 6),
+            0,
+            -5e76,
+            0,
+            -10789604461865809771178549250434395392663499233282028201972879200395656481996,
+            1
+        );
+    }
+
     function checkAdd(
         int256 signedCoefficientA,
         int256 exponentA,
