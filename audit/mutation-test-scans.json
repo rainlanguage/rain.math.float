@@ -559,6 +559,27 @@
     }
   },
   {
+    "timestamp": "2026-10-09T14:02:20Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "ecfe8d629fe4a4c4a329579224f0866a9c1fb24b",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #377: inv and mul as a * inv(a) reaches them, through crates/tests float::test_inv_prod. Probe suite: forge build then cargo test test_inv_prod, the old test at 8fcfeb3 and the new tests at ecfe8d6. Mutants: M01 pack loop sheds two digits per step, M02 pack loop rounds magnitude up, M03 pack 1e75 prefix sheds 9 digits, M04 pack 1e72 prefix sheds 6 digits, M05 pack 1e75 prefix rounds magnitude up, M06/M07 inv numerator 1e10 ulps down/up, M08 inv numerator 1e40 ulps down (control). Old test (+-1e-37) killed M01, M03, M08. New: test_inv_prod (exact bound (1 - 2 / c_min, 1]) killed M01-M03, M05-M08; test_inv_prod_exact (a = +-2^i 5^j, exact inverse, product exactly 1) killed M01, M03-M08. M04 is reachable only at an exact product coefficient 1e72, e.g. a = 2^19.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 8,
+      "killedBefore": 3,
+      "killedAfter": 5,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 151,
+      "testsAfter": 152,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-09T14:05:39Z",
     "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
     "testsAfterCommit": "d9a5ca9056f65e93bd1a818c32b1463e7dddc8e9",
