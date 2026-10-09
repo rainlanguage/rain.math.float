@@ -1215,6 +1215,7 @@ library LibDecimalFloat {
             signedCoefficientResult /= 10;
             exponentResult += 1;
         }
+        //slither-disable-next-line unused-return
         return LibDecimalFloatImplementation.sqrt(signedCoefficientResult, exponentResult);
     }
 
