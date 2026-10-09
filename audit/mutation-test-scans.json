@@ -514,5 +514,26 @@
       "testsAfter": 820,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-09T14:15:05Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "867b13de69bf5038d03bd03bfdc3b5d1f95ba897",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #367: LibDecimalFloatImplementation.withTargetExponent, equal-exponent return (M01), shrink cutoff, wrap guard and divisor (M02-M05), grow cutoff, wrap guard, overflow check, scale and result (M06-M14), and the zero check added for #367 (Z01-Z04). Probe suite: forge test --mc LibDecimalFloatImplementationWithTargetExponentTest, main test file at the scanned commit, rewritten file at testsAfterCommit. Before: M11 and M12 (the fit check also rejecting int256.max / 10^d or int256.min / 10^d) survived, because the old overflow tests split cases by rerunning the implementation check under vm.assume and never pinned the edge coefficient. Z01 (zero check removed) is the scanned commit itself, which the old suite passes. After, all 18 are killed. Killers: M11/M12/M09/M10/M06 testWithTargetExponentScaleUpBoundaries; Z01/Z04 testWithTargetExponentExamples; Z02/Z03 testWithTargetExponentScaleUpBoundaries; M07/M13/M14 testWithTargetExponentExamples, testWithTargetExponentScaleUpBoundaries; M01/M05/M08 testWithTargetExponentExamples; M02-M04 fuzz suite.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 18,
+      "killedBefore": 12,
+      "killedAfter": 6,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 826,
+      "testsAfter": 825,
+      "filed": []
+    }
   }
 ]
