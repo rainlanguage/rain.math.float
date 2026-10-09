@@ -537,6 +537,28 @@
     }
   },
   {
+    "timestamp": "2026-10-09T13:32:51Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "24d1a56dd1a715635d1490b7be055b4bb246ec58",
+    "publishedTag": "sol-v0.2.31",
+    "commitsAheadOfTag": 23,
+    "scope": "Issue #361: LibDecimalFloatImplementation.inv and the div path it runs (dividend literal, scale pick, adjustExponent, quotient, result exponent, sign). Probe suite: forge test --mc LibDecimalFloatImplementationInvTest, 4 tests at the scanned commit (testInvReference compared inv with invSlow, which is div again), 7 at testsAfterCommit (testInvExact* check an exact 512-bit floor of 1/x at a [1e75, 1e76] coefficient, then divParts). M01 (1e75e-75 dividend) is killed in both only by testInv0 payload. Killed only after: M04-M12, M14 (sign xor inverted). M06 (scale pick < to <=) is the 1e76 vs 1e75 tie at an exact power of ten, killed by the divParts comparison and testInvOne, not by the floor oracle. M13 (sign from A only) is NO-RUN: stack too deep. Killers: testInvExact, testInvExactSmall, testInvExactPowerOfTen, testInvExactExtremes, testInvOne.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 14,
+      "killedBefore": 3,
+      "killedAfter": 10,
+      "equivalent": 0,
+      "noRun": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 4,
+      "testsAfter": 7,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-09T14:02:20Z",
     "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
     "testsAfterCommit": "ecfe8d629fe4a4c4a329579224f0866a9c1fb24b",

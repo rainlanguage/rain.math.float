@@ -8,10 +8,6 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 library LibDecimalFloatSlow {
     using LibDecimalFloat for Float;
 
-    function invSlow(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        return LibDecimalFloatImplementation.div(1e37, -37, signedCoefficient, exponent);
-    }
-
     function eqSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
