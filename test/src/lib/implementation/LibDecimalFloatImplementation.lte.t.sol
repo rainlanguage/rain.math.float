@@ -62,7 +62,7 @@ contract LibDecimalFloatImplementationLteTest is Test {
         exponentA = bound(exponentA, -50, 50);
         exponentB = bound(exponentB, -50, 50);
 
-        int256 order = LibTestExactDecimal.cmpSigned(coefficientA, exponentA, coefficientB, exponentB);
+        int256 order = LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB);
         assertEq(lte(coefficientA, exponentA, coefficientB, exponentB), order <= 0, "forward");
         assertEq(lte(coefficientB, exponentB, coefficientA, exponentA), order >= 0, "backward");
         assertEq(LibDecimalFloatImplementation.eq(coefficientA, exponentA, coefficientB, exponentB), order == 0, "eq");

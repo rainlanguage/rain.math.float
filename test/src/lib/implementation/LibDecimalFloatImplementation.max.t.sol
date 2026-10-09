@@ -64,7 +64,7 @@ contract LibDecimalFloatImplementationMaxTest is Test {
         exponentA = bound(exponentA, -50, 50);
         exponentB = bound(exponentB, -50, 50);
 
-        bool isA = LibTestExactDecimal.cmpSigned(coefficientA, exponentA, coefficientB, exponentB) > 0;
+        bool isA = LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB) > 0;
         assertMaxIs(
             coefficientA,
             exponentA,

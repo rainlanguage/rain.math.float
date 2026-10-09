@@ -74,8 +74,8 @@ contract LibDecimalFloatSubTest is Test {
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         // a - b is a + (-b), and -b of an int224 coefficient is exact in int256.
         if (LibTestExactDecimal.addOverflows(signedCoefficientA, exponentA, -signedCoefficientB, exponentB)) {
-            (int256 signedCoefficientDifference, int256 exponentDifference) =
-                LibTestExactDecimal.addParts(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
+            (, int256 signedCoefficientDifference, int256 exponentDifference) =
+                LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
             vm.expectRevert(
                 abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientDifference, exponentDifference)
             );

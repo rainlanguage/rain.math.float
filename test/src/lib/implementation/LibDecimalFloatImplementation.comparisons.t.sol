@@ -80,7 +80,7 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
         eA = bound(eA, -50, 50);
         eB = bound(eB, -50, 50);
 
-        int256 order = LibTestExactDecimal.cmpSigned(cA, eA, cB, eB);
+        int256 order = LibTestExactDecimal.cmpParts(cA, eA, cB, eB);
         assertEq(lt(cA, eA, cB, eB), order < 0, "lt");
         assertEq(lte(cA, eA, cB, eB), order <= 0, "lte");
         assertEq(gt(cA, eA, cB, eB), order > 0, "gt");
@@ -107,7 +107,7 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
         eB = bound(eB, -50, 50);
 
         (int256 c, int256 e) = LibDecimalFloatImplementation.min(cA, eA, cB, eB);
-        bool isA = LibTestExactDecimal.cmpSigned(cA, eA, cB, eB) < 0;
+        bool isA = LibTestExactDecimal.cmpParts(cA, eA, cB, eB) < 0;
         assertEq(c, isA ? cA : cB, "coefficient");
         assertEq(e, isA ? eA : eB, "exponent");
     }
@@ -123,7 +123,7 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
         (int256 lowC, int256 lowE) = LibDecimalFloatImplementation.min(cA, eA, cB, eB);
         (int256 highC, int256 highE) = LibDecimalFloatImplementation.max(cA, eA, cB, eB);
 
-        int256 order = LibTestExactDecimal.cmpSigned(cA, eA, cB, eB);
+        int256 order = LibTestExactDecimal.cmpParts(cA, eA, cB, eB);
         assertEq(lowC, order < 0 ? cA : cB, "min coefficient");
         assertEq(lowE, order < 0 ? eA : eB, "min exponent");
         assertEq(highC, order > 0 ? cA : cB, "max coefficient");
