@@ -579,5 +579,26 @@
       "testsAfter": 825,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-09T15:33:08Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "a92db03ee1f2104ac248b419f3ec2e4a11c4a50b",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "issue #394 (PR branch fix-394-add-overflow-carry): the overflow branch of LibDecimalFloatImplementation.add, which sheds the wrapped sum's last digit (positive: uint256(c) / 10; negative: (uint256(c) + 3) / 10 - type(uint256).max / 10) and lifts the exponent. The probed code does not exist at the scanned commit. Before = main's tests at 8fcfeb3 with a92db03's src, MainEquivalence excluded because it pins main's add (799 tests). After = a92db03's full suite (831 tests). Probe suite: full forge test --fuzz-seed 1. N01-N03 sign branch negated/forced, N04 positive divisor 9, N05 positive sum read signed, N06/N07 ceiling offset +2/+4, N08 negative divisor 9, N09/N10 2^256 term dropped/one unit off, N11 negative as -(uint256(-c) / 10), N12 exponent not lifted. Survivors before: N06 and N11. N06 is killed after by testAddOverflowKeepsCarry and testAddNearbyMatchesExact. N11 is killed after by testAddOverflowKeepsCarry. Not probed: the branch condition with >= instead of >, which is equivalent because a zero operand returns early. The superseded form A/10 + B/10 + (A%10 + B%10)/10 (671999a) was also probed: 3/10 killed before and 10/10 after.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 12,
+      "killedBefore": 10,
+      "killedAfter": 2,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 799,
+      "testsAfter": 831,
+      "filed": []
+    }
   }
 ]
