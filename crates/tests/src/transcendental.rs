@@ -430,11 +430,23 @@ fn check_sol(
                 !under && !over,
                 "{case}: solidity {s:?}, true {t:?} is past every Float"
             );
-            let gap = s.add_exact(&t.value.neg()).map(|d| sum(&d.abs(), &err));
-            let allowed = sum(&within, &carve);
+            // |s - v| + err <= within + carve, exactly: past N ~ 3e74 the
+            // relative bound is past one, and within's exponent and the
+            // carve-out's are billions apart.
+            let side = match Dec::sign_of_sum(&[s.clone(), t.value.neg()]) {
+                std::cmp::Ordering::Less => Dec::new(-1, 0),
+                _ => Dec::new(1, 0),
+            };
+            let excess = Dec::sign_of_sum(&[
+                s.mul_exact(&side),
+                t.value.neg().mul_exact(&side),
+                err.clone(),
+                within.neg(),
+                carve.neg(),
+            ]);
             prop_assert!(
-                gap.as_ref().is_some_and(|g| !g.cmp_value(&allowed).is_gt()),
-                "{case}: solidity {s:?}, true {t:?}, error {gap:?} past {allowed:?}"
+                !excess.is_gt(),
+                "{case}: solidity {s:?}, true {t:?}, error past {within:?} + {carve:?}"
             );
         }
         Err(_) if below && reverted(RefError::ExponentUnderflow) => {}
@@ -992,6 +1004,18 @@ mod checker {
         );
     }
 
+    /// N past 3e74 puts the relative bound past one, so it reaches
+    /// below every Float and takes the carve-out, 1e-2147483648, billions of
+    /// digits below the bound itself.
+    #[test]
+    fn pow_bound_past_one() {
+        let v = Dec::new(31, 145_000_000);
+        let n = BigInt::from(33333347515073147437056u128) * pow10(52);
+        let relative = Dec::new(BigInt::from(50_000_004) * pow10(27) + &n * 3, -75);
+        let within = relative.mul_exact(&sum(&v, &Dec::new(-1, order(&v) - 300)));
+        edge(&v, &Bound::Pow(n), &within, &Dec::new(1, order(&v) - 310));
+    }
+
     /// At or above 1e-2147483608 the bound has no carve-out; below it, it adds
     /// 1e-2147483648.
     #[test]
@@ -1410,5 +1434,15 @@ mod anchors {
         run(check_pow10(&d("-2147483640.5")));
         run(check_pow(&d("10"), &d("-2147483640.5")));
         run(check_pow10(&d("-2147483647.99")));
+    }
+
+    /// (1 + 1e-66)^~3.3e74 is about 10^1.45e8, and N past 3.3e74 makes
+    /// pow's relative bound past one, so the bound reaches down to the
+    /// exponent floor.
+    #[test]
+    fn pow_bound_past_one() {
+        let a = Dec::new(pow10(66) + 1, -66);
+        let b = Dec::new("33333347515073147437056".parse::<BigInt>().unwrap(), 52);
+        run(check_pow(&a, &b));
     }
 }
