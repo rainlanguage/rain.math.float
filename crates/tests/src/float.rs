@@ -510,6 +510,50 @@ proptest! {
     }
 }
 
+/// For a = ±2^i 5^j the inverse 2^(n-i) 5^(n-j) 10^-n, n = max(i, j), is
+/// exact. When it fits a Float, inv(a) is that value and a * inv(a) is 1.
+#[test]
+fn test_inv_prod_exact() {
+    let max = int224_max();
+    let one = Dec::new(1, 0);
+    for i in 0u32..=223 {
+        for j in 0u32..=96 {
+            let c = num_bigint::BigInt::from(2).pow(i) * num_bigint::BigInt::from(5).pow(j);
+            if c > max {
+                break;
+            }
+            let n = i.max(j);
+            let inv_c =
+                num_bigint::BigInt::from(2).pow(n - i) * num_bigint::BigInt::from(5).pow(n - j);
+            if inv_c > max {
+                continue;
+            }
+            for neg in [false, true] {
+                let sign = if neg { -1 } else { 1 };
+                let a = Dec::new(sign * c.clone(), 0);
+                let expected = Dec::new(sign * inv_c.clone(), -i64::from(n));
+                let float = Float(a.to_bytes());
+                let inv = float.inv().unwrap();
+                let got = Dec::from_bytes(inv.0);
+                assert!(
+                    got.eq_value(&expected),
+                    "inv({}) = {}, expected {}",
+                    show(&a),
+                    show(&got),
+                    show(&expected),
+                );
+                let product = Dec::from_bytes((float * inv).unwrap().0);
+                assert!(
+                    product.eq_value(&one),
+                    "{} * inv = {}, expected 1",
+                    show(&a),
+                    show(&product),
+                );
+            }
+        }
+    }
+}
+
 proptest! {
     #[test]
     /// abs() never produces a string starting with "-".
