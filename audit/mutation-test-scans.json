@@ -514,5 +514,26 @@
       "testsAfter": 820,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-09T14:56:56Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "afa60dd3ed09c82d7c700ba5d65749e0abdc3f83",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #381: LibDecimalFloat.floor (F01-F08) and ceil (C01-C08), plus the oracle the old tests used, LibDecimalFloatImplementation.eq (O01). Probe suite: forge test over LibDecimalFloat.floor.t.sol and LibDecimalFloat.ceil.t.sol, 15 tests, before and after the oracle swap. Equivalent in value and bytes: F01, C01 (identity guard >= to >), F05 (sign check < to <=), C03 (integer early return skipped). Equivalent in value only: F08, C08 (subtract/add one as (1, 0) instead of (1e76, -76)); F08 was killed before only by testFloorExamples pinning an undocumented representation, which #381 replaces with numeric comparison per the Float type docs (non-canonical, numeric equality), so it survives after. O01 (Implementation.eq always true) survives both: before, the floor/ceil verdicts rested on it unchecked; after, they do not call it. Killers after: F02 testFloorExamples, testFloorNonNegative; F03 testFloorExamples, testFloorInRangeNegative; F04 testFloorExamples, testFloorInRangeNonNegative, testFloorLessThanMin; F06/F07 testFloorExamples, testFloorInRangeNegative, testFloorLessThanMin; C02 testCeilExamples, testCeilNonNegative; C04-C07 testCeilExamples, testCeilInRange, testCeilLessThanMin. No single-site mutant is killed after that survived before.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 17,
+      "killedBefore": 11,
+      "killedAfter": 0,
+      "equivalent": 6,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 15,
+      "testsAfter": 15,
+      "filed": []
+    }
   }
 ]
