@@ -9,7 +9,6 @@ import {
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMulTest is Test {
@@ -160,10 +159,10 @@ contract LibDecimalFloatImplementationMulTest is Test {
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatSlow.mulSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibTestExactDecimal.mulParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-        assertEq(signedCoefficient, expectedSignedCoefficient);
-        assertEq(exponent, expectedExponent);
+        assertEq(signedCoefficient, expectedSignedCoefficient, "signedCoefficient");
+        assertEq(exponent, expectedExponent, "exponent");
     }
 
     /// `pow`'s squaring loop hands `mul` exponents up to `type(int128).max` in
