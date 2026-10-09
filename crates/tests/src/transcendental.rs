@@ -1411,4 +1411,42 @@ mod anchors {
         run(check_pow(&d("10"), &d("-2147483640.5")));
         run(check_pow10(&d("-2147483647.99")));
     }
+
+    /// A half power is the root of a^(2N+1) rounded at 41 digits, so it
+    /// overflows exactly when that rounding is at least the least overflowing
+    /// value, (int224.max / 10 + 1) 10^(int32.max + 1). Here a^1.5 is
+    /// sqrt(10 c^3) 10^2147483614, with floor(sqrt(10 c^3)) and one above it
+    /// rounding alike, past that value.
+    #[test]
+    fn pow_half_root_past_the_threshold() {
+        let c: BigInt = "2629012728145285679841056168393364475926807479622600963406791093691"
+            .parse()
+            .unwrap();
+        let a = Dec::new(c.clone(), 1431655743);
+        let b = Dec::new(15, -1);
+        let s = (num_traits::pow(c, 3) * 10).sqrt();
+        let rounded = round41(&Dec::new(s.clone(), 2147483614));
+        assert!(rounded.eq_value(&round41(&Dec::new(s + 1, 2147483614))));
+        let least = Dec::new(r::int224_max() / 10 + 1, I32_MAX + 1);
+        assert!(!rounded.cmp_value(&least).is_lt(), "{rounded:?}");
+        assert_eq!(
+            sol_pow(&a, &b),
+            Err(revert_data(RefError::ExponentOverflow, &a, Some(&b)))
+        );
+    }
+
+    /// b past 6 decimals with a large integer part: (1 + 1e-20)^(1e20 + 1e-7)
+    /// is 2.71828182845904523534669606492864910003961548 to 45 digits, from
+    /// `bc -l` at scale 300.
+    #[test]
+    fn pow_integer_part_past_six_decimals() {
+        let a = Dec::new(pow10(20) + 1, -20);
+        let b = Dec::new(pow10(27) + 1, -7);
+        let bc = d("2.71828182845904523534669606492864910003961548");
+        let t = truth_pow(&a, &b);
+        let v = &t.value.as_ref().unwrap().value;
+        let gap = v.add_exact(&bc.neg()).unwrap().abs();
+        assert!(gap.cmp_value(&Dec::new(1, -44)).is_lt(), "{t:?}");
+        run(check_pow(&a, &b));
+    }
 }
