@@ -50,19 +50,21 @@ contract LibDecimalFloatInvTest is Test {
     }
 
     /// The least magnitude, `1e-2147483648`, inverts to `10 10^int32.max`, the
-    /// largest inverse, for both signs.
+    /// largest inverse, for both signs. To 76 digits that is 1e76
+    /// 10^(int32.max - 75), which packs as 1e67 10^(int32.max - 66).
     function testInvOfTheLeastMagnitude(bool negative) external view {
         int256 sign = negative ? int256(-1) : int256(1);
         Float inverse = this.invExternal(LibDecimalFloat.packLossless(sign, type(int32).min));
         (int256 signedCoefficient, int256 exponent) = inverse.unpack();
-        assertEq(signedCoefficient, sign * 10, "coefficient");
-        assertEq(exponent, int256(type(int32).max), "exponent");
+        assertEq(signedCoefficient, sign * 1e67, "coefficient");
+        assertEq(exponent, int256(type(int32).max) - 66, "exponent");
     }
 
     /// Every zero reverts `DivisionByZero` with itself, whatever its exponent.
     function testInvZeroReportsTheInput(int32 exponent) external {
         vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, int256(0), int256(exponent)));
-        this.invExternal(LibDecimalFloat.packLossless(0, exponent));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        this.invExternal(Float.wrap(bytes32(uint256(uint32(exponent)) << 224)));
     }
 
     /// Reverts only on zero, or where the exact inverse is below the smallest

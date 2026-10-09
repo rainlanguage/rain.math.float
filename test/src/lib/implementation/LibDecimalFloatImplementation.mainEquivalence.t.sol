@@ -246,6 +246,16 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             return;
         }
 
+        // By design (#368): a positive 2^255 quotient below the floor. Main
+        // sheds a digit to fit int256 before it sheds to the floor, so it
+        // truncates one digit more and lifts the exponent off the floor.
+        (int256 pc, int256 pe) = pair(p);
+        if (a == type(int256).min && b < 0 && isPowerOfTen(b) && pe == type(int256).min) {
+            assertTrue(mOk, "main returns");
+            assertEq(m, pc < 10 ? abi.encode(int256(0), int256(0)) : abi.encode(pc / 10, pe + 1), "main sheds one more");
+            return;
+        }
+
         // By design: main reverts or keeps fewer digits (#291, #292), the PR
         // matches main on the same operands lifted off the floor.
         assertTrue(atFloor(a, ea, b, eb), "differs off the floor");
@@ -513,6 +523,16 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             abi.encodeCall(this.mainDiv, (1e75 + 1, min, 3, min)), abi.encodeCall(this.prDiv, (1e75 + 1, min, 3, min))
         );
         checkDiv(1e75 + 1, min, 3, min);
+        // #368: a positive 2^255 quotient below the floor, by each scale,
+        // down to the last digit it keeps.
+        for (int256 u = 1; u <= 76; u++) {
+            assertDiffers(
+                abi.encodeCall(this.mainDiv, (min, min + 76, -1e76, u)),
+                abi.encodeCall(this.prDiv, (min, min + 76, -1e76, u))
+            );
+            checkDiv(min, min + 76, -1e76, u);
+            checkDiv(min, min + 75, -1e75, u);
+        }
     }
 
     function testMainEquivalenceAddFloorExamples() external view {
