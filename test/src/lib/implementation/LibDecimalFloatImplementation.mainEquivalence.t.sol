@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloatImplementationMain} from "test/lib/LibDecimalFloatImplementationMain.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {MaximizeOverflow, ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {MaximizeOverflow, ExponentOverflow, DivisionByZero} from "src/error/ErrDecimalFloat.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 /// Wherever main returns, the PR returns the same bytes, and wherever main
@@ -184,6 +184,27 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
 
     function testMainEquivalenceMaximizeFullPacked(int224 c, int32 e) external view {
         checkMaximizeFull(c, e);
+    }
+
+    /// The PR's div against the parts its NatSpec states and the exact
+    /// quotient they truncate (#368).
+    function checkDivExact(int256 a, int256 ea, int256 b, int256 eb, bool ok, bytes memory ret) internal pure {
+        if (b == 0) {
+            assertFalse(ok, "divide by zero");
+            assertEq(ret, abi.encodeWithSelector(DivisionByZero.selector, a, ea), "DivisionByZero");
+            return;
+        }
+        (bool overflows, int256 ec, int256 ee) = LibTestExactDecimal.divPartsWide(a, ea, b, eb);
+        if (overflows) {
+            assertFalse(ok, "exact div overflows");
+            assertEq(selector(ret), ExponentOverflow.selector, "div ExponentOverflow");
+            return;
+        }
+        assertTrue(ok, "exact div returns");
+        (int256 c, int256 e) = pair(ret);
+        assertEq(c, ec, "exact div coefficient");
+        assertEq(e, ee, "exact div exponent");
+        assertTrue(LibTestExactDecimal.isTruncatedQuotient(a, ea, b, eb, c, e), "truncated quotient");
     }
 
     function checkDiv(int256 a, int256 ea, int256 b, int256 eb) internal view {

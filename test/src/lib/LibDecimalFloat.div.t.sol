@@ -12,36 +12,66 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 contract LibDecimalFloatDivTest is Test {
     using LibDecimalFloat for Float;
 
-    function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
-        external
-        pure
-        returns (Float)
-    {
-        (int256 signedCoefficientC, int256 exponentC) =
-            LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        Float c = LibDecimalFloat.packArithmeticResult(signedCoefficientC, exponentC);
-        return c;
-    }
-
     function divExternal(Float floatA, Float floatB) external pure returns (Float) {
         return LibDecimalFloat.div(floatA, floatB);
     }
 
-    /// `div` whose result exponent (`expA - expB`) falls below `int32.min`
-    /// reverts instead of silently producing `FLOAT_ZERO`. Constructed by
-    /// numerator at the minimum exponent and denominator at the maximum. Both
-    /// maximize to `1e76`, 76 below their exponents, and the quotient scales by
-    /// `1e76`: `1e76 × 10^(int32.min - 76 - 76 - (int32.max - 76))`.
+    /// `div` whose quotient is below the smallest positive Float reverts
+    /// instead of silently producing `FLOAT_ZERO`, reporting `a`.
     function testDivRevertsOnExponentUnderflow() external {
         Float a = LibDecimalFloat.packLossless(1, type(int32).min);
         Float b = LibDecimalFloat.packLossless(1, type(int32).max);
-        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e76), int256(-4294967371)));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(type(int32).min)));
         this.divExternal(a, b);
     }
 
+    /// `div` whose quotient is past the largest Float reverts, reporting `a`.
+    function testDivRevertsOnExponentOverflow() external {
+        Float a = LibDecimalFloat.packLossless(-7, type(int32).max);
+        Float b = LibDecimalFloat.packLossless(1, type(int32).min);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-7), int256(type(int32).max)));
+        this.divExternal(a, b);
+    }
+
+    /// The least quotient past the largest Float, `(int224.max / 10 + 1)
+    /// 10^(int32.max + 1)`, reverts reporting `a`, and the one just below it is
+    /// the largest Float, for both signs.
+    function testDivAtTheOverflowThreshold(bool negative) external {
+        int256 sign = negative ? int256(-1) : int256(1);
+        int256 threshold = type(int224).max / 10 + 1;
+        Float a = LibDecimalFloat.packLossless(sign * threshold, type(int32).max);
+        Float b = LibDecimalFloat.packLossless(1, -1);
+        vm.expectRevert(
+            abi.encodeWithSelector(ExponentOverflow.selector, sign * threshold, int256(type(int32).max))
+        );
+        this.divExternal(a, b);
+
+        Float below = LibDecimalFloat.packLossless(sign * (threshold - 1), type(int32).max);
+        Float quotient = this.divExternal(below, b);
+        (int256 signedCoefficient, int256 exponent) = quotient.unpack();
+        assertEq(signedCoefficient, sign * (threshold - 1) * 10, "coefficient");
+        assertEq(exponent, int256(type(int32).max), "exponent");
+    }
+
+    /// A quotient in range past the ceiling less ten is not a range error.
+    function testDivNearTheCeiling() external view {
+        Float a = LibDecimalFloat.packLossless(5, type(int32).max);
+        Float quotient = this.divExternal(a, LibDecimalFloat.packLossless(2, 0));
+        assertTrue(quotient.eq(LibDecimalFloat.packLossless(25, int256(type(int32).max) - 1)));
+    }
+
+    /// The Float closest to the exact `a / b` that does not exceed its
+    /// magnitude: the exact quotient to 76 digits, packed.
+    function expectedQuotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.quotient76(ca, ea, cb, eb);
+        (Float expected,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+        return expected;
+    }
+
     /// Reverts only on a zero divisor, or where the exact quotient is beyond
-    /// the largest Float of its sign or below the smallest positive Float, and
-    /// otherwise agrees with the unpacked path.
+    /// the largest Float of its sign or below the smallest positive Float, with
+    /// `a` as the range error's payload. Otherwise the quotient is the Float
+    /// closest to the exact one that does not exceed its magnitude.
     function testDivPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -54,22 +84,52 @@ contract LibDecimalFloatDivTest is Test {
         bool underflows =
             LibTestExactDecimal.divUnderflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         if (overflows || underflows) {
-            (int256 signedCoefficient, int256 exponent) =
-                LibTestExactDecimal.divParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             vm.expectRevert(
                 abi.encodeWithSelector(
-                    overflows ? ExponentOverflow.selector : ExponentUnderflow.selector, signedCoefficient, exponent
+                    overflows ? ExponentOverflow.selector : ExponentUnderflow.selector, signedCoefficientA, exponentA
                 )
             );
             this.divExternal(a, b);
             return;
         }
-        Float resultParts = this.divExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (int256 signedCoefficientParts, int256 exponentParts) = LibDecimalFloat.unpack(resultParts);
-        Float float = this.divExternal(a, b);
-        (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
-        assertEq(signedCoefficientParts, signedCoefficientFloat);
-        assertEq(exponentParts, exponentFloat);
+        Float quotient = this.divExternal(a, b);
+        if (signedCoefficientA == 0) {
+            assertEq(Float.unwrap(quotient), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "zero");
+            return;
+        }
+        assertEq(
+            Float.unwrap(quotient),
+            Float.unwrap(expectedQuotient(signedCoefficientA, exponentA, signedCoefficientB, exponentB)),
+            "quotient"
+        );
+    }
+
+    function divPartsExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        external
+        pure
+        returns (int256, int256)
+    {
+        return LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    /// #374: the parts `div` hands to packing are the exact quotient truncated
+    /// as its NatSpec states.
+    function testDivPartsMatchRule(Float a, Float b) external view {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        vm.assume(signedCoefficientB != 0);
+        (int256 signedCoefficient, int256 exponent) =
+            this.divPartsExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.divParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(signedCoefficient, expectedSignedCoefficient, "coefficient");
+        assertEq(exponent, expectedExponent, "exponent");
+        assertTrue(
+            LibTestExactDecimal.isTruncatedQuotient(
+                signedCoefficientA, exponentA, signedCoefficientB, exponentB, signedCoefficient, exponent
+            ),
+            "truncated quotient"
+        );
     }
 
     function testDivByOneFloat(int224 signedCoefficient, int32 exponent) external pure {
