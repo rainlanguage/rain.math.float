@@ -1436,18 +1436,38 @@ mod anchors {
         );
     }
 
-    /// b past 6 decimals with a large integer part: (1 + 1e-20)^(1e20 + 1e-7)
-    /// is 2.71828182845904523534669606492864910003961548 to 45 digits, from
-    /// `bc -l` at scale 300.
+    /// b past 6 decimals with a large integer part, against `bc -l`, to 45
+    /// digits:
+    /// - (1 + 1e-20)^(1e20 + 1e-7) is
+    ///   2.71828182845904523534669606492864910003961548, at scale 300.
+    /// - 1.002^(2e12 + 1e-7) is
+    ///   2.84331506279111009690174079886358388810420809 10^1735443062, the
+    ///   same at scales 150 and 250. Its log10 is past 1e9, so b times log10's
+    ///   2e-50 absolute error would leave the bound: the integer part has to
+    ///   be taken by squaring.
     #[test]
     fn pow_integer_part_past_six_decimals() {
-        let a = Dec::new(pow10(20) + 1, -20);
-        let b = Dec::new(pow10(27) + 1, -7);
-        let bc = d("2.71828182845904523534669606492864910003961548");
-        let t = truth_pow(&a, &b);
-        let v = &t.value.as_ref().unwrap().value;
-        let gap = v.add_exact(&bc.neg()).unwrap().abs();
-        assert!(gap.cmp_value(&Dec::new(1, -44)).is_lt(), "{t:?}");
-        run(check_pow(&a, &b));
+        let digits = |s: &str| s.parse::<BigInt>().unwrap();
+        for (a, b, bc) in [
+            (
+                Dec::new(pow10(20) + 1, -20),
+                Dec::new(pow10(27) + 1, -7),
+                Dec::new(digits("271828182845904523534669606492864910003961548"), -44),
+            ),
+            (
+                Dec::new(1002, -3),
+                Dec::new(2 * pow10(19) + 1, -7),
+                Dec::new(
+                    digits("284331506279111009690174079886358388810420809"),
+                    1735443062 - 44,
+                ),
+            ),
+        ] {
+            let t = truth_pow(&a, &b);
+            let v = &t.value.as_ref().unwrap().value;
+            let gap = v.add_exact(&bc.neg()).unwrap().abs();
+            assert!(gap.cmp_value(&Dec::new(1, bc.e)).is_lt(), "{t:?}");
+            run(check_pow(&a, &b));
+        }
     }
 }
