@@ -566,6 +566,18 @@ contract LibDecimalFloatPowTest is Test {
         this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA + 1, exponentA), b);
     }
 
+    /// b's fraction times log10(a) truncates to exactly 1 at 1e-50, so the
+    /// leg is exactly 10 and the unrounded power is exactly a 10, which is
+    /// (int224.max / 10 + 1) 10^(int32.max + 1): the least value that
+    /// overflows, reported as a.
+    function testPowExactlyAtTheOverflowThreshold() external {
+        int256 signedCoefficientA = type(int224).max / 10 + 1;
+        int256 exponentA = type(int32).max;
+        Float b = LibDecimalFloat.packLossless(1000000000465661273184989617541055125131739873881019438247110325622, -66);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA, exponentA));
+        this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
+    }
+
     /// Issue #297 review: a^1 kept all 67 digits of a, and 2 - 1e-50 put a
     /// 51 digit product above a^2, a 41 digit leg times a.
     function testPowRoundsAtFortyOneDigits() external view {
