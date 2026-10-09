@@ -30,7 +30,7 @@ cross-references the packed constants against values derived independently.
   mul/div), normalization, packing.
 - **`lib/parse/`** — String-to-Float parsing.
 - **`lib/format/`** — Float-to-string formatting.
-- **`error/`** — Custom error definitions (CoefficientOverflow,
+- **`error/`** — Custom error definitions (LossyConversionToFloat,
   ExponentOverflow, DivisionByZero, etc.).
 
 ### Tests (`test/`)
@@ -64,8 +64,9 @@ to fetch them.
     underflow. Used by parsing where underflow → "value rounds to zero" is a
     legitimate parse result reported via `ParseDecimalPrecisionLoss`.
   - `packArithmeticResult`: tolerates coefficient truncation, reverts on
-    exponent underflow. Used by every public arithmetic operation but `minus`
-    and `abs`.
+    exponent underflow. Used by every public arithmetic operation but `minus`,
+    `abs`, `pow` and `pow10`. `pow` and `pow10` inline it with range errors that
+    report the call's input.
 
 ## License
 

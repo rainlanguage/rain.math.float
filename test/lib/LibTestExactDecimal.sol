@@ -343,10 +343,23 @@ library LibTestExactDecimal {
         return divParts(1e76, -76, signedCoefficient, exponent);
     }
 
-    /// The parts `add` of two Floats hands to packing. Both operands are
-    /// maximized and the one at the lower exponent is truncated towards zero
-    /// to the other's, or dropped 77 or more digits below it. A sum past int256
-    /// has each addend shed a digit before summing, at one exponent higher.
+    /// The exponent of a non-zero Float's int256 unit: its last digit when
+    /// written with as many digits as an int256 coefficient holds, 77 or 76.
+    function int256Unit(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+        uint256 magnitude = abs(signedCoefficient);
+        int256 n = digits(u512(magnitude));
+        // n is at most 68, and a 77 digit magnitude fits uint256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        bool fits77 = magnitude * 10 ** uint256(77 - n) <= uint256(type(int256).max);
+        return exponent + n - (fits77 ? int256(77) : int256(76));
+    }
+
+    /// The parts `add` of two Floats hands to packing, as its NatSpec states
+    /// them: the exact sum in units of the larger operand's int256 unit,
+    /// rounded towards zero when the signs agree and away from zero when they
+    /// differ, as `signedParts`. The larger operand is a whole number of
+    /// units; the smaller is split into whole units and whether a fraction of
+    /// one remains.
     function addParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         if (ca == 0) {
             return (cb, eb);
@@ -354,23 +367,42 @@ library LibTestExactDecimal {
         if (cb == 0) {
             return (ca, ea);
         }
-        (int256 a, int256 exponentA) = maximizeFloat(ca, ea);
-        (int256 b, int256 exponentB) = maximizeFloat(cb, eb);
-        if (exponentB > exponentA) {
-            (a, exponentA, b, exponentB) = (b, exponentB, a, exponentA);
+        if (cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) < 0) {
+            (ca, ea, cb, eb) = (cb, eb, ca, ea);
         }
-        int256 gap = exponentA - exponentB;
-        if (gap > 76) {
-            return (a, exponentA);
-        }
-        // gap is in [0, 76].
+        int256 unit = int256Unit(ca, ea);
         // forge-lint: disable-next-line(unsafe-typecast)
-        b /= int256(10 ** uint256(gap));
-        bool sumOverflows = (a > 0 && b > 0 && a > type(int256).max - b) || (a < 0 && b < 0 && a < type(int256).min - b);
-        if (sumOverflows) {
-            return (a / 10 + b / 10, exponentA + 1);
+        uint256 bigUnits = abs(ca) * 10 ** uint256(ea - unit);
+        uint256 smallUnits;
+        bool smallFraction;
+        if (eb >= unit) {
+            // |cb| × 10^(eb - unit) is at most |a|'s 77 digits.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            smallUnits = abs(cb) * 10 ** uint256(eb - unit);
+        } else if (unit - eb > 68) {
+            // |cb| has at most 68 digits, so it is under one unit.
+            smallFraction = true;
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 scale = 10 ** uint256(unit - eb);
+            smallUnits = abs(cb) / scale;
+            smallFraction = abs(cb) % scale != 0;
         }
-        return (a + b, exponentA);
+        bool sameSign = (ca < 0) == (cb < 0);
+        uint256 units;
+        if (sameSign) {
+            // Towards zero drops the fraction.
+            units = bigUnits + smallUnits;
+        } else {
+            // |b| <= |a|, so this is at least zero: the whole units of the
+            // exact difference, then away from zero rounds a remaining
+            // fraction up to a unit.
+            units = bigUnits - smallUnits - (smallFraction ? 1 : 0);
+            if (smallFraction) {
+                units += 1;
+            }
+        }
+        return signedParts(ca < 0, units, unit);
     }
 
     /// Whether a Float's parts are a whole number. Below `10^-67` every
