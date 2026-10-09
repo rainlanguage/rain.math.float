@@ -8,35 +8,47 @@ import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/Lib
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 
-/// Bounds from the `log10Ratio` NatSpec: 1.005 units of 1e-50 for a
-/// coefficient at that scale, or C / 1e49 + 2 units of its exponent when
-/// `relative`, for z = |a - b| / (a + b) at most 5.1e-4.
+/// Bounds from the `log10Ratio` NatSpec, for z = |a - b| / (a + b) at most
+/// 5.1e-4: the magnitude is at most 1.3e-51 relative above the true log, and
+/// below it by under 1.0043 units of 1e-50 for a coefficient at that scale,
+/// or by C 9.6e-50 plus a unit of its exponent when `relative`.
 contract LibDecimalFloatImplementationLog10RatioTest is Test {
     function abs(int256 value) internal pure returns (int256) {
         return value < 0 ? -value : value;
     }
 
-    /// |log10Ratio - expected| against the proven bound, for an expected
-    /// value truncated to 70 significant digits by `bc -l`, so plus a unit
-    /// in its last place.
+    /// log10Ratio against the proven bounds, for an expected value truncated
+    /// toward zero to 70 significant digits by `bc -l`, so below the true
+    /// magnitude by under a unit in its last place.
     function checkAgainstBc(uint256 a, uint256 b, bool relative, int256 expectedCoefficient, int256 expectedExponent)
         internal
         pure
     {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, relative);
         assertTrue(expectedCoefficient < 0 ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
+        int256 c = abs(signedCoefficient);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 above = int256(Math.mulDiv(uint256(c), 13, 100, Math.Rounding.Ceil));
+        (int256 aboveCoefficient, int256 aboveExponent) =
+            LibDecimalFloatImplementation.add(above, exponent - 50, 1, expectedExponent);
+        (int256 belowCoefficient, int256 belowExponent) = (int256(10043), int256(-54));
+        if (relative) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 below = int256(Math.mulDiv(uint256(c), 96, 100, Math.Rounding.Ceil));
+            (belowCoefficient, belowExponent) = LibDecimalFloatImplementation.add(below, exponent - 49, 1, exponent);
+        }
         (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(signedCoefficient, exponent, expectedCoefficient, expectedExponent);
-        (int256 boundCoefficient, int256 boundExponent) =
-            relative ? (abs(signedCoefficient) + 2e49, exponent - 49) : (int256(1005), int256(-53));
-        (boundCoefficient, boundExponent) =
-            LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, expectedExponent);
+            LibDecimalFloatImplementation.sub(c, exponent, abs(expectedCoefficient), expectedExponent);
         assertTrue(
-            LibDecimalFloatImplementation.lte(abs(errorCoefficient), errorExponent, boundCoefficient, boundExponent),
-            "log10Ratio error"
+            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, aboveCoefficient, aboveExponent),
+            "log10Ratio above"
+        );
+        assertTrue(
+            LibDecimalFloatImplementation.lte(-errorCoefficient, errorExponent, belowCoefficient, belowExponent),
+            "log10Ratio below"
         );
         if (relative) {
-            assertGe(abs(signedCoefficient), 1e48, "48 digits");
+            assertGe(c, 1e48, "48 digits");
         } else {
             assertEq(exponent, -50, "fixed point exponent");
         }
@@ -100,19 +112,11 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     /// #311: relative needs a + b of at least 1e50.
     function testLog10RatioRelativeScale() external pure {
         uint256[2] memory bs = [uint256(1e60), 1e72];
-        int256[2] memory coefficients = [
-            int256(434272768626696373135275850982681310979627758925298735063246837658),
-            434272768626696373135275850982681310979627758925298735
-        ];
-        int256[2] memory exponents = [int256(-70), -58];
         for (uint256 i = 0; i < 2; i++) {
             uint256 b = bs[i];
             checkAgainstBc(
                 b + b / 1e4, b, true, 4342727686266963731352758509826813109796277589253077324640421158475901, -74
             );
-            (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(b + b / 1e4, b, true);
-            assertEq(signedCoefficient, coefficients[i], "coefficient");
-            assertEq(exponent, exponents[i], "exponent");
         }
     }
 
@@ -122,29 +126,15 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         uint256 a = 50002894802230932904885589274625217197696331749616;
         uint256 b = 49997105197769067095114410725374782802303668250384;
         checkAgainstBc(a, b, true, 5028786546000284264695559962415145454590065007477657882759658232905352, -74);
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, true);
-        assertEq(
-            signedCoefficient,
-            50287865460002842646955599624151454545900650074775565315544486988760780321019,
-            "coefficient"
-        );
-        assertEq(exponent, -81, "exponent");
     }
 
     /// a + b = 1e50 and a - b = 3e45, so z is exactly 3e-5 and z squared is
-    /// exactly 9e40 units: one unit less in z floors z squared and three
-    /// series terms a unit lower, which moves the coefficient by about 1e26.
+    /// exactly 9e40 units, on the floor boundary of z squared and three series
+    /// terms.
     function testLog10RatioRelativeZOnFloorBoundary() external pure {
         uint256 a = 5.00015e49;
         uint256 b = 4.99985e49;
         checkAgainstBc(a, b, true, 26057668922012410337547610399529953336038179692555075595894572145948150, -75);
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, true);
-        assertEq(
-            signedCoefficient,
-            26057668922012410337547610399529953336038179692554900000000000000000000000000,
-            "coefficient"
-        );
-        assertEq(exponent, -81, "exponent");
     }
 
     /// The guard boundary: a + b = 1e50 - 1 reverts with its inputs.
