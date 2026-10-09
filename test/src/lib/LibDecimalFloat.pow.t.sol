@@ -664,6 +664,50 @@ contract LibDecimalFloatPowTest is Test {
         this.powExternal(LibDecimalFloat.packLossless(-2, 715827950), three);
     }
 
+    /// A half power past the range reverts with a, the input of pow. The
+    /// largest Float is about 1.35e2147483714 and the least positive is
+    /// 1e-2147483648. (1e1431655809)^1.5 is sqrt(10) 1e2147483713, inside, and
+    /// (1e1431655810)^1.5 is 1e2147483715, past. (1e-1431655765)^1.5 is
+    /// sqrt(10) 1e-2147483648, which sheds to 3 at the floor, and
+    /// (1e-1431655766)^1.5 is 1e-2147483649, below it. -1.5 takes the inverse
+    /// of each past base to the other side. b = 2^100 + 0.5 trips the squaring
+    /// guard before the root.
+    function testPowHalfPastTheRange() external {
+        Float threeHalves = LibDecimalFloat.packLossless(15, -1);
+        Float a = LibDecimalFloat.packLossless(1, 1431655809);
+        (int256 signedCoefficient, int256 exponent) = this.powExternal(a, threeHalves).unpack();
+        assertTrue(
+            LibDecimalFloatImplementation.eq(
+                signedCoefficient, exponent, 31622776601683793319988935444327185337196, 2147483673
+            ),
+            "inside over"
+        );
+        a = LibDecimalFloat.packLossless(1, 1431655810);
+        vm.expectRevert(LibTestPowRange.rangeError(true, a));
+        this.powExternal(a, threeHalves);
+        a = LibDecimalFloat.packLossless(1, -1431655810);
+        vm.expectRevert(LibTestPowRange.rangeError(true, a));
+        this.powExternal(a, threeHalves.minus());
+
+        a = LibDecimalFloat.packLossless(1, -1431655765);
+        (signedCoefficient, exponent) = this.powExternal(a, threeHalves).unpack();
+        assertTrue(LibDecimalFloatImplementation.eq(signedCoefficient, exponent, 3, type(int32).min), "inside under");
+        a = LibDecimalFloat.packLossless(1, -1431655766);
+        vm.expectRevert(LibTestPowRange.rangeError(false, a));
+        this.powExternal(a, threeHalves);
+        a = LibDecimalFloat.packLossless(1, 1431655766);
+        vm.expectRevert(LibTestPowRange.rangeError(false, a));
+        this.powExternal(a, threeHalves.minus());
+
+        Float hugeHalf = LibDecimalFloat.packLossless(int256(2 ** 100) * 10 + 5, -1);
+        a = LibDecimalFloat.packLossless(1, 2000000000);
+        vm.expectRevert(LibTestPowRange.rangeError(true, a));
+        this.powExternal(a, hugeHalf);
+        a = LibDecimalFloat.packLossless(1, -2000000000);
+        vm.expectRevert(LibTestPowRange.rangeError(false, a));
+        this.powExternal(a, hugeHalf);
+    }
+
     /// Issue #297 review: a^1 kept all 67 digits of a, and 2 - 1e-50 put a
     /// 51 digit product above a^2, a 41 digit leg times a.
     function testPowRoundsAtFortyOneDigits() external view {
