@@ -161,8 +161,10 @@ additional judgement calls re: when precision loss is acceptable.
 
 #### log10, pow10, pow and sqrt
 
-These round their final result to nearest at 41 significant digits, `pow`
-including an integer power and `a^1`, within proven bounds of the true value:
+These round an internal approximation to nearest at 41 significant digits, `pow`
+including an integer power and `a^1`, within proven bounds of the true value.
+`sqrt` is correctly rounded; for the others, a true value within the bound of a
+rounding tie can round to either neighbour:
 
 - `pow10`: half a unit in the 41st digit plus 3.28e-8 of a unit, under
   5.0000004e-41 relative.

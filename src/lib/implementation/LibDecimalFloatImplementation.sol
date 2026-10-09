@@ -870,9 +870,11 @@ library LibDecimalFloatImplementation {
         return div(1e76, -76, signedCoefficient, exponent);
     }
 
-    /// log10(x) for a float x, rounded to nearest at 41 significant digits,
-    /// half away from zero, so within half a unit in the 41st digit plus
-    /// `LOG10_RAW_ERROR` units of 1e-50. log10(10^k) is exactly k.
+    /// log10(x) for a float x: an internal approximation within
+    /// `LOG10_RAW_ERROR` units of 1e-50, rounded to nearest at 41 significant
+    /// digits half away from zero, so within half a unit in the 41st digit
+    /// plus that error. Near a tie either neighbour can result. log10(10^k) is
+    /// exactly k.
     ///
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
@@ -1368,8 +1370,9 @@ library LibDecimalFloatImplementation {
 
     // slither-disable-end too-many-digits
 
-    /// 10^x for a float x, rounded to nearest at 41 significant digits, half
-    /// up. 10^k is exactly 10^k for an integer k.
+    /// 10^x for a float x: an internal approximation within the bound below,
+    /// rounded to nearest at 41 significant digits half up. Near a tie either
+    /// neighbour can result. 10^k is exactly 10^k for an integer k.
     ///
     /// The fraction m of x, truncated to 1e-50, goes through `exp10Fixed`.
     /// Truncation moves 10^m by under 2.3026e-50 relative either way, and with
