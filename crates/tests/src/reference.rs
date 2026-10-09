@@ -6,9 +6,9 @@
 //! the Float closest to it that does not exceed its magnitude (`packLossy`).
 //! A result no non-zero Float is within is `ExponentUnderflow`; a result
 //! larger in magnitude than every Float is `ExponentOverflow`. Addition first
-//! aligns its operands as `LibDecimalFloatImplementation.add` and
-//! `LibDecimalFloat.agree` describe, discarding the smaller operand's digits
-//! below the unit of the larger operand's maximized coefficient.
+//! rounds the exact sum to a multiple of the larger operand's int256 unit,
+//! towards zero when the signs agree and away from zero when they differ, as
+//! `LibDecimalFloat.add` documents.
 
 use alloy::primitives::{B256, U256};
 use core::cmp::Ordering;
@@ -367,38 +367,58 @@ pub fn arithmetic(x: &Dec) -> Result<Dec, RefError> {
     }
 }
 
-/// `c × 10^k` for the largest `k` that keeps it in int256, as
-/// `LibDecimalFloatImplementation.maximize` documents.
-fn maximize(x: &Dec) -> Dec {
-    let mut c = x.c.clone();
-    let mut e = x.e;
-    loop {
-        let next = &c * 10;
-        if !fits_int256(&next) {
-            return Dec::new(c, e);
-        }
-        c = next;
-        e -= 1;
+/// The exponent of `x`'s int256 unit: its last digit when written with as
+/// many digits as an int256 coefficient holds, 77 or 76.
+fn int256_unit(x: &Dec) -> i64 {
+    let top = x.e + digits(&x.c) as i64;
+    if fits_int256(&(&x.c * pow10(77 - digits(&x.c)))) {
+        top - 77
+    } else {
+        top - 76
     }
 }
 
-/// `add` under its documented alignment: both operands maximized, the one
-/// with the smaller exponent truncated towards zero to the other's unit, then
-/// the sum packed.
-pub fn add(a: &Dec, b: &Dec) -> Result<Dec, RefError> {
+/// `add`'s sum before packing, as its NatSpec states it: the exact sum
+/// rounded to a multiple of the larger operand's int256 unit, towards zero
+/// when the signs agree and away from zero when they differ.
+fn rounded_sum(a: &Dec, b: &Dec) -> Dec {
     if a.is_zero() {
-        return arithmetic(b);
+        return b.clone();
     }
     if b.is_zero() {
-        return arithmetic(a);
+        return a.clone();
     }
-    let (mut big, mut small) = (maximize(a), maximize(b));
-    if small.e > big.e {
-        core::mem::swap(&mut big, &mut small);
+    let (big, small) = if a.abs().cmp_value(&b.abs()) == Ordering::Less {
+        (b, a)
+    } else {
+        (a, b)
+    };
+    let unit = int256_unit(big);
+    // Under one unit, `small` leaves the exact sum strictly within a unit of
+    // `big`, a multiple of it: outwards when the signs agree, so towards zero
+    // is `big`, and inwards when they differ, so away from zero is `big`.
+    if small.e + (digits(&small.c) as i64) <= unit {
+        return big.clone();
     }
-    let gap = (big.e - small.e) as u64;
-    let aligned = shed(&small.c, gap);
-    arithmetic(&Dec::new(&big.c + aligned, big.e))
+    let exact = big
+        .add_exact(small)
+        .expect("operands within a unit's 77 digits");
+    if exact.e >= unit {
+        return exact;
+    }
+    let k = (unit - exact.e) as u64;
+    let mut c = shed(&exact.c, k);
+    if a.is_negative() != b.is_negative()
+        && Dec::new(c.clone(), unit).cmp_value(&exact) != Ordering::Equal
+    {
+        c += if exact.is_negative() { -1 } else { 1 };
+    }
+    Dec::new(c, unit)
+}
+
+/// `add`: the rounded sum, packed.
+pub fn add(a: &Dec, b: &Dec) -> Result<Dec, RefError> {
+    arithmetic(&rounded_sum(a, b))
 }
 
 pub fn sub(a: &Dec, b: &Dec) -> Result<Dec, RefError> {
@@ -584,7 +604,7 @@ pub fn canonicalize(x: &Dec) -> Dec {
 /// `agree`, as its NatSpec states it: a negative tolerance is
 /// `AgreeToleranceNegative`, neither positive `AgreeNoPositiveTolerance`;
 /// otherwise `highest - lowest <= max(absolute, proportional * max(|lowest|,
-/// |highest|))`, the spread aligned as `sub` aligns it and nothing packed.
+/// |highest|))`, the spread rounded as `sub` rounds it and nothing packed.
 pub fn agree(
     absolute: &Dec,
     proportional: &Dec,
@@ -597,7 +617,7 @@ pub fn agree(
     if absolute.is_zero() && proportional.is_zero() {
         return Err(RefError::AgreeNoPositiveTolerance);
     }
-    let spread = aligned_sum(highest, &lowest.neg());
+    let spread = rounded_sum(highest, &lowest.neg());
     let anchor = if lowest.abs().cmp_value(&highest.abs()) == Ordering::Greater {
         lowest.abs()
     } else {
@@ -610,22 +630,6 @@ pub fn agree(
         scaled
     };
     Ok(spread.cmp_value(&limit) != Ordering::Greater)
-}
-
-/// The sum under `add`'s documented alignment, before packing.
-fn aligned_sum(a: &Dec, b: &Dec) -> Dec {
-    if a.is_zero() {
-        return b.clone();
-    }
-    if b.is_zero() {
-        return a.clone();
-    }
-    let (mut big, mut small) = (maximize(a), maximize(b));
-    if small.e > big.e {
-        core::mem::swap(&mut big, &mut small);
-    }
-    let gap = (big.e - small.e) as u64;
-    Dec::new(&big.c + shed(&small.c, gap), big.e)
 }
 
 /// `isOdd`: an odd whole number.
@@ -781,9 +785,12 @@ pub fn literal_value(s: &str) -> Dec {
     }
 }
 
-/// `LibParseDecimalFloat.parseDecimalFloat` over a well formed literal: the
-/// integer part, fraction digits (trailing zeros dropped) and exponent are
-/// each read as int256 (`ParseDecimalOverflow`); a non-zero integer part
+/// `LibParseDecimalFloat.parseDecimalFloat` over a well formed literal: an
+/// integer part past int256 moves its trailing zeros into the exponent, and
+/// then its significant digits, fraction digits (trailing zeros dropped) and
+/// a nonzero coefficient's exponent are each read as int256
+/// (`ParseDecimalOverflow`); a fraction digit after an integer part past
+/// int256 is `ParseDecimalPrecisionLoss`; a non-zero integer part
 /// takes at most 67 fraction digits and the combined coefficient must fit
 /// int224 (`ParseDecimalPrecisionLoss`); then the value packs, where any lost
 /// digit is `ParseDecimalPrecisionLoss` and a value past every Float is
@@ -837,48 +844,55 @@ pub fn parse_inline(s: &str) -> Result<(BigInt, BigInt), RefError> {
     };
     let negative = int_str.starts_with('-');
     let int: BigInt = int_str.parse().unwrap();
-    let int_limit = if negative {
-        -int256_min()
-    } else {
-        int256_max()
-    };
-    if int.abs() > int_limit {
-        return Err(RefError::ParseDecimalOverflow);
-    }
+    let frac = frac_str
+        .map(|f| f.trim_end_matches('0'))
+        .filter(|f| !f.is_empty());
     let mut c = int.clone();
     let mut e: BigInt = BigInt::zero();
-    if let Some(frac_str) = frac_str {
-        let trimmed = frac_str.trim_end_matches('0');
-        if !trimmed.is_empty() {
-            let f: BigInt = trimmed.parse().unwrap();
-            if f > int256_max() {
-                return Err(RefError::ParseDecimalOverflow);
+    if !fits_int256(&int) {
+        // Its trailing zeros move into the exponent. Significant digits past
+        // int256, or any fraction digit after them, need a coefficient past
+        // int256, so neither is a Float.
+        let mut zeros = 0u64;
+        while (&c % 10u32).is_zero() {
+            c /= 10u32;
+            zeros += 1;
+        }
+        if !fits_int256(&c) {
+            return Err(RefError::ParseDecimalOverflow);
+        }
+        if frac.is_some() {
+            return Err(RefError::ParseDecimalPrecisionLoss);
+        }
+        e = BigInt::from(zeros);
+    } else if let Some(trimmed) = frac {
+        let f: BigInt = trimmed.parse().unwrap();
+        if f > int256_max() {
+            return Err(RefError::ParseDecimalOverflow);
+        }
+        let f = if negative { -f } else { f };
+        let scale = trimmed.len() as u64;
+        e = -BigInt::from(scale);
+        if int.is_zero() {
+            c = f;
+        } else {
+            if scale > 67 {
+                return Err(RefError::ParseDecimalPrecisionLoss);
             }
-            let f = if negative { -f } else { f };
-            let scale = trimmed.len() as u64;
-            e = -BigInt::from(scale);
-            if int.is_zero() {
-                c = f;
-            } else {
-                if scale > 67 {
-                    return Err(RefError::ParseDecimalPrecisionLoss);
-                }
-                let rescaled = &int * pow10(scale);
-                if !fits_int224(&rescaled) {
-                    return Err(RefError::ParseDecimalPrecisionLoss);
-                }
-                c = rescaled + f;
+            let rescaled = &int * pow10(scale);
+            if !fits_int224(&rescaled) {
+                return Err(RefError::ParseDecimalPrecisionLoss);
             }
+            c = rescaled + f;
         }
     }
     if let Some(exp_str) = exp_str {
         let x: BigInt = exp_str.trim_start_matches('+').parse().unwrap();
-        let limit = if x.is_negative() {
-            -int256_min()
-        } else {
-            int256_max()
-        };
-        if x.abs() > limit {
+        // Zero is zero at any exponent; past int256 nothing else is a Float.
+        if c.is_zero() {
+            return Ok((BigInt::zero(), BigInt::zero()));
+        }
+        if !fits_int256(&x) {
             return Err(RefError::ParseDecimalOverflow);
         }
         e += x;
@@ -954,15 +968,42 @@ mod tests {
         }
     }
 
+    /// `add`'s NatSpec examples, #340.
     #[test]
-    fn add_drops_digits_below_the_aligned_unit() {
-        // agree's NatSpec: 1 - (-1e-100) is exactly 1 to sub.
-        let one = Dec::new(1, 0);
-        let r = sub(&one, &Dec::new(-1, -100)).unwrap();
-        assert!(r.eq_value(&one));
-        // 1e100 + -1 keeps 1e100: the -1 is below the aligned unit.
-        let r = add(&Dec::new(1, 100), &Dec::new(-1, 0)).unwrap();
-        assert!(r.eq_value(&Dec::new(1, 100)));
+    fn add_rounding_examples() {
+        let nines = |e| Dec::new(pow10(67) - 1u32, e);
+        let cases = [
+            // Signs agree: towards zero.
+            ((1, 100), (1, -100), Dec::new(1, 100)),
+            ((-1, 100), (-1, -100), Dec::new(-1, 100)),
+            ((1, 0), (1, -100), Dec::new(1, 0)),
+            // Signs differ: away from zero at the larger operand's unit, then
+            // packed.
+            ((1, 100), (-1, 0), Dec::new(1, 100)),
+            ((-1, 100), (1, 0), Dec::new(-1, 100)),
+            ((1, 0), (-1, -100), Dec::new(1, 0)),
+            ((1, 100), (-17, 32), Dec::new(pow10(67) - 2u32, 33)),
+            ((1, 100), (-(10i128.pow(33) + 1), 0), nines(33)),
+            (
+                (1, 100),
+                (-(15 * 10i128.pow(32) + 1), 0),
+                Dec::new(pow10(67) - 2u32, 33),
+            ),
+            ((1, 0), (-15, -77), nines(-67)),
+        ];
+        for ((ca, ea), (cb, eb), want) in cases {
+            let (a, b) = (Dec::new(ca, ea), Dec::new(cb, eb));
+            let r = add(&a, &b).unwrap();
+            assert!(
+                r.eq_value(&want),
+                "add({a:?}, {b:?}) = {r:?}, want {want:?}"
+            );
+            let r = sub(&a, &b.neg()).unwrap();
+            assert!(
+                r.eq_value(&want),
+                "sub({a:?}, -{b:?}) = {r:?}, want {want:?}"
+            );
+        }
     }
 
     #[test]
