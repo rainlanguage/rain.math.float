@@ -305,15 +305,15 @@ library LibTestExactDecimal {
             return (0, 0);
         }
         U512 memory product = mul(abs(ca), abs(cb));
-        uint256 shed = 0;
-        while (product.hi >= 10 ** shed) {
-            shed++;
+        uint256 dropped = 0;
+        while (product.hi >= 10 ** dropped) {
+            dropped++;
         }
-        uint256 magnitude = Math.mulDiv(abs(ca), abs(cb), 10 ** shed);
+        uint256 magnitude = Math.mulDiv(abs(ca), abs(cb), 10 ** dropped);
         // The product is at most 2^510, so its high word is at most 2^254 and
-        // shed is at most 77.
+        // dropped is at most 77.
         // forge-lint: disable-next-line(unsafe-typecast)
-        return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(shed));
+        return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(dropped));
     }
 
     /// The parts `div` of two Floats hands to packing, for a non-zero `cb`:
@@ -471,7 +471,7 @@ library LibTestExactDecimal {
     }
 
     /// The parts `LibDecimalFloatImplementation.div` returns for any int256
-    /// parts and a non-zero `cb`, or `overflows` where its exponent is above
+    /// parts and a non-zero `cb`, or `overflowed` where its exponent is above
     /// `type(int256).max`. It is `divParts` at an unbounded exponent: both
     /// coefficients maximized, the dividend's magnitude scaled by the largest
     /// power of ten not above the divisor's and floor divided by it, as
@@ -480,9 +480,10 @@ library LibTestExactDecimal {
     function divPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
-        returns (bool overflows, int256 c, int256 e)
+        returns (bool overflowed, int256 c, int256 e)
     {
         if (ca == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (false, 0, 0);
         }
         bool negative = (ca < 0) != (cb < 0);
@@ -490,16 +491,19 @@ library LibTestExactDecimal {
         (c, offset) = divCoefficient(ca, cb);
         (int256 cls, int256 value) = wideExponent(ea, eb, 0, offset);
         if (cls == 1) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (true, 0, 0);
         }
         if (cls == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (false, c, value);
         }
         uint256 kept = shed(abs(c), value);
         if (kept == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (false, 0, 0);
         }
-        // forge-lint: disable-next-line(unsafe-typecast)
+        // forge-lint: disable-next-line(unsafe-typecast, boolean-cst)
         return (false, negative ? -int256(kept) : int256(kept), type(int256).min);
     }
 
@@ -549,7 +553,7 @@ library LibTestExactDecimal {
     }
 
     /// The parts `LibDecimalFloatImplementation.add` returns for any int256
-    /// parts, or `overflows` where its exponent is above `type(int256).max`,
+    /// parts, or `overflowed` where its exponent is above `type(int256).max`,
     /// as its NatSpec states them: the exact sum in units of the larger
     /// operand's int256 unit, or ten of them past int256, rounded towards zero
     /// when the signs agree and away from zero when they differ. The int256
@@ -560,12 +564,14 @@ library LibTestExactDecimal {
     function addPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
-        returns (bool overflows, int256 c, int256 e)
+        returns (bool overflowed, int256 c, int256 e)
     {
         if (ca == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (false, cb, eb);
         }
         if (cb == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (false, ca, ea);
         }
         if (cmpWide(u512(abs(ca)), ea, eb, 0, 0, u512(abs(cb))) < 0) {
@@ -575,6 +581,7 @@ library LibTestExactDecimal {
         int256 cls;
         (cls, e) = wideExponent(ea, 0, 0, offset);
         if (cls == 1) {
+            // forge-lint: disable-next-line(boolean-cst)
             return (true, 0, 0);
         }
         if (cls == -1) {
@@ -621,6 +628,16 @@ library LibTestExactDecimal {
             return (units.hi * (type(uint256).max / 10) + (units.hi * 6 + units.lo) / 10, offset + 1);
         }
         return (units.lo, offset);
+    }
+
+    /// Exact numeric order of two Floats' parts: -1, 0 or 1.
+    function cmpParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256) {
+        int256 sa = ca < 0 ? int256(-1) : ca > 0 ? int256(1) : int256(0);
+        int256 sb = cb < 0 ? int256(-1) : cb > 0 ? int256(1) : int256(0);
+        if (sa != sb || sa == 0) {
+            return sa < sb ? int256(-1) : sa > sb ? int256(1) : int256(0);
+        }
+        return sa * cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb);
     }
 
     /// Exact numeric equality of two Floats' parts.

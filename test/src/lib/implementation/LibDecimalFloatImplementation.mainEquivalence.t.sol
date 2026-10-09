@@ -127,8 +127,8 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             assertEq(ret, abi.encodeWithSelector(DivisionByZero.selector, a, ea), "DivisionByZero");
             return;
         }
-        (bool overflows, int256 ec, int256 ee) = LibTestExactDecimal.divPartsWide(a, ea, b, eb);
-        if (overflows) {
+        (bool overflowed, int256 ec, int256 ee) = LibTestExactDecimal.divPartsWide(a, ea, b, eb);
+        if (overflowed) {
             assertFalse(ok, "exact div overflows");
             assertEq(selector(ret), ExponentOverflow.selector, "div ExponentOverflow");
             return;
@@ -138,35 +138,6 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         assertTrue(LibTestExactDecimal.isTruncatedQuotient(a, ea, b, eb, c, e), "truncated quotient");
         assertEq(c, ec, "exact div coefficient");
         assertEq(e, ee, "exact div exponent");
-    }
-
-    /// The PR's add or sub against the exact parts. Negating
-    /// `type(int256).min` sheds its last digit.
-    function checkAddSubExact(bool isSub, int256 a, int256 ea, int256 b, int256 eb, bool ok, bytes memory ret)
-        internal
-        pure
-    {
-        if (isSub) {
-            if (b == type(int256).min) {
-                if (eb == type(int256).max) {
-                    assertEq(ret, abi.encodeWithSelector(ExponentOverflow.selector, b, eb), "minus ExponentOverflow");
-                    return;
-                }
-                b /= 10;
-                eb += 1;
-            }
-            b = -b;
-        }
-        (bool overflows, int256 ec, int256 ee) = LibTestExactDecimal.addPartsWide(a, ea, b, eb);
-        if (overflows) {
-            assertFalse(ok, "exact add overflows");
-            assertEq(selector(ret), ExponentOverflow.selector, "add ExponentOverflow");
-            return;
-        }
-        assertTrue(ok, "exact add returns");
-        (int256 c, int256 e) = pair(ret);
-        assertEq(c, ec, "exact add coefficient");
-        assertEq(e, ee, "exact add exponent");
     }
 
     function checkMaximize(int256 c, int256 e) internal view {
@@ -390,6 +361,35 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         checkInv(digits(c, shift), nearFloor(e));
     }
 
+    /// The PR's add or sub against the exact parts. Negating
+    /// `type(int256).min` sheds its last digit.
+    function checkAddSubExact(bool isSub, int256 a, int256 ea, int256 b, int256 eb, bool ok, bytes memory ret)
+        internal
+        pure
+    {
+        if (isSub) {
+            if (b == type(int256).min) {
+                if (eb == type(int256).max) {
+                    assertEq(ret, abi.encodeWithSelector(ExponentOverflow.selector, b, eb), "minus ExponentOverflow");
+                    return;
+                }
+                b /= 10;
+                eb += 1;
+            }
+            b = -b;
+        }
+        (bool overflows, int256 ec, int256 ee) = LibTestExactDecimal.addPartsWide(a, ea, b, eb);
+        if (overflows) {
+            assertFalse(ok, "exact add overflows");
+            assertEq(selector(ret), ExponentOverflow.selector, "add ExponentOverflow");
+            return;
+        }
+        assertTrue(ok, "exact add returns");
+        (int256 c, int256 e) = pair(ret);
+        assertEq(c, ec, "exact add coefficient");
+        assertEq(e, ee, "exact add exponent");
+    }
+
     function checkAddSub(bool isSub, int256 a, int256 ea, int256 b, int256 eb) internal view {
         (bool mOk, bytes memory m) =
             run(isSub ? abi.encodeCall(this.mainSub, (a, ea, b, eb)) : abi.encodeCall(this.mainAdd, (a, ea, b, eb)));
@@ -398,13 +398,22 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         checkAddSubExact(isSub, a, ea, b, eb, pOk, p);
         if (mOk == pOk && keccak256(m) == keccak256(p)) return;
 
+        if (mOk) {
+            // By design (#394): past int256 main sheds each operand's last
+            // digit, the PR the sum's, one unit further from zero where those
+            // digits carry.
+            (int256 mc, int256 me) = pair(m);
+            (int256 pc, int256 pe) = pair(p);
+            assertEq(pe, me, "carry exponent");
+            assertEq(pc - mc, pc < 0 ? int256(-1) : int256(1), "carry");
+            return;
+        }
+
         // By design: main reverts MaximizeOverflow at the floor, the PR adds
         // as if the operands were lifted off it, then sheds the digits the
         // floor cannot hold.
-        assertFalse(mOk, "main reverts");
         assertEq(selector(m), MaximizeOverflow.selector, "main MaximizeOverflow");
         assertTrue(atFloor(a, ea, b, eb), "differs off the floor");
-        assertTrue(pOk, "PR returns");
     }
 
     function testMainEquivalenceAdd(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb, bool isSub)
@@ -450,6 +459,7 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         int256 max = type(int256).max;
         int256 min = type(int256).min;
         (int256 c, int256 e) = this.prAdd(max, 0, max, 0);
+        // forge-lint: disable-next-line(unsafe-typecast)
         assertEq(c, int256(uint256(max) * 2 / 10), "coefficient");
         assertEq(e, 1, "exponent");
         checkAddSub(false, max, 0, max, 0);
