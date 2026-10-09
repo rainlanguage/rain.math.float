@@ -1011,6 +1011,14 @@ library LibDecimalFloat {
     /// - A result below 1e-2147483608 sheds digits to lift its exponent to
     ///   the int32 floor, so its bound adds 1e-2147483648 absolute. Below
     ///   1e-2147483648 it reverts `ExponentUnderflow`.
+    /// A fractional part of exactly a half instead takes the root of a^(2N+1),
+    /// the integer part squared times a, rounded to nearest at 41 digits by
+    /// `LibDecimalFloatImplementation.sqrt`. The truncations above, and the
+    /// digit dropped from a coefficient past 1e76, weigh at most 4N + 3.1 in
+    /// a^(2N+1), and all round down, so its root is at most the true power
+    /// and at least e^-((2N + 1.6) 1e-75) of it. With the rounding's 5e-41
+    /// that is inside the bound: (2N + 1.6) 1e-75 is under 3N 1e-75 from N 2,
+    /// and below N 2 under the 4e-48 left in 5.0000004e-41.
     /// Monotone within rounding error: for b < c, a^b and a^c can be out of
     /// order by exactly one unit in the last place, only when both true
     /// values lie within the larger raw error, 3.33e-48 + 3N 1e-75 relative,
@@ -1039,6 +1047,7 @@ library LibDecimalFloat {
     /// `pow` before rounding and packing, so a negative base and an odd power
     /// are negated unpacked: int224.min at int32.max has no packed negation.
     /// `input` is the `a` pow was called with, which range errors report.
+    //slither-disable-next-line cyclomatic-complexity
     function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b, Float input)
         private
         pure
@@ -1082,12 +1091,18 @@ library LibDecimalFloat {
             return (signedCoefficientA, exponentA);
         }
 
+        // b splits into a whole part N and a fraction f in [0, 1), and
+        // a^b = a^N a^f. a^N is a product of copies of a, and a^f is
+        // 10^(f log10(a)), from log10 and pow10.
+        // A fraction of exactly a half is a square root instead.
         // Uses LibDecimalFloatImplementation directly (rather than the packed
         // Float API) to avoid repeated pack/unpack overhead in the squaring
         // loop and to preserve unnormalized intermediates.
         int256 exponentB;
-        int256 fractionB;
-        uint256 exponentBInteger;
+        int256 fractionB = 0;
+        // frac(b) is exactly a half.
+        bool halfB = false;
+        uint256 exponentBInteger = 0;
         {
             int256 signedCoefficientB;
             (signedCoefficientB, exponentB) = b.unpack();
@@ -1099,19 +1114,45 @@ library LibDecimalFloat {
                 (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.inv(signedCoefficientA, exponentA);
                 signedCoefficientB = -signedCoefficientB;
             }
-            int256 integerB;
-            (integerB, fractionB) = LibDecimalFloatImplementation.intFrac(signedCoefficientB, exponentB);
-            // An integer part of b past int256 is over 5.7e76 and every a but 1 is
-            // at least 1e-67 from it, so |b log10(a)| is over 2.5e9: the power is
-            // past the range, on the side a is of 1.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            if (exponentB > 76 || (exponentB > 0 && integerB > type(int256).max / int256(10 ** uint256(exponentB)))) {
-                revertPast(!isBelowOne(signedCoefficientA, exponentA), input);
+            // b is now positive and below 2^224, and its integer part is kept in
+            // int256 by the range check below, so nothing here overflows.
+            unchecked {
+                if (exponentB >= 0) {
+                    // An integer part of b past int256 is over 5.7e76 and every a
+                    // but 1 is at least 1e-67 from it, so |b log10(a)| is over
+                    // 2.5e9: the power is past the range, on the side a is of 1.
+                    if (
+                        exponentB > 76
+                            || (exponentB > 0
+                                // forge-lint: disable-next-line(unsafe-typecast)
+                                && signedCoefficientB > type(int256).max / int256(10 ** uint256(exponentB)))
+                    ) {
+                        revertPast(!isBelowOne(signedCoefficientA, exponentA), input);
+                    }
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    exponentBInteger = uint256(signedCoefficientB);
+                    if (exponentB > 0) {
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        exponentBInteger *= 10 ** uint256(exponentB);
+                    }
+                } else if (exponentB >= -76) {
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    int256 unit = int256(10 ** uint256(-exponentB));
+                    fractionB = signedCoefficientB % unit;
+                    halfB = fractionB * 2 == unit;
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    exponentBInteger = uint256(signedCoefficientB / unit);
+                } else {
+                    fractionB = signedCoefficientB;
+                }
             }
-            exponentBInteger = uint256(LibDecimalFloatImplementation.withTargetExponent(integerB, exponentB, 0));
         }
 
-        // Exponentiation by squaring.
+        // Exponentiation by squaring. N in binary is a sum of powers of two,
+        // so a^N is the product of a^(2^i) for each bit i set in N. The base
+        // runs through a, a^2, a^4, ... by squaring, and the result multiplies
+        // in each one whose bit is set, lowest bit first: under 2 log2(N) + 2
+        // multiplies rather than N.
         (int256 signedCoefficientResult, int256 exponentResult) = FLOAT_ONE.unpack();
         {
             (int256 signedCoefficientBase, int256 exponentBase) = (signedCoefficientA, exponentA);
@@ -1137,7 +1178,11 @@ library LibDecimalFloat {
             }
         }
 
+        // The result is now a^N.
         if (fractionB != 0) {
+            if (halfB) {
+                return powHalf(signedCoefficientResult, exponentResult, signedCoefficientA, exponentA);
+            }
             (int256 signedCoefficientC, int256 exponentC) =
                 LibDecimalFloatImplementation.log10Unrounded(signedCoefficientA, exponentA);
             (signedCoefficientC, exponentC) =
@@ -1155,6 +1200,36 @@ library LibDecimalFloat {
             );
         }
         return (signedCoefficientResult, exponentResult);
+    }
+
+    /// a^(N+½) as the root of a^(2N+1), from a^N in `signedCoefficientResult`
+    /// and `exponentResult`.
+    function powHalf(int256 signedCoefficientResult, int256 exponentResult, int256 signedCoefficientA, int256 exponentA)
+        private
+        pure
+        returns (int256, int256)
+    {
+        // a^(N + 1/2) is the root of a^(2N + 1), which is (a^N)^2 a. For N 0,
+        // a^N is exactly one and a^(2N + 1) is a itself.
+        (int256 signedCoefficientOne, int256 exponentOne) = FLOAT_ONE.unpack();
+        if (signedCoefficientResult != signedCoefficientOne || exponentResult != exponentOne) {
+            (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
+                signedCoefficientResult, exponentResult, signedCoefficientResult, exponentResult
+            );
+            (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
+                signedCoefficientResult, exponentResult, signedCoefficientA, exponentA
+            );
+        } else {
+            (signedCoefficientResult, exponentResult) = (signedCoefficientA, exponentA);
+        }
+        // sqrt takes a coefficient below 1e76. An int256 one is under 5.8e76,
+        // so dropping one digit, which rounds down, is enough.
+        if (signedCoefficientResult >= 1e76) {
+            signedCoefficientResult /= 10;
+            exponentResult += 1;
+        }
+        //slither-disable-next-line unused-return
+        return LibDecimalFloatImplementation.sqrt(signedCoefficientResult, exponentResult);
     }
 
     /// Rounds to 41 significant digits and packs, as `packArithmeticResult`
@@ -1232,83 +1307,22 @@ library LibDecimalFloat {
     /// sqrt a = a ^ 0.5, correctly rounded to nearest at 41 significant
     /// digits, so within half a unit in the 41st digit of the true root, under
     /// 5e-41 relative, and monotone. A perfect square whose root has at most
-    /// 41 significant digits has an exact root.
+    /// 41 significant digits has an exact root. A negative `a` reverts
+    /// `PowNegativeBase`.
     ///
-    /// Doesn't lose precision due to the exponent, for a wide range of
-    /// exponents.
+    /// The root's exponent is half of a, so it always packs.
     /// @param a The float to take the square root of.
     /// @return The square root of a.
     function sqrt(Float a) internal pure returns (Float) {
-        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (int256 signedCoefficient, int256 exponent) = powUnrounded(signedCoefficientA, exponentA, FLOAT_HALF, a);
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
-        if (signedCoefficient > 0) {
-            (signedCoefficient, exponent) = roundRoot(signedCoefficientA, exponentA, signedCoefficient, exponent);
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        if (signedCoefficient <= 0) {
+            if (signedCoefficient == 0) {
+                return FLOAT_ZERO;
+            }
+            revert PowNegativeBase(signedCoefficient, exponent);
         }
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
         return packArithmeticResult(signedCoefficient, exponent);
-    }
-
-    /// The root of a positive a correctly rounded at 41 significant digits,
-    /// from pow's root r rounded at 41 digits.
-    ///
-    /// r is within half a unit plus 3.6e-8 of a unit of the true root: pow10's
-    /// 3.28e-8 and the 2.3e-9 of half log10Unrounded's error. So the correctly
-    /// rounded root is r or a neighbour, and the midpoint m between them
-    /// decides which: the true root is past m exactly when a is past m^2. a is
-    /// never m^2, as 4 A 10^(f - 2e) below is even and (2c +- 1)^2 odd.
-    ///
-    /// With r = c 10^e for c in [1e40, 1e41) and a = A 10^f for A in
-    /// [1e75, 1e76), m^2 = (2c +- 1)^2 10^(2e) / 4, so a is past it as 4 A
-    /// 10^(f - 2e) is past (2c +- 1)^2. c^2 10^(2e) is within 1e-39 relative
-    /// of a, so 10^(f - 2e) is within that of c^2 / A, in (1e4, 1e7), and
-    /// f - 2e is in [4, 7].
-    ///
-    /// r = 10^n is never above the true root by the midpoint a decade down,
-    /// so c = 1e40 never rounds down. Below that midpoint a is within 1e-41
-    /// below 10^2n, its half log is at most a unit of 1e-50 high, 2.31e-50
-    /// relative in the root, and exp10Fixed takes every step, whose product
-    /// alone is 7.6e-50 relative below 10^(1 - 2^-16). So the unrounded root is
-    /// below the true root and rounds below 10^n.
-    /// @return signedCoefficient r, or the neighbour the root rounds to.
-    /// @return exponent Its exponent.
-    function roundRoot(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficient, int256 exponent)
-        private
-        pure
-        returns (int256, int256)
-    {
-        // A packed coefficient is below 1e75 and a packed exponent is an int32.
-        (signedCoefficientA, exponentA) = LibDecimalFloatImplementation.scaleUp(signedCoefficientA, exponentA);
-        int256 c = signedCoefficient;
-        int256 e = exponent;
-        if (c == 1e41) {
-            c = 1e40;
-            e += 1;
-        }
-        while (c < 1e40) {
-            c *= 10;
-            e -= 1;
-        }
-        // All in range as above.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 scaledA = uint256(signedCoefficientA) * 4;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 k = uint256(exponentA - 2 * e);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 m = uint256(2 * c + 1);
-        if (above(scaledA, k, m)) {
-            return (c + 1, e);
-        }
-        if (!above(scaledA, k, m - 2)) {
-            return (c - 1, e);
-        }
-        return (signedCoefficient, exponent);
-    }
-
-    /// x 10^k > m^2, for k in [0, 77].
-    function above(uint256 x, uint256 k, uint256 m) private pure returns (bool) {
-        (uint256 xHigh, uint256 xLow) = LibDecimalFloatImplementation.mul512(x, 10 ** k);
-        (uint256 mHigh, uint256 mLow) = LibDecimalFloatImplementation.mul512(m, m);
-        return xHigh > mHigh || (xHigh == mHigh && xLow > mLow);
     }
 
     /// Returns the minimum of two values.

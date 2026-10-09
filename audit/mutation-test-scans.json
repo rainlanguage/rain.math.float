@@ -409,5 +409,47 @@
       "testsAfter": 946,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-07T23:27:08Z",
+    "commit": "bf5317ec854deaf909f194dab9ad797e0f9c46f7",
+    "testsAfterCommit": "cee7bf9407a580f8a431a446cdebcfdb1803bba5",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 0,
+    "scope": "issues #346/#347 (PR branch 2026-10-07-issue-346-integer-sqrt): LibDecimalFloatImplementation.sqrt (scaling, Newton steps, low-word residual rounding), LibDecimalFloat.sqrt, and the powUnrounded b split with the sqrt(a^(2N+1)) half route. Probe suite: full forge test. The probed code does not exist at the scanned commit; kills are attributed to the tests at probe base 6b9aacd, where this PR's sqrt and pow-half tests were already written, and killedAfter counts the mutants that survived there and were killed by tests added in 42693f8 (M19, M20: testPowHalfMidpoint). Equivalent: M07 (initial guess 2^123), M17 (exponentB > 0 for the whole-b branch). M10-M14 targeted the assembly residual correction and are not counted: cee7bf9 replaced it with plain `if (residual > int256(root)) root += 1`, and its own M11 survivor was equivalent. The new line was re-probed at cee7bf9: M29 `>=`, M30 `+= 1` dropped, M31 `int256(root) - 1`, all killed by testSqrtMidpoint/testSqrtMidpointEnds/testSqrtBaseEquivalencePacked among others.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 26,
+      "killedBefore": 22,
+      "killedAfter": 2,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 747,
+      "testsAfter": 763,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T11:20:37Z",
+    "commit": "3fcfcc303dc80b6d3f19b3ea81d38dd474ee16ee",
+    "testsAfterCommit": "ea9d9887e7bbfbb1c81656da22072dbccd051de7",
+    "publishedTag": "sol-v0.2.29",
+    "commitsAheadOfTag": 9,
+    "scope": "PR #358 after merging main (#338): the powUnrounded integer-b range check inlined by the merge (H01-H06), half detection (H07-H09), powHalf (H10-H17) and the squaring guards' payload (H18, H19). Probe suite: full forge test, 820 tests, at b64565c, which is 3fcfcc3 plus a slither suppression comment. Equivalent: H01 (exponentB > 77), H03 (coefficient >=), H11 (always squares and multiplies), H14 (1e76 drop > for >=). H02 (exponentB > 75) survived there and was killed at ea9d988 by testPowHugeExponentDirection, whose (1 - 1e-67)^(+-1e76) assertions land inside the range. Killers: H04/H05 testPowHugeExponentDirection, testPowMostNegativeFloat, testRoundTripFuzzPow(Bounded); H06 testPowMostNegativeFloat, testRoundTripFuzzPow; H07/H09 testPowHalfMidpoint, testPowHalfPastTheThreshold; H08 testPowExactRoots, testPowFloor, testPowFractionExact, testPowProduct, testPowReference; H10/H12 testPowExactRoots, testPowFloor, testPowFractionExact, testPowHalfPastTheRange, testPowHalfPastTheThreshold; H13 testPowExactRoots, testPowFractionPrecision, testPowHalfIsSqrt, testPowProduct, testPowReference; H15 testPowExactRoots; H16 testPowExactRoots, testPowHalfPastTheThreshold, testPowHalfReference, testPowHalfRepresentations, testPowNegativeExponentIsInverseFuzz; H17 testPowExactRoots, testPowFloor, testPowFractionExact, testPowFractionPrecision, testPowHalfIsSqrt; H18 testPowHalfPastTheRange, testPowNegativeExponentTinyBaseOverflows, testPowSquaringPastInt256Overflow, testRoundTripFuzzPow(Bounded); H19 testPowHalfPastTheRange, testPowIssue276Counterexample, testPowSquaringPastInt256Underflow, testRoundTripFuzzPow(Bounded).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 19,
+      "killedBefore": 14,
+      "killedAfter": 1,
+      "equivalent": 4,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 820,
+      "testsAfter": 820,
+      "filed": []
+    }
   }
 ]
