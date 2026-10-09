@@ -79,9 +79,7 @@
       "confirmed": 0,
       "testsBefore": 681,
       "testsAfter": 682,
-      "filed": [
-        325
-      ]
+      "filed": [325]
     }
   },
   {
@@ -102,9 +100,7 @@
       "confirmed": 0,
       "testsBefore": 693,
       "testsAfter": 696,
-      "filed": [
-        326
-      ]
+      "filed": [326]
     }
   },
   {
@@ -251,9 +247,7 @@
       "confirmed": 0,
       "testsBefore": 778,
       "testsAfter": 785,
-      "filed": [
-        332
-      ]
+      "filed": [332]
     }
   },
   {
@@ -295,9 +289,7 @@
       "confirmed": 0,
       "testsBefore": 743,
       "testsAfter": 747,
-      "filed": [
-        335
-      ]
+      "filed": [335]
     }
   },
   {
@@ -597,9 +589,7 @@
       "confirmed": 1,
       "testsBefore": 20,
       "testsAfter": 23,
-      "filed": [
-        394
-      ]
+      "filed": [394]
     }
   },
   {
@@ -620,6 +610,69 @@
       "confirmed": 0,
       "testsBefore": 826,
       "testsAfter": 825,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T14:56:56Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "afa60dd3ed09c82d7c700ba5d65749e0abdc3f83",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #381: LibDecimalFloat.floor (F01-F08) and ceil (C01-C08), plus the oracle the old tests used, LibDecimalFloatImplementation.eq (O01). Probe suite: forge test over LibDecimalFloat.floor.t.sol and LibDecimalFloat.ceil.t.sol, 15 tests, before and after the oracle swap. Equivalent in value and bytes: F01, C01 (identity guard >= to >), F05 (sign check < to <=), C03 (integer early return skipped). Equivalent in value only: F08, C08 (subtract/add one as (1, 0) instead of (1e76, -76)); F08 was killed before only by testFloorExamples pinning an undocumented representation, which #381 replaces with numeric comparison per the Float type docs (non-canonical, numeric equality), so it survives after. O01 (Implementation.eq always true) survives both: before, the floor/ceil verdicts rested on it unchecked; after, they do not call it. Killers after: F02 testFloorExamples, testFloorNonNegative; F03 testFloorExamples, testFloorInRangeNegative; F04 testFloorExamples, testFloorInRangeNonNegative, testFloorLessThanMin; F06/F07 testFloorExamples, testFloorInRangeNegative, testFloorLessThanMin; C02 testCeilExamples, testCeilNonNegative; C04-C07 testCeilExamples, testCeilInRange, testCeilLessThanMin. No single-site mutant is killed after that survived before.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 17,
+      "killedBefore": 11,
+      "killedAfter": 0,
+      "equivalent": 6,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 15,
+      "testsAfter": 15,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T15:12:29Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "2c7608736899bbe5a53881f3a3d7fe119138914d",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #383: sqrt (LibDecimalFloat.sqrt, LibDecimalFloatImplementation.sqrt and the mul512 it reaches through mulDiv), probing the sqrt test contract before and after its oracles moved to exact arithmetic. Probe suite: forge test --mc LibDecimalFloatSqrtTest, 13 tests at 8fcfeb3, 15 at 2c76087. H1 (mul512 borrow dropped) was killed at 8fcfeb3 only by testSqrtRoundTrip, testRoundTripFuzzSqrt and testSqrtUlpFuzz through their own pow and Implementation mul/div oracles: the exact testSqrtRoundTrip at 2c76087 passes on the same eight inputs under H1, so sqrt was right there and the oracles were wrong. At 2c76087 H1 is killed by testImplementationSqrtLowWordBorrow and testImplementationSqrtReferenceFuzz, on coefficients whose 512 bit product borrows. Equivalent: S4 (512 bit Newton step divides by root + 1: its half unit drop is absorbed by the round up, 200000 fuzz runs green), S5 (round up past r + 1: differs only at N = r^2 + r + 1, which is odd, while N = A 10^s is even). Killers at 2c76087: H2 testImplementationSqrtLowWordBorrow, testSqrt, testSqrtCorrectlyRoundedFuzz; S1 testImplementationSqrtReferenceFuzz, testSqrtMidpointEnds, testSqrtReferenceFuzz; S2 testImplementationSqrtReferenceFuzz, testRoundTripFuzzSqrt, testSqrt; S3, S6, S7 testImplementationSqrtLowWordBorrow, testImplementationSqrtReferenceFuzz, testSqrt.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 9,
+      "killedBefore": 6,
+      "killedAfter": 1,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 13,
+      "testsAfter": 15,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T15:22:08Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "b1223f41f651c77a94116fe1936522636dbf29d5",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "#385: function log10Ratio (src/lib/implementation/LibDecimalFloatImplementation.sol), 24 mutants M01-M24, probe suite LibDecimalFloatImplementationLog10RatioTest at FOUNDRY_FUZZ_SEED=0x385. Before = main with the implementation-output pins; after = pins dropped, checkAgainstBc on the NatSpec one-sided bounds (1.3e-51 relative above; 1.0043 units, or C 9.6e-50 plus a unit relative, below) plus testLog10RatioRelativeSingleTerm. Newly killed: M08 (zSquared + 1) by testLog10RatioRelativeSingleTerm. M15/M16 (scale constant nudged up) were killed only by the pins before and are killed by testLog10RatioRelativeSingleTerm after. M14 (series start - 3) was killed only by the pins and stays within the documented below bound at every probed input: a tighter below bound needs a NatSpec decision. Equivalent in the domain: M12 (series stops at term <= 1e6; z^2 < 2.6e-7 leaves no term in (1, 1e6] with a nonzero successor). M03/M05 (z + 1) move z^2 by under a unit and no input breaking the documented bound was found in 200000 fuzz runs each.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 24,
+      "killedBefore": 20,
+      "killedAfter": 1,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 16,
+      "testsAfter": 17,
       "filed": []
     }
   },

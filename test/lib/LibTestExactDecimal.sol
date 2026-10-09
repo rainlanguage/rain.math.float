@@ -528,15 +528,39 @@ library LibTestExactDecimal {
         return cmpScaled(mul(abs(ca), abs(cb)), ea + eb, u512(abs(cc)), ec) == 0;
     }
 
-    /// Whether `|Σ cᵢ × 10^eᵢ| <= Σ bⱼ × 10^fⱼ` exactly, for non-negative
-    /// `bⱼ`. Every term is scaled to the least exponent of a non-zero term,
-    /// so every magnitude scaled there must stay below 2^512.
+    /// Whether `|Σ cᵢ × 10^eᵢ| <= Σ bⱼ × 10^fⱼ` exactly, under `sums`.
     function absSumLte(
         int256[] memory coefficients,
         int256[] memory exponents,
         int256[] memory boundCoefficients,
         int256[] memory boundExponents
     ) internal pure returns (bool) {
+        (U512 memory positive, U512 memory negative, U512 memory bound) =
+            sums(coefficients, exponents, boundCoefficients, boundExponents);
+        return cmp(positive, add(negative, bound)) <= 0 && cmp(negative, add(positive, bound)) <= 0;
+    }
+
+    /// Whether `Σ cᵢ × 10^eᵢ <= Σ bⱼ × 10^fⱼ` exactly, under `sums`.
+    function sumLte(
+        int256[] memory coefficients,
+        int256[] memory exponents,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) internal pure returns (bool) {
+        (U512 memory positive, U512 memory negative, U512 memory bound) =
+            sums(coefficients, exponents, boundCoefficients, boundExponents);
+        return cmp(positive, add(negative, bound)) <= 0;
+    }
+
+    /// The positive and negative parts of `Σ cᵢ × 10^eᵢ`, and `Σ bⱼ × 10^fⱼ`
+    /// for non-negative `bⱼ`. Every term is scaled to the least exponent of a
+    /// non-zero term, so every magnitude scaled there must stay below 2^512.
+    function sums(
+        int256[] memory coefficients,
+        int256[] memory exponents,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) private pure returns (U512 memory positive, U512 memory negative, U512 memory bound) {
         int256 floor = type(int256).max;
         for (uint256 i = 0; i < coefficients.length; i++) {
             if (coefficients[i] != 0 && exponents[i] < floor) {
@@ -549,9 +573,9 @@ library LibTestExactDecimal {
                 floor = boundExponents[i];
             }
         }
-        U512 memory positive = u512(0);
-        U512 memory negative = u512(0);
-        U512 memory bound = u512(0);
+        positive = u512(0);
+        negative = u512(0);
+        bound = u512(0);
         for (uint256 i = 0; i < coefficients.length; i++) {
             if (coefficients[i] == 0) {
                 continue;
@@ -571,6 +595,5 @@ library LibTestExactDecimal {
             // forge-lint: disable-next-line(unsafe-typecast)
             bound = add(bound, mulPow10(u512(abs(boundCoefficients[i])), uint256(boundExponents[i] - floor)));
         }
-        return cmp(positive, add(negative, bound)) <= 0 && cmp(negative, add(positive, bound)) <= 0;
     }
 }
