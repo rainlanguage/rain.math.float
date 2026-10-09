@@ -386,5 +386,28 @@
       "testsAfter": 915,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-09T10:05:00Z",
+    "commit": "573d863b45b87a9489df301f64da89b70a193cc7",
+    "testsAfterCommit": "ea722456c1ea88e12495f810b72d2ef2913b7081",
+    "publishedTag": "sol-v0.2.27",
+    "commitsAheadOfTag": 16,
+    "scope": "PR #338 after 573d863: packRoundedSignificant now packs itself and checks the overflow threshold only above int32.max (S01-S09, S16-S18), revertIfPastLargestFloat compares the magnitude once for both signs (S10-S15), and pow10's inlined pack (S19-S22). Suite: full forge test + cargo test -p rain-math-float-tests --release. P21 (negative side lte -> lt) of the 02a621b entry has no target any more: there is one gte on |value|, and S13 (gte -> gt) is killed by testPowExactlyAtTheOverflowThreshold, so the exact threshold is pinned for both signs. S11 (negation dropped) was killed only by fuzz (testRoundTripFuzzPow, exact_pow); testPowNegativeOddPowerPastTheRange now kills it deterministically: (-2e715827905)^3 overflows through the carry-fallback check and (-2e715827950)^3 through the rounded check, each reporting a, and (-2e715827904)^3 is -8e65 10^int32.max. Equivalent, all from |rounded| <= 1e41 (roundSignificant keeps at most 41 digits): S01 (excess > 0 -> >= 0) and S02 (> 0 -> > 1): for excess up to 25 the lift check needs |rounded| > int224.max / 10^excess >= 1.3e42 and the threshold needs |rounded| 10^excess >= 1.3e67, so neither fires and the same packLossy runs. S03 (excess <= 67 -> < 67): at excess 67, |rounded| >= 2 overflows on the rounded check, and the unrounded is at least 1.5 10^(int32.max + 67), past the threshold of 1.35 10^(int32.max + 67), so the fallback reverts the same; |rounded| = 1 lifts on both. S04 (67 -> 68, as M24): int224.max / 1e68 is 0, so every nonzero rounded value fails the lift, and both it and its unrounded value overflow. S10 (< 0 -> <= 0): negating zero is zero. S21 (pow10 window 10 -> 9, as Q02) and S22 (10 -> 11): the check reverts only past the threshold, which packLossy also refuses, and the pow10 coefficient is at most 1e41, so at exponent int32.max - 9 or lower the value is at most 10^(int32.max + 32) and the check never fires.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 22,
+      "killedBefore": 15,
+      "killedAfter": 0,
+      "strengthened": 1,
+      "equivalent": 7,
+      "open": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 945,
+      "testsAfter": 946,
+      "filed": []
+    }
   }
 ]
