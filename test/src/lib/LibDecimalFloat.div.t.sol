@@ -41,9 +41,7 @@ contract LibDecimalFloatDivTest is Test {
         int256 threshold = type(int224).max / 10 + 1;
         Float a = LibDecimalFloat.packLossless(sign * threshold, type(int32).max);
         Float b = LibDecimalFloat.packLossless(1, -1);
-        vm.expectRevert(
-            abi.encodeWithSelector(ExponentOverflow.selector, sign * threshold, int256(type(int32).max))
-        );
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, sign * threshold, int256(type(int32).max)));
         this.divExternal(a, b);
 
         Float below = LibDecimalFloat.packLossless(sign * (threshold - 1), type(int32).max);

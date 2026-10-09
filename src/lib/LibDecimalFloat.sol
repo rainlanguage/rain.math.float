@@ -798,8 +798,9 @@ library LibDecimalFloat {
             revert DivisionByZero(signedCoefficient, exponent);
         }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
-        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
-        if (!lossless && Float.unwrap(c) == bytes32(0)) {
+        (Float c,) = packLossy(signedCoefficient, exponent);
+        // No inverse is zero, so a zero Float is one that underflowed.
+        if (Float.unwrap(c) == bytes32(0)) {
             revertPast(false, float);
         }
         return c;
