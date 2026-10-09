@@ -1424,14 +1424,15 @@ mod anchors {
             .unwrap();
         let a = Dec::new(c.clone(), 1431655743);
         let b = Dec::new(15, -1);
-        let s = (num_traits::pow(c, 3) * 10).sqrt();
+        let cube: BigInt = num_traits::pow(c, 3);
+        let s = (cube * BigInt::from(10)).sqrt();
         let rounded = round41(&Dec::new(s.clone(), 2147483614));
         assert!(rounded.eq_value(&round41(&Dec::new(s + 1, 2147483614))));
         let least = Dec::new(r::int224_max() / 10 + 1, I32_MAX + 1);
         assert!(!rounded.cmp_value(&least).is_lt(), "{rounded:?}");
         assert_eq!(
-            sol_pow(&a, &b),
-            Err(revert_data(RefError::ExponentOverflow, &a, Some(&b)))
+            sol_pow(&a, &b).err(),
+            Some(revert_data(RefError::ExponentOverflow, &a, Some(&b)))
         );
     }
 
