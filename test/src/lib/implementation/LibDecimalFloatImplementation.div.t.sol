@@ -51,6 +51,18 @@ contract LibDecimalFloatImplementationDivTest is Test {
         external
         pure
     {
+        checkDivByMaxTruncatesTheExactQuotient(signedCoefficient, exponent);
+    }
+
+    /// Independent exponents almost never put the quotient's unit within 76
+    /// digits of the int256 floor, where the quotient sheds the digits below
+    /// it, so this fuzzes that window and either side of it.
+    function testDivMaxPositiveValueDenominatorNearTheFloor(int256 signedCoefficient, int256 gap) external pure {
+        int256 exponent = type(int256).min + type(int32).max + bound(gap, -10, 160);
+        checkDivByMaxTruncatesTheExactQuotient(signedCoefficient, exponent);
+    }
+
+    function checkDivByMaxTruncatesTheExactQuotient(int256 signedCoefficient, int256 exponent) internal pure {
         (int256 q, int256 qExponent) =
             LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
         uint256 denominator = uint256(type(int256).max);
