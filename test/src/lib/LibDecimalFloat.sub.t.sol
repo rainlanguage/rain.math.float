@@ -88,4 +88,36 @@ contract LibDecimalFloatSubTest is Test {
         Float floatImplementation = this.subExternal(a, b);
         assertTrue(float.eq(floatImplementation));
     }
+
+    /// #340: magnitudes cancel, so `1 - 1e-100` rounds away from zero at
+    /// `1`'s unit `1e-76`, to `1`. Truncating towards zero would give 67 nines
+    /// after the point.
+    function testSubRoundingCancelAway() external pure {
+        Float difference = LibDecimalFloat.packLossless(1, 0).sub(LibDecimalFloat.packLossless(1, -100));
+        assertTrue(difference.eq(LibDecimalFloat.packLossless(1, 0)));
+        difference = LibDecimalFloat.packLossless(-1, 0).sub(LibDecimalFloat.packLossless(-1, -100));
+        assertTrue(difference.eq(LibDecimalFloat.packLossless(-1, 0)));
+    }
+
+    /// #340: `1 - 1.5e-76` rounds away from zero at `1e-76` to `1 - 1e-76`,
+    /// then packing truncates that towards zero to 67 nines after the point.
+    function testSubRoundingCancelAwayThenPack() external pure {
+        Float difference = LibDecimalFloat.packLossless(1, 0).sub(LibDecimalFloat.packLossless(15, -77));
+        assertTrue(difference.eq(LibDecimalFloat.packLossless(1e67 - 1, -67)));
+    }
+
+    /// #340: magnitudes add, so `1 - (-1e-100)` truncates towards zero.
+    function testSubRoundingSameSign() external pure {
+        Float difference = LibDecimalFloat.packLossless(1, 0).sub(LibDecimalFloat.packLossless(-1, -100));
+        assertTrue(difference.eq(LibDecimalFloat.packLossless(1, 0)));
+    }
+
+    /// #332: 0 - int224.min is 2^223, which packs as int224.max at the same
+    /// exponent, as `minus` does.
+    function testSubZeroInt224Min() external pure {
+        Float min = LibDecimalFloat.packLossless(type(int224).min, 0);
+        Float difference = LibDecimalFloat.FLOAT_ZERO.sub(min);
+        assertEq(Float.unwrap(difference), Float.unwrap(LibDecimalFloat.packLossless(type(int224).max, 0)));
+        assertEq(Float.unwrap(difference), Float.unwrap(min.minus()));
+    }
 }

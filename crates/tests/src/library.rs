@@ -57,6 +57,12 @@ fn int256_coefficient() -> BoxedStrategy<BigInt> {
             Just(r::int256_min() + 1),
             Just(r::int256_max() - 1),
         ],
+        // Within a few of the int224 bound at some exponent, where the bound
+        // one exponent down can be the nearest Float.
+        1 => (-1i64..=3, 0u64..=10, any::<u64>(), sign).prop_map(|(d, j, low, neg)| {
+            let c = (r::int224_max() + d) * pow10(j) + BigInt::from(low) % pow10(j);
+            if neg { -c } else { c }
+        }),
         // A few significant digits over many zeros, which shed losslessly.
         1 => (1u32..=99, 60u64..=75, sign).prop_map(|(d, k, neg)| {
             let c = BigInt::from(d) * pow10(k);
@@ -539,8 +545,8 @@ fn check_parse_entry_points_with(
         (inline, want) => judge(&case, inline, want)?,
     }
 
-    // Only packing's ExponentOverflow reverts; every other error, the inline
-    // parse's own ExponentOverflow among them, is a selector.
+    // Only packing's ExponentOverflow reverts; every other error is a
+    // selector.
     let case = format!("parseDecimalFloat({s:?})");
     let (want, reverts) = match r::parse_inline(lit) {
         Err(w) => (Err(w), false),
@@ -679,6 +685,64 @@ fn library_pack_edges() {
                 }
             }
         }
+    }
+}
+
+/// #326 and #332: a value just past int224 packs as the bound one exponent
+/// down when that is nearer than shedding a digit, at the exponent ceiling
+/// too, and not when the bound's exponent is below the floor.
+#[test]
+fn library_pack_nearest_bound() {
+    let two223 = -r::int224_min();
+    let cases = [
+        (two223.clone(), 0i64, Some((r::int224_max(), 0i64, false))),
+        (two223.clone() + 1, 0, Some((r::int224_max(), 0, false))),
+        (
+            two223.clone() + 2,
+            0,
+            Some(((two223.clone() + 2) / 10, 1, true)),
+        ),
+        (
+            two223.clone() * 10 + 9,
+            0,
+            Some((r::int224_max(), 1, false)),
+        ),
+        (-two223.clone() - 1, 0, Some((r::int224_min(), 0, false))),
+        (
+            -two223.clone() - 2,
+            0,
+            Some(((-two223.clone() - 2) / 10, 1, true)),
+        ),
+        (
+            two223.clone(),
+            I32_MAX,
+            Some((r::int224_max(), I32_MAX, false)),
+        ),
+        (two223.clone() + 2, I32_MAX, None),
+        (
+            two223.clone(),
+            I32_MIN - 1,
+            Some((two223.clone() / 10, I32_MIN, false)),
+        ),
+        (
+            two223.clone(),
+            I32_MIN,
+            Some((r::int224_max(), I32_MIN, false)),
+        ),
+    ];
+    for (c, e, want) in cases {
+        let e = BigInt::from(e);
+        let got = r::pack_lossy(&c, &e);
+        match want {
+            Some((wc, we, wl)) => {
+                let (v, lossless) = got.unwrap();
+                assert_eq!((v.c, v.e, lossless), (wc, we, wl), "packLossy({c}, {e})");
+            }
+            None => assert_eq!(got.unwrap_err(), r::RefError::ExponentOverflow),
+        }
+        run(check_pack_lossy(&c, &e));
+        run(check_pack_lossless(&c, &e));
+        run(check_pack_arithmetic(&c, &e));
     }
 }
 
@@ -1314,20 +1378,21 @@ mod checker {
         );
     }
 
-    /// An inline exponent past int256 is a selector, never a revert.
+    /// An inline exponent below int256 is the precision loss selector, never
+    /// a revert and never ExponentOverflow.
     #[test]
-    fn parse_inline_overflow_is_a_selector() {
+    fn parse_inline_exponent_wrap_is_a_selector() {
         let lit = format!("9.1e{}", r::int256_min());
         let inline = || harness(H::parseDecimalFloatInlineCall { str: lit.clone() });
-        let eo = RefError::ExponentOverflow.selector();
+        let loss = RefError::ParseDecimalPrecisionLoss.selector();
         assert!(
             check_parse_entry_points_with(
                 &lit,
                 "",
                 None,
                 inline(),
-                whole(eo, B256::ZERO),
-                concrete(eo, B256::ZERO)
+                whole(loss, B256::ZERO),
+                concrete(loss, B256::ZERO)
             )
             .is_ok()
         );
@@ -1346,9 +1411,9 @@ mod checker {
             )
             .is_err()
         );
-        let loss = RefError::ParseDecimalPrecisionLoss.selector();
+        let eo = RefError::ExponentOverflow.selector();
         let wrong = Ok(H::parseDecimalFloatInlineReturn {
-            _0: loss.into(),
+            _0: eo.into(),
             _1: U256::ZERO,
             _2: I256::ZERO,
             _3: I256::ZERO,
@@ -1359,8 +1424,8 @@ mod checker {
                 "",
                 None,
                 wrong,
-                whole(eo, B256::ZERO),
-                concrete(eo, B256::ZERO)
+                whole(loss, B256::ZERO),
+                concrete(loss, B256::ZERO)
             )
             .is_err()
         );
@@ -1368,7 +1433,7 @@ mod checker {
 }
 
 /// A fraction's exponent below an int256.min exponent: the inline parse's
-/// `ExponentOverflow` selector, before any packing.
+/// `ParseDecimalPrecisionLoss` selector, before any packing.
 #[test]
 fn library_parse_exponent_wrap() {
     let min = r::int256_min();

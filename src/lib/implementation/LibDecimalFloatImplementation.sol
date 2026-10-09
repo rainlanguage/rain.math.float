@@ -8,7 +8,8 @@ import {
     Log10Zero,
     MulDivOverflow,
     DivisionByZero,
-    MaximizeOverflow
+    MaximizeOverflow,
+    Log10RatioRelativeSumTooSmall
 } from "../../error/ErrDecimalFloat.sol";
 
 /// @dev Thrown when attempting to rescale a coefficient to a target exponent
@@ -616,6 +617,12 @@ library LibDecimalFloatImplementation {
     /// when combined with other operations such as division that can result in
     /// infinite recursion such a 1/3.
     ///
+    /// Aligning truncates the smaller operand towards zero to the larger
+    /// operand's int256 unit, so the returned sum is the exact sum rounded to
+    /// that unit, or ten of them past int256: towards zero when the signs
+    /// agree, and away from zero when they differ. `1e100 + -1` returns
+    /// `1e100`. `LibDecimalFloat.add` states the rule with packing.
+    ///
     /// https://speleotrove.com/decimal/daops.html#refaddsub
     /// > add and subtract both take two operands. If either operand is a special
     /// > value then the general rules apply.
@@ -997,7 +1004,9 @@ library LibDecimalFloatImplementation {
     /// @param a The numerator, at most 1e76.
     /// @param b The denominator, at most 1e76.
     /// @param relative `true` for at least 48 significant digits however small
-    /// the log, `false` for a coefficient at the `POW_FIXED_ONE` scale.
+    /// the log, which needs a + b of at least 1e50 and reverts
+    /// `Log10RatioRelativeSumTooSmall` below it, `false` for a coefficient at
+    /// the `POW_FIXED_ONE` scale.
     /// @return signedCoefficient The signed coefficient of the log.
     /// @return exponent The exponent of the log.
     // slither-disable-start too-many-digits
@@ -1008,7 +1017,22 @@ library LibDecimalFloatImplementation {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
         uint256 sum = a + b;
-        uint256 z = mulDiv(difference, POW_FIXED_ONE, sum);
+        uint256 z;
+        int256 exponent = -50;
+        if (relative) {
+            if (sum < POW_FIXED_ONE) {
+                revert Log10RatioRelativeSumTooSmall(a, b);
+            }
+            z = mulDiv(difference, POW_FIXED_ONE, sum);
+            // difference is below 1e76 so it fits and maximizes in place.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            difference = uint256(differenceCoefficient);
+            exponent += differenceExponent;
+        } else {
+            z = mulDiv(difference, POW_FIXED_ONE, sum);
+        }
         // atanh(z) = z + z^3/3 + z^5/5 + ..., so atanh(z) / z = 1 + z^2/3 +
         // z^4/5 + ...: each term is the last times z^2 (at most 2.6e-7 here)
         // over the next odd k. Summing atanh(z) / z keeps 50 digits however
@@ -1073,16 +1097,9 @@ library LibDecimalFloatImplementation {
             term := div(mul(term, zSquared), 100000000000000000000000000000000000000000000000000)
             series := add(series, div(term, 15))
         }
-        int256 exponent = -50;
-        if (relative) {
-            // difference is below 1e76 so it fits and maximizes in place.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
-            // forge-lint: disable-next-line(unsafe-typecast)
-            difference = uint256(differenceCoefficient);
-            exponent += differenceExponent;
-        }
-        // The quotient is below 1e53 and so fits.
+        // The scaled series is below 0.8686e50, so the quotient is below it
+        // when not relative, and below int256.max / 1e50 times it when
+        // relative, as a + b is at least 1e50.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedCoefficient = int256(mulDiv(difference, mulDiv(series, 2 * POW_FIXED_ONE, POW_FIXED_LN10), sum));
         return (below ? -signedCoefficient : signedCoefficient, exponent);

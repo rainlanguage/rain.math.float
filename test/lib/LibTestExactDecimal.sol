@@ -15,12 +15,11 @@ struct U512 {
 /// are `magnitude × 10^exponent` with a 512 bit magnitude, and every
 /// comparison is decided in exact integer arithmetic.
 library LibTestExactDecimal {
-    /// A positive result packs iff its floor at `10^int32.max` fits int224, so
-    /// it overflows from `2^223 × 10^int32.max` up.
-    uint256 internal constant POSITIVE_OVERFLOW_FLOOR = 2 ** 223;
-    /// A negative result is truncated towards zero and `-2^223` fits int224, so
-    /// it overflows from `(2^223 + 1) × 10^int32.max` up.
-    uint256 internal constant NEGATIVE_OVERFLOW_FLOOR = 2 ** 223 + 1;
+    /// A result packs iff the magnitude of its floor at `10^int32.max` is at
+    /// most `2^223 + 1`: that far past the int224 bound of its sign, shedding a
+    /// digit would land below the bound, so it takes the bound (#332). Either
+    /// sign overflows from `(2^223 + 2) × 10^int32.max` up in magnitude.
+    uint256 internal constant OVERFLOW_FLOOR = 2 ** 223 + 2;
 
     function u512(uint256 x) internal pure returns (U512 memory) {
         return U512(0, x);
@@ -108,17 +107,12 @@ library LibTestExactDecimal {
         return x < 0 ? uint256(-(x + 1)) + 1 : uint256(x);
     }
 
-    function overflowFloor(bool negative) internal pure returns (uint256) {
-        return negative ? NEGATIVE_OVERFLOW_FLOOR : POSITIVE_OVERFLOW_FLOOR;
-    }
-
-    /// Whether the exact non-zero `magnitude × 10^exponent`, with the given
-    /// sign, is beyond the largest Float of that sign once truncated towards
-    /// zero.
+    /// Whether the exact non-zero `magnitude × 10^exponent`, of either sign,
+    /// packs past every Float.
     /// Exponents far enough from int32.max decide alone, as the magnitude has
     /// at most 155 digits, which also keeps `cmpScaled` clear of int256
     /// overflow for any exponent.
-    function overflows(U512 memory magnitude, int256 exponent, bool negative) internal pure returns (bool) {
+    function overflows(U512 memory magnitude, int256 exponent) internal pure returns (bool) {
         if (isZero(magnitude)) {
             return false;
         }
@@ -128,7 +122,7 @@ library LibTestExactDecimal {
         if (exponent < int256(type(int32).max) - 400) {
             return false;
         }
-        return cmpScaled(magnitude, exponent, u512(overflowFloor(negative)), type(int32).max) >= 0;
+        return cmpScaled(magnitude, exponent, u512(OVERFLOW_FLOOR), type(int32).max) >= 0;
     }
 
     /// Whether the exact non-zero `magnitude × 10^exponent` is below the
@@ -149,7 +143,7 @@ library LibTestExactDecimal {
         if (ca == 0 || cb == 0) {
             return false;
         }
-        return overflows(mul(abs(ca), abs(cb)), ea + eb, (ca < 0) != (cb < 0));
+        return overflows(mul(abs(ca), abs(cb)), ea + eb);
     }
 
     /// `|a × b|` underflows, given Float operands.
@@ -163,8 +157,7 @@ library LibTestExactDecimal {
         if (ca == 0) {
             return false;
         }
-        return
-            cmpScaled(u512(abs(ca)), ea - eb, mul(overflowFloor((ca < 0) != (cb < 0)), abs(cb)), type(int32).max) >= 0;
+        return cmpScaled(u512(abs(ca)), ea - eb, mul(OVERFLOW_FLOOR, abs(cb)), type(int32).max) >= 0;
     }
 
     /// `|a / b|` underflows, given Float operands and a non-zero `b`.
@@ -182,7 +175,6 @@ library LibTestExactDecimal {
         if (ca == 0 || cb == 0 || (ca < 0) != (cb < 0)) {
             return false;
         }
-        bool negative = ca < 0;
         if (ea < eb) {
             (ca, ea, cb, eb) = (cb, eb, ca, ea);
         }
@@ -191,14 +183,14 @@ library LibTestExactDecimal {
         if (gap <= 67) {
             // Exact: |ca| × 10^gap + |cb| at eb, below 2^223 × 10^68.
             U512 memory sum = add(mulPow10(u512(abs(ca)), gap), u512(abs(cb)));
-            return overflows(sum, eb, negative);
+            return overflows(sum, eb);
         }
         // |cb| < 10^68 <= 10^gap, so b is below one unit of a's exponent. Below
         // a's exponent no multiple of 10^int32.max lies between a and a + b.
         // At or above it, a is such a multiple and b adds its own floor.
         int256 m = type(int32).max;
         if (ea <= m) {
-            return overflows(u512(abs(ca)), ea, negative);
+            return overflows(u512(abs(ca)), ea);
         }
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 lift = uint256(ea - m);
@@ -209,7 +201,7 @@ library LibTestExactDecimal {
         uint256 drop = uint256(m - eb);
         uint256 bFloor = drop > 77 ? 0 : abs(cb) / 10 ** drop;
         U512 memory floorAtMax = add(mulPow10(u512(abs(ca)), lift), u512(bFloor));
-        return cmp(floorAtMax, u512(overflowFloor(negative))) >= 0;
+        return cmp(floorAtMax, u512(OVERFLOW_FLOOR)) >= 0;
     }
 
     /// The exact `coefficient × 10^(exponent + decimals)` as a fixed point
@@ -351,10 +343,23 @@ library LibTestExactDecimal {
         return divParts(1e76, -76, signedCoefficient, exponent);
     }
 
-    /// The parts `add` of two Floats hands to packing. Both operands are
-    /// maximized and the one at the lower exponent is truncated towards zero
-    /// to the other's, or dropped 77 or more digits below it. A sum past int256
-    /// has each addend shed a digit before summing, at one exponent higher.
+    /// The exponent of a non-zero Float's int256 unit: its last digit when
+    /// written with as many digits as an int256 coefficient holds, 77 or 76.
+    function int256Unit(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+        uint256 magnitude = abs(signedCoefficient);
+        int256 n = digits(u512(magnitude));
+        // n is at most 68, and a 77 digit magnitude fits uint256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        bool fits77 = magnitude * 10 ** uint256(77 - n) <= uint256(type(int256).max);
+        return exponent + n - (fits77 ? int256(77) : int256(76));
+    }
+
+    /// The parts `add` of two Floats hands to packing, as its NatSpec states
+    /// them: the exact sum in units of the larger operand's int256 unit,
+    /// rounded towards zero when the signs agree and away from zero when they
+    /// differ, as `signedParts`. The larger operand is a whole number of
+    /// units; the smaller is split into whole units and whether a fraction of
+    /// one remains.
     function addParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         if (ca == 0) {
             return (cb, eb);
@@ -362,23 +367,42 @@ library LibTestExactDecimal {
         if (cb == 0) {
             return (ca, ea);
         }
-        (int256 a, int256 exponentA) = maximizeFloat(ca, ea);
-        (int256 b, int256 exponentB) = maximizeFloat(cb, eb);
-        if (exponentB > exponentA) {
-            (a, exponentA, b, exponentB) = (b, exponentB, a, exponentA);
+        if (cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) < 0) {
+            (ca, ea, cb, eb) = (cb, eb, ca, ea);
         }
-        int256 gap = exponentA - exponentB;
-        if (gap > 76) {
-            return (a, exponentA);
-        }
-        // gap is in [0, 76].
+        int256 unit = int256Unit(ca, ea);
         // forge-lint: disable-next-line(unsafe-typecast)
-        b /= int256(10 ** uint256(gap));
-        bool sumOverflows = (a > 0 && b > 0 && a > type(int256).max - b) || (a < 0 && b < 0 && a < type(int256).min - b);
-        if (sumOverflows) {
-            return (a / 10 + b / 10, exponentA + 1);
+        uint256 bigUnits = abs(ca) * 10 ** uint256(ea - unit);
+        uint256 smallUnits;
+        bool smallFraction;
+        if (eb >= unit) {
+            // |cb| × 10^(eb - unit) is at most |a|'s 77 digits.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            smallUnits = abs(cb) * 10 ** uint256(eb - unit);
+        } else if (unit - eb > 68) {
+            // |cb| has at most 68 digits, so it is under one unit.
+            smallFraction = true;
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 scale = 10 ** uint256(unit - eb);
+            smallUnits = abs(cb) / scale;
+            smallFraction = abs(cb) % scale != 0;
         }
-        return (a + b, exponentA);
+        bool sameSign = (ca < 0) == (cb < 0);
+        uint256 units;
+        if (sameSign) {
+            // Towards zero drops the fraction.
+            units = bigUnits + smallUnits;
+        } else {
+            // |b| <= |a|, so this is at least zero: the whole units of the
+            // exact difference, then away from zero rounds a remaining
+            // fraction up to a unit.
+            units = bigUnits - smallUnits - (smallFraction ? 1 : 0);
+            if (smallFraction) {
+                units += 1;
+            }
+        }
+        return signedParts(ca < 0, units, unit);
     }
 
     /// Whether a Float's parts are a whole number. Below `10^-67` every
