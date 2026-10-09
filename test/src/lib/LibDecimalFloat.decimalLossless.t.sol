@@ -139,6 +139,31 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         checkFromFixedDecimalLosslessPackedRule(value, decimals);
     }
 
+    /// The rule at each boundary, which fuzzing hits only by chance.
+    function testFromFixedDecimalLosslessPackedRuleBoundaries() external {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 int224Max = uint256(int256(type(int224).max));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 int256Max = uint256(type(int256).max);
+        uint256[9] memory values = [
+            0,
+            1,
+            int224Max,
+            int224Max + 1,
+            int224Max * 10,
+            int256Max,
+            int256Max + 1,
+            int256Max / 10 * 10 + 10,
+            type(uint256).max
+        ];
+        uint8[3] memory decimalsList = [0, 18, 255];
+        for (uint256 i = 0; i < values.length; i++) {
+            for (uint256 j = 0; j < decimalsList.length; j++) {
+                checkFromFixedDecimalLosslessPackedRule(values[i], decimalsList[j]);
+            }
+        }
+    }
+
     /// Uniform values almost never end in zeros, so this also fuzzes
     /// `m × 10^z`, where the exact values past int224 are.
     function testFromFixedDecimalLosslessPackedRuleTrailingZeros(uint256 m, uint256 z, uint8 decimals) external {
