@@ -407,6 +407,27 @@
     }
   },
   {
+    "timestamp": "2026-10-07T23:27:08Z",
+    "commit": "bf5317ec854deaf909f194dab9ad797e0f9c46f7",
+    "testsAfterCommit": "cee7bf9407a580f8a431a446cdebcfdb1803bba5",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 0,
+    "scope": "issues #346/#347 (PR branch 2026-10-07-issue-346-integer-sqrt): LibDecimalFloatImplementation.sqrt (scaling, Newton steps, low-word residual rounding), LibDecimalFloat.sqrt, and the powUnrounded b split with the sqrt(a^(2N+1)) half route. Probe suite: full forge test. The probed code does not exist at the scanned commit; kills are attributed to the tests at probe base 6b9aacd, where this PR's sqrt and pow-half tests were already written, and killedAfter counts the mutants that survived there and were killed by tests added in 42693f8 (M19, M20: testPowHalfMidpoint). Equivalent: M07 (initial guess 2^123), M17 (exponentB > 0 for the whole-b branch). M10-M14 targeted the assembly residual correction and are not counted: cee7bf9 replaced it with plain `if (residual > int256(root)) root += 1`, and its own M11 survivor was equivalent. The new line was re-probed at cee7bf9: M29 `>=`, M30 `+= 1` dropped, M31 `int256(root) - 1`, all killed by testSqrtMidpoint/testSqrtMidpointEnds/testSqrtBaseEquivalencePacked among others.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 26,
+      "killedBefore": 22,
+      "killedAfter": 2,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 747,
+      "testsAfter": 763,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-07T23:55:24Z",
     "commit": "0312b68d23e8d229dd18f5d95522b4f67ce135fa",
     "testsAfterCommit": "0312b68d23e8d229dd18f5d95522b4f67ce135fa",
@@ -474,27 +495,6 @@
     }
   },
   {
-    "timestamp": "2026-10-07T23:27:08Z",
-    "commit": "bf5317ec854deaf909f194dab9ad797e0f9c46f7",
-    "testsAfterCommit": "cee7bf9407a580f8a431a446cdebcfdb1803bba5",
-    "publishedTag": "sol-v0.2.23",
-    "commitsAheadOfTag": 0,
-    "scope": "issues #346/#347 (PR branch 2026-10-07-issue-346-integer-sqrt): LibDecimalFloatImplementation.sqrt (scaling, Newton steps, low-word residual rounding), LibDecimalFloat.sqrt, and the powUnrounded b split with the sqrt(a^(2N+1)) half route. Probe suite: full forge test. The probed code does not exist at the scanned commit; kills are attributed to the tests at probe base 6b9aacd, where this PR's sqrt and pow-half tests were already written, and killedAfter counts the mutants that survived there and were killed by tests added in 42693f8 (M19, M20: testPowHalfMidpoint). Equivalent: M07 (initial guess 2^123), M17 (exponentB > 0 for the whole-b branch). M10-M14 targeted the assembly residual correction and are not counted: cee7bf9 replaced it with plain `if (residual > int256(root)) root += 1`, and its own M11 survivor was equivalent. The new line was re-probed at cee7bf9: M29 `>=`, M30 `+= 1` dropped, M31 `int256(root) - 1`, all killed by testSqrtMidpoint/testSqrtMidpointEnds/testSqrtBaseEquivalencePacked among others.",
-    "tool": "adversarial-mutation-test",
-    "skillVersion": "0.35.0",
-    "summary": {
-      "behaviours": 26,
-      "killedBefore": 22,
-      "killedAfter": 2,
-      "equivalent": 2,
-      "candidates": 0,
-      "confirmed": 0,
-      "testsBefore": 747,
-      "testsAfter": 763,
-      "filed": []
-    }
-  },
-  {
     "timestamp": "2026-10-09T11:20:37Z",
     "commit": "3fcfcc303dc80b6d3f19b3ea81d38dd474ee16ee",
     "testsAfterCommit": "ea9d9887e7bbfbb1c81656da22072dbccd051de7",
@@ -512,6 +512,27 @@
       "confirmed": 0,
       "testsBefore": 820,
       "testsAfter": 820,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T13:25:22Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "03b4466bb7469128018177fa85fd5408e32af981",
+    "publishedTag": "sol-v0.2.30",
+    "commitsAheadOfTag": 37,
+    "scope": "Issue #362: the helpers mul shares with the deleted mulSlow replay, which mulSlow co-mutated: mul512 (M01 drop the borrow from high, M02 low off by one), absUnsignedSignedCoefficient (M03 int256.min, M04 negatives off by one) and unabsUnsignedMulOrDivLossy (M05 sign test <=, M06 int256.min edge exponent, M07/M08 rescale exponent, M09/M10 sign of the fitting branch). Probe suite: testMulNotRevertAnyExpectation alone, --fuzz-seed 0x362, 20000 runs, against mulSlow at main 8fcfeb3 and against LibTestExactDecimal.mulParts at 03b4466. mulSlow killed M02 only; mulParts killed all ten.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 10,
+      "killedBefore": 1,
+      "killedAfter": 9,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 826,
+      "testsAfter": 826,
       "filed": []
     }
   },
@@ -534,6 +555,27 @@
       "confirmed": 0,
       "testsBefore": 4,
       "testsAfter": 7,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T14:15:05Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "867b13de69bf5038d03bd03bfdc3b5d1f95ba897",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #367: LibDecimalFloatImplementation.withTargetExponent, equal-exponent return (M01), shrink cutoff, wrap guard and divisor (M02-M05), grow cutoff, wrap guard, overflow check, scale and result (M06-M14), and the zero check added for #367 (Z01-Z04). Probe suite: forge test --mc LibDecimalFloatImplementationWithTargetExponentTest, main test file at the scanned commit, rewritten file at testsAfterCommit. Before: M11 and M12 (the fit check also rejecting int256.max / 10^d or int256.min / 10^d) survived, because the old overflow tests split cases by rerunning the implementation check under vm.assume and never pinned the edge coefficient. Z01 (zero check removed) is the scanned commit itself, which the old suite passes. After, all 18 are killed. Killers: M11/M12/M09/M10/M06 testWithTargetExponentScaleUpBoundaries; Z01/Z04 testWithTargetExponentExamples; Z02/Z03 testWithTargetExponentScaleUpBoundaries; M07/M13/M14 testWithTargetExponentExamples, testWithTargetExponentScaleUpBoundaries; M01/M05/M08 testWithTargetExponentExamples; M02-M04 fuzz suite.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 18,
+      "killedBefore": 12,
+      "killedAfter": 6,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 826,
+      "testsAfter": 825,
       "filed": []
     }
   }
