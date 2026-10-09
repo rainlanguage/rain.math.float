@@ -384,12 +384,12 @@ library LibDecimalFloatImplementation {
             uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
             uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
 
-            // We are going to scale the numerator up by the largest power of ten
-            // that is not larger than the denominator. This will always overflow
-            // internally to the mulDiv during the initial multiplication, in
-            // 512 bits, but will subsequently always be reduced back down to
-            // fit in 256 bits by the division of a denominator that is not
-            // smaller than the scale up.
+            // |A / B| is (|A| scale / |B|) 10^(exponentA - exponentB -
+            // log10(scale)), each exponent less its shortfall. Both magnitudes
+            // are in [1e75, 2^255] and 2^255 < 1e77, so the largest power of
+            // ten not above |B| is 1e76 or 1e75, and scale <= |B| < 10 scale. The quotient is then at most |A|, so it
+            // fits a word, and at least |A| / 10 >= 1e74, so it keeps at least 75
+            // digits. The product |A| scale needs 512 bits, which mulDiv takes.
             uint256 scale = 1e76;
             int256 adjustExponent = 76;
             if (signedCoefficientBAbs < scale) {
@@ -403,12 +403,12 @@ library LibDecimalFloatImplementation {
                 adjustExponent += shortfallA - shortfallB;
             }
 
-            // Attempt to apply the exponent adjustment.
-            // First we try to apply it to exponentA.
-            // If we cannot fully apply it we try to apply the rest to exponentB.
-            // If we still have some left over then we just return zero as
-            // the difference in exponents is too large to represent in
-            // a single result negative exponent.
+            // The result exponent is exponentA - adjustExponent - exponentB.
+            // Lowering exponentA and raising exponentB move it alike, so
+            // what exponentA cannot take above int256.min goes to exponentB.
+            // If exponentB cannot take the rest below int256.max, the
+            // exponent is below int256.min - int256.max and the quotient,
+            // under 1e77, rounds to zero.
             unchecked {
                 if (exponentA >= type(int256).min + adjustExponent) {
                     exponentA -= adjustExponent;
@@ -429,7 +429,12 @@ library LibDecimalFloatImplementation {
             int256 underflowExponentBy = 0;
 
             unchecked {
-                // This is the only case that can underflow.
+                // exponentA - exponentB is below int256.min only for a negative
+                // exponentA and positive exponentB, by u = underflowExponentBy,
+                // what exponentB has past exponentA's headroom above
+                // int256.min. The coefficient q takes u instead: q 10^e is
+                // (q / 10^u) 10^(e + u). Above int256.max is the mirror case,
+                // which reverts.
                 if (exponentA < 0 && exponentB > 0) {
                     int256 headroom = exponentA - type(int256).min;
                     underflowExponentBy = exponentB > headroom ? exponentB - headroom : int256(0);
@@ -460,8 +465,7 @@ library LibDecimalFloatImplementation {
 
                 if (underflowExponentBy > 0) {
                     if (underflowExponentBy > 76) {
-                        // This means the exponent is too small to represent even if
-                        // we truncate and downscale the signed coefficient.
+                        // |q| <= 2^255 < 1e77, so q / 10^u is zero.
                         return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
                     }
 
@@ -849,7 +853,12 @@ library LibDecimalFloatImplementation {
         int256 shed = 0;
         unchecked {
             // Binary search for the 10^shed that leaves 41 digits, shed in
-            // [1, 36] for a coefficient of 42 to 77 digits.
+            // [1, 36] for a coefficient of 42 to 77 digits. |c| / guard starts
+            // at least 1e41. The step for 2^k sheds 2^k digits when
+            // |c| / guard is at least 10^(41 + 2^k - 1), so it stays at least
+            // 1e40 and ends below 10^(41 + 2^k - 1): below 1e72 from at most
+            // 77 digits, then 1e56, 1e48, 1e44, 1e42 and 1e41. That leaves
+            // |c| / guard in [1e40, 1e41), 41 digits.
             if (signedCoefficient / 1e72 != 0) {
                 guard = 1e32;
                 shed = 32;
@@ -874,9 +883,15 @@ library LibDecimalFloatImplementation {
                 guard *= 10;
                 shed += 1;
             }
+            // c 10^e is (c / guard) 10^(e + shed) with shed >= 0, so the
+            // exponent only rises, and int256.max - shed cannot wrap.
             if (exponent > type(int256).max - shed) {
                 revert ExponentOverflow(signedCoefficient, exponent);
             }
+            // `/` and `%` truncate toward zero, so the remainder carries c's
+            // sign. A remainder of at least half of guard in magnitude, exact
+            // as guard is a power of ten from 10, moves the magnitude up: half
+            // away from zero.
             int256 rounded = signedCoefficient / guard;
             int256 remainder = signedCoefficient % guard;
             if (remainder >= guard / 2) {
@@ -1053,6 +1068,12 @@ library LibDecimalFloatImplementation {
     /// @return exponent The exponent of the scaled coefficient.
     function scaleUp(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
+            // Each step multiplies by 10^s only when c < 10^(76 - s), so c
+            // stays below 1e76, and leaves c at least 10^(76 - s). That holds
+            // as the previous step left c at least 10^(76 - 2s) (c >= 1 for
+            // the first): s is half, rounded up, of the 76, 38, 19, 10, 5, 3
+            // and 2 digits c may lack to reach 1e76, so c ends at least 1e75.
+            // c gains exactly the digits shifted, under 76 from c >= 1.
             if (signedCoefficient < 1e38) {
                 signedCoefficient *= 1e38;
                 exponent -= 38;
@@ -1104,6 +1125,15 @@ library LibDecimalFloatImplementation {
     //slither-disable-next-line cyclomatic-complexity
     function log10Reduce(uint256 x) internal pure returns (uint256, uint256 seed) {
         assembly ("memory-safe") {
+            // x is the reduced x times 10^(seed / 1e50), so log10(x) is
+            // log10(reduced) + seed / 1e50. Step i finds the i-th binary
+            // digit of log10(x / 1e75). Entering it x is below the previous
+            // threshold (1e76 at i = 1), so if x is at least this threshold,
+            // x / 10^(2^-i) is at least 1e75 - 1 and below this threshold,
+            // and otherwise x already is. The quotient is x K / 2^256 for
+            // K = 2^256 / 10^(2^-i): the high word of x K, from the product
+            // mod 2^256 - 1 (mm) and mod 2^256 (low), as `mul512`. seed adds
+            // 2^-i 1e50, exact as 1e50 = 2^50 5^50.
             if iszero(lt(x, 3162277660168379331998893544432718533719555139325216826857504852792594438640)) {
                 let mm :=
                     mulmod(x, 36616673701938843778068833497358723556965087776446405157389940026215161181517, not(0))
