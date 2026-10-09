@@ -1091,6 +1091,10 @@ library LibDecimalFloat {
             return (signedCoefficientA, exponentA);
         }
 
+        // b splits into a whole part N and a fraction f in [0, 1), and
+        // a^b = a^N a^f. a^N is a product of copies of a, and a^f is
+        // 10^(f log10(a)), from log10 and pow10.
+        // A fraction of exactly a half is a square root instead.
         // Uses LibDecimalFloatImplementation directly (rather than the packed
         // Float API) to avoid repeated pack/unpack overhead in the squaring
         // loop and to preserve unnormalized intermediates.
@@ -1144,7 +1148,11 @@ library LibDecimalFloat {
             }
         }
 
-        // Exponentiation by squaring.
+        // Exponentiation by squaring. N in binary is a sum of powers of two,
+        // so a^N is the product of a^(2^i) for each bit i set in N. The base
+        // runs through a, a^2, a^4, ... by squaring, and the result multiplies
+        // in each one whose bit is set, lowest bit first: under 2 log2(N) + 2
+        // multiplies rather than N.
         (int256 signedCoefficientResult, int256 exponentResult) = FLOAT_ONE.unpack();
         {
             (int256 signedCoefficientBase, int256 exponentBase) = (signedCoefficientA, exponentA);
@@ -1170,6 +1178,7 @@ library LibDecimalFloat {
             }
         }
 
+        // The result is now a^N.
         if (fractionB != 0) {
             if (halfB) {
                 return powHalf(signedCoefficientResult, exponentResult, signedCoefficientA, exponentA);
@@ -1200,6 +1209,8 @@ library LibDecimalFloat {
         pure
         returns (int256, int256)
     {
+        // a^(N + 1/2) is the root of a^(2N + 1), which is (a^N)^2 a. For N 0,
+        // a^N is exactly one and a^(2N + 1) is a itself.
         (int256 signedCoefficientOne, int256 exponentOne) = FLOAT_ONE.unpack();
         if (signedCoefficientResult != signedCoefficientOne || exponentResult != exponentOne) {
             (signedCoefficientResult, exponentResult) = LibDecimalFloatImplementation.mul(
@@ -1211,6 +1222,8 @@ library LibDecimalFloat {
         } else {
             (signedCoefficientResult, exponentResult) = (signedCoefficientA, exponentA);
         }
+        // sqrt takes a coefficient below 1e76. An int256 one is under 5.8e76,
+        // so dropping one digit, which rounds down, is enough.
         if (signedCoefficientResult >= 1e76) {
             signedCoefficientResult /= 10;
             exponentResult += 1;

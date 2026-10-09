@@ -1086,34 +1086,25 @@ library LibDecimalFloatImplementation {
     }
 
     /// The square root of a positive float, rounded to nearest at 41
-    /// significant digits. A root is never a midpoint: (2r + 1)^2 is odd and
-    /// 4N even.
-    ///
-    /// With the coefficient C scaled into [1e75, 1e76), N is C 1e5 for an odd
-    /// exponent and C 1e6 for an even one, so sqrt N is in [1e40, 1e41) and
-    /// its exponent is whole.
-    ///
-    /// The estimate is 1e3 times the Newton root of C / 10 or C, whose root is
-    /// in [2^122.9, 2^126.3): from 2^125, the seventh iterate is within
-    /// 4.7e-27 relative above it and at least its floor. So the estimate is
-    /// within 4.7e14 of sqrt N, and one Newton step over N lands within 1.2e-11
-    /// above sqrt N and at least its floor: on the floor or one above.
-    ///
-    /// One above the floor, it is within 1.2e-11 of sqrt N, so past the
-    /// midpoint below it, and is the rounded root. On the floor r, the root
-    /// rounds up exactly when N - r^2 > r. |N - r^2| is at most 2r + 1, far
-    /// under 2^255, so the low words of N and r^2 give it signed, though N
-    /// passes 2^256, and negative is the case one above.
+    /// significant digits. There is never a tie: the root is taken of an
+    /// integer N, and r + 1/2 squared is r^2 + r + 1/4, never an integer.
     /// @param signedCoefficient The coefficient, in (0, 1e76).
     /// @param exponent The exponent, at least `type(int256).min + 81`.
     /// @return signedCoefficient The root's coefficient, in [1e40, 1e41].
     /// @return exponent The root's exponent.
     function sqrt(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        // The value is C 10^e with C in [1e75, 1e76). A root halves e, so it
+        // is taken of N 10^(e - s) with N = C 10^s and e - s even: s is 5 for
+        // an odd e and 6 for an even one. N is in [1e80, 1e82), so sqrt N is
+        // in [1e40, 1e41) at exponent (e - s) / 2.
         (signedCoefficient, exponent) = scaleUp(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 coefficient = uint256(signedCoefficient);
             uint256 scale = 1e6;
+            // N passes 2^256, so first find the root of E = N / 1e6, which is C
+            // or C / 10, and multiply it by 1e3. E is in [1e74, 1e76), so its
+            // root is in [1e37, 1e38), which is [2^122.9, 2^126.3).
             uint256 estimate = coefficient;
             if (exponent & 1 == 1) {
                 scale = 1e5;
@@ -1122,6 +1113,15 @@ library LibDecimalFloatImplementation {
             // forge-lint: disable-next-line(unsafe-typecast)
             exponent = (exponent - (scale == 1e5 ? int256(5) : int256(6))) / 2;
             uint256 root;
+            // A Newton step replaces a guess x of sqrt E by the average of x
+            // and E / x. One is above the root and the other below it, so the
+            // average is closer: x = r (1 + d) becomes r (1 + d^2 / (2 (1 + d))).
+            // From the first step on x is above the root, and, rounded down, at
+            // least its floor. Once d is small each step about squares it.
+            // The first line is the step from 2^125, (2^125 + E / 2^125) / 2, as
+            // shifts. 2^125 is at most 4.25 times the root, so d starts at most
+            // 3.25 (-0.57 from the other end gives less), and seven steps take
+            // it to 1.24, 0.34, 0.044, 9.4e-4, 4.4e-7, 9.6e-14, 4.6e-27.
             assembly ("memory-safe") {
                 root := add(shr(126, estimate), shl(124, 1))
                 root := shr(1, add(root, div(estimate, root)))
@@ -1131,8 +1131,19 @@ library LibDecimalFloatImplementation {
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))
             }
+            // Times 1e3, root is within 4.6e-27 relative of sqrt N, so within
+            // 4.7e14 as sqrt N is below 1e41 (the floors take off at most 1e3
+            // more). One step over N itself, its quotient across 512 bits,
+            // leaves it at most (4.7e14)^2 / (2 1e40), under 1.2e-11, above
+            // sqrt N, and at least its floor: on the floor or one above.
             root *= 1e3;
             root = (root + mulDiv(coefficient, scale, root)) >> 1;
+            // One above the floor, root is within 1.2e-11 of sqrt N and so
+            // already nearest. On the floor r, sqrt N is past r + 1/2 exactly
+            // when N - r^2 > r. N - r^2 is in [-(2r + 1), 2r], tiny next to
+            // 2^255, so subtracting the low words of N and r^2 gives it exactly
+            // and signed, though both pass 2^256. One above the floor it is
+            // negative and never rounds up.
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 residual = int256(coefficient * scale - root * root);
             // forge-lint: disable-next-line(unsafe-typecast)
