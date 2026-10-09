@@ -535,4 +535,84 @@ library LibTestExactDecimal {
         }
         return cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) == 0;
     }
+
+    /// Whether `ca × 10^ea × cb × 10^eb` is exactly `cc × 10^ec`.
+    function productEq(int256 ca, int256 ea, int256 cb, int256 eb, int256 cc, int256 ec) internal pure returns (bool) {
+        if (ca == 0 || cb == 0 || cc == 0) {
+            return (ca == 0 || cb == 0) && cc == 0;
+        }
+        if (((ca < 0) != (cb < 0)) != (cc < 0)) {
+            return false;
+        }
+        return cmpScaled(mul(abs(ca), abs(cb)), ea + eb, u512(abs(cc)), ec) == 0;
+    }
+
+    /// Whether `|Σ cᵢ × 10^eᵢ| <= Σ bⱼ × 10^fⱼ` exactly, under `sums`.
+    function absSumLte(
+        int256[] memory coefficients,
+        int256[] memory exponents,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) internal pure returns (bool) {
+        (U512 memory positive, U512 memory negative, U512 memory bound) =
+            sums(coefficients, exponents, boundCoefficients, boundExponents);
+        return cmp(positive, add(negative, bound)) <= 0 && cmp(negative, add(positive, bound)) <= 0;
+    }
+
+    /// Whether `Σ cᵢ × 10^eᵢ <= Σ bⱼ × 10^fⱼ` exactly, under `sums`.
+    function sumLte(
+        int256[] memory coefficients,
+        int256[] memory exponents,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) internal pure returns (bool) {
+        (U512 memory positive, U512 memory negative, U512 memory bound) =
+            sums(coefficients, exponents, boundCoefficients, boundExponents);
+        return cmp(positive, add(negative, bound)) <= 0;
+    }
+
+    /// The positive and negative parts of `Σ cᵢ × 10^eᵢ`, and `Σ bⱼ × 10^fⱼ`
+    /// for non-negative `bⱼ`. Every term is scaled to the least exponent of a
+    /// non-zero term, so every magnitude scaled there must stay below 2^512.
+    function sums(
+        int256[] memory coefficients,
+        int256[] memory exponents,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) private pure returns (U512 memory positive, U512 memory negative, U512 memory bound) {
+        int256 floor = type(int256).max;
+        for (uint256 i = 0; i < coefficients.length; i++) {
+            if (coefficients[i] != 0 && exponents[i] < floor) {
+                floor = exponents[i];
+            }
+        }
+        for (uint256 i = 0; i < boundCoefficients.length; i++) {
+            require(boundCoefficients[i] >= 0, "negative bound");
+            if (boundCoefficients[i] != 0 && boundExponents[i] < floor) {
+                floor = boundExponents[i];
+            }
+        }
+        positive = u512(0);
+        negative = u512(0);
+        bound = u512(0);
+        for (uint256 i = 0; i < coefficients.length; i++) {
+            if (coefficients[i] == 0) {
+                continue;
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            U512 memory scaled = mulPow10(u512(abs(coefficients[i])), uint256(exponents[i] - floor));
+            if (coefficients[i] < 0) {
+                negative = add(negative, scaled);
+            } else {
+                positive = add(positive, scaled);
+            }
+        }
+        for (uint256 i = 0; i < boundCoefficients.length; i++) {
+            if (boundCoefficients[i] == 0) {
+                continue;
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bound = add(bound, mulPow10(u512(abs(boundCoefficients[i])), uint256(boundExponents[i] - floor)));
+        }
+    }
 }

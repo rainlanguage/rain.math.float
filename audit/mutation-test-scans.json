@@ -708,6 +708,27 @@
     }
   },
   {
+    "timestamp": "2026-10-09T17:35:58Z",
+    "commit": "783048c0806005267756acef831ee1fae14be3f8",
+    "testsAfterCommit": "ccef4388191d714f09d7513ca665f62a2f457300",
+    "publishedTag": "sol-v0.2.33",
+    "commitsAheadOfTag": 39,
+    "scope": "Issue #369: the implementation tests that checked algebraic properties through the library's own comparator, rewritten against LibTestExactDecimal (cmpParts, eq, productEq, absSumLte, addPartsWide). Before = main's tests at the scanned commit, after = the rewritten tests at testsAfterCommit; src is identical. All probes run with --fuzz-seed 1. Per-group suites (only the tests #369 rewrote for that property): cmp (testAgainstExactOrder/testDualities, testMin, testMinMaxPartitionThePair, testMaxIsOneOfTheInputsAndNotLess, testLteTotalOrder) M01 compareRescale scales one digit short: survived before, killed after. minus (testDoubleNegation) M02 minus does not negate: survived before, killed after. divby1 (testDivBy1, testDivByNegativeOneFloat) M03 maximize's last step keeps the exponent: killed before and after. mul (testMulCommutative, testMulIdentity) M04 mul sheds 37 digits but counts 38: survived before, killed after. mintie (testMin, testMinMaxPartitionThePair) M06 min tie returns A: survived before, killed after in the group run, but survived the combined run of every rewritten test at the same seed, so the kill depends on fuzz reaching a value tie with distinct parts; the pre-existing testMinTieReturnsB kills it deterministically. add (testAddCommutative) M05 add aligns B one digit too far: killed before and after; A03 far-apart cutoff one gap early and A04 positive overflow sheds by 9: survived before, killed after by the exact addPartsWide check; A02 swap drops the shortfall tiebreak survived both, as testAddCommutative bounds exponents away from the floor where a shortfall exists, and the full suite kills it via testAddAtFloor and testSubAtFloor. Combined run of every rewritten implementation test (41 before, 42 after) also covers M07 log10Ratio series divisor and M08 log10Unrounded correction digit, killed before and after.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 11,
+      "killedBefore": 6,
+      "killedAfter": 3,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 840,
+      "testsAfter": 840,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-09T17:46:11Z",
     "commit": "783048c0806005267756acef831ee1fae14be3f8",
     "testsAfterCommit": "65f6e4d8094ae3f1aab42000f896637f2e7dbc7d",

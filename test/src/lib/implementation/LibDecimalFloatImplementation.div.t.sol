@@ -224,14 +224,14 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
         (int256 resultCoeff, int256 resultExp) =
             LibDecimalFloatImplementation.div(signedCoefficient, exponent, signedCoefficient, exponent);
-        assertTrue(LibDecimalFloatImplementation.eq(resultCoeff, resultExp, 1, 0), "a / a should equal 1");
+        assertTrue(LibTestExactDecimal.eq(resultCoeff, resultExp, 1, 0), "a / a should equal 1");
     }
 
     /// Should be possible to divide every number by 1.
     function testDivBy1(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, type(int256).min + 76, type(int256).max);
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
+            LibTestExactDecimal.maximizeFloat(signedCoefficient, exponent);
 
         int256 one = 1;
         for (int256 oneExponent = 0; oneExponent >= -76; --oneExponent) {
@@ -245,10 +245,9 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     function testDivByNegativeOneFloat(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, type(int256).min + 76, type(int256).max - 1);
+        (int256 maximized, int256 maximizedExponent) = LibTestExactDecimal.maximizeFloat(signedCoefficient, exponent);
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
-        (expectedCoefficient, expectedExponent) =
-            LibDecimalFloatImplementation.minus(expectedCoefficient, expectedExponent);
+            LibTestExactDecimal.signedParts(maximized > 0, LibTestExactDecimal.abs(maximized), maximizedExponent);
 
         int256 negativeOne = -1;
         for (int256 oneExponent = 0; oneExponent >= -76; --oneExponent) {
@@ -291,8 +290,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         }
     }
 
-    /// Asserts the round trip identity `(a / b) * b == a` (as a value, via `eq`)
-    /// for exact divisions. This pins both the quotient mantissa AND the exponent
+    /// Asserts `(a / b) * b == a` exactly for exact divisions. This pins both the quotient mantissa AND the exponent
     /// bookkeeping (including the `adjustExponent` constant selected for `b`),
     /// because a wrong `adjustExponent` would scale the quotient by a power of
     /// ten and break the equality.
@@ -302,8 +300,10 @@ contract LibDecimalFloatImplementationDivTest is Test {
     {
         (int256 q, int256 qe) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, signedCoefficientB, exponentB);
-        assertTrue(LibDecimalFloatImplementation.eq(back, backE, signedCoefficientA, exponentA), "(a / b) * b == a");
+        assertTrue(
+            LibTestExactDecimal.productEq(q, qe, signedCoefficientB, exponentB, signedCoefficientA, exponentA),
+            "(a / b) * b == a"
+        );
     }
 
     /// A divisor at `type(int256).min` with every digit count its shortfall
@@ -321,8 +321,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
             assertEq(q, 3e75, "quotient mantissa");
             // The exponent is enormous (close to -type(int256).min) so it is
             // pinned by the round trip rather than a literal here.
-            (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, divisors[i], min);
-            assertTrue(LibDecimalFloatImplementation.eq(back, backE, numerator, 0), "round trip");
+            assertTrue(LibTestExactDecimal.productEq(q, qe, divisors[i], min, numerator, 0), "round trip");
         }
     }
 
@@ -342,8 +341,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         int256 min = type(int256).min;
         (int256 q, int256 qe) = LibDecimalFloatImplementation.div(18e75, 0, 6e75, min);
         assertEq(q, 3e75, "full divisor quotient mantissa");
-        (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, 6e75, min);
-        assertTrue(LibDecimalFloatImplementation.eq(back, backE, 18e75, 0), "full divisor round trip");
+        assertTrue(LibTestExactDecimal.productEq(q, qe, 6e75, min, 18e75, 0), "full divisor round trip");
     }
 
     /// A maximized divisor at or above 1e76 keeps the starting
@@ -469,7 +467,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
             checkDiv(-numerator, min, 3, min, -THREES, -77 + digits);
             checkDiv(numerator, min, 3, min + 76, THREES, -153 + digits);
             (int256 quotient, int256 quotientExponent) = LibDecimalFloatImplementation.div(numerator * 7, min, 7, min);
-            assertTrue(LibDecimalFloatImplementation.eq(quotient, quotientExponent, 1, digits - 1), "7n / 7 == n");
+            assertTrue(LibTestExactDecimal.eq(quotient, quotientExponent, 1, digits - 1), "7n / 7 == n");
             numerator *= 10;
         }
     }
@@ -492,7 +490,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         int256 numerator = quotient * divisor;
         (int256 q, int256 qe) =
             LibDecimalFloatImplementation.div(numerator, type(int256).min, divisor, type(int256).min + shift);
-        (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, divisor, type(int256).min + shift);
-        assertTrue(LibDecimalFloatImplementation.eq(back, backE, numerator, type(int256).min), "(a / b) * b == a");
+        // Both sides divided by 10^type(int256).min.
+        assertTrue(LibTestExactDecimal.productEq(q, qe, divisor, shift, numerator, 0), "(a / b) * b == a");
     }
 }

@@ -10,6 +10,7 @@ import {
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMinusTest is Test {
     /// Minus is the exact `-x` at the same exponent, by the
@@ -55,8 +56,9 @@ contract LibDecimalFloatImplementationMinusTest is Test {
         (int256 negCoeff, int256 negExp) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
         (int256 doubleNegCoeff, int256 doubleNegExp) = LibDecimalFloatImplementation.minus(negCoeff, negExp);
 
+        assertTrue(LibTestExactDecimal.eq(negCoeff, negExp, -signedCoefficient, exponent), "-a");
         assertTrue(
-            LibDecimalFloatImplementation.eq(signedCoefficient, exponent, doubleNegCoeff, doubleNegExp),
+            LibTestExactDecimal.eq(signedCoefficient, exponent, doubleNegCoeff, doubleNegExp),
             "double negation should be identity"
         );
     }

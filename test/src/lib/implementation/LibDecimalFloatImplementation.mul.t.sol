@@ -123,13 +123,11 @@ contract LibDecimalFloatImplementationMulTest is Test {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX / 2);
 
         (int256 resultCoeff, int256 resultExp) = LibDecimalFloatImplementation.mul(signedCoefficient, exponent, 1, 0);
-        assertTrue(
-            LibDecimalFloatImplementation.eq(resultCoeff, resultExp, signedCoefficient, exponent),
-            "a * 1 should equal a"
-        );
+        assertTrue(LibTestExactDecimal.eq(resultCoeff, resultExp, signedCoefficient, exponent), "a * 1 should equal a");
     }
 
-    /// a * b == b * a for all in-range inputs.
+    /// a * b and b * a are both the exact product's parts. The exponent
+    /// sum stays above the floor, so no digits are shed into it.
     function testMulCommutative(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -144,8 +142,12 @@ contract LibDecimalFloatImplementationMulTest is Test {
         (int256 coeffBA, int256 expBA) =
             LibDecimalFloatImplementation.mul(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
 
-        assertEq(coeffAB, coeffBA, "commutative coefficient");
-        assertEq(expAB, expBA, "commutative exponent");
+        (int256 expectedCoeff, int256 expectedExp) =
+            LibTestExactDecimal.mulParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(coeffAB, expectedCoeff, "a * b coefficient");
+        assertEq(expAB, expectedExp, "a * b exponent");
+        assertEq(coeffBA, expectedCoeff, "b * a coefficient");
+        assertEq(expBA, expectedExp, "b * a exponent");
     }
 
     function testMulNotRevertAnyExpectation(
@@ -211,7 +213,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         (int256 q, int256 qe) =
             LibDecimalFloatImplementation.div(19507 * -77, type(int256).min, -77, type(int256).min + 11002);
         (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, -77, type(int256).min + 11002);
-        assertTrue(LibDecimalFloatImplementation.eq(back, backE, 19507 * -77, type(int256).min));
+        assertTrue(LibTestExactDecimal.eq(back, backE, 19507 * -77, type(int256).min));
     }
 
     /// The digits `mul` drops when the product is wider than 256 bits lift
