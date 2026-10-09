@@ -800,10 +800,18 @@ library LibDecimalFloatImplementation {
                     revert ExponentOverflow(signedCoefficientA, exponentA);
                 }
 
-                signedCoefficientA /= 10;
-                signedCoefficientB /= 10;
+                // Shed the exact sum's last digit, so the operands' last digits
+                // carry. c is the sum mod 2^256: the sum is uint256(c) when
+                // positive, else c - 2^256, which truncates to
+                // (c + 3) / 10 - (2^256 - 1) / 10.
+                if (signedCoefficientA > 0) {
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    signedCoefficientA = int256(uint256(c) / 10);
+                } else {
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    signedCoefficientA = int256((uint256(c) + 3) / 10) - int256(type(uint256).max / 10);
+                }
                 exponentA++;
-                signedCoefficientA += signedCoefficientB;
             } else {
                 signedCoefficientA = c;
             }

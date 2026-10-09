@@ -11,6 +11,7 @@ import {
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibDecimalFloatImplementationAddPre394} from "test/lib/LibDecimalFloatImplementationAddPre394.sol";
 
 contract LibDecimalFloatImplementationAddTest is Test {
     function addExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -517,5 +518,84 @@ contract LibDecimalFloatImplementationAddTest is Test {
             ),
             "shifted sum"
         );
+    }
+
+    /// `add` returns the parts its NatSpec states for any int256 parts, and
+    /// reverts `ExponentOverflow` where their exponent is past int256.
+    function checkAddExact(int256 a, int256 ea, int256 b, int256 eb) internal view {
+        (bool overflows, int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.addPartsWide(a, ea, b, eb);
+        try this.addExternal(a, ea, b, eb) returns (int256 signedCoefficient, int256 exponent) {
+            assertFalse(overflows, "exact sum overflows");
+            assertEq(signedCoefficient, expectedSignedCoefficient, "exact coefficient");
+            assertEq(exponent, expectedExponent, "exact exponent");
+        } catch (bytes memory err) {
+            assertTrue(overflows, "exact sum returns");
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertEq(bytes4(err), ExponentOverflow.selector, "ExponentOverflow");
+        }
+    }
+
+    /// `c` with its last `shift % 78` digits dropped.
+    function dropDigits(int256 c, uint8 shift) internal pure returns (int256) {
+        return c / int256(10 ** (uint256(shift) % 78));
+    }
+
+    /// #394: past int256 the sum sheds its own last digit, so the last digits
+    /// of the operands carry. `2 × int256.max` and `2 × int256.min` are
+    /// `±(2^256 - 2)` and `-2^256`, both `±1157…963993` tens.
+    function testAddOverflowKeepsCarry() external view {
+        int256 max = type(int256).max;
+        int256 min = type(int256).min;
+        checkAdd(max, 0, max, 0, 11579208923731619542357098500868790785326998466564056403945758400791312963993, 1);
+        checkAdd(min, 0, min, 0, -11579208923731619542357098500868790785326998466564056403945758400791312963993, 1);
+        checkAdd(max, 0, 9, 0, 5789604461865809771178549250434395392663499233282028201972879200395656481997, 1);
+        checkAdd(min, 0, -9, 0, -5789604461865809771178549250434395392663499233282028201972879200395656481997, 1);
+        checkAdd(-9, 0, min, 0, -5789604461865809771178549250434395392663499233282028201972879200395656481997, 1);
+        // Last digits summing to 9 do not carry.
+        checkAdd(max, 0, 2, 0, 5789604461865809771178549250434395392663499233282028201972879200395656481996, 1);
+        checkAdd(min, 0, -1, 0, -5789604461865809771178549250434395392663499233282028201972879200395656481996, 1);
+        checkAddExact(max, 0, max, 0);
+        checkAddExact(min, 0, min, 0);
+        checkAddExact(max, 0, 9, 0);
+        checkAddExact(min, 0, -9, 0);
+        checkAddExact(max, 0, 2, 0);
+        checkAddExact(min, 0, -1, 0);
+        checkAddExact(min, 0, max, 0);
+        checkAddExact(min, 0, min, 1);
+        checkAddExact(min, min, min, min);
+        checkAddExact(min, max, min, max);
+    }
+
+    function testAddMatchesExact(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external view {
+        checkAddExact(dropDigits(a, sa), ea, dropDigits(b, sb), eb);
+    }
+
+    /// Exponents close enough that the sum can carry past int256.
+    function testAddNearbyMatchesExact(int256 a, int256 ea, int256 b, uint256 gap, uint8 sa, uint8 sb) external view {
+        ea = bound(ea, type(int256).min + 80, type(int256).max);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkAddExact(dropDigits(a, sa), ea, dropDigits(b, sb), ea - int256(bound(gap, 0, 80)));
+    }
+
+    /// Exponents at or near the floor, where the sum sheds what it cannot
+    /// hold.
+    function testAddNearFloorMatchesExact(int256 a, uint256 ea, int256 b, uint256 eb, uint8 sa, uint8 sb)
+        external
+        view
+    {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentA = type(int256).min + int256(bound(ea, 0, 160));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponentB = type(int256).min + int256(bound(eb, 0, 160));
+        checkAddExact(dropDigits(a, sa), exponentA, dropDigits(b, sb), exponentB);
+    }
+
+    /// Float operands maximize to coefficients with a zero last digit, so no
+    /// carry is lost and `add` returns what it did before #394.
+    function testAddFloatRangeMatchesPre394(int224 a, int32 ea, int224 b, int32 eb) external pure {
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibDecimalFloatImplementationAddPre394.add(a, ea, b, eb);
+        checkAdd(a, ea, b, eb, expectedSignedCoefficient, expectedExponent);
     }
 }
