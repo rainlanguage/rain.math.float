@@ -604,6 +604,29 @@ library LibDecimalFloat {
     /// Same as add, but accepts a Float struct instead of separate values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
+    ///
+    /// The result is the exact sum rounded twice:
+    /// 1. To a multiple of the larger operand's int256 unit, the place of its
+    ///    last digit when written with as many digits as an int256
+    ///    coefficient holds (77, or 76 when 77 would exceed int256). This
+    ///    rounds towards zero when the signs agree, so the magnitudes add,
+    ///    and away from zero when the signs differ, so the magnitudes cancel.
+    /// 2. Packed as every arithmetic result is, truncating towards zero to an
+    ///    int224 coefficient.
+    ///
+    /// So when the magnitudes add, the result is the exact sum truncated
+    /// towards zero. When they cancel it is neither always that nor always
+    /// the closest Float:
+    /// - `1e100 + 1e-100` is `1e100`. The magnitudes add.
+    /// - `1e100 + -1` is `1e100`. The unit of `1e100` is `1e24`, and
+    ///   `1e100 - 1` rounds away from zero to `1e100`. Truncating would give
+    ///   `(1e67 - 1)e33`.
+    /// - `1 + -1e-100` is `1`. The unit of `1` is `1e-76`.
+    /// - `1e100 + -(1e33 + 1)` is `1e100 - 1e33`, rounded away from zero at
+    ///   `1e24` and then kept by packing. Truncating would give
+    ///   `1e100 - 2e33`.
+    /// - `1e100 + -1.7e33` is `1e100 - 2e33`. It is exact at `1e24`, so only
+    ///   packing rounds it, towards zero.
     /// @param a The Float struct containing the signed coefficient and
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
@@ -623,7 +646,12 @@ library LibDecimalFloat {
     /// Subtract float b from float a.
     ///
     /// This is effectively shorthand for adding the two floats with the second
-    /// float negated. Therefore, the same caveats apply as for `add`.
+    /// float negated. Therefore, the same caveats apply as for `add`, and it
+    /// rounds as `add(a, -b)`: towards zero when the signs of `a` and `b`
+    /// differ, so the magnitudes add, and away from zero at the larger
+    /// operand's int256 unit, then towards zero when packed, when the signs
+    /// agree, so the magnitudes cancel. `1 - 1e-100` is `1`, where truncating
+    /// would give 67 nines after the point, and `1 - (-1e-100)` is `1`.
     /// @param a The float to subtract from.
     /// @param b The float to subtract.
     /// @return The difference of the two floats (a - b).
