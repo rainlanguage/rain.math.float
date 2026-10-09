@@ -950,7 +950,9 @@ library LibDecimalFloat {
             revertPast(signedCoefficient > 0, float);
         }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
-        // packPowResult, inlined to keep a call off the common path.
+        // packArithmeticResult with range errors reporting `float`. packLossy
+        // sheds at most ten digits, so an exponent ten below int32.max cannot
+        // overflow. A checked subtraction is computed at run time.
         int256 ceilingLessTen;
         unchecked {
             ceilingLessTen = int256(type(int32).max) - 10;
@@ -1152,8 +1154,9 @@ library LibDecimalFloat {
         return (signedCoefficientResult, exponentResult);
     }
 
-    /// Rounds to 41 significant digits and packs. A rounding that carries
-    /// above the largest Float packs the unrounded value instead.
+    /// Rounds to 41 significant digits and packs, as `packArithmeticResult`
+    /// with range errors reporting `input`. A rounding that carries above the
+    /// largest Float packs the unrounded value instead.
     function packRoundedSignificant(int256 signedCoefficient, int256 exponent, Float input)
         private
         pure
@@ -1161,19 +1164,30 @@ library LibDecimalFloat {
     {
         (int256 roundedCoefficient, int256 roundedExponent) =
             LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
-        // Only a carry can leave the unrounded value packable. When the rounded
-        // value cannot lift, the unrounded one is packed. Past an excess of 67
-        // neither can lift.
+        // The rounded coefficient is at most 1e41, so it packs without overflow
+        // at an exponent up to int32.max. Above it, only a carry can leave the
+        // unrounded value packable: when the rounded value cannot lift, the
+        // unrounded one is packed. Past an excess of 67 neither can lift.
         int256 excess = roundedExponent - type(int32).max;
-        if (excess > 0 && excess <= 67) {
-            // excess is in [1, 67] so the casts cannot truncate.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            int256 scale = int256(10 ** uint256(excess));
-            if (roundedCoefficient > type(int224).max / scale || roundedCoefficient < type(int224).min / scale) {
-                return packPowResult(signedCoefficient, exponent, input);
+        if (excess > 0) {
+            if (excess <= 67) {
+                // excess is in [1, 67] so the casts cannot truncate.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                int256 scale = int256(10 ** uint256(excess));
+                if (roundedCoefficient > type(int224).max / scale || roundedCoefficient < type(int224).min / scale) {
+                    // Above int32.max this cannot underflow.
+                    revertIfPastLargestFloat(signedCoefficient, exponent, input);
+                    (Float unrounded,) = packLossy(signedCoefficient, exponent);
+                    return unrounded;
+                }
             }
+            revertIfPastLargestFloat(roundedCoefficient, roundedExponent, input);
         }
-        return packPowResult(roundedCoefficient, roundedExponent, input);
+        (Float c, bool lossless) = packLossy(roundedCoefficient, roundedExponent);
+        if (!lossless && Float.unwrap(c) == bytes32(0)) {
+            revertPast(false, input);
+        }
+        return c;
     }
 
     /// The range error of a pow or pow10 result past every Float, reporting
@@ -1186,35 +1200,18 @@ library LibDecimalFloat {
         revert ExponentUnderflow(signedCoefficient, exponent);
     }
 
-    /// `packArithmeticResult` for pow and pow10 (inlined there), its range
-    /// errors reporting the call's input. `packLossy` sheds at most ten
-    /// digits, so an exponent ten below int32.max cannot overflow.
-    function packPowResult(int256 signedCoefficient, int256 exponent, Float input) private pure returns (Float) {
-        int256 ceilingLessTen;
-        // A checked subtraction is computed at run time, for over 100 gas.
-        unchecked {
-            ceilingLessTen = int256(type(int32).max) - 10;
-        }
-        if (exponent > ceilingLessTen) {
-            revertIfPastLargestFloat(signedCoefficient, exponent, input);
-        }
-        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
-        if (!lossless && Float.unwrap(c) == bytes32(0)) {
-            revertPast(false, input);
-        }
-        return c;
-    }
-
     /// `packLossy` reverts `ExponentOverflow` exactly when the value is at
     /// least (int224.max / 10 + 1) 10^(int32.max + 1) in magnitude: there the
-    /// closest Float not above it is past int224.max 10^int32.max.
+    /// closest Float not above it is past int224.max 10^int32.max. The
+    /// comparison is on the magnitude, so both signs share it. A pow or pow10
+    /// result is never int256.min, whose checked negation would panic.
     function revertIfPastLargestFloat(int256 signedCoefficient, int256 exponent, Float input) private pure {
-        int256 overCoefficient = type(int224).max / 10 + 1;
-        int256 overExponent = int256(type(int32).max) + 1;
-        if (
-            LibDecimalFloatImplementation.gte(signedCoefficient, exponent, overCoefficient, overExponent)
-                || LibDecimalFloatImplementation.lte(signedCoefficient, exponent, -overCoefficient, overExponent)
-        ) {
+        if (signedCoefficient < 0) {
+            signedCoefficient = -signedCoefficient;
+        }
+        if (LibDecimalFloatImplementation.gte(
+                signedCoefficient, exponent, type(int224).max / 10 + 1, int256(type(int32).max) + 1
+            )) {
             revertPast(true, input);
         }
     }
