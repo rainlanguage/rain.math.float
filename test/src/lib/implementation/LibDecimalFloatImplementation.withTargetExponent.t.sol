@@ -18,68 +18,111 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         return LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
     }
 
+    /// The int256 coefficients c with c 10^d in int256, for d in [1, 76].
+    /// Division truncates toward zero, which floors the positive bound and
+    /// ceils the negative one, so both are the exact bounds.
+    function growthRange(int256 diff) internal pure returns (int256 lo, int256 hi) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 scale = int256(10 ** uint256(diff));
+        return (type(int256).min / scale, type(int256).max / scale);
+    }
+
+    function expectOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent) internal {
+        vm.expectRevert(
+            abi.encodeWithSelector(WithTargetExponentOverflow.selector, signedCoefficient, exponent, targetExponent)
+        );
+        this.withTargetExponentExternal(signedCoefficient, exponent, targetExponent);
+    }
+
     function testWithTargetExponentSameExponentNoop(int256 signedCoefficient, int256 exponent) external pure {
         (int256 actualSignedCoefficient) =
             LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, exponent);
         assertEq(actualSignedCoefficient, signedCoefficient, "signedCoefficient");
     }
 
-    function testWithTargetExponentLargerExponentVeryLargeDiffRevert(
+    /// 0 10^d = 0 fits for every d, including past 76 and past int256.max.
+    function testWithTargetExponentScaleUpZero(int256 exponent, int256 targetExponent) external pure {
+        exponent = bound(exponent, type(int256).min + 1, type(int256).max);
+        targetExponent = bound(targetExponent, type(int256).min, exponent - 1);
+        assertEq(LibDecimalFloatImplementation.withTargetExponent(0, exponent, targetExponent), 0);
+    }
+
+    /// |c| 10^d >= 10^77 > 2^255 for any nonzero c and d >= 77.
+    function testWithTargetExponentScaleUpLargeDiffRevert(
         int256 signedCoefficient,
         int256 exponent,
         int256 targetExponent
     ) external {
-        targetExponent = bound(targetExponent, type(int256).min, type(int256).max - 77);
-        exponent = bound(exponent, targetExponent + 77, type(int256).max);
-        vm.expectRevert(
-            abi.encodeWithSelector(WithTargetExponentOverflow.selector, signedCoefficient, exponent, targetExponent)
-        );
-        this.withTargetExponentExternal(signedCoefficient, exponent, targetExponent);
+        vm.assume(signedCoefficient != 0);
+        exponent = bound(exponent, type(int256).min + 77, type(int256).max);
+        targetExponent = bound(targetExponent, type(int256).min, exponent - 77);
+        expectOverflow(signedCoefficient, exponent, targetExponent);
     }
 
-    function testWithTargetExponentLargerExponentOverflowRescaleRevert(
-        int256 signedCoefficient,
-        int256 exponent,
-        int256 targetExponent
-    ) external {
-        targetExponent = bound(targetExponent, type(int256).min, type(int256).max - 76);
-        exponent = bound(exponent, targetExponent + 1, targetExponent + 76);
+    function testWithTargetExponentScaleUpNotOverflow(int256 signedCoefficient, int256 exponent, int256 diff)
+        external
+        pure
+    {
+        diff = bound(diff, 1, 76);
+        exponent = bound(exponent, type(int256).min + diff, type(int256).max);
+        (int256 lo, int256 hi) = growthRange(diff);
+        signedCoefficient = bound(signedCoefficient, lo, hi);
 
-        unchecked {
-            // exponent - targetExponent [1, 76]
-            // forge-lint: disable-next-line(unsafe-typecast)
-            int256 scale = int256(10 ** uint256(exponent - targetExponent));
-            int256 c = signedCoefficient * scale;
-            vm.assume(c / scale != signedCoefficient);
-        }
-
-        vm.expectRevert(
-            abi.encodeWithSelector(WithTargetExponentOverflow.selector, signedCoefficient, exponent, targetExponent)
-        );
-        this.withTargetExponentExternal(signedCoefficient, exponent, targetExponent);
-    }
-
-    function testWithTargetExponentSmallerExponentNoRevert(
-        int256 signedCoefficient,
-        int256 exponent,
-        int256 targetExponent
-    ) external pure {
-        targetExponent = bound(targetExponent, type(int256).min, type(int256).max - 76);
-        exponent = bound(exponent, targetExponent + 1, targetExponent + 76);
-
-        unchecked {
-            // exponent - targetExponent [1, 76]
-            // forge-lint: disable-next-line(unsafe-typecast)
-            int256 scale = int256(10 ** uint256(exponent - targetExponent));
-            int256 c = signedCoefficient * scale;
-            vm.assume(c / scale == signedCoefficient);
-        }
-        int256 actualSignedCoefficient =
-            LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
-        // exponent - targetExponent [1, 76]
+        // Checked, so a wrong bound fails here rather than passing silently.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 expectedSignedCoefficient = signedCoefficient * int256(10 ** uint256(exponent - targetExponent));
-        assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
+        int256 expected = signedCoefficient * int256(10 ** uint256(diff));
+        assertEq(
+            LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, exponent - diff), expected
+        );
+    }
+
+    function testWithTargetExponentScaleUpOverflow(
+        int256 signedCoefficient,
+        int256 exponent,
+        int256 diff,
+        bool negative
+    ) external {
+        diff = bound(diff, 1, 76);
+        exponent = bound(exponent, type(int256).min + diff, type(int256).max);
+        (int256 lo, int256 hi) = growthRange(diff);
+        signedCoefficient = negative
+            ? bound(signedCoefficient, type(int256).min, lo - 1)
+            : bound(signedCoefficient, hi + 1, type(int256).max);
+        expectOverflow(signedCoefficient, exponent, exponent - diff);
+    }
+
+    /// The fit bounds at every d, each side: the last coefficient that fits
+    /// and the first that does not.
+    function testWithTargetExponentScaleUpBoundaries() external {
+        assertEq(LibDecimalFloatImplementation.withTargetExponent(5, 76, 0), 5e76);
+        assertEq(LibDecimalFloatImplementation.withTargetExponent(-5, 76, 0), -5e76);
+        expectOverflow(6, 76, 0);
+        expectOverflow(-6, 76, 0);
+        expectOverflow(1, 77, 0);
+        expectOverflow(-1, 77, 0);
+        assertEq(
+            LibDecimalFloatImplementation.withTargetExponent(
+                5789604461865809771178549250434395392663499233282028201972879200395656481996, 1, 0
+            ),
+            57896044618658097711785492504343953926634992332820282019728792003956564819960
+        );
+        expectOverflow(5789604461865809771178549250434395392663499233282028201972879200395656481997, 1, 0);
+        assertEq(
+            LibDecimalFloatImplementation.withTargetExponent(
+                -5789604461865809771178549250434395392663499233282028201972879200395656481996, 1, 0
+            ),
+            -57896044618658097711785492504343953926634992332820282019728792003956564819960
+        );
+        expectOverflow(-5789604461865809771178549250434395392663499233282028201972879200395656481997, 1, 0);
+        for (int256 d = 1; d <= 76; d++) {
+            (int256 lo, int256 hi) = growthRange(d);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 scale = int256(10 ** uint256(d));
+            assertEq(LibDecimalFloatImplementation.withTargetExponent(hi, d, 0), hi * scale);
+            assertEq(LibDecimalFloatImplementation.withTargetExponent(lo, d, 0), lo * scale);
+            expectOverflow(hi + 1, d, 0);
+            expectOverflow(lo - 1, d, 0);
+        }
     }
 
     function checkWithTargetExponent(
@@ -105,6 +148,9 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         checkWithTargetExponent(type(int256).max, 0, 0, type(int256).max);
         checkWithTargetExponent(type(int256).min, 0, 1, type(int256).min / 10);
         checkWithTargetExponent(type(int256).max, 0, 1, type(int256).max / 10);
+        checkWithTargetExponent(0, 77, 0, 0);
+        checkWithTargetExponent(0, 0, -77, 0);
+        checkWithTargetExponent(0, type(int256).max, type(int256).min, 0);
     }
 
     function testWithTargetExponentTargetMoreThan76Larger(
@@ -140,66 +186,5 @@ contract LibDecimalFloatImplementationWithTargetExponentTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 expectedSignedCoefficient = signedCoefficient / int256(10 ** uint256(targetExponentDiff));
         assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
-    }
-
-    function testWithTargetExponentScaleUpLargeDiffRevert(
-        int256 signedCoefficient,
-        int256 exponent,
-        int256 targetExponent
-    ) external {
-        exponent = bound(exponent, type(int256).min + 77, type(int256).max);
-        targetExponent = bound(targetExponent, type(int256).min, exponent - 77);
-
-        vm.expectRevert(
-            abi.encodeWithSelector(WithTargetExponentOverflow.selector, signedCoefficient, exponent, targetExponent)
-        );
-        this.withTargetExponentExternal(signedCoefficient, exponent, targetExponent);
-    }
-
-    function testWithTargetExponentScaleUpNotOverflow(
-        int256 signedCoefficient,
-        int256 exponent,
-        int256 targetExponentDiff
-    ) external pure {
-        targetExponentDiff = bound(targetExponentDiff, int256(1), int256(76));
-        exponent = bound(exponent, type(int256).min + targetExponentDiff, type(int256).max);
-        int256 targetExponent = exponent - targetExponentDiff;
-
-        // Assume not overflow.
-        unchecked {
-            // targetExponentDiff fits in uint256 so won't truncate when cast.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            int256 scale = int256(10 ** uint256(targetExponentDiff));
-            int256 c = signedCoefficient * scale;
-            vm.assume(c / scale == signedCoefficient);
-        }
-
-        int256 actualSignedCoefficient =
-            LibDecimalFloatImplementation.withTargetExponent(signedCoefficient, exponent, targetExponent);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 expectedSignedCoefficient = signedCoefficient * int256(10 ** uint256(targetExponentDiff));
-        assertEq(actualSignedCoefficient, expectedSignedCoefficient, "signedCoefficient");
-    }
-
-    function testWithTargetExponentScaleUpOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponentDiff)
-        external
-    {
-        targetExponentDiff = bound(targetExponentDiff, int256(1), int256(76));
-        exponent = bound(exponent, type(int256).min + targetExponentDiff, type(int256).max);
-        int256 targetExponent = exponent - targetExponentDiff;
-
-        // Assume overflow.
-        unchecked {
-            // targetExponent > exponent
-            // forge-lint: disable-next-line(unsafe-typecast)
-            int256 scale = int256(10 ** uint256(exponent - targetExponent));
-            int256 c = signedCoefficient * scale;
-            vm.assume(c / scale != signedCoefficient);
-        }
-
-        vm.expectRevert(
-            abi.encodeWithSelector(WithTargetExponentOverflow.selector, signedCoefficient, exponent, targetExponent)
-        );
-        this.withTargetExponentExternal(signedCoefficient, exponent, targetExponent);
     }
 }
