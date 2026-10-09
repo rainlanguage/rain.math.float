@@ -49,11 +49,10 @@ to fetch them.
 
 - 512-bit intermediate values in multiply/divide to preserve precision.
 - Exponent overflow and underflow both revert from the public arithmetic surface
-  (`ExponentOverflow` / `ExponentUnderflow`). Coefficient truncation is silently
-  tolerated because it preserves the order of magnitude: digits are shed to fit
-  the coefficient in int224 AND to lift an exponent below int32.min back to the
-  floor. `ExponentUnderflow` is only the case where every digit has been shed.
-  The pow10 and pow bounds add 1e-2147483648 absolute there.
+  (`ExponentOverflow` / `ExponentUnderflow`). Precision loss is tolerated: a
+  value that does not fit packs to the Float closest to it that does not exceed
+  its magnitude, for every op. `ExponentUnderflow` is only the case where that
+  Float is zero. The pow10 and pow bounds add 1e-2147483648 absolute there.
 - log10 and pow10 both work in 1e50 fixed point.
 - sqrt is correctly rounded, so monotone. log10, pow10 and pow are monotone
   within rounding error, not correctly rounded: order can flip by one ulp at a
@@ -65,7 +64,8 @@ to fetch them.
     underflow. Used by parsing where underflow → "value rounds to zero" is a
     legitimate parse result reported via `ParseDecimalPrecisionLoss`.
   - `packArithmeticResult`: tolerates coefficient truncation, reverts on
-    exponent underflow. Used by every public arithmetic operation.
+    exponent underflow. Used by every public arithmetic operation but `minus`
+    and `abs`.
 
 ## License
 

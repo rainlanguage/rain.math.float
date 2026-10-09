@@ -69,9 +69,7 @@ contract LibParseDecimalFloatTest is Test {
         } else if (
             signedCoefficient != 0
                 && LibTestExactDecimal.overflows(
-                    LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)),
-                    exponent,
-                    signedCoefficient < 0
+                    LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)), exponent
                 )
         ) {
             // The parsed value is beyond the largest Float of its sign.

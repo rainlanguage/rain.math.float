@@ -33,7 +33,9 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
     /// int224 and the exponent is at or above int32.min. A coefficient that
     /// reaches zero is the underflow zero, and shedding that pushes the
     /// exponent above int32.max is an overflow revert. The pack is lossless iff
-    /// every digit shed was a zero.
+    /// every digit shed was a zero. Last, the int224 bound at the exponent of
+    /// the last coefficient past int224 replaces the result when it is larger
+    /// in magnitude, as the nearest Float not exceeding the value (#332).
     ///
     /// Returns the expected unpacked (coefficient, exponent), whether the result
     /// is the underflow zero, and the expected `lossless` flag.
@@ -67,7 +69,14 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         // The literal is the bool this function returns, not a condition operand.
         //forge-lint: disable-next-line(boolean-cst)
         expLossless = true;
+        // The last coefficient shed for being past int224, and its exponent.
+        int256 pastInt224;
+        int256 pastInt224Exponent;
         while (signedCoefficient > INT224_MAX || signedCoefficient < INT224_MIN || exponent < INT32_MIN) {
+            if (signedCoefficient > INT224_MAX || signedCoefficient < INT224_MIN) {
+                pastInt224 = signedCoefficient;
+                pastInt224Exponent = exponent;
+            }
             if (signedCoefficient % 10 != 0) {
                 // The literal is the bool this function returns, not a condition operand.
                 //forge-lint: disable-next-line(boolean-cst)
@@ -81,6 +90,18 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
                 // The literal is the bool this function returns, not a condition operand.
                 //forge-lint: disable-next-line(boolean-cst)
                 return (0, 0, true, false, false);
+            }
+        }
+
+        // The int224 bound at the exponent of the last coefficient past it is a
+        // Float within the value's magnitude. When it is larger in magnitude
+        // than the shed result, it is the nearest Float.
+        if (pastInt224 != 0 && pastInt224Exponent >= INT32_MIN) {
+            int256 bound = pastInt224 > 0 ? INT224_MAX : INT224_MIN;
+            if (pastInt224 > 0 ? bound > signedCoefficient * 10 : bound < signedCoefficient * 10) {
+                // The literal is the bool this function returns, not a condition operand.
+                //forge-lint: disable-next-line(boolean-cst)
+                return (bound, pastInt224Exponent, false, false, false);
             }
         }
 
@@ -458,16 +479,24 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         this.packLossyExternal(INT224_MIN / 10 - 1, INT32_MAX + 1);
     }
 
-    /// A coefficient past int224 at the ceiling exceeds the largest Float, so
-    /// shedding its digit to fit must not be undone by a lift into a smaller
-    /// in-range value. Both signs revert, including the one whose shed-then-
-    /// lifted coefficient would still fit int224.
-    function testPackLossyShedPastCeilingReverts() external {
-        assertTrue((INT224_MAX + 1) - (INT224_MAX + 1) % 10 <= INT224_MAX, "lift would fit");
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MAX + 1, INT32_MAX));
-        this.packLossyExternal(INT224_MAX + 1, INT32_MAX);
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MIN - 1, INT32_MAX));
-        this.packLossyExternal(INT224_MIN - 1, INT32_MAX);
+    /// A coefficient just past int224 at the ceiling takes the bound there, as
+    /// it does at any exponent (#332). One whose shed digit leaves a
+    /// coefficient past the bound exceeds the largest Float, so shedding it
+    /// must not be undone by a lift into a smaller in-range value: it reverts.
+    function testPackLossyPastInt224AtCeiling() external {
+        checkAgainstOracle(INT224_MAX + 1, INT32_MAX);
+        checkAgainstOracle(INT224_MIN - 1, INT32_MAX);
+        (Float float, bool lossless) = LibDecimalFloat.packLossy(INT224_MAX + 2, INT32_MAX);
+        assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE), "max");
+        assertFalse(lossless, "max lossless");
+        (float, lossless) = LibDecimalFloat.packLossy(INT224_MIN - 1, INT32_MAX);
+        assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE), "min");
+        assertFalse(lossless, "min lossless");
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MAX + 3, INT32_MAX));
+        this.packLossyExternal(INT224_MAX + 3, INT32_MAX);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, INT224_MIN - 2, INT32_MAX));
+        this.packLossyExternal(INT224_MIN - 2, INT32_MAX);
     }
 
     /// The oracle needs no exponent bound: lifting comes before any shedding,
