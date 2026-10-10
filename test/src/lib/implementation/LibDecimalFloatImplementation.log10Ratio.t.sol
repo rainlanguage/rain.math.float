@@ -6,6 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 
 /// Bounds from the `log10Ratio` NatSpec, for z = |a - b| / (a + b) at most
@@ -15,6 +16,12 @@ import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 contract LibDecimalFloatImplementationLog10RatioTest is Test {
     function abs(int256 value) internal pure returns (int256) {
         return value < 0 ? -value : value;
+    }
+
+    /// `m × c × 10^e` exactly, as two terms that each fit an int256 for a
+    /// non-negative `c` and `m` below 100.
+    function multiple(int256 c, int256 m, int256 e) internal pure returns (int256, int256, int256, int256) {
+        return (m * (c / 100), e + 2, m * (c % 100), e);
     }
 
     /// log10Ratio against the proven bounds, for an expected value truncated
@@ -27,25 +34,29 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, relative);
         assertTrue(expectedCoefficient < 0 ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
         int256 c = abs(signedCoefficient);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 above = int256(Math.mulDiv(uint256(c), 13, 100, Math.Rounding.Ceil));
-        (int256 aboveCoefficient, int256 aboveExponent) =
-            LibDecimalFloatImplementation.add(above, exponent - 50, 1, expectedExponent);
-        (int256 belowCoefficient, int256 belowExponent) = (int256(10043), int256(-54));
-        if (relative) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            int256 below = int256(Math.mulDiv(uint256(c), 96, 100, Math.Rounding.Ceil));
-            (belowCoefficient, belowExponent) = LibDecimalFloatImplementation.add(below, exponent - 49, 1, exponent);
-        }
-        (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(c, exponent, abs(expectedCoefficient), expectedExponent);
+        int256[] memory coefficients = new int256[](2);
+        int256[] memory exponents = new int256[](2);
+        (coefficients[0], exponents[0]) = (c, exponent);
+        (coefficients[1], exponents[1]) = (-abs(expectedCoefficient), expectedExponent);
+        int256[] memory boundCoefficients = new int256[](3);
+        int256[] memory boundExponents = new int256[](3);
+        (boundCoefficients[0], boundExponents[0], boundCoefficients[1], boundExponents[1]) =
+            multiple(c, 13, exponent - 52);
+        (boundCoefficients[2], boundExponents[2]) = (1, expectedExponent);
         assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, aboveCoefficient, aboveExponent),
-            "log10Ratio above"
+            LibTestExactDecimal.sumLte(coefficients, exponents, boundCoefficients, boundExponents), "log10Ratio above"
         );
+        (coefficients[0], coefficients[1]) = (-coefficients[0], -coefficients[1]);
+        if (relative) {
+            (boundCoefficients[0], boundExponents[0], boundCoefficients[1], boundExponents[1]) =
+                multiple(c, 96, exponent - 51);
+            (boundCoefficients[2], boundExponents[2]) = (1, exponent);
+        } else {
+            (boundCoefficients[0], boundExponents[0]) = (10043, -54);
+            (boundCoefficients[1], boundCoefficients[2]) = (0, 0);
+        }
         assertTrue(
-            LibDecimalFloatImplementation.lte(-errorCoefficient, errorExponent, belowCoefficient, belowExponent),
-            "log10Ratio below"
+            LibTestExactDecimal.sumLte(coefficients, exponents, boundCoefficients, boundExponents), "log10Ratio below"
         );
         if (relative) {
             assertGe(c, 1e48, "48 digits");
