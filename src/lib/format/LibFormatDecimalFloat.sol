@@ -36,7 +36,8 @@ library LibFormatDecimalFloat {
     }
 
     /// Scientific notation: render as `d.dddeN` where the leading digit is the
-    /// most significant digit of the maximized coefficient. Uses big-integer
+    /// most significant digit of the maximized coefficient. When `N` is zero
+    /// the `eN` part is omitted, so `1.5e0` formats as `1.5`. Uses big-integer
     /// division to place the decimal point; the divisor is always `1e75` or
     /// `1e76` which both fit in int256.
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {

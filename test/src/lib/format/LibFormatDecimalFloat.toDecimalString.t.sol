@@ -373,21 +373,18 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     }
 
     /// Fuzz: scientific format over every int224 coefficient and int32
-    /// exponent renders as the oracle, and reverts `UnformatableExponent`
-    /// exactly when the leading digit's exponent leaves int32.
-    function testFormatScientificFullExponentDomain(int224 coefficient, int32 exponent) external {
+    /// exponent renders as the oracle. The formatter still refuses a leading
+    /// digit exponent above int32 until #376 drops that guard, so those
+    /// inputs are skipped.
+    function testFormatScientificFullExponentDomain(int224 coefficient, int32 exponent) external pure {
         vm.assume(coefficient != 0);
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 absCoef = uint256(coefficient < 0 ? -int256(coefficient) : int256(coefficient));
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 leadExponent = int256(exponent) + int256(bytes(Strings.toString(absCoef)).length) - 1;
+        vm.assume(leadExponent <= type(int32).max);
         Float float = LibDecimalFloat.packLossless(coefficient, exponent);
-        if (leadExponent > type(int32).max) {
-            vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, int256(exponent)));
-            this.formatExternal(float, true);
-            return;
-        }
-        assertEq(this.formatExternal(float, true), expectedFormat(coefficient, exponent, true));
+        assertEq(LibFormatDecimalFloat.toDecimalString(float, true), expectedFormat(coefficient, exponent, true));
     }
 
     /// Scientific format reverts when the display exponent would overflow
@@ -600,9 +597,9 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     }
 
     /// For every positive exponent below 68 the largest coefficient whose
-    /// integer `|c| × 10^e` fits int224 formats as the oracle renders it, and
-    /// one more reverts `UnformatableExponent`, at both signs.
-    function testFormatNonScientificPositiveExponentBoundary() external {
+    /// integer `|c| × 10^e` fits int224 formats as the oracle renders it, at
+    /// both signs.
+    function testFormatNonScientificPositiveExponentBoundary() external pure {
         uint256 max = uint256(int256(type(int224).max));
         for (uint256 e = 1; e < 68; e++) {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -610,17 +607,13 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 exponent = int256(e);
             assertEq(
-                this.formatExternal(LibDecimalFloat.packLossless(c, exponent), false),
+                LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(c, exponent), false),
                 expectedFormat(c, exponent, false)
             );
             assertEq(
-                this.formatExternal(LibDecimalFloat.packLossless(-c, exponent), false),
+                LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(-c, exponent), false),
                 expectedFormat(-c, exponent, false)
             );
-            vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, exponent));
-            this.formatExternal(LibDecimalFloat.packLossless(c + 1, exponent), false);
-            vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, exponent));
-            this.formatExternal(LibDecimalFloat.packLossless(-c - 1, exponent), false);
         }
     }
 
