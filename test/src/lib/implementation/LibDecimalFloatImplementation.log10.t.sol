@@ -9,6 +9,7 @@ import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/Lib
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibTestErrorBound} from "../../../lib/LibTestErrorBound.sol";
+import {LibTestExactDecimal, U512} from "../../../lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationLog10Test is Test {
     function checkLog10(
@@ -645,24 +646,107 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         assertLe(log10NearOneUlpError(p, d, negative), 500000032, "log10 error");
     }
 
-    /// log10 is log10Unrounded rounded to nearest, so within half a unit.
-    function testLog10RoundsUnrounded(int256 signedCoefficient, int256 exponent) external pure {
+    /// |a - b| for magnitudes with signs.
+    function signedDistance(bool negativeA, U512 memory a, bool negativeB, U512 memory b)
+        internal
+        pure
+        returns (U512 memory)
+    {
+        if (negativeA != negativeB) {
+            return LibTestExactDecimal.add(a, b);
+        }
+        return LibTestExactDecimal.cmp(a, b) >= 0 ? subU512(a, b) : subU512(b, a);
+    }
+
+    /// a - b for a >= b.
+    function subU512(U512 memory a, U512 memory b) internal pure returns (U512 memory) {
+        unchecked {
+            uint256 lo = a.lo - b.lo;
+            uint256 borrow = a.lo < b.lo ? 1 : 0;
+            return U512(a.hi - b.hi - borrow, lo);
+        }
+    }
+
+    /// 10^n as a U512.
+    function pow10U512(uint256 n) internal pure returns (U512 memory) {
+        return LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(1), n);
+    }
+
+    /// Whether a log10 or log10Unrounded result for a positive input is
+    /// within the documented bound of the true log, measured against the
+    /// oracle. All in units of 1e-70:
+    /// - the oracle is within 265 of the true log L;
+    /// - the README's 2e-50 absolute, 2e20;
+    /// - past a characteristic of 1e25 the sum goes through `add`, which
+    ///   loses under a unit of an int256 coefficient's last digit, at most
+    ///   10^(n - 76) for a characteristic below 10^n;
+    /// - the result is floored onto the 1e-70 grid, a unit;
+    /// - rounded, half a unit in the 41st digit of L, whose magnitude is
+    ///   below the oracle's plus 265.
+    function log10WithinOracle(
+        int256 signedCoefficient,
+        int256 exponent,
+        int256 resultCoefficient,
+        int256 resultExponent,
+        bool rounded
+    ) internal pure returns (bool) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        bool negativeExpected = characteristic < 0;
+        U512 memory characteristic70 =
+            LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(LibTestExactDecimal.abs(characteristic)), 70);
+        U512 memory expected = negativeExpected
+            ? subU512(characteristic70, LibTestExactDecimal.u512(fraction))
+            : LibTestExactDecimal.add(characteristic70, LibTestExactDecimal.u512(fraction));
+
+        U512 memory actual;
+        uint256 resultMagnitude = LibTestExactDecimal.abs(resultCoefficient);
+        if (resultExponent >= -70) {
+            // Non-negative in this branch.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 shift = uint256(resultExponent + 70);
+            actual = LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(resultMagnitude), shift);
+        } else if (resultExponent >= -70 - 77) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            actual = LibTestExactDecimal.u512(resultMagnitude / 10 ** uint256(-70 - resultExponent));
+        }
+        U512 memory error = signedDistance(resultCoefficient < 0, actual, negativeExpected, expected);
+
+        U512 memory bound = LibTestExactDecimal.u512(2e20 + 265 + 1);
+        uint256 characteristicDigits =
+            uint256(LibTestExactDecimal.digits(LibTestExactDecimal.u512(LibTestExactDecimal.abs(characteristic) + 1)));
+        if (characteristicDigits > 25) {
+            bound = LibTestExactDecimal.add(bound, pow10U512(characteristicDigits - 6));
+        }
+        if (rounded) {
+            uint256 logDigits =
+                uint256(LibTestExactDecimal.digits(LibTestExactDecimal.add(expected, LibTestExactDecimal.u512(265))));
+            bound = LibTestExactDecimal.add(
+                bound,
+                logDigits >= 42
+                    ? LibTestExactDecimal.mulSmall(pow10U512(logDigits - 42), 5)
+                    : LibTestExactDecimal.u512(1)
+            );
+        }
+        return LibTestExactDecimal.cmp(error, bound) <= 0;
+    }
+
+    /// log10 is within half a unit in the 41st digit of the true log plus the
+    /// README's 2e-50, against the oracle, over every positive coefficient
+    /// and exponents past the 1e25 characteristic that leaves the fixed point
+    /// sum.
+    function testLog10WithinOracle(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         exponent = bound(exponent, -1e40, 1e40);
-        (int256 unroundedCoefficient, int256 unroundedExponent) =
-            LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         (int256 logCoefficient, int256 logExponent) = LibDecimalFloatImplementation.log10(signedCoefficient, exponent);
-        if (logCoefficient == 0) {
-            assertEq(unroundedCoefficient, 0, "zero");
-            return;
-        }
-        assertLe(ulpBillionths(logCoefficient, logExponent, unroundedCoefficient, unroundedExponent), 500000000, "half");
+        assertTrue(log10WithinOracle(signedCoefficient, exponent, logCoefficient, logExponent, true), "log10 oracle");
     }
 
     /// log10Unrounded(x 10^k) = log10Unrounded(x) + k exactly, as the
     /// characteristic is summed as an integer, except that a log within
     /// log10(1.001) of zero keeps digits below the 1e-50 its shift truncates
     /// to.
+    /// Both are within the bound of the oracle.
     function testLog10DecadeShift(int256 signedCoefficient, int256 exponent, int256 shift) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         exponent = bound(exponent, -1e18, 1e18);
@@ -671,6 +755,11 @@ contract LibDecimalFloatImplementationLog10Test is Test {
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         (int256 shiftedCoefficient, int256 shiftedExponent) =
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent + shift);
+        assertTrue(log10WithinOracle(signedCoefficient, exponent, logCoefficient, logExponent, false), "log10 oracle");
+        assertTrue(
+            log10WithinOracle(signedCoefficient, exponent + shift, shiftedCoefficient, shiftedExponent, false),
+            "shifted log10 oracle"
+        );
         (logCoefficient, logExponent) = LibDecimalFloatImplementation.add(logCoefficient, logExponent, shift, 0);
         if (logExponent < -50 || shiftedExponent < -50) {
             (int256 errorCoefficient, int256 errorExponent) =
@@ -717,6 +806,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
 
     /// x < y implies log10(x) <= log10(y) + 2E, down to adjacent 76 digit
     /// coefficients, whose logs differ by far less than a unit in the last place.
+    /// Both are within the bound of the oracle.
     function testLog10Monotone(int256 signedCoefficient, int256 gap, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1e75, 1e76 - 1e3);
         gap = bound(gap, 1, 1e3);
@@ -724,6 +814,13 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         (int256 lowCoefficient, int256 lowExponent) = LibDecimalFloatImplementation.log10(signedCoefficient, exponent);
         (int256 highCoefficient, int256 highExponent) =
             LibDecimalFloatImplementation.log10(signedCoefficient + gap, exponent);
+        assertTrue(
+            log10WithinOracle(signedCoefficient, exponent, lowCoefficient, lowExponent, true), "low log10 oracle"
+        );
+        assertTrue(
+            log10WithinOracle(signedCoefficient + gap, exponent, highCoefficient, highExponent, true),
+            "high log10 oracle"
+        );
         Float low = LibDecimalFloat.packLossless(lowCoefficient, lowExponent);
         Float high = LibDecimalFloat.packLossless(highCoefficient, highExponent);
         assertTrue(
