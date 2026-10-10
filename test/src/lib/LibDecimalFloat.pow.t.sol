@@ -886,9 +886,10 @@ contract LibDecimalFloatPowTest is Test {
     /// revert and keep exercising the full input range.
     function testPowIntegerExponentSquaringOverflow() external {
         // 2 ^ 1e9 is right at the edge of what the squaring loop can represent
-        // and does not overflow.
+        // and does not overflow. Reference 10^(1e9 log10 2) from `bc -l` at
+        // scale 200.
+        checkPowPrecision(2, 0, 1, 9, 461297600116906939311611922103731601870468977, 301029951);
         Float a = LibDecimalFloat.packLossless(2, 0);
-        this.powExternal(a, LibDecimalFloat.packLossless(1, 9));
 
         // 2 ^ 1e10 pushes the squared base exponent past EXPONENT_MAX and
         // reverts with ExponentOverflow. A round trip catches this rather than

@@ -9,10 +9,6 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 contract LibDecimalFloatFloorTest is Test {
     using LibDecimalFloat for Float;
 
-    function testFloorNotReverts(Float x) external pure {
-        x.floor();
-    }
-
     function checkFloor(int256 x, int256 exponent, int256 expectedFrac, int256 expectedFracExponent) internal pure {
         Float a = LibDecimalFloat.packLossless(x, exponent);
         (x, exponent) = a.floor().unpack();

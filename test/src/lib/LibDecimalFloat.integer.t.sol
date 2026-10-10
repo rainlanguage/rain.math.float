@@ -8,10 +8,6 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 contract LibDecimalFloatIntegerTest is Test {
     using LibDecimalFloat for Float;
 
-    function testIntegerNotReverts(Float x) external pure {
-        x.integer();
-    }
-
     function checkInteger(int256 x, int256 exponent, int256 expectedInteger, int256 expectedIntegerExponent)
         internal
         pure

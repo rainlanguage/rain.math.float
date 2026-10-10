@@ -42,8 +42,65 @@ contract LibDecimalFloatImplementationDivTest is Test {
         this.divExternal(signedCoefficient, exponent, 0, 0);
     }
 
-    function testDivMaxPositiveValueDenominatorNotRevert(int256 signedCoefficient, int256 exponent) external pure {
-        LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
+    /// Dividing every int256 value by the largest Float magnitude,
+    /// `type(int256).max × 10^int32.max`, truncates the exact quotient Q
+    /// towards zero at the result's own unit, keeping 76 digits (README,
+    /// "Approach to preserving precision") unless the unit is the int256
+    /// floor. Below 10^int256.min the quotient truncates to zero.
+    function testDivMaxPositiveValueDenominatorTruncatesTheExactQuotient(int256 signedCoefficient, int256 exponent)
+        external
+        pure
+    {
+        checkDivByMaxTruncatesTheExactQuotient(signedCoefficient, exponent);
+    }
+
+    /// Independent exponents almost never put the quotient's unit within 76
+    /// digits of the int256 floor, where the quotient sheds the digits below
+    /// it, so this fuzzes that window and either side of it.
+    function testDivMaxPositiveValueDenominatorNearTheFloor(int256 signedCoefficient, int256 gap) external pure {
+        int256 exponent = type(int256).min + type(int32).max + bound(gap, -10, 160);
+        checkDivByMaxTruncatesTheExactQuotient(signedCoefficient, exponent);
+    }
+
+    /// `max × 10^(int256.min + int32.max)` over `max × 10^int32.max` is exactly
+    /// `10^int256.min`, the one unit at the floor that a 76 digit shed keeps.
+    function testDivMaxPositiveValueDenominatorOneUnitAtTheFloor() external pure {
+        int256 exponent = type(int256).min + type(int32).max;
+        (int256 q, int256 qExponent) =
+            LibDecimalFloatImplementation.div(type(int256).max, exponent, type(int256).max, type(int32).max);
+        assertEq(q, 1, "coefficient");
+        assertEq(qExponent, type(int256).min, "exponent");
+        checkDivByMaxTruncatesTheExactQuotient(type(int256).min, exponent);
+    }
+
+    /// The exact quotient floored as `divParts` at a zero exponent
+    /// difference, moved by `exponent - int32.max`, with the digits below
+    /// `10^type(int256).min` truncated towards zero as `atFloor`.
+    function checkDivByMaxTruncatesTheExactQuotient(int256 signedCoefficient, int256 exponent) internal pure {
+        (int256 q, int256 qExponent) =
+            LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
+        (int256 expectedQ, int256 expectedExponent) =
+            LibTestExactDecimal.divParts(signedCoefficient, 0, type(int256).max, 0);
+        // exponent - int256.min, which is in [0, 2^256).
+        uint256 aboveFloor;
+        unchecked {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            aboveFloor = uint256(exponent) - uint256(type(int256).min);
+        }
+        // A zero dividend divides to (0, 0). Otherwise expectedExponent is in
+        // [-152, -75], so past int32.max + 200 above the floor the quotient's
+        // unit stays clear of it.
+        if (expectedQ != 0) {
+            if (aboveFloor > uint256(int256(type(int32).max)) + 200) {
+                expectedExponent += exponent - type(int32).max;
+            } else {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                int256 headroom = expectedExponent + int256(aboveFloor) - type(int32).max;
+                (expectedQ, expectedExponent) = LibTestExactDecimal.atFloor(expectedQ, headroom);
+            }
+        }
+        assertEq(q, expectedQ, "coefficient");
+        assertEq(qExponent, expectedExponent, "exponent");
     }
 
     /// A ±1 divisor at the floor divides exactly when the quotient exponent

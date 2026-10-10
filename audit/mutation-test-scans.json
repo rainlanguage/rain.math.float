@@ -624,6 +624,27 @@
     }
   },
   {
+    "timestamp": "2026-10-09T14:41:58Z",
+    "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
+    "testsAfterCommit": "749f461af9f158d6dd40e5954ea6568f82e915d6",
+    "publishedTag": "sol-v0.2.32",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #370 (PR fix/370-oracle): the units whose not-reverting tests were replaced or deleted. add A1-A7, div D1-D4, packArithmeticResult P1, pow W1-W2, agree G1-G2, eq Q1, withTargetExponent T1-T2, frac/integer F1-F3, floor L1-L2, ceil C1-C2. Each probed old-vs-new with the touched test file as the suite and with the replaced or deleted test alone. Survived on main and killed after: P1 (testPackArithmeticResultToleratesCoefficientTruncation), D3/D4 (testDivMaxPositiveValueDenominatorNearTheFloor, testDivMaxPositiveValueDenominatorOneUnitAtTheFloor). F1 survives the frac/integer files on both trees (an int224 coefficient is under 1e76 at the public surface) and is killed by the unchanged intFrac suite. Every mutant a deleted test killed (Q1, T1, F3, L2, C2) is still killed by its file on the branch. G2 is not killed by the deleted testAgreeNeverRevertsOnValues; it is killed by testAgreeAcrossTheWholeRange and by the Rust library_agree proptest. A7 is not asserted by testAddRoundsTheExactSum*: the shed value is left out pending #363 (add drops the carry against its NatSpec); testAddAtFloor and testAddingSmallToLargeReturnsLargeExamples kill it.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 26,
+      "killedBefore": 23,
+      "killedAfter": 3,
+      "equivalent": 0,
+      "candidates": 1,
+      "confirmed": 0,
+      "testsBefore": 826,
+      "testsAfter": 822,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-09T14:56:56Z",
     "commit": "8fcfeb35aa8339d17846ae8c65a99ea2d9bd2419",
     "testsAfterCommit": "afa60dd3ed09c82d7c700ba5d65749e0abdc3f83",
@@ -704,6 +725,27 @@
       "confirmed": 0,
       "testsBefore": 799,
       "testsAfter": 831,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-09T17:24:27Z",
+    "commit": "783048c0806005267756acef831ee1fae14be3f8",
+    "testsAfterCommit": "0afe3ddc85d4ef8349fc81555c766516ef6a83b0",
+    "publishedTag": "sol-v0.2.33",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #370 follow-up after #414 (PR #403, fix/370-oracle): the overflow-shed value restored in checkAddRoundsTheExactSum (testAddRoundsTheExactSum, testAddRoundsTheExactSumNearbyExponents), now asserted as the exact sum rounded towards zero to ten units at T + 1. Mutants S1-S7 on add's overflow branch: S1/S2 positive/negative shed drops the carry (per-operand A/10 + B/10), S3 negative offset +3 to +0, S4/S5 positive/negative shed rounds away from zero, S6 exponent not lifted, S7 overflow never detected. Before = the add test file on main 783048c (28 tests): 7/7 killed. After = the restored tests alone (2 tests): 7/7 killed; the add test file on the branch (29 tests): 7/7 killed. Full suites at the after tree: forge 836 passed, crates/tests 152 passed.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 7,
+      "killedBefore": 7,
+      "killedAfter": 0,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 840,
+      "testsAfter": 836,
       "filed": []
     }
   },
