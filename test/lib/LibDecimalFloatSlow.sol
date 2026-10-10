@@ -8,53 +8,6 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 library LibDecimalFloatSlow {
     using LibDecimalFloat for Float;
 
-    function mulSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
-        internal
-        pure
-        returns (int256, int256)
-    {
-        unchecked {
-            // If the expected signed coefficient is 0 then everything is just
-            // normalized 0.
-            if (signedCoefficientA == 0 || signedCoefficientB == 0) {
-                return (0, 0);
-            }
-
-            int256 exponent = exponentA + exponentB;
-
-            uint256 signedCoefficientAAbs =
-                LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientA);
-            uint256 signedCoefficientBAbs =
-                LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientB);
-
-            (uint256 prod1,) = LibDecimalFloatImplementation.mul512(signedCoefficientAAbs, signedCoefficientBAbs);
-
-            uint256 adjustExponent = 0;
-            while (prod1 > 0) {
-                prod1 /= 10;
-                adjustExponent++;
-            }
-
-            uint256 signedCoefficientAbs = LibDecimalFloatImplementation.mulDiv(
-                signedCoefficientAAbs, signedCoefficientBAbs, uint256(10) ** adjustExponent
-            );
-
-            // adjust exponent comes from looping an inc so can't possibly
-            // overflow in int256.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            exponent += int256(adjustExponent);
-            int256 signedCoefficient;
-            (signedCoefficient, exponent) = LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(
-                signedCoefficientA, signedCoefficientB, signedCoefficientAbs, exponent
-            );
-            return (signedCoefficient, exponent);
-        }
-    }
-
-    function invSlow(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        return LibDecimalFloatImplementation.div(1e37, -37, signedCoefficient, exponent);
-    }
-
     function eqSlow(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure

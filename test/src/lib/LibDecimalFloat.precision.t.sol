@@ -3,10 +3,11 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
+import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
 
 /// log10, pow10, pow and sqrt against the `bc` constant oracle, within 1e-67,
 /// and against each other, each within the proven bound LibTestErrorBound
@@ -428,8 +429,9 @@ contract LibDecimalFloatPrecisionTest is Test {
 
     /// a^b for b in [1, 2] with a placed so b log10 a is within a few units
     /// of [-2147483660, -2147483600], across the floor region: within the
-    /// proven bound plus the floor's 1e-2147483648 absolute, or reverting
-    /// `ExponentUnderflow` only for a true value below 1e-2147483648.
+    /// proven bound plus the floor's 1e-2147483648 absolute where it returns,
+    /// and returning or reverting `ExponentUnderflow` as
+    /// `LibTestPowRange.powRange` decides.
     function testPowFloor(int256 coefficientA, int256 target, int256 coefficientB) external view {
         coefficientA = bound(coefficientA, 1, 1e67);
         target = bound(target, -2147483660, -2147483600);
@@ -444,21 +446,13 @@ contract LibDecimalFloatPrecisionTest is Test {
         }
         Float a = LibDecimalFloat.packLossless(coefficientA, exponentA);
         Float b = LibDecimalFloat.packLossless(coefficientB, -18);
+        PowRange range = LibTestPowRange.powRange(a, b);
         try this.powExternal(a, b) returns (Float actual) {
+            assertTrue(LibTestPowRange.mayReturn(range), "returned below the floor");
             assertPowReference(a, b, actual, "pow floor");
         } catch (bytes memory reason) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            assertEq(bytes4(reason), ExponentUnderflow.selector);
-            (uint256 power, int256 powerExponent) = oraclePow(a, b);
-            // The oracle's power is below 1e71 and so fits.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            int256 signedPower = int256(power);
-            assertTrue(
-                LibDecimalFloatImplementation.lt(
-                    signedPower, powerExponent, 100000000000000000000000000000000000000001, -2147483688
-                ),
-                "underflow below the floor"
-            );
+            assertTrue(LibTestPowRange.mayRevert(range, false), "underflow above the floor");
+            assertEq(reason, LibTestPowRange.rangeError(false, a));
         }
     }
 

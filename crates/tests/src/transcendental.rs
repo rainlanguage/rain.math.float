@@ -188,43 +188,81 @@ pub fn pack_rounded(x: &Dec) -> Result<Dec, RefError> {
     r::arithmetic(&rounded)
 }
 
-/// `b` as p/q in lowest terms, when both are small enough to raise to.
-fn small_ratio(b: &Dec) -> Option<(BigInt, u32)> {
-    let n = b.normalized();
-    if n.e >= 0 {
-        if n.e > 3 {
-            return None;
-        }
-        let p = &n.c * pow10(n.e as u64);
-        return (p.abs() <= BigInt::from(256)).then_some((p, 1));
+/// a > 0 as c 2^i 5^j, c coprime to ten.
+fn split_ten(a: &Dec) -> (BigInt, i64, i64) {
+    let n = a.normalized();
+    let (mut c, mut i, mut j) = (n.c, n.e, n.e);
+    while c.is_even() {
+        c /= 2;
+        i += 1;
     }
-    if n.e < -6 {
-        return None;
+    while (&c % 5u32).is_zero() {
+        c /= 5;
+        j += 1;
     }
-    let den = pow10((-n.e) as u64);
-    let g = n.c.gcd(&den);
-    let (p, q) = (&n.c / &g, den / &g);
-    (p.abs() <= BigInt::from(256) && q <= BigInt::from(64)).then(|| (p, u32::try_from(&q).unwrap()))
+    (c, i, j)
 }
 
 fn power(d: &Dec, k: u32) -> Dec {
     Dec::new(num_traits::pow(d.c.clone(), k as usize), d.e * k as i64)
 }
 
-/// The exact a^b for a > 0 when it has at most 41 significant digits and b
-/// is a small ratio p/q: g = round41(approx) is exact iff g^q = a^p.
-fn exact_power(a: &Dec, b: &Dec, t: &Approx) -> Option<Dec> {
-    let (p, q) = small_ratio(b)?;
-    let g = round41(&t.value).normalized();
-    let pa = u32::try_from(p.magnitude()).unwrap();
-    let lhs = power(&g, q);
-    let rhs = power(a, pa);
-    let equal = if p.is_positive() {
-        lhs.eq_value(&rhs)
+/// The exact a^b for a > 0 when it has at most 41 significant digits, from
+/// exact maths alone. For b = p/q in lowest terms a^b is rational only when
+/// a = r^q for a rational r, and is then r^p. With a = c 2^i 5^j, c coprime
+/// to ten, r = s 2^(i/q) 5^(j/q): q divides i and j, and c = s^q. r^p is a
+/// terminating decimal only when s^p is an integer, so s = 1 for p < 0, and
+/// its significant digits are those of s^p 2^(X - t) 5^(Y - t), X = pi/q,
+/// Y = pj/q, t = min(X, Y), with no trailing zero as one of the two powers is
+/// one.
+///
+/// None past b = c 10^12 or c 10^-40: there q has 2^41 or 5^41 in it, which
+/// divides neither i nor j under 2^33 unless both are zero, nor c under 2^224
+/// unless c is one and a is one, so a^b is not exact; or |p| is over 10^12,
+/// which an exact power under 1e41 has only for r a power of ten, past every
+/// Float, as is any t past 2^40.
+fn exact_power(a: &Dec, b: &Dec) -> Option<Dec> {
+    let b = b.normalized();
+    if b.e > 12 || b.e < -40 {
+        return None;
+    }
+    let (p, q) = if b.e >= 0 {
+        (&b.c * pow10(b.e as u64), BigInt::from(1))
     } else {
-        lhs.mul_exact(&rhs).eq_value(&Dec::new(1, 0))
+        let den = pow10((-b.e) as u64);
+        let g = b.c.gcd(&den);
+        (&b.c / &g, den / g)
     };
-    equal.then_some(g)
+    let (c, i, j) = split_ten(a);
+    let (i, j) = (BigInt::from(i), BigInt::from(j));
+    if !i.is_multiple_of(&q) || !j.is_multiple_of(&q) {
+        return None;
+    }
+    let s = if c == BigInt::from(1) {
+        c
+    } else {
+        // c >= 3, so s >= 3 and a 41 digit s^p has 0 < p <= 84.
+        let k = u32::try_from(&q).ok()?;
+        let s = c.nth_root(k);
+        if num_traits::pow(s.clone(), k as usize) != c || p.is_negative() || p > BigInt::from(84) {
+            return None;
+        }
+        s
+    };
+    let x = &i / &q * &p;
+    let y = &j / &q * &p;
+    let t = x.clone().min(y.clone());
+    let (d2, d5) = (&x - &t, &y - &t);
+    // 2^137 and 5^59 are past 1e41.
+    if d2 > BigInt::from(137) || d5 > BigInt::from(59) {
+        return None;
+    }
+    let p = usize::try_from(&p).unwrap_or(0);
+    let m = num_traits::pow(s, p)
+        * num_traits::pow(BigInt::from(2), usize::try_from(&d2).unwrap())
+        * num_traits::pow(BigInt::from(5), usize::try_from(&d5).unwrap());
+    let t = i64::try_from(&t).ok().filter(|t| t.abs() < 1 << 40)?;
+    (r::digits(&m) <= 41).then(|| Dec::new(m, t))
 }
 
 /// a^b as `LibDecimalFloat.pow` documents it.
@@ -278,15 +316,15 @@ pub fn truth_pow(a: &Dec, b: &Dec) -> Truth {
             err: t.err,
         });
     }
+    if let Some(g) = exact_power(&base, b) {
+        return Truth::exact(sign(g));
+    }
     match precise::pow_true(&base, b) {
         Err(rising) => Truth::err(past(rising)),
-        Ok(t) => match exact_power(&base, b, &t) {
-            Some(g) => Truth::exact(sign(g)),
-            None => Truth::near(Approx {
-                value: sign(t.value),
-                err: t.err,
-            }),
-        },
+        Ok(t) => Truth::near(Approx {
+            value: sign(t.value),
+            err: t.err,
+        }),
     }
 }
 
@@ -818,6 +856,27 @@ fn root_anchor() -> BoxedStrategy<(Dec, Dec)> {
     .boxed()
 }
 
+/// r^q and p/q for r = g 10^e, whose power is exactly r^p, for every q
+/// dividing a power of ten that some g > 1 has a q-th power inside int224.
+/// Past q 223 only a power of ten has a q-th root.
+fn rational_power() -> BoxedStrategy<(Dec, Dec)> {
+    (
+        prop::sample::select(vec![
+            2u32, 4, 5, 8, 10, 16, 20, 25, 32, 40, 50, 64, 80, 100, 125, 128, 160, 200,
+        ]),
+        2u64..=1000,
+        prop_oneof![-3i64..=3, -10_000_000i64..=10_000_000],
+        (-100i64..=100).prop_filter("p", |p| *p != 0),
+    )
+        .prop_filter_map("g^q and e q fit", |(q, g, e, p)| {
+            let a = power(&Dec::new(g, e), q);
+            let n = (0..=8).find(|n| (pow10(*n) % q).is_zero())?;
+            (r::fits_int224(&a.c) && a.e.abs() <= I32_MAX)
+                .then(|| (a, Dec::new(BigInt::from(p) * pow10(n) / q, -(n as i64))))
+        })
+        .boxed()
+}
+
 fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
     prop_oneof![
         2 => (float(), float()),
@@ -837,6 +896,7 @@ fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
         // Small integer powers, often exact.
         2 => (1i64..=1_000_000, -3i64..=3, -30i64..=30).prop_map(|(g, e, n)| (Dec::new(g, e), Dec::new(n, 0))),
         2 => root_anchor(),
+        3 => rational_power(),
     ]
     .boxed()
 }
@@ -1049,6 +1109,45 @@ mod checker {
         // The most negative Float is one further from zero than the largest.
         assert!(largest(true).eq_value(&Dec::new(-r::int224_min(), I32_MAX)));
         assert!(largest(false).eq_value(&Dec::new(r::int224_max(), I32_MAX)));
+    }
+
+    /// An exact power one unit in the last place off is within pow's bound,
+    /// so only exactness rejects it, for every q and every count of decimals.
+    #[test]
+    fn pow_exact_past_small_ratios() {
+        for (a, b, want) in [
+            ("42535295865117307932921825928971026432", "0.008", "2"),
+            ("42535295865117307932921825928971026432", "-0.008", "0.5"),
+            (
+                "42535295865117307932921825928971026432",
+                "1.056",
+                "5444517870735015415413993718908291383296",
+            ),
+            (
+                "11790184577738583171520872861412518665678211592275841109096961",
+                "0.0078125",
+                "3",
+            ),
+            ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
+        ] {
+            let (a, b, want) = (
+                r::literal_value(a),
+                r::literal_value(b),
+                r::literal_value(want),
+            );
+            let bound = Bound::Pow(integer_part(&b));
+            let ulp = Dec::new(1, order(&want) - 40);
+            let off = sum(&want, &ulp.neg());
+            assert!(
+                accepts(&near(want.clone()), &bound, Ok(off.clone())),
+                "{off:?}"
+            );
+            assert!(
+                !accepts(&truth_pow(&a, &b), &bound, Ok(off.clone())),
+                "{off:?}"
+            );
+            assert!(accepts(&truth_pow(&a, &b), &bound, Ok(want)));
+        }
     }
 
     #[test]
@@ -1306,6 +1405,40 @@ mod anchors {
         run(check_log10(&Dec::new(pow10(66), I32_MAX)));
     }
 
+    /// a^b is exact only for a rational power with at most 41 digits.
+    #[test]
+    fn exact_power_is_rational_and_short() {
+        for (a, b, want) in [
+            ("2", "0.5", None),
+            ("3", "-1", None),
+            ("6", "-1", None),
+            ("16", "-0.0000025", None),
+            ("2", "137", None),
+            (
+                "2",
+                "136",
+                Some("87112285931760246646623899502532662132736"),
+            ),
+            ("2", "-136", None),
+            ("2", "-40", Some("9094947017729282379150390625e-40")),
+            ("0.04", "0.5", Some("0.2")),
+            ("0.04", "-1.5", Some("125")),
+            ("1e-10", "0.2", Some("0.01")),
+            ("8e30", "0.3333333", None),
+            ("1e3", "1e-50", None),
+            ("7", "1e13", None),
+        ] {
+            let got = exact_power(&d(a), &d(b));
+            match want {
+                None => assert!(got.is_none(), "{a}^{b}: {got:?}"),
+                Some(w) => assert!(
+                    got.as_ref().is_some_and(|g| g.eq_value(&d(w))),
+                    "{a}^{b}: {got:?}, want {w}"
+                ),
+            }
+        }
+    }
+
     #[test]
     fn exact_powers_and_roots() {
         for (a, b, want) in [
@@ -1325,6 +1458,20 @@ mod anchors {
             ("-0.1", "-3", "-1000"),
             ("7", "0", "1"),
             ("1", "1e100", "1"),
+            // q past 64, or b past 6 decimals.
+            ("42535295865117307932921825928971026432", "0.008", "2"),
+            ("42535295865117307932921825928971026432", "-0.008", "0.5"),
+            (
+                "42535295865117307932921825928971026432",
+                "1.056",
+                "5444517870735015415413993718908291383296",
+            ),
+            (
+                "11790184577738583171520872861412518665678211592275841109096961",
+                "0.0078125",
+                "3",
+            ),
+            ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
         ] {
             exactly(truth_pow(&d(a), &d(b)), want);
             run(check_pow(&d(a), &d(b)));

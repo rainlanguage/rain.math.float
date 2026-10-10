@@ -32,8 +32,9 @@ contract LibDecimalFloatDecimalAddTest is Test {
         (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloat.unpack(a);
         (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloat.unpack(b);
         if (LibTestExactDecimal.addOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB)) {
-            (int256 signedCoefficientSum, int256 exponentSum) =
-                LibTestExactDecimal.addParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            (bool overflowed, int256 signedCoefficientSum, int256 exponentSum) =
+                LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            assertFalse(overflowed, "sum past int256 exponent");
             vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientSum, exponentSum));
             this.addExternal(a, b);
             return;
@@ -101,8 +102,9 @@ contract LibDecimalFloatDecimalAddTest is Test {
         (int256 signedCoefficient, int256 exponent) = this.addPartsExternal(
             signedCoefficientA, exponentA, signedCoefficientB, exponentB
         );
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.addParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (bool overflowed, int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertFalse(overflowed, "sum past int256 exponent");
         assertEq(signedCoefficient, expectedSignedCoefficient, "coefficient");
         assertEq(exponent, expectedExponent, "exponent");
     }

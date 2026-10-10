@@ -6,6 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation, LOG10_RAW_ERROR} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
 import {LibTranscendentalOracle} from "../../../lib/LibTranscendentalOracle.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 /// `log10Unrounded` against the oracle, which is within 1e-67, and its proven
 /// `LOG10_RAW_ERROR` units of 1e-50, plus under a unit of the exponent of the
@@ -19,52 +20,57 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         return value < 0 ? -value : value;
     }
 
-    /// |log10Unrounded - oracle| and the oracle's log as a float.
-    function errorAgainstOracle(int256 signedCoefficient, int256 exponent)
-        internal
-        pure
-        returns (int256, int256, int256, int256)
-    {
+    /// Whether |log10Unrounded - oracle| is within the bound terms, exactly.
+    function withinOracle(
+        int256 signedCoefficient,
+        int256 exponent,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) internal pure returns (bool) {
         (int256 actualCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        int256[] memory coefficients = new int256[](3);
+        int256[] memory exponents = new int256[](3);
+        (coefficients[0], exponents[0]) = (actualCoefficient, actualExponent);
+        (coefficients[1], exponents[1]) = (-characteristic, 0);
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 signedFraction = int256(fraction);
-        (int256 expectedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.add(characteristic, 0, signedFraction, -70);
-        (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, characteristic, 0);
-        (errorCoefficient, errorExponent) =
-            LibDecimalFloatImplementation.sub(errorCoefficient, errorExponent, signedFraction, -70);
-        return (abs(errorCoefficient), errorExponent, expectedCoefficient, expectedExponent);
+        (coefficients[2], exponents[2]) = (-int256(fraction), -70);
+        return LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents);
     }
 
     function checkAbsolute(int256 signedCoefficient, int256 exponent) internal pure {
-        (int256 errorCoefficient, int256 errorExponent,, int256 expectedExponent) =
-            errorAgainstOracle(signedCoefficient, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 boundCoefficient, int256 boundExponent) = (int256(LOG10_RAW_ERROR) * 1e17 + 1, int256(-67));
-        if (expectedExponent > -50) {
-            (boundCoefficient, boundExponent) =
-                LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, expectedExponent);
+        (int256 characteristic,) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        int256[] memory boundCoefficients = new int256[](3);
+        int256[] memory boundExponents = new int256[](3);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (boundCoefficients[0], boundExponents[0]) = (int256(LOG10_RAW_ERROR), -50);
+        (boundCoefficients[1], boundExponents[1]) = (1, -67);
+        // `add` rounds the sum to the characteristic's int256 unit.
+        if (characteristic != 0) {
+            int256 unit = LibTestExactDecimal.int256Unit(characteristic, 0);
+            if (unit > -50) {
+                (boundCoefficients[2], boundExponents[2]) = (1, unit);
+            }
         }
-        assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, boundCoefficient, boundExponent),
-            "log10Unrounded error"
-        );
+        assertTrue(withinOracle(signedCoefficient, exponent, boundCoefficients, boundExponents), "log10Unrounded error");
     }
 
     /// Within a factor 1.001 of 1 the log is all correction and the error is
     /// under 3.27e-49 of it.
     function checkRelative(int256 signedCoefficient, int256 exponent) internal pure {
-        (int256 errorCoefficient, int256 errorExponent, int256 expectedCoefficient, int256 expectedExponent) =
-            errorAgainstOracle(signedCoefficient, exponent);
-        (int256 boundCoefficient, int256 boundExponent) =
-            LibDecimalFloatImplementation.mul(abs(expectedCoefficient), expectedExponent, 327, -51);
-        (boundCoefficient, boundExponent) = LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, -67);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 expected = characteristic * 1e70 + int256(fraction);
+        int256[] memory boundCoefficients = new int256[](2);
+        int256[] memory boundExponents = new int256[](2);
+        (boundCoefficients[0], boundExponents[0]) = (abs(expected) * 327, -121);
+        (boundCoefficients[1], boundExponents[1]) = (1, -67);
         assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, boundCoefficient, boundExponent),
+            withinOracle(signedCoefficient, exponent, boundCoefficients, boundExponents),
             "log10Unrounded relative error"
         );
     }

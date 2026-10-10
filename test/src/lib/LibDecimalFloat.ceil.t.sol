@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
@@ -23,7 +23,7 @@ contract LibDecimalFloatCeilTest is Test {
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloat.ceil(LibDecimalFloat.packLossless(signedCoefficient, exponent)).unpack();
 
-        if (!LibDecimalFloatImplementation.eq(
+        if (!LibTestExactDecimal.eq(
                 actualSignedCoefficient, actualExponent, expectedSignedCoefficient, expectedExponent
             )) {
             console2.log("signedCoefficient", signedCoefficient);
@@ -130,8 +130,11 @@ contract LibDecimalFloatCeilTest is Test {
         Float wrapZero = Float.wrap(0);
         Float packZeroBasic = LibDecimalFloat.packLossless(0, 0);
         Float packZero = LibDecimalFloat.packLossless(0, exponent);
-        assertTrue(wrapZero.ceil().eq(packZero));
-        assertTrue(wrapZero.ceil().eq(packZeroBasic));
+        (int256 c, int256 e) = wrapZero.ceil().unpack();
+        (int256 cz, int256 ez) = packZero.unpack();
+        assertTrue(LibTestExactDecimal.eq(c, e, cz, ez));
+        (cz, ez) = packZeroBasic.unpack();
+        assertTrue(LibTestExactDecimal.eq(c, e, cz, ez));
         assertEq(Float.unwrap(wrapZero.ceil()), Float.unwrap(packZeroBasic));
     }
 }
