@@ -41,6 +41,132 @@ uint256 constant POW_FIXED_ONE = 1e50;
 /// which is also nearest.
 uint256 constant POW_FIXED_LN10 = 230258509299404568401799145468436420760110148862877;
 
+/// @dev The square root of `POW_FIXED_ONE`.
+uint256 constant POW_FIXED_SQRT_ONE = 1e25;
+
+/// @dev Twice `POW_FIXED_SQRT_ONE`.
+uint256 constant POW_FIXED_TWO_SQRT_ONE = 2e25;
+
+/// @dev 2^-1 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_1 = 5e49;
+
+/// @dev 2^-2 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_2 = 2.5e49;
+
+/// @dev 2^-3 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_3 = 1.25e49;
+
+/// @dev 2^-4 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_4 = 6.25e48;
+
+/// @dev 2^-5 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_5 = 3.125e48;
+
+/// @dev 2^-6 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_6 = 1.5625e48;
+
+/// @dev 2^-7 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_7 = 7.8125e47;
+
+/// @dev 2^-8 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_8 = 3.90625e47;
+
+/// @dev 2^-9 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_9 = 1.953125e47;
+
+/// @dev 2^-10 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_10 = 9.765625e46;
+
+/// @dev 2^-11 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_11 = 4.8828125e46;
+
+/// @dev 2^-12 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_12 = 2.44140625e46;
+
+/// @dev 2^-13 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_13 = 1.220703125e46;
+
+/// @dev 2^-14 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_14 = 6.103515625e45;
+
+/// @dev 2^-15 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_15 = 3.0517578125e45;
+
+/// @dev 2^-16 at the `POW_FIXED_ONE` scale, exactly.
+uint256 constant EXP10_THRESHOLD_16 = 1.52587890625e45;
+
+/// @dev 10^(2^-1) 1e50, rounded down.
+uint256 constant EXP10_STEP_1 = 316227766016837933199889354443271853371955513932521;
+
+/// @dev 10^(2^-2) 1e50, rounded down.
+uint256 constant EXP10_STEP_2 = 177827941003892280122542119519268484473579052640225;
+
+/// @dev 10^(2^-3) 1e50, rounded down.
+uint256 constant EXP10_STEP_3 = 133352143216332402567593171529533109241566796476437;
+
+/// @dev 10^(2^-4) 1e50, rounded down.
+uint256 constant EXP10_STEP_4 = 115478198468945817966648288729550828156694804147961;
+
+/// @dev 10^(2^-5) 1e50, rounded down.
+uint256 constant EXP10_STEP_5 = 107460782832131749721594153196434359466719822837527;
+
+/// @dev 10^(2^-6) 1e50, rounded down.
+uint256 constant EXP10_STEP_6 = 103663292843769799729165172492534446770887303110100;
+
+/// @dev 10^(2^-7) 1e50, rounded down.
+uint256 constant EXP10_STEP_7 = 101815172171818184147422688857883534761587963866759;
+
+/// @dev 10^(2^-8) 1e50, rounded down.
+uint256 constant EXP10_STEP_8 = 100903504484144743775925442390642133138116897958823;
+
+/// @dev 10^(2^-9) 1e50, rounded down.
+uint256 constant EXP10_STEP_9 = 100450736425446251566479469434131766413696548644885;
+
+/// @dev 10^(2^-10) 1e50, rounded down.
+uint256 constant EXP10_STEP_10 = 100225114829291291546567363886657119245424113020822;
+
+/// @dev 10^(2^-11) 1e50, rounded down.
+uint256 constant EXP10_STEP_11 = 100112494139987987588542643436571177327133841887328;
+
+/// @dev 10^(2^-12) 1e50, rounded down.
+uint256 constant EXP10_STEP_12 = 100056231260220863661851136780963697869649047983110;
+
+/// @dev 10^(2^-13) 1e50, rounded down.
+uint256 constant EXP10_STEP_13 = 100028111678778013239925736576968704561701000407571;
+
+/// @dev 10^(2^-14) 1e50, rounded down.
+uint256 constant EXP10_STEP_14 = 100014054851694725816277118785892892480765770706773;
+
+/// @dev 10^(2^-15) 1e50, rounded down.
+uint256 constant EXP10_STEP_15 = 100007027178941143553881363867653576320883673909194;
+
+/// @dev 10^(2^-16) 1e50, rounded down.
+uint256 constant EXP10_STEP_16 = 100003513527746185660858233586155663318996214797054;
+
+/// @dev (ln 10)^9 / 9! 1e50, rounded down.
+uint256 constant EXP10_HORNER_9 = 501392883377544009807090987164215453583108663277;
+
+/// @dev (ln 10)^8 / 8! 1e50, rounded down.
+uint256 constant EXP10_HORNER_8 = 1959769462647852369682789087147690310674843760584;
+
+/// @dev (ln 10)^7 / 7! 1e50, rounded down.
+uint256 constant EXP10_HORNER_7 = 6808936507443706236540404026537606122629959236393;
+
+/// @dev (ln 10)^6 / 6! 1e50, rounded down.
+uint256 constant EXP10_HORNER_6 = 20699584869686809669966601589738494188245922773010;
+
+/// @dev (ln 10)^5 / 5! 1e50, rounded down.
+uint256 constant EXP10_HORNER_5 = 53938292919558141019969155571017253478007614081814;
+
+/// @dev (ln 10)^4 / 4! 1e50, rounded down.
+uint256 constant EXP10_HORNER_4 = 117125514891226696317825761603265234076100689858139;
+
+/// @dev (ln 10)^3 / 3! 1e50, rounded down.
+uint256 constant EXP10_HORNER_3 = 203467859229347619683099119171381053024105502647771;
+
+/// @dev (ln 10)^2 / 2! 1e50, rounded down.
+uint256 constant EXP10_HORNER_2 = 265094905523919900528083319429700884579872503956640;
+
 /// @dev The inverse of 5^50 modulo 2^256, which divides a multiple of
 /// `POW_FIXED_ONE` by it once the factor 2^50 is shifted out.
 uint256 constant POW_FIXED_ONE_ODD_INVERSE =
@@ -1078,7 +1204,6 @@ library LibDecimalFloatImplementation {
     /// the `POW_FIXED_ONE` scale.
     /// @return signedCoefficient The signed coefficient of the log.
     /// @return exponent The exponent of the log.
-    // slither-disable-start too-many-digits
     // Each series term floors on purpose, and z^2 is split exactly below.
     // slither-disable-start divide-before-multiply
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
@@ -1111,17 +1236,10 @@ library LibDecimalFloatImplementation {
             // floor(z^2 / 1e50) exactly, as u^2 + floor((2 u v 1e25 + v^2) /
             // 1e50) for z = u 1e25 + v. z is at most 1e50, so u is at most 1e25
             // and the dividend is under 2e75 + 1e50, which fits a word.
-            let u := div(z, 10000000000000000000000000)
-            let v := mod(z, 10000000000000000000000000)
-            let zSquared :=
-                add(
-                    mul(u, u),
-                    div(
-                        add(mul(mul(u, v), 20000000000000000000000000), mul(v, v)),
-                        100000000000000000000000000000000000000000000000000
-                    )
-                )
-            series := add(100000000000000000000000000000000000000000000000000, div(zSquared, 3))
+            let u := div(z, POW_FIXED_SQRT_ONE)
+            let v := mod(z, POW_FIXED_SQRT_ONE)
+            let zSquared := add(mul(u, u), div(add(mul(mul(u, v), POW_FIXED_TWO_SQRT_ONE), mul(v, v)), POW_FIXED_ONE))
+            series := add(POW_FIXED_ONE, div(zSquared, 3))
             // z^4 and z^6 times zSquared can pass 2^256, so these two are
             // `mulDivFixed` in place: mm and prod0 give the product's high
             // word (with borrow) and low word. Subtracting
@@ -1131,7 +1249,7 @@ library LibDecimalFloatImplementation {
             // 5^50 exactly.
             let mm := mulmod(zSquared, zSquared, not(0))
             let prod0 := mul(zSquared, zSquared)
-            let remainder := mulmod(zSquared, zSquared, 100000000000000000000000000000000000000000000000000)
+            let remainder := mulmod(zSquared, zSquared, POW_FIXED_ONE)
             let term :=
                 mul(
                     or(
@@ -1143,7 +1261,7 @@ library LibDecimalFloatImplementation {
             series := add(series, div(term, 5))
             mm := mulmod(term, zSquared, not(0))
             prod0 := mul(term, zSquared)
-            remainder := mulmod(term, zSquared, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(term, zSquared, POW_FIXED_ONE)
             term := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1153,13 +1271,13 @@ library LibDecimalFloatImplementation {
             )
             series := add(series, div(term, 7))
             // term is now below z^6, so term * zSquared fits a word.
-            term := div(mul(term, zSquared), 100000000000000000000000000000000000000000000000000)
+            term := div(mul(term, zSquared), POW_FIXED_ONE)
             series := add(series, div(term, 9))
-            term := div(mul(term, zSquared), 100000000000000000000000000000000000000000000000000)
+            term := div(mul(term, zSquared), POW_FIXED_ONE)
             series := add(series, div(term, 11))
-            term := div(mul(term, zSquared), 100000000000000000000000000000000000000000000000000)
+            term := div(mul(term, zSquared), POW_FIXED_ONE)
             series := add(series, div(term, 13))
-            term := div(mul(term, zSquared), 100000000000000000000000000000000000000000000000000)
+            term := div(mul(term, zSquared), POW_FIXED_ONE)
             series := add(series, div(term, 15))
         }
         // The scaled series is below 0.8686e50, so the quotient is below it
@@ -1171,7 +1289,6 @@ library LibDecimalFloatImplementation {
     }
 
     // slither-disable-end divide-before-multiply
-    // slither-disable-end too-many-digits
 
     /// Scales a coefficient in (0, 1e75) up into [1e75, 1e76), lowering the
     /// exponent by the at most 75 digits of the shift.
@@ -1512,7 +1629,6 @@ library LibDecimalFloatImplementation {
     /// In all that is under 30.471.
     /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1).
     /// @return result The power at the `POW_FIXED_ONE` scale, in [1, 10).
-    // slither-disable-start too-many-digits
     //slither-disable-next-line cyclomatic-complexity
     function exp10Fixed(uint256 x) internal pure returns (uint256 result) {
         uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
@@ -1523,20 +1639,16 @@ library LibDecimalFloatImplementation {
             let remainder := 0
             // Step i takes 2^-i off x and multiplies in 10^(2^-i) iff
             // x >= 2^-i. Step 1 starts from 1, so its product is 10^0.5.
-            result := 100000000000000000000000000000000000000000000000000
-            if iszero(lt(x, 50000000000000000000000000000000000000000000000000)) {
-                x := sub(x, 50000000000000000000000000000000000000000000000000)
-                result := 316227766016837933199889354443271853371955513932521
+            result := POW_FIXED_ONE
+            if iszero(lt(x, EXP10_THRESHOLD_1)) {
+                x := sub(x, EXP10_THRESHOLD_1)
+                result := EXP10_STEP_1
             }
-            if iszero(lt(x, 25000000000000000000000000000000000000000000000000)) {
-                x := sub(x, 25000000000000000000000000000000000000000000000000)
-                mm := mulmod(result, 177827941003892280122542119519268484473579052640225, not(0))
-                prod0 := mul(result, 177827941003892280122542119519268484473579052640225)
-                remainder := mulmod(
-                    result,
-                    177827941003892280122542119519268484473579052640225,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_2)) {
+                x := sub(x, EXP10_THRESHOLD_2)
+                mm := mulmod(result, EXP10_STEP_2, not(0))
+                prod0 := mul(result, EXP10_STEP_2)
+                remainder := mulmod(result, EXP10_STEP_2, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1545,15 +1657,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 12500000000000000000000000000000000000000000000000)) {
-                x := sub(x, 12500000000000000000000000000000000000000000000000)
-                mm := mulmod(result, 133352143216332402567593171529533109241566796476437, not(0))
-                prod0 := mul(result, 133352143216332402567593171529533109241566796476437)
-                remainder := mulmod(
-                    result,
-                    133352143216332402567593171529533109241566796476437,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_3)) {
+                x := sub(x, EXP10_THRESHOLD_3)
+                mm := mulmod(result, EXP10_STEP_3, not(0))
+                prod0 := mul(result, EXP10_STEP_3)
+                remainder := mulmod(result, EXP10_STEP_3, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1562,15 +1670,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 6250000000000000000000000000000000000000000000000)) {
-                x := sub(x, 6250000000000000000000000000000000000000000000000)
-                mm := mulmod(result, 115478198468945817966648288729550828156694804147961, not(0))
-                prod0 := mul(result, 115478198468945817966648288729550828156694804147961)
-                remainder := mulmod(
-                    result,
-                    115478198468945817966648288729550828156694804147961,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_4)) {
+                x := sub(x, EXP10_THRESHOLD_4)
+                mm := mulmod(result, EXP10_STEP_4, not(0))
+                prod0 := mul(result, EXP10_STEP_4)
+                remainder := mulmod(result, EXP10_STEP_4, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1579,15 +1683,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 3125000000000000000000000000000000000000000000000)) {
-                x := sub(x, 3125000000000000000000000000000000000000000000000)
-                mm := mulmod(result, 107460782832131749721594153196434359466719822837527, not(0))
-                prod0 := mul(result, 107460782832131749721594153196434359466719822837527)
-                remainder := mulmod(
-                    result,
-                    107460782832131749721594153196434359466719822837527,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_5)) {
+                x := sub(x, EXP10_THRESHOLD_5)
+                mm := mulmod(result, EXP10_STEP_5, not(0))
+                prod0 := mul(result, EXP10_STEP_5)
+                remainder := mulmod(result, EXP10_STEP_5, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1596,15 +1696,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 1562500000000000000000000000000000000000000000000)) {
-                x := sub(x, 1562500000000000000000000000000000000000000000000)
-                mm := mulmod(result, 103663292843769799729165172492534446770887303110100, not(0))
-                prod0 := mul(result, 103663292843769799729165172492534446770887303110100)
-                remainder := mulmod(
-                    result,
-                    103663292843769799729165172492534446770887303110100,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_6)) {
+                x := sub(x, EXP10_THRESHOLD_6)
+                mm := mulmod(result, EXP10_STEP_6, not(0))
+                prod0 := mul(result, EXP10_STEP_6)
+                remainder := mulmod(result, EXP10_STEP_6, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1613,15 +1709,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 781250000000000000000000000000000000000000000000)) {
-                x := sub(x, 781250000000000000000000000000000000000000000000)
-                mm := mulmod(result, 101815172171818184147422688857883534761587963866759, not(0))
-                prod0 := mul(result, 101815172171818184147422688857883534761587963866759)
-                remainder := mulmod(
-                    result,
-                    101815172171818184147422688857883534761587963866759,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_7)) {
+                x := sub(x, EXP10_THRESHOLD_7)
+                mm := mulmod(result, EXP10_STEP_7, not(0))
+                prod0 := mul(result, EXP10_STEP_7)
+                remainder := mulmod(result, EXP10_STEP_7, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1630,15 +1722,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 390625000000000000000000000000000000000000000000)) {
-                x := sub(x, 390625000000000000000000000000000000000000000000)
-                mm := mulmod(result, 100903504484144743775925442390642133138116897958823, not(0))
-                prod0 := mul(result, 100903504484144743775925442390642133138116897958823)
-                remainder := mulmod(
-                    result,
-                    100903504484144743775925442390642133138116897958823,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_8)) {
+                x := sub(x, EXP10_THRESHOLD_8)
+                mm := mulmod(result, EXP10_STEP_8, not(0))
+                prod0 := mul(result, EXP10_STEP_8)
+                remainder := mulmod(result, EXP10_STEP_8, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1647,15 +1735,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 195312500000000000000000000000000000000000000000)) {
-                x := sub(x, 195312500000000000000000000000000000000000000000)
-                mm := mulmod(result, 100450736425446251566479469434131766413696548644885, not(0))
-                prod0 := mul(result, 100450736425446251566479469434131766413696548644885)
-                remainder := mulmod(
-                    result,
-                    100450736425446251566479469434131766413696548644885,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_9)) {
+                x := sub(x, EXP10_THRESHOLD_9)
+                mm := mulmod(result, EXP10_STEP_9, not(0))
+                prod0 := mul(result, EXP10_STEP_9)
+                remainder := mulmod(result, EXP10_STEP_9, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1664,15 +1748,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 97656250000000000000000000000000000000000000000)) {
-                x := sub(x, 97656250000000000000000000000000000000000000000)
-                mm := mulmod(result, 100225114829291291546567363886657119245424113020822, not(0))
-                prod0 := mul(result, 100225114829291291546567363886657119245424113020822)
-                remainder := mulmod(
-                    result,
-                    100225114829291291546567363886657119245424113020822,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_10)) {
+                x := sub(x, EXP10_THRESHOLD_10)
+                mm := mulmod(result, EXP10_STEP_10, not(0))
+                prod0 := mul(result, EXP10_STEP_10)
+                remainder := mulmod(result, EXP10_STEP_10, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1681,15 +1761,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 48828125000000000000000000000000000000000000000)) {
-                x := sub(x, 48828125000000000000000000000000000000000000000)
-                mm := mulmod(result, 100112494139987987588542643436571177327133841887328, not(0))
-                prod0 := mul(result, 100112494139987987588542643436571177327133841887328)
-                remainder := mulmod(
-                    result,
-                    100112494139987987588542643436571177327133841887328,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_11)) {
+                x := sub(x, EXP10_THRESHOLD_11)
+                mm := mulmod(result, EXP10_STEP_11, not(0))
+                prod0 := mul(result, EXP10_STEP_11)
+                remainder := mulmod(result, EXP10_STEP_11, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1698,15 +1774,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 24414062500000000000000000000000000000000000000)) {
-                x := sub(x, 24414062500000000000000000000000000000000000000)
-                mm := mulmod(result, 100056231260220863661851136780963697869649047983110, not(0))
-                prod0 := mul(result, 100056231260220863661851136780963697869649047983110)
-                remainder := mulmod(
-                    result,
-                    100056231260220863661851136780963697869649047983110,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_12)) {
+                x := sub(x, EXP10_THRESHOLD_12)
+                mm := mulmod(result, EXP10_STEP_12, not(0))
+                prod0 := mul(result, EXP10_STEP_12)
+                remainder := mulmod(result, EXP10_STEP_12, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1715,15 +1787,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 12207031250000000000000000000000000000000000000)) {
-                x := sub(x, 12207031250000000000000000000000000000000000000)
-                mm := mulmod(result, 100028111678778013239925736576968704561701000407571, not(0))
-                prod0 := mul(result, 100028111678778013239925736576968704561701000407571)
-                remainder := mulmod(
-                    result,
-                    100028111678778013239925736576968704561701000407571,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_13)) {
+                x := sub(x, EXP10_THRESHOLD_13)
+                mm := mulmod(result, EXP10_STEP_13, not(0))
+                prod0 := mul(result, EXP10_STEP_13)
+                remainder := mulmod(result, EXP10_STEP_13, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1732,15 +1800,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 6103515625000000000000000000000000000000000000)) {
-                x := sub(x, 6103515625000000000000000000000000000000000000)
-                mm := mulmod(result, 100014054851694725816277118785892892480765770706773, not(0))
-                prod0 := mul(result, 100014054851694725816277118785892892480765770706773)
-                remainder := mulmod(
-                    result,
-                    100014054851694725816277118785892892480765770706773,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_14)) {
+                x := sub(x, EXP10_THRESHOLD_14)
+                mm := mulmod(result, EXP10_STEP_14, not(0))
+                prod0 := mul(result, EXP10_STEP_14)
+                remainder := mulmod(result, EXP10_STEP_14, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1749,15 +1813,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 3051757812500000000000000000000000000000000000)) {
-                x := sub(x, 3051757812500000000000000000000000000000000000)
-                mm := mulmod(result, 100007027178941143553881363867653576320883673909194, not(0))
-                prod0 := mul(result, 100007027178941143553881363867653576320883673909194)
-                remainder := mulmod(
-                    result,
-                    100007027178941143553881363867653576320883673909194,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_15)) {
+                x := sub(x, EXP10_THRESHOLD_15)
+                mm := mulmod(result, EXP10_STEP_15, not(0))
+                prod0 := mul(result, EXP10_STEP_15)
+                remainder := mulmod(result, EXP10_STEP_15, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1766,15 +1826,11 @@ library LibDecimalFloatImplementation {
                     inverse
                 )
             }
-            if iszero(lt(x, 1525878906250000000000000000000000000000000000)) {
-                x := sub(x, 1525878906250000000000000000000000000000000000)
-                mm := mulmod(result, 100003513527746185660858233586155663318996214797054, not(0))
-                prod0 := mul(result, 100003513527746185660858233586155663318996214797054)
-                remainder := mulmod(
-                    result,
-                    100003513527746185660858233586155663318996214797054,
-                    100000000000000000000000000000000000000000000000000
-                )
+            if iszero(lt(x, EXP10_THRESHOLD_16)) {
+                x := sub(x, EXP10_THRESHOLD_16)
+                mm := mulmod(result, EXP10_STEP_16, not(0))
+                prod0 := mul(result, EXP10_STEP_16)
+                remainder := mulmod(result, EXP10_STEP_16, POW_FIXED_ONE)
                 result := mul(
                     or(
                         shr(50, sub(prod0, remainder)),
@@ -1786,10 +1842,10 @@ library LibDecimalFloatImplementation {
             // x is now r. 10^r = sum over k of r^k (ln 10)^k / k!, and the
             // constants are (ln 10)^k / k! 1e50 for k = 9 down to 0, so each
             // step series := series r / 1e50 + c is one Horner step.
-            let series := 501392883377544009807090987164215453583108663277
+            let series := EXP10_HORNER_9
             mm := mulmod(series, x, not(0))
             prod0 := mul(series, x)
-            remainder := mulmod(series, x, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(series, x, POW_FIXED_ONE)
             series := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1797,10 +1853,10 @@ library LibDecimalFloatImplementation {
                 ),
                 inverse
             )
-            series := add(1959769462647852369682789087147690310674843760584, series)
+            series := add(EXP10_HORNER_8, series)
             mm := mulmod(series, x, not(0))
             prod0 := mul(series, x)
-            remainder := mulmod(series, x, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(series, x, POW_FIXED_ONE)
             series := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1808,10 +1864,10 @@ library LibDecimalFloatImplementation {
                 ),
                 inverse
             )
-            series := add(6808936507443706236540404026537606122629959236393, series)
+            series := add(EXP10_HORNER_7, series)
             mm := mulmod(series, x, not(0))
             prod0 := mul(series, x)
-            remainder := mulmod(series, x, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(series, x, POW_FIXED_ONE)
             series := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1819,10 +1875,10 @@ library LibDecimalFloatImplementation {
                 ),
                 inverse
             )
-            series := add(20699584869686809669966601589738494188245922773010, series)
+            series := add(EXP10_HORNER_6, series)
             mm := mulmod(series, x, not(0))
             prod0 := mul(series, x)
-            remainder := mulmod(series, x, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(series, x, POW_FIXED_ONE)
             series := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1830,10 +1886,10 @@ library LibDecimalFloatImplementation {
                 ),
                 inverse
             )
-            series := add(53938292919558141019969155571017253478007614081814, series)
+            series := add(EXP10_HORNER_5, series)
             mm := mulmod(series, x, not(0))
             prod0 := mul(series, x)
-            remainder := mulmod(series, x, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(series, x, POW_FIXED_ONE)
             series := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1841,10 +1897,10 @@ library LibDecimalFloatImplementation {
                 ),
                 inverse
             )
-            series := add(117125514891226696317825761603265234076100689858139, series)
+            series := add(EXP10_HORNER_4, series)
             mm := mulmod(series, x, not(0))
             prod0 := mul(series, x)
-            remainder := mulmod(series, x, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(series, x, POW_FIXED_ONE)
             series := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1852,10 +1908,10 @@ library LibDecimalFloatImplementation {
                 ),
                 inverse
             )
-            series := add(203467859229347619683099119171381053024105502647771, series)
+            series := add(EXP10_HORNER_3, series)
             mm := mulmod(series, x, not(0))
             prod0 := mul(series, x)
-            remainder := mulmod(series, x, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(series, x, POW_FIXED_ONE)
             series := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1863,10 +1919,10 @@ library LibDecimalFloatImplementation {
                 ),
                 inverse
             )
-            series := add(265094905523919900528083319429700884579872503956640, series)
+            series := add(EXP10_HORNER_2, series)
             mm := mulmod(series, x, not(0))
             prod0 := mul(series, x)
-            remainder := mulmod(series, x, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(series, x, POW_FIXED_ONE)
             series := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1874,10 +1930,10 @@ library LibDecimalFloatImplementation {
                 ),
                 inverse
             )
-            series := add(230258509299404568401799145468436420760110148862877, series)
+            series := add(POW_FIXED_LN10, series)
             mm := mulmod(series, x, not(0))
             prod0 := mul(series, x)
-            remainder := mulmod(series, x, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(series, x, POW_FIXED_ONE)
             series := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1885,11 +1941,11 @@ library LibDecimalFloatImplementation {
                 ),
                 inverse
             )
-            series := add(100000000000000000000000000000000000000000000000000, series)
+            series := add(POW_FIXED_ONE, series)
             // The binary digits' product times 10^r.
             mm := mulmod(result, series, not(0))
             prod0 := mul(result, series)
-            remainder := mulmod(result, series, 100000000000000000000000000000000000000000000000000)
+            remainder := mulmod(result, series, POW_FIXED_ONE)
             result := mul(
                 or(
                     shr(50, sub(prod0, remainder)),
@@ -1899,8 +1955,6 @@ library LibDecimalFloatImplementation {
             )
         }
     }
-
-    // slither-disable-end too-many-digits
 
     /// Maximizes a float's signed coefficient by increasing its magnitude
     /// and decreasing its exponent accordingly. Greatly simplified a lot of
