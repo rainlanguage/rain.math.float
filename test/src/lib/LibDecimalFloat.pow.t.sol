@@ -8,7 +8,8 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {ZeroNegativePower, PowNegativeBase, ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
-import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
+import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "test/lib/LibTestPowRange.sol";
+import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
@@ -61,70 +62,58 @@ contract LibDecimalFloatPowTest is Test {
         }
     }
 
-    /// The one revert pow(a, b) may have, derived from the inputs, or empty
-    /// where pow must return. `mayReturn` is false where no result is
-    /// representable.
-    function expectedPowError(Float a, Float b) internal pure returns (bool mayReturn, bytes memory err) {
+    /// The reverts pow(a, b) may have, derived from the inputs: none where it
+    /// must return, and the range errors `LibTestPowRange.powRange` allows.
+    /// `mayReturn` is false where no result is representable.
+    function expectedPowError(Float a, Float b)
+        internal
+        pure
+        returns (bool mayReturn, bytes memory err, bytes memory otherErr)
+    {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         if (signedCoefficientB == 0) {
             // forge-lint: disable-next-line(boolean-cst)
-            return (true, "");
+            return (true, "", "");
         } else if (signedCoefficientA == 0) {
             return signedCoefficientB < 0
                 // forge-lint: disable-next-line(boolean-cst)
-                ? (false, abi.encodeWithSelector(ZeroNegativePower.selector, b))
+                ? (false, abi.encodeWithSelector(ZeroNegativePower.selector, b), bytes(""))
                 // forge-lint: disable-next-line(boolean-cst)
-                : (true, bytes(""));
+                : (true, bytes(""), bytes(""));
         } else if (signedCoefficientA < 0 && !LibTestExactDecimal.isWhole(signedCoefficientB, exponentB)) {
             // forge-lint: disable-next-line(boolean-cst)
-            return (false, abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA));
+            return (false, abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA), bytes(""));
         } else if (LibTestExactDecimal.eq(
                 signedCoefficientA < 0 ? -signedCoefficientA : signedCoefficientA, exponentA, 1, 0
             )) {
             // forge-lint: disable-next-line(boolean-cst)
-            return (true, "");
+            return (true, "", "");
         }
-        PowRange range = powRange(a, b);
-        if (range == PowRange.Inside) {
-            // forge-lint: disable-next-line(boolean-cst)
-            return (true, "");
+        PowRange range = LibTestPowRange.powRange(a, b);
+        mayReturn = LibTestPowRange.mayReturn(range);
+        if (LibTestPowRange.mayRevert(range, true)) {
+            err = LibTestPowRange.rangeError(true, a);
         }
-        bool edge = range == PowRange.OverEdge || range == PowRange.UnderEdge;
-        bool over = range == PowRange.Over || range == PowRange.OverEdge;
-        return (edge, LibTestPowRange.rangeError(over, a));
+        if (LibTestPowRange.mayRevert(range, false)) {
+            otherErr = LibTestPowRange.rangeError(false, a);
+        }
     }
 
-    /// Where |a|^b lands, for a nonzero a other than +-1. L = b log10 |a| from
-    /// the oracle. pow's bound E is relative, but its integer leg truncates
-    /// multiplicatively, (1 - 1e-75)^(2N + 1), which moves L by under
-    /// (2N + 1) 1e-75 / ln 10; the leg and the rounding move it by under
-    /// 5.0000004e-41. So E, with |b| for N, is a slack on L both ways.
-    function powRange(Float a, Float b) internal pure returns (PowRange) {
-        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (int256 signedCoefficientL, int256 exponentL) = LibTestPowRange.log10Abs(signedCoefficientA, exponentA);
-        (signedCoefficientL, exponentL) =
-            LibDecimalFloatImplementation.mul(signedCoefficientL, exponentL, signedCoefficientB, exponentB);
-        (int256 slackCoefficient, int256 slackExponent) = LibDecimalFloatImplementation.mul(
-            signedCoefficientB < 0 ? -signedCoefficientB : signedCoefficientB, exponentB, 3, -75
-        );
-        (slackCoefficient, slackExponent) =
-            LibDecimalFloatImplementation.add(slackCoefficient, slackExponent, 50000004, -48);
-        return LibTestPowRange.range(signedCoefficientL, exponentL, slackCoefficient, slackExponent);
-    }
-
-    /// pow(a, b), failing on any revert but the one `expectedPowError`
+    /// pow(a, b), failing on any revert but those `expectedPowError`
     /// derives, and on a value where it derives none is representable.
     function powChecked(Float a, Float b) internal view returns (bool returned, Float c) {
-        (bool mayReturn, bytes memory err) = expectedPowError(a, b);
+        (bool mayReturn, bytes memory err, bytes memory otherErr) = expectedPowError(a, b);
         try this.powExternal(a, b) returns (Float result) {
             assertTrue(mayReturn, "pow returned past the range");
             // forge-lint: disable-next-line(boolean-cst)
             return (true, result);
         } catch (bytes memory reason) {
-            assertTrue(err.length > 0, "pow reverted inside the range");
-            assertEq(reason, err, "pow revert");
+            assertTrue(
+                (err.length > 0 && keccak256(reason) == keccak256(err))
+                    || (otherErr.length > 0 && keccak256(reason) == keccak256(otherErr)),
+                "pow revert"
+            );
             // forge-lint: disable-next-line(boolean-cst)
             return (false, c);
         }
@@ -654,31 +643,60 @@ contract LibDecimalFloatPowTest is Test {
         );
     }
 
-    /// a is c 10^int32.max for c = int224.max / 10 + 1, so the overflow
-    /// threshold T is 10 a. No Float power is exactly T: c is squarefree, so
-    /// a^b = T forces b = ±1/q and a = T^±q, none of them a Float. From
-    /// `bc -l` at scale 200, b one ulp apart straddles T: a^b is
-    /// T (1 + 2.604e-57) and a^(b - 1e-66) is T (1 - 2.340e-57), which
-    /// truncates to coefficient
-    /// 13479973333575319897333507543509815336818572211270286240520255866692 at
-    /// int32.max, within the raw bound 3.33e-48 + 3e-75 relative of N = 1 plus
-    /// one unit of truncation.
-    function testPowEitherSideOfTheOverflowThreshold() external {
-        int256 signedCoefficientA = type(int224).max / 10 + 1;
-        int256 exponentA = type(int32).max;
-        Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
-        Float b = LibDecimalFloat.packLossless(1000000000465661273184989617541055125131739873881019438247110325622, -66);
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA, exponentA));
-        this.powExternal(a, b);
+    /// a^b with b log10 a at THRESHOLD_SLACK past each threshold must revert,
+    /// and as far inside must return.
+    function testPowThresholds() external {
+        int256 overflow = LOG10_OVERFLOW / 1e9;
+        int256 underflow = int256(type(int32).min) * 1e57;
+        uint256[3] memory bases = [uint256(10), 2, 7];
+        for (uint256 i = 0; i < bases.length; i++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            Float a = LibDecimalFloat.packLossless(int256(bases[i]), 0);
+            checkPowThreshold(a, thresholdPower(a, overflow + 1 + THRESHOLD_SLACK, true), PowRange.Over);
+            checkPowThreshold(a, thresholdPower(a, overflow - THRESHOLD_SLACK, false), PowRange.Inside);
+            checkPowThreshold(a, thresholdPower(a, underflow - 1 - THRESHOLD_SLACK, true), PowRange.Under);
+            checkPowThreshold(a, thresholdPower(a, underflow + THRESHOLD_SLACK, false), PowRange.Inside);
+        }
+    }
 
-        b = LibDecimalFloat.packLossless(1000000000465661273184989617541055125131739873881019438247110325621, -66);
-        (int256 signedCoefficient, int256 exponent) = this.powExternal(a, b).unpack();
-        assertEq(exponent, type(int32).max);
-        assertApproxEqAbs(
-            signedCoefficient,
-            13479973333575319897333507543509815336818572211270286240520255866692,
-            44888311200805815260
-        );
+    /// b = B 10^-57 with b log10 a past `target` 10^-57 in magnitude when
+    /// `past`, else short of it, for an a above 1. The oracle's log10 a is
+    /// within 1e-67, so truncated to `log` 10^-66, which fits to int32.max, the
+    /// exact log10 a is in (log - 1, log + 2) 10^-66.
+    function thresholdPower(Float a, int256 target, bool past) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 log = uint256(characteristic) * 1e66 + fraction / 1e4;
+        uint256 magnitude = LibTestExactDecimal.abs(target);
+        uint256 power = past
+            ? Math.mulDiv(magnitude, 1e66, log - 1, Math.Rounding.Ceil)
+            : Math.mulDiv(magnitude, 1e66, log + 2, Math.Rounding.Floor);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedPower = int256(power);
+        return LibDecimalFloat.packLossless(target < 0 ? -signedPower : signedPower, -57);
+    }
+
+    function checkPowThreshold(Float a, Float b, PowRange expected) internal {
+        assertTrue(LibTestPowRange.powRange(a, b) == expected, "range");
+        if (expected == PowRange.Inside) {
+            this.powExternal(a, b);
+        } else {
+            vm.expectRevert(LibTestPowRange.rangeError(expected == PowRange.Over, a));
+            this.powExternal(a, b);
+        }
+    }
+
+    /// a is c 10^int32.max for c = int224.max / 10 + 1, so a^b overflows
+    /// from a 10. No Float power is exactly a 10: c is squarefree, so
+    /// a^b = a 10 forces b = ±1/q and a = (a 10)^±q, none of them a Float. So
+    /// b is taken just past the error bound either side.
+    function testPowEitherSideOfTheOverflowThreshold() external {
+        int256 overflow = LOG10_OVERFLOW / 1e9;
+        Float a = LibDecimalFloat.packLossless(type(int224).max / 10 + 1, type(int32).max);
+        checkPowThreshold(a, thresholdPower(a, overflow + 1 + THRESHOLD_SLACK, true), PowRange.Over);
+        checkPowThreshold(a, thresholdPower(a, overflow - THRESHOLD_SLACK, false), PowRange.Inside);
     }
 
     /// A negative base to an odd power is past the range on its magnitude.
