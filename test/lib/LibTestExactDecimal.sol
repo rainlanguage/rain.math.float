@@ -316,23 +316,11 @@ library LibTestExactDecimal {
         return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(dropped));
     }
 
-    /// The digits `maximize` adds to a non-zero `c`: how many times it
-    /// multiplies by ten before the next multiply leaves int256, so
-    /// `type(int256).min` takes none.
-    function int256Lift(int256 c) internal pure returns (int256 lift) {
-        uint256 limit = c < 0 ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
-        uint256 magnitude = abs(c);
-        while (magnitude <= limit / 10) {
-            magnitude *= 10;
-            lift++;
-        }
-    }
-
     /// `|ca| / |cb|` in units of `10^-offset`, truncated: the dividend
     /// lifted to its int256 unit over the divisor's leading digit, so `offset`
-    /// is `lift(ca) + digits(cb) - 1`. At most `2^255`.
+    /// is `int256UnitShift(ca) + digits(cb) - 1`. At most `2^255`.
     function quotientAtUnit(int256 ca, int256 cb) internal pure returns (uint256 magnitude, int256 offset) {
-        int256 lift = int256Lift(ca);
+        int256 lift = int256UnitShift(ca);
         int256 leadB = digits(u512(abs(cb))) - 1;
         // forge-lint: disable-next-line(unsafe-typecast)
         magnitude = Math.mulDiv(abs(ca) * 10 ** uint256(lift), 10 ** uint256(leadB), abs(cb));
@@ -436,66 +424,19 @@ library LibTestExactDecimal {
         return ((ca < 0) != (cb < 0) ? -signedQ : signedQ, ea - liftA - eb - leadB);
     }
 
-    /// The exponent of a non-zero Float's int256 unit: its last digit when
-    /// written with as many digits as an int256 coefficient holds, 77 or 76.
-    function int256Unit(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
-        uint256 magnitude = abs(signedCoefficient);
-        int256 n = digits(u512(magnitude));
-        // n is at most 68, and a 77 digit magnitude fits uint256.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        bool fits77 = magnitude * 10 ** uint256(77 - n) <= uint256(type(int256).max);
-        return exponent + n - (fits77 ? int256(77) : int256(76));
-    }
-
-    /// The parts `add` of two Floats hands to packing, as its NatSpec states
-    /// them: the exact sum in units of the larger operand's int256 unit,
-    /// rounded towards zero when the signs agree and away from zero when they
-    /// differ, as `signedParts`. The larger operand is a whole number of
-    /// units; the smaller is split into whole units and whether a fraction of
-    /// one remains.
-    function addParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
-        if (ca == 0) {
-            return (cb, eb);
-        }
-        if (cb == 0) {
-            return (ca, ea);
-        }
-        if (cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) < 0) {
-            (ca, ea, cb, eb) = (cb, eb, ca, ea);
-        }
-        int256 unit = int256Unit(ca, ea);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 bigUnits = abs(ca) * 10 ** uint256(ea - unit);
-        uint256 smallUnits;
-        bool smallFraction;
-        if (eb >= unit) {
-            // |cb| × 10^(eb - unit) is at most |a|'s 77 digits.
+    /// `signedCoefficient × 10^(type(int256).min + headroom)` held at the
+    /// int256 exponent floor: a negative headroom truncates that many digits
+    /// towards zero, and a coefficient that truncates to zero is `(0, 0)`.
+    function atFloor(int256 signedCoefficient, int256 headroom) internal pure returns (int256, int256) {
+        if (headroom < 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
-            smallUnits = abs(cb) * 10 ** uint256(eb - unit);
-        } else if (unit - eb > 68) {
-            // |cb| has at most 68 digits, so it is under one unit.
-            smallFraction = true;
-        } else {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            uint256 scale = 10 ** uint256(unit - eb);
-            smallUnits = abs(cb) / scale;
-            smallFraction = abs(cb) % scale != 0;
+            signedCoefficient = headroom < -76 ? int256(0) : signedCoefficient / int256(10 ** uint256(-headroom));
+            headroom = 0;
         }
-        bool sameSign = (ca < 0) == (cb < 0);
-        uint256 units;
-        if (sameSign) {
-            // Towards zero drops the fraction.
-            units = bigUnits + smallUnits;
-        } else {
-            // |b| <= |a|, so this is at least zero: the whole units of the
-            // exact difference, then away from zero rounds a remaining
-            // fraction up to a unit.
-            units = bigUnits - smallUnits - (smallFraction ? 1 : 0);
-            if (smallFraction) {
-                units += 1;
-            }
+        if (signedCoefficient == 0) {
+            return (0, 0);
         }
-        return signedParts(ca < 0, units, unit);
+        return (signedCoefficient, type(int256).min + headroom);
     }
 
     /// Whether a Float's parts are a whole number. Below `10^-67` every
@@ -563,8 +504,26 @@ library LibTestExactDecimal {
         return u >= 78 ? 0 : magnitude / 10 ** uint256(u);
     }
 
-    /// parts, or `overflows` where its exponent is above `type(int256).max`,
-    /// as its NatSpec states them: the exact sum in units of the larger
+    /// How many digits a non-zero coefficient shifts left to its int256 unit:
+    /// as many digits as an int256 coefficient of its sign holds, 77 or 76,
+    /// less its own.
+    function int256UnitShift(int256 signedCoefficient) internal pure returns (int256) {
+        uint256 magnitude = abs(signedCoefficient);
+        uint256 limit = signedCoefficient < 0 ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
+        int256 n = digits(u512(magnitude));
+        // n is at most 77, and a 77 digit magnitude fits uint256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return magnitude * 10 ** uint256(77 - n) <= limit ? 77 - n : 76 - n;
+    }
+
+    /// The exponent of a non-zero coefficient's int256 unit.
+    function int256Unit(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+        return exponent - int256UnitShift(signedCoefficient);
+    }
+
+    /// The parts `add` of any two int256 coefficients hands to packing, or
+    /// `overflowed` where its exponent is above `type(int256).max`, as its
+    /// NatSpec states them: the exact sum in units of the larger
     /// operand's int256 unit, or ten of them past int256, rounded towards zero
     /// when the signs agree and away from zero when they differ. The int256
     /// unit is the last digit's place when written with as many digits as an
@@ -609,12 +568,9 @@ library LibTestExactDecimal {
         returns (uint256 magnitude, int256 offset)
     {
         uint256 limit = ca < 0 ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
-        uint256 magnitudeA = abs(ca);
-        int256 n = digits(u512(magnitudeA));
+        int256 unitShift = int256UnitShift(ca);
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 unitShift = magnitudeA * 10 ** uint256(77 - n) <= limit ? 77 - n : 76 - n;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        U512 memory units = u512(magnitudeA * 10 ** uint256(unitShift));
+        U512 memory units = u512(abs(ca) * 10 ** uint256(unitShift));
         U512 memory smallUnits;
         // eb - unit, where unit is ea - unitShift.
         (int256 cls, int256 gap) = wideExponent(eb, ea, 0, unitShift);
@@ -659,5 +615,85 @@ library LibTestExactDecimal {
             return false;
         }
         return cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) == 0;
+    }
+
+    /// Whether `ca × 10^ea × cb × 10^eb` is exactly `cc × 10^ec`.
+    function productEq(int256 ca, int256 ea, int256 cb, int256 eb, int256 cc, int256 ec) internal pure returns (bool) {
+        if (ca == 0 || cb == 0 || cc == 0) {
+            return (ca == 0 || cb == 0) && cc == 0;
+        }
+        if (((ca < 0) != (cb < 0)) != (cc < 0)) {
+            return false;
+        }
+        return cmpScaled(mul(abs(ca), abs(cb)), ea + eb, u512(abs(cc)), ec) == 0;
+    }
+
+    /// Whether `|Σ cᵢ × 10^eᵢ| <= Σ bⱼ × 10^fⱼ` exactly, under `sums`.
+    function absSumLte(
+        int256[] memory coefficients,
+        int256[] memory exponents,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) internal pure returns (bool) {
+        (U512 memory positive, U512 memory negative, U512 memory bound) =
+            sums(coefficients, exponents, boundCoefficients, boundExponents);
+        return cmp(positive, add(negative, bound)) <= 0 && cmp(negative, add(positive, bound)) <= 0;
+    }
+
+    /// Whether `Σ cᵢ × 10^eᵢ <= Σ bⱼ × 10^fⱼ` exactly, under `sums`.
+    function sumLte(
+        int256[] memory coefficients,
+        int256[] memory exponents,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) internal pure returns (bool) {
+        (U512 memory positive, U512 memory negative, U512 memory bound) =
+            sums(coefficients, exponents, boundCoefficients, boundExponents);
+        return cmp(positive, add(negative, bound)) <= 0;
+    }
+
+    /// The positive and negative parts of `Σ cᵢ × 10^eᵢ`, and `Σ bⱼ × 10^fⱼ`
+    /// for non-negative `bⱼ`. Every term is scaled to the least exponent of a
+    /// non-zero term, so every magnitude scaled there must stay below 2^512.
+    function sums(
+        int256[] memory coefficients,
+        int256[] memory exponents,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) private pure returns (U512 memory positive, U512 memory negative, U512 memory bound) {
+        int256 floor = type(int256).max;
+        for (uint256 i = 0; i < coefficients.length; i++) {
+            if (coefficients[i] != 0 && exponents[i] < floor) {
+                floor = exponents[i];
+            }
+        }
+        for (uint256 i = 0; i < boundCoefficients.length; i++) {
+            require(boundCoefficients[i] >= 0, "negative bound");
+            if (boundCoefficients[i] != 0 && boundExponents[i] < floor) {
+                floor = boundExponents[i];
+            }
+        }
+        positive = u512(0);
+        negative = u512(0);
+        bound = u512(0);
+        for (uint256 i = 0; i < coefficients.length; i++) {
+            if (coefficients[i] == 0) {
+                continue;
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            U512 memory scaled = mulPow10(u512(abs(coefficients[i])), uint256(exponents[i] - floor));
+            if (coefficients[i] < 0) {
+                negative = add(negative, scaled);
+            } else {
+                positive = add(positive, scaled);
+            }
+        }
+        for (uint256 i = 0; i < boundCoefficients.length; i++) {
+            if (boundCoefficients[i] == 0) {
+                continue;
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bound = add(bound, mulPow10(u512(abs(boundCoefficients[i])), uint256(boundExponents[i] - floor)));
+        }
     }
 }
