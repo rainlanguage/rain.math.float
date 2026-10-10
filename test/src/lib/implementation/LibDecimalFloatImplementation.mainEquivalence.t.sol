@@ -6,6 +6,7 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {LibDecimalFloatImplementationMain} from "test/lib/LibDecimalFloatImplementationMain.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {MaximizeOverflow, ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 /// Wherever main returns, the PR returns the same bytes, and wherever main
 /// reverts, the PR reverts the same bytes, except in the floor shortfall
@@ -356,37 +357,59 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         checkInv(digits(c, shift), nearFloor(e));
     }
 
+    /// The PR's add or sub against the exact parts. Negating
+    /// `type(int256).min` sheds its last digit.
+    function checkAddSubExact(bool isSub, int256 a, int256 ea, int256 b, int256 eb, bool ok, bytes memory ret)
+        internal
+        pure
+    {
+        if (isSub) {
+            if (b == type(int256).min) {
+                if (eb == type(int256).max) {
+                    assertEq(ret, abi.encodeWithSelector(ExponentOverflow.selector, b, eb), "minus ExponentOverflow");
+                    return;
+                }
+                b /= 10;
+                eb += 1;
+            }
+            b = -b;
+        }
+        (bool overflows, int256 ec, int256 ee) = LibTestExactDecimal.addPartsWide(a, ea, b, eb);
+        if (overflows) {
+            assertFalse(ok, "exact add overflows");
+            assertEq(selector(ret), ExponentOverflow.selector, "add ExponentOverflow");
+            return;
+        }
+        assertTrue(ok, "exact add returns");
+        (int256 c, int256 e) = pair(ret);
+        assertEq(c, ec, "exact add coefficient");
+        assertEq(e, ee, "exact add exponent");
+    }
+
     function checkAddSub(bool isSub, int256 a, int256 ea, int256 b, int256 eb) internal view {
         (bool mOk, bytes memory m) =
             run(isSub ? abi.encodeCall(this.mainSub, (a, ea, b, eb)) : abi.encodeCall(this.mainAdd, (a, ea, b, eb)));
         (bool pOk, bytes memory p) =
             run(isSub ? abi.encodeCall(this.prSub, (a, ea, b, eb)) : abi.encodeCall(this.prAdd, (a, ea, b, eb)));
+        checkAddSubExact(isSub, a, ea, b, eb, pOk, p);
         if (mOk == pOk && keccak256(m) == keccak256(p)) return;
+
+        if (mOk) {
+            // By design (#394): past int256 main sheds each operand's last
+            // digit, the PR the sum's, one unit further from zero where those
+            // digits carry.
+            (int256 mc, int256 me) = pair(m);
+            (int256 pc, int256 pe) = pair(p);
+            assertEq(pe, me, "carry exponent");
+            assertEq(pc - mc, pc < 0 ? int256(-1) : int256(1), "carry");
+            return;
+        }
 
         // By design: main reverts MaximizeOverflow at the floor, the PR adds
         // as if the operands were lifted off it, then sheds the digits the
         // floor cannot hold.
-        assertFalse(mOk, "main reverts");
         assertEq(selector(m), MaximizeOverflow.selector, "main MaximizeOverflow");
         assertTrue(atFloor(a, ea, b, eb), "differs off the floor");
-        assertTrue(pOk, "PR returns");
-        if (isSub) (b, eb) = LibDecimalFloatImplementation.minus(b, eb);
-        (int256 pc, int256 pe) = pair(p);
-        (int256 ec, int256 ee) = expectedAdd(a, ea, b, eb);
-        assertEq(pc, ec, "coefficient");
-        assertEq(pe, ee, "exponent");
-    }
-
-    function expectedAdd(int256 a, int256 ea, int256 b, int256 eb) internal view returns (int256, int256) {
-        // The other operand is more than 76 digits above the floor one.
-        if (ea > type(int256).max - SHIFT) return this.mainMaximizeFull(a, ea);
-        if (eb > type(int256).max - SHIFT) return this.mainMaximizeFull(b, eb);
-        (int256 c, int256 e) = this.mainAdd(a, ea + SHIFT, b, eb + SHIFT);
-        if (e >= type(int256).min + SHIFT) return (c, e - SHIFT);
-        int256 shed = type(int256).min + SHIFT - e;
-        assertTrue(shed <= 76, "shed");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return (c / int256(10 ** uint256(shed)), type(int256).min);
     }
 
     function testMainEquivalenceAdd(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb, bool isSub)
