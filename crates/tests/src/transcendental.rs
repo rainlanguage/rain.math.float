@@ -1583,6 +1583,65 @@ mod anchors {
         run(check_pow10(&d("-2147483647.99")));
     }
 
+    /// A half power is the root of a^(2N+1) rounded at 41 digits, so it
+    /// overflows exactly when that rounding is at least the least overflowing
+    /// value, (int224.max / 10 + 1) 10^(int32.max + 1). Here a^1.5 is
+    /// sqrt(10 c^3) 10^2147483614, with floor(sqrt(10 c^3)) and one above it
+    /// rounding alike, past that value.
+    #[test]
+    fn pow_half_root_past_the_threshold() {
+        let c: BigInt = "2629012728145285679841056168393364475926807479622600963406791093691"
+            .parse()
+            .unwrap();
+        let a = Dec::new(c.clone(), 1431655743);
+        let b = Dec::new(15, -1);
+        let cube: BigInt = num_traits::pow(c, 3);
+        let s = (cube * BigInt::from(10)).sqrt();
+        let rounded = round41(&Dec::new(s.clone(), 2147483614));
+        assert!(rounded.eq_value(&round41(&Dec::new(s + 1, 2147483614))));
+        let least = Dec::new(r::int224_max() / 10 + 1, I32_MAX + 1);
+        assert!(!rounded.cmp_value(&least).is_lt(), "{rounded:?}");
+        assert_eq!(
+            sol_pow(&a, &b).err(),
+            Some(revert_data(RefError::ExponentOverflow, &a, Some(&b)))
+        );
+    }
+
+    /// b past 6 decimals with a large integer part, against `bc -l`, to 45
+    /// digits:
+    /// - (1 + 1e-20)^(1e20 + 1e-7) is
+    ///   2.71828182845904523534669606492864910003961548, at scale 300.
+    /// - 1.002^(2e12 + 1e-7) is
+    ///   2.84331506279111009690174079886358388810420809 10^1735443062, the
+    ///   same at scales 150 and 250. Its log10 is past 1e9, so b times log10's
+    ///   2e-50 absolute error would leave the bound: the integer part has to
+    ///   be taken by squaring.
+    #[test]
+    fn pow_integer_part_past_six_decimals() {
+        let digits = |s: &str| s.parse::<BigInt>().unwrap();
+        for (a, b, bc) in [
+            (
+                Dec::new(pow10(20) + 1, -20),
+                Dec::new(pow10(27) + 1, -7),
+                Dec::new(digits("271828182845904523534669606492864910003961548"), -44),
+            ),
+            (
+                Dec::new(1002, -3),
+                Dec::new(2 * pow10(19) + 1, -7),
+                Dec::new(
+                    digits("284331506279111009690174079886358388810420809"),
+                    1735443062 - 44,
+                ),
+            ),
+        ] {
+            let t = truth_pow(&a, &b);
+            let v = &t.value.as_ref().unwrap().value;
+            let gap = v.add_exact(&bc.neg()).unwrap().abs();
+            assert!(gap.cmp_value(&Dec::new(1, bc.e)).is_lt(), "{t:?}");
+            run(check_pow(&a, &b));
+        }
+    }
+
     /// (1 + 1e-66)^~3.3e74 is about 10^1.45e8, and N past 3.3e74 makes
     /// pow's relative bound past one, so the bound reaches down to the
     /// exponent floor.
