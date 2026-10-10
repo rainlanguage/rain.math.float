@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 
 /// Adversarial coverage for `packLossy`'s underflow and coefficient-truncation
 /// paths. The tests here derive an INDEPENDENT oracle for the normalisation
@@ -117,8 +118,39 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
         return (signedCoefficient, exponent, false, expLossless, false);
     }
 
+    /// The general rule over exact math: a value past every Float reverts, one
+    /// below the smallest positive Float is `FLOAT_ZERO`, and anything else is
+    /// the nearest Float towards zero. Lossless iff the result is the value.
+    function checkPackLossyValue(int256 signedCoefficient, int256 exponent) internal {
+        U512 memory magnitude = LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient));
+        if (LibTestExactDecimal.overflows(magnitude, exponent)) {
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+            this.packLossyExternal(signedCoefficient, exponent);
+            return;
+        }
+        (Float float, bool lossless) = this.packLossyExternal(signedCoefficient, exponent);
+        if (LibTestExactDecimal.underflows(magnitude, exponent)) {
+            assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "underflow zero");
+            assertFalse(lossless, "underflow lossless");
+            return;
+        }
+        (int256 outCoeff, int256 outExponent) = LibDecimalFloat.unpack(float);
+        assertTrue(
+            LibTestExactDecimal.isNearestTowardZero(signedCoefficient < 0, magnitude, exponent, outCoeff, outExponent),
+            "nearest Float towards zero"
+        );
+        assertEq(
+            lossless,
+            LibTestExactDecimal.cmpScaled(
+                magnitude, exponent, LibTestExactDecimal.u512(LibTestExactDecimal.abs(outCoeff)), outExponent
+            ) == 0,
+            "lossless iff exact"
+        );
+    }
+
     /// Drive the production function and compare to the oracle.
     function checkAgainstOracle(int256 signedCoefficient, int256 exponent) internal {
+        checkPackLossyValue(signedCoefficient, exponent);
         (int256 expCoeff, int256 expExponent, bool expIsZero, bool expLossless, bool expOverflow) =
             oracle(signedCoefficient, exponent);
 

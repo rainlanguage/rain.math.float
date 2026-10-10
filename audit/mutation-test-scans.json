@@ -323,6 +323,27 @@
     }
   },
   {
+    "timestamp": "2026-10-07T22:03:31Z",
+    "commit": "a5561f85600ab9aaeaf7b077c862c5a8a5a417f7",
+    "testsAfterCommit": "2194fbe9c6cdc7c17cda6401e041515b9c6d6815",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 13,
+    "scope": "issues #344/#345 add/sub value oracle: 6 temporary mutants of LibDecimalFloatImplementation.add/sub (suite: forge test --mc 'Add|Sub|Mixed'), plus 12 mutants of the rule oracle LibTestExactDecimal.int256Unit/sumRule/isSumResult (suite: forge test --mc 'LibDecimalFloatAddRuleTest|LibDecimalFloatDecimalAddTest|LibDecimalFloatSubTest', whose hand-worked cases pin known accept/reject Floats). The src mutants were also probed against the suite at 76e5d31, whose oracle accepted either adjacent Float on cancellation: the same 3 of 6 killed, so the random-Float fuzz never reached the rounding difference under either oracle. After LibDecimalFloat.addRule.t.sol: S1 (cancel rounds towards zero) killed by testAddRuleCancelPartialDigitAway, S2 (same sign rounds away) by testAddRuleSameSignPartialUnitTowards, S4 (int256 overflow branch rounds away) by testAddRuleFractionOfUnitPastInt256 alone. Oracle mutant O12 restores the old either-adjacent acceptance and is killed. No src mutant lands. killedBefore counts the src mutants only: the oracle mutants were probed only once the checker existed. Test counts are the scoped src suite.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 18,
+      "killedBefore": 3,
+      "killedAfter": 18,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 33,
+      "testsAfter": 52,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-07T22:22:05Z",
     "commit": "af2bd178bd46a8223de3c6d3c4bd47577838362b",
     "testsAfterCommit": "af2bd178bd46a8223de3c6d3c4bd47577838362b",

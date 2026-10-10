@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatAbsTest is Test {
     using LibDecimalFloat for Float;
@@ -48,5 +49,21 @@ contract LibDecimalFloatAbsTest is Test {
         checkAbsInt224Min(1);
         checkAbsInt224Min(18);
         checkAbsInt224Min(type(int32).max);
+    }
+
+    /// The nearest Float towards zero to the exact magnitude.
+    function testAbsValue(Float float) external pure {
+        (int256 signedCoefficient, int256 exponent) = float.unpack();
+        (int256 signedCoefficientAbs, int256 exponentAbs) = float.abs().unpack();
+        assertTrue(
+            LibTestExactDecimal.isNearestTowardZero(
+                false,
+                LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)),
+                exponent,
+                signedCoefficientAbs,
+                exponentAbs
+            ),
+            "nearest Float towards zero"
+        );
     }
 }

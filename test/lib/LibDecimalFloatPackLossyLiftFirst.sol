@@ -8,7 +8,9 @@ import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 /// `packLossy` verbatim from `src/lib/LibDecimalFloat.sol` at
 /// 4d2d1e8ea388257fb9a5526748f15ea935c82002, which lifts an exponent above
 /// int32.max before any shedding, with the nearest-bound rule of #332 added
-/// after shedding. Equivalence tests only.
+/// after shedding. EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing
+/// with it says nothing about a result's value. Expected values come from
+/// `LibTestExactDecimal` over exact math.
 library LibDecimalFloatPackLossyLiftFirst {
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {

@@ -68,7 +68,8 @@ contract LibDecimalFloatSubTest is Test {
     }
 
     /// Reverts only where the exact difference is beyond the largest Float of
-    /// its sign, and otherwise agrees with the unpacked path.
+    /// its sign, otherwise is the documented rounding of the exact difference
+    /// (#340), and agrees with the unpacked path.
     function testSubPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -88,6 +89,24 @@ contract LibDecimalFloatSubTest is Test {
         (Float float,) = this.packLossyExternal(signedCoefficient, exponent);
         Float floatImplementation = this.subExternal(a, b);
         assertTrue(float.eq(floatImplementation));
+        checkSubValue(signedCoefficientA, exponentA, signedCoefficientB, exponentB, floatImplementation);
+    }
+
+    /// The documented rounding of the exact sum of `a` and `-b` (#340).
+    function checkSubValue(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        Float result
+    ) internal pure {
+        (int256 signedCoefficient, int256 exponent) = result.unpack();
+        assertTrue(
+            LibTestExactDecimal.isSumResult(
+                signedCoefficientA, exponentA, -signedCoefficientB, exponentB, signedCoefficient, exponent
+            ),
+            "documented rounding of the exact difference"
+        );
     }
 
     /// #340: magnitudes cancel, so `1 - 1e-100` rounds away from zero at
