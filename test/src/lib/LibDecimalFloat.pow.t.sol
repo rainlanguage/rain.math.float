@@ -697,6 +697,12 @@ contract LibDecimalFloatPowTest is Test {
         Float a = LibDecimalFloat.packLossless(type(int224).max / 10 + 1, type(int32).max);
         checkPowThreshold(a, thresholdPower(a, overflow + 1 + THRESHOLD_SLACK, true), PowRange.Over);
         checkPowThreshold(a, thresholdPower(a, overflow - THRESHOLD_SLACK, false), PowRange.Inside);
+
+        // a^b is 2.604e-57 relative past a 10, inside the bound, so either
+        // outcome is allowed, but a revert reports a.
+        powChecked(
+            a, LibDecimalFloat.packLossless(1000000000465661273184989617541055125131739873881019438247110325622, -66)
+        );
     }
 
     /// A negative base to an odd power is past the range on its magnitude.
