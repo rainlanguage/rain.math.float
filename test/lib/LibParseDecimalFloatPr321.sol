@@ -17,17 +17,15 @@ import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters
-} from "../../error/ErrParse.sol";
+} from "src/error/ErrParse.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
-import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
-import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 
-/// @title LibParseDecimalFloat
-/// @notice Library for parsing decimal floating point numbers from strings.
-/// Not particularly gas efficient as it is intended for off-chain use cases.
-/// Main use case is ensuring consistent behaviour across all offchain
-/// implementations by standardizing in Solidity.
-library LibParseDecimalFloat {
+/// `LibParseDecimalFloat` verbatim from
+/// `src/lib/parse/LibParseDecimalFloat.sol` at ff6d70c (main), before #310's
+/// parse change. Equivalence tests only.
+library LibParseDecimalFloatPr321 {
     /// @notice Parses a decimal float from a substring defined by [start, end).
     /// A literal whose exponent is below int256.min has a non-zero coefficient
     /// and is smaller than every Float, so it is `ParseDecimalPrecisionLoss`,
@@ -81,12 +79,9 @@ library LibParseDecimalFloat {
                 }
                 // Trailing zeros are allowed in fractional literals but should
                 // not be counted in the precision.
-                // The scan stops at the decimal point at the latest.
                 uint256 nonZeroCursor = cursor;
-                assembly ("memory-safe") {
-                    for {} eq(byte(0, mload(sub(nonZeroCursor, 1))), 0x30) {} {
-                        nonZeroCursor := sub(nonZeroCursor, 1)
-                    }
+                while (LibParseChar.isMask(nonZeroCursor - 1, end, CMASK_ZERO) == 1) {
+                    nonZeroCursor--;
                 }
 
                 // An all-zero fraction is the same literal as no fraction.
