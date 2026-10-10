@@ -4,9 +4,6 @@ pragma solidity ^0.8.25;
 
 import {Float} from "../lib/LibDecimalFloat.sol";
 
-/// @dev Thrown when a coefficient overflows.
-error CoefficientOverflow(int256 signedCoefficient, int256 exponent);
-
 /// @dev Thrown when an exponent overflows.
 error ExponentOverflow(int256 signedCoefficient, int256 exponent);
 
@@ -34,13 +31,20 @@ error Log10Zero();
 /// @dev Thrown when attempting to calculate the log of a negative number.
 error Log10Negative(int256 signedCoefficient, int256 exponent);
 
-/// @dev Thrown when converting some value to a float when the conversion
-/// is lossy.
+/// @dev Thrown by a lossless conversion to a Float when the value is not
+/// exactly a Float and is not past the largest one, which is
+/// `ExponentOverflow`. A value smaller than every Float is this error.
 error LossyConversionToFloat(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when converting a float to some value when the conversion
 /// is lossy.
 error LossyConversionFromFloat(int256 signedCoefficient, int256 exponent);
+
+/// @dev Thrown when `log10Ratio` is asked for a relative log with a + b below
+/// 1e50, where its result is unproven or overflows.
+/// @param a The numerator.
+/// @param b The denominator.
+error Log10RatioRelativeSumTooSmall(uint256 a, uint256 b);
 
 /// @dev Thrown when attempting to exponentiate 0^b where b is negative.
 error ZeroNegativePower(Float b);
@@ -58,22 +62,6 @@ error DivisionByZero(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when attempting to raise a negative base to a fractional power.
 error PowNegativeBase(int256 signedCoefficient, int256 exponent);
-
-/// @dev Thrown if writing the data by creating the contract fails somehow.
-error WriteError();
-
-/// @dev Thrown when constructing a `DecimalFloat` on a chain where the
-/// log tables data contract is not deployed at the expected address with
-/// the expected codehash. Without this check, transcendental functions
-/// (`pow10`/`log10`/`pow`/`sqrt`) would silently `extcodecopy` zero bytes
-/// and return garbage.
-/// @param tablesAddress The address `DecimalFloat` was compiled to read
-/// log tables from.
-/// @param expectedCodehash The codehash the deployed table contract is
-/// expected to have.
-/// @param actualCodehash The codehash currently at `tablesAddress` (zero
-/// if no contract is deployed there).
-error LogTablesNotDeployed(address tablesAddress, bytes32 expectedCodehash, bytes32 actualCodehash);
 
 /// @dev Thrown when `agree` is given a negative tolerance. A spread is a
 /// distance and so is never negative, which leaves nothing a negative

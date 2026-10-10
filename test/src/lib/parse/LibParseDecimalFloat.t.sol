@@ -14,9 +14,10 @@ import {
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters
 } from "src/error/ErrParse.sol";
-import {ExponentOverflow, CoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
@@ -42,63 +43,56 @@ contract LibParseDecimalFloatTest is Test {
         (errorSelector, float) = LibParseDecimalFloat.parseDecimalFloat(data);
     }
 
-    function packLossyExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float, bool) {
-        return LibDecimalFloat.packLossy(signedCoefficient, exponent);
+    /// A return and a revert are tagged apart, so equal outcomes are equal bytes.
+    function parseOutcome(string memory s) internal view returns (bytes memory) {
+        try this.parseDecimalFloatExternal(s) returns (bytes4 err, Float float) {
+            return abi.encode("return", err, float);
+        } catch (bytes memory revertData) {
+            return abi.encode("revert", revertData);
+        }
+    }
+
+    /// The wrapper's outcome for `data`, tagged as `parseOutcome` tags it, from
+    /// the inline parse with overflow decided by the exact oracle.
+    function expectedParseOutcome(string memory data) internal view returns (bytes memory) {
+        // The inline parse reports every malformed input as a selector. Its only
+        // revert is a zero start pointer, which no memory string has.
+        (bytes4 errorSelector, uint256 cursorMove, int256 signedCoefficient, int256 exponent) =
+            this.parseDecimalFloatInlineExternal(data);
+        // Inline parsing doesn't treat a partially consumed string as an
+        // error, but the external parsing does, so we have to special case
+        // that check.
+        if (errorSelector != bytes4(0)) {
+            return abi.encode("return", errorSelector, Float.wrap(0));
+        } else if (cursorMove != bytes(data).length) {
+            return abi.encode("return", ParseDecimalFloatExcessCharacters.selector, Float.wrap(0));
+        } else if (
+            signedCoefficient != 0
+                && LibTestExactDecimal.overflows(
+                    LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)), exponent
+                )
+        ) {
+            // The parsed value is beyond the largest Float of its sign.
+            return abi.encode("revert", abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+        }
+        (Float packed, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+        if (!lossless) {
+            return abi.encode("return", ParseDecimalPrecisionLoss.selector, Float.wrap(0));
+        }
+        // A lossless pack may still have shed trailing zeros, to fit the
+        // coefficient in int224 or to lift the exponent to int32.min, so the
+        // representation can differ from the inline parse. The VALUE cannot.
+        (int256 packedCoefficient, int256 packedExponent) = packed.unpack();
+        assertTrue(
+            LibDecimalFloatImplementation.eq(signedCoefficient, exponent, packedCoefficient, packedExponent),
+            "lossless pack changed the value"
+        );
+        return abi.encode("return", bytes4(0), packed);
     }
 
     /// Check that the packed version matches the inline version.
-    function testParsePacked(string memory data) external {
-        try this.parseDecimalFloatInlineExternal(data) returns (
-            bytes4 errorSelector, uint256 cursorMove, int256 signedCoefficient, int256 exponent
-        ) {
-            // Inline parsing doesn't treat a partially consumed string as an
-            // error, but the external parsing does, so we have to special case
-            // that check.
-            if (errorSelector == bytes4(0) && cursorMove != bytes(data).length) {
-                errorSelector = ParseDecimalFloatExcessCharacters.selector;
-                signedCoefficient = 0;
-                exponent = 0;
-            } else {
-                try this.packLossyExternal(signedCoefficient, exponent) returns (Float packed, bool lossless) {
-                    if (!lossless) {
-                        errorSelector = ParseDecimalPrecisionLoss.selector;
-                        signedCoefficient = 0;
-                        exponent = 0;
-                    } else {
-                        // A lossless pack may still have shed trailing zeros,
-                        // to fit the coefficient in int224 or to lift the
-                        // exponent to int32.min, or lifted the coefficient to
-                        // lower the exponent to int32.max, so the
-                        // representation can differ from the inline parse. The
-                        // VALUE cannot, and that is asserted against the raw
-                        // inline values here; the representation comparison
-                        // below is then between the two packed paths.
-                        (int256 packedCoefficient, int256 packedExponent) = packed.unpack();
-                        assertTrue(
-                            LibDecimalFloatImplementation.eq(
-                                signedCoefficient, exponent, packedCoefficient, packedExponent
-                            ),
-                            "lossless pack changed the value"
-                        );
-                        signedCoefficient = packedCoefficient;
-                        exponent = packedExponent;
-                    }
-                } catch (bytes memory packErr) {
-                    vm.expectRevert(packErr);
-                    signedCoefficient = 0;
-                    exponent = 0;
-                }
-            }
-
-            (bytes4 errorSelectorPacked, Float float) = this.parseDecimalFloatExternal(data);
-            assertEq(errorSelector, errorSelectorPacked, "Error selector mismatch");
-            (int256 signedCoefficientPacked, int256 exponentPacked) = float.unpack();
-            assertEq(signedCoefficient, signedCoefficientPacked, "Signed coefficient mismatch");
-            assertEq(exponent, exponentPacked, "Exponent mismatch");
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            this.parseDecimalFloatExternal(data);
-        }
+    function testParsePacked(string memory data) external view {
+        assertEq(parseOutcome(data), expectedParseOutcome(data), "parse outcome");
     }
 
     function checkParseDecimalFloat(
@@ -485,15 +479,39 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloatFail("0.-1", MalformedDecimalPoint.selector, 2);
     }
 
-    /// Exponent overflow when fractional exponent + e-notation exponent wraps.
-    /// (A10-1/p1)
-    function testParseExponentOverflowFracPlusEValue() external pure {
-        // exponent = -1 (from ".1") + int256.min (from e-notation) wraps.
-        // "0.1e-" = 5 chars + 77 digits = 82
-        checkParseDecimalFloatFail(
+    /// A fraction's exponent plus an e-notation exponent below int256.min is a
+    /// value smaller than every Float, so `ParseDecimalPrecisionLoss`, from
+    /// both entry points. One step above, the sum fits and the inline parse
+    /// returns it, and the value is still smaller than every Float.
+    function testParseExponentSumBelowInt256() external view {
+        string[4] memory wraps = [
+            // -1 (from ".1") + int256.min. "0.1e-" + 77 digits = 82.
             "0.1e-57896044618658097711785492504343953926634992332820282019728792003956564819968",
-            ExponentOverflow.selector,
-            82
+            "-0.1e-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+            "9.1e-57896044618658097711785492504343953926634992332820282019728792003956564819968",
+            // -2 + (int256.min + 1) is one below int256.min.
+            "9.12e-57896044618658097711785492504343953926634992332820282019728792003956564819967"
+        ];
+        for (uint256 i = 0; i < wraps.length; i++) {
+            checkParseDecimalFloatFail(wraps[i], ParseDecimalPrecisionLoss.selector, bytes(wraps[i]).length);
+            (bytes4 err, Float float) = this.parseDecimalFloatExternal(wraps[i]);
+            assertEq(err, ParseDecimalPrecisionLoss.selector, "wrapper");
+            assertEq(Float.unwrap(float), bytes32(0), "zero");
+        }
+
+        // -1 + (int256.min + 1) is int256.min exactly.
+        string memory fits = "9.1e-57896044618658097711785492504343953926634992332820282019728792003956564819967";
+        checkParseDecimalFloat(fits, 91, type(int256).min, bytes(fits).length);
+        (bytes4 fitsErr,) = this.parseDecimalFloatExternal(fits);
+        assertEq(fitsErr, ParseDecimalPrecisionLoss.selector, "fits wrapper");
+
+        // No fraction: int256.min itself is the exponent.
+        checkParseDecimalFloat(
+            "1e-57896044618658097711785492504343953926634992332820282019728792003956564819968", 1, type(int256).min, 80
+        );
+        // Zero has no exponent to wrap.
+        checkParseDecimalFloat(
+            "0.0e-57896044618658097711785492504343953926634992332820282019728792003956564819968", 0, 0, 82
         );
         // exponent = -1 (from ".1") + int256.max (from e-notation) does NOT
         // overflow — it's a valid large positive exponent.
@@ -504,6 +522,26 @@ contract LibParseDecimalFloatTest is Test {
             type(int256).max - 1,
             81
         );
+    }
+
+    /// An integer past int256 moves its trailing zeros into the exponent, so
+    /// adding a positive e-notation exponent can wrap past int256.max: a value
+    /// larger than every Float, so `ExponentOverflow` from both entry points.
+    /// One below, the sum fits and the inline parse returns it.
+    function testParseExponentSumAboveInt256() external view {
+        // 1e77 written out moves 77 zeros into the exponent; 77 + int256.max
+        // wraps. "1" + 77 zeros + "e" + 77 digits = 156.
+        string memory wraps =
+            "100000000000000000000000000000000000000000000000000000000000000000000000000000e57896044618658097711785492504343953926634992332820282019728792003956564819967";
+        checkParseDecimalFloatFail(wraps, ExponentOverflow.selector, bytes(wraps).length);
+        (bytes4 err, Float float) = this.parseDecimalFloatExternal(wraps);
+        assertEq(err, ExponentOverflow.selector, "wrapper");
+        assertEq(Float.unwrap(float), bytes32(0), "zero");
+
+        // 77 + (int256.max - 77) is int256.max exactly.
+        string memory fits =
+            "100000000000000000000000000000000000000000000000000000000000000000000000000000e57896044618658097711785492504343953926634992332820282019728792003956564819890";
+        checkParseDecimalFloat(fits, 1, type(int256).max, bytes(fits).length);
     }
 
     /// ParseDecimalPrecisionLoss from the wrapper when packLossy returns
@@ -615,24 +653,18 @@ contract LibParseDecimalFloatTest is Test {
 
     /// Issue #327: 68 nines with a zero fraction and a huge exponent overflows
     /// the exponent exactly as it does without the fraction.
-    function testParseZeroFractionNinesExponentOverflow() external {
+    function testParseZeroFractionNinesExponentOverflow() external view {
         string memory nines = "99999999999999999999999999999999999999999999999999999999999999999999";
         int256 ninesValue = 99999999999999999999999999999999999999999999999999999999999999999999;
+        bytes memory overflow =
+            abi.encode("revert", abi.encodeWithSelector(ExponentOverflow.selector, ninesValue, int256(2200000000)));
         string[3] memory fracs = ["", ".0", ".000"];
         for (uint256 i = 0; i < fracs.length; i++) {
             string memory s = string.concat(nines, fracs[i], "e2200000000");
             checkParseDecimalFloat(s, ninesValue, 2200000000, bytes(s).length);
-            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, ninesValue, int256(2200000000)));
-            this.parseDecimalFloatExternal(s);
-        }
-    }
-
-    /// A return and a revert are tagged apart, so equal outcomes are equal bytes.
-    function parseOutcome(string memory s) internal view returns (bytes memory) {
-        try this.parseDecimalFloatExternal(s) returns (bytes4 err, Float float) {
-            return abi.encode("return", err, float);
-        } catch (bytes memory revertData) {
-            return abi.encode("revert", revertData);
+            bytes memory expected = expectedParseOutcome(s);
+            assertEq(expected, overflow, "oracle overflow");
+            assertEq(parseOutcome(s), expected, "parse outcome");
         }
     }
 
@@ -671,7 +703,9 @@ contract LibParseDecimalFloatTest is Test {
             assertEq(fracCursor, bytes(frac).length, "frac cursor");
         }
 
-        assertEq(parseOutcome(frac), parseOutcome(bare), "wrapper outcome");
+        bytes memory expected = expectedParseOutcome(bare);
+        assertEq(parseOutcome(bare), expected, "bare outcome");
+        assertEq(parseOutcome(frac), expected, "frac outcome");
     }
 
     /// Can't have more than max total precision. Add decimals after the max int.

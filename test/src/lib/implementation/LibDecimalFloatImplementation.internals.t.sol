@@ -4,12 +4,11 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LogTest} from "test/abstract/LogTest.sol";
 import {MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
 
 /// @title Direct tests for internal functions that previously had no dedicated
 /// test coverage (audit finding A09-11).
-contract LibDecimalFloatImplementationInternalsTest is LogTest {
+contract LibDecimalFloatImplementationInternalsTest is Test {
     // -- absUnsignedSignedCoefficient --
 
     function testAbsZero() external pure {

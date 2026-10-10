@@ -4,21 +4,16 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
-import {
-    LibDecimalFloatImplementation,
-    ADD_MAX_EXPONENT_DIFF
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {AgreeToleranceNegative, AgreeNoPositiveTolerance} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 
-// The exponent gap at which the spread subtraction stops seeing the smaller
-// operand at all, so the spread reads as exactly the larger one. `add` aligns
-// without loss up to `ADD_MAX_EXPONENT_DIFF` and drops the smaller operand one
-// past it.
-//
-// `ADD_MAX_EXPONENT_DIFF` is a `uint256` of 76 and the exponent walk works in
-// `int256`, so the cast is exact and cannot truncate.
-//forge-lint: disable-next-line(unsafe-typecast)
-int256 constant BOUNDARY_CLIFF_GAP = int256(ADD_MAX_EXPONENT_DIFF) + 1;
+// The exponent gap at which the spread subtraction stops seeing a smaller
+// operand of 1 against a larger operand of 1. `add` truncates the smaller
+// operand to the larger's int256 unit: 1 written with the 77 digits an int256
+// coefficient holds (1e76 fits int256, 1e77 does not) has its last digit at
+// 1e-76, so 1e-77 is under a unit and is dropped.
+int256 constant BOUNDARY_CLIFF_GAP = 77;
 
 contract LibDecimalFloatAgreeTest is Test {
     using LibDecimalFloat for Float;
@@ -33,6 +28,25 @@ contract LibDecimalFloatAgreeTest is Test {
 
     function maxPositive() internal pure returns (Float) {
         return LibDecimalFloat.packLossless(type(int224).max, type(int32).max);
+    }
+
+    /// Whether `agree` accepts by its documented rule, independent of the
+    /// library: the spread is `add`'s documented result of `highest - lowest`
+    /// (`LibTestExactDecimal.addPartsWide`), compared exactly with the limit.
+    function expectedAgree(Float limit, Float lowest, Float highest) internal pure returns (bool) {
+        (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
+        (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
+        (int256 limitCoefficient, int256 limitExponent) = limit.unpack();
+        (bool overflowed, int256 spreadCoefficient, int256 spreadExponent) =
+            LibTestExactDecimal.addPartsWide(highestCoefficient, highestExponent, -lowestCoefficient, lowestExponent);
+        // Float coefficients are int224 and exponents int32, so the spread fits.
+        assertFalse(overflowed, "spread overflowed");
+        return LibTestExactDecimal.cmpScaled(
+            LibTestExactDecimal.u512(LibTestExactDecimal.abs(spreadCoefficient)),
+            spreadExponent,
+            LibTestExactDecimal.u512(LibTestExactDecimal.abs(limitCoefficient)),
+            limitExponent
+        ) <= 0;
     }
 
     /// `agree` is an internal library call, so it inlines and its reverts land
@@ -290,6 +304,7 @@ contract LibDecimalFloatAgreeTest is Test {
         int256 firstAccepted = 0;
         for (int256 n = 1; n <= 120; n++) {
             bool accepted = LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, -n), f(1, 0));
+            assertEq(accepted, expectedAgree(f(1, 0), f(-1, -n), f(1, 0)), "diverged from add's documented rule");
             if (accepted) {
                 if (!seenAccepted) {
                     seenAccepted = true;
@@ -302,9 +317,6 @@ contract LibDecimalFloatAgreeTest is Test {
             }
         }
         assertTrue(seenAccepted, "never accepted anywhere in the walk");
-        // Both operands are maximized to the same order of magnitude before
-        // alignment, so the gap the alignment sees is the exponent difference,
-        // and it gives up one past ADD_MAX_EXPONENT_DIFF.
         assertEq(firstAccepted, BOUNDARY_CLIFF_GAP, "the cliff moved");
     }
 
@@ -356,28 +368,50 @@ contract LibDecimalFloatAgreeTest is Test {
 
     /// A refusal is always sound. Truncation only ever reduces the spread's
     /// magnitude, so if the computed spread already exceeds the limit then the
-    /// exact spread does too. Fuzzed across gaps that straddle the cliff, a
-    /// refusal must be backed by `sub` reporting a spread above the limit.
-    function testAgreeRefusalIsAlwaysBackedByTheSpread(int256 gap, int256 anchorExponent) external pure {
-        gap = bound(gap, 1, 120);
+    /// exact spread does too. Fuzzed across gaps that straddle the cliff, for
+    /// any larger coefficient and limits on and either side of it: `agree`
+    /// answers as `add`'s documented spread compared with the limit, a refusal
+    /// is backed by the exact spread `c * 10^a + 10^(a - gap)` exceeding the
+    /// limit, and an exact spread within the limit is accepted.
+    function testAgreeRefusalIsAlwaysBackedByTheSpread(
+        int256 coefficient,
+        int256 limitOffset,
+        int256 gap,
+        int256 anchorExponent
+    ) external pure {
+        coefficient = bound(coefficient, 1, type(int224).max);
+        int256 limitCoefficient = bound(coefficient + bound(limitOffset, -1, 1), 1, type(int224).max);
+        // c * 10^gap stays below the 10^154 `cmpScaled` takes.
+        gap = bound(gap, 1, 85);
         anchorExponent = bound(anchorExponent, -40, 40);
 
         Float lowest = f(-1, anchorExponent - gap);
-        Float highest = f(1, anchorExponent);
+        Float highest = f(coefficient, anchorExponent);
+        Float limit = f(limitCoefficient, anchorExponent);
 
-        if (LibDecimalFloat.agree(f(0, 0), f(1, 0), lowest, highest)) {
-            return;
+        bool accepted = LibDecimalFloat.agree(limit, f(0, 0), lowest, highest);
+        assertEq(accepted, expectedAgree(limit, lowest, highest), "diverged from add's documented rule");
+        if (limitCoefficient == coefficient) {
+            assertEq(LibDecimalFloat.agree(f(0, 0), f(1, 0), lowest, highest), accepted, "proportional limit differs");
         }
 
-        (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
-        (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
-        (int256 spreadCoefficient, int256 spreadExponent) =
-            LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
-        (int256 limitCoefficient, int256 limitExponent) = highest.unpack();
-        assertTrue(
-            LibDecimalFloatImplementation.gt(spreadCoefficient, spreadExponent, limitCoefficient, limitExponent),
-            "refused without the spread exceeding the limit"
+        // Both are bounded positive and gap is at most 85.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory scaled = LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(uint256(coefficient)), uint256(gap));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory limitMagnitude = LibTestExactDecimal.u512(uint256(limitCoefficient));
+        int256 exactOrder = LibTestExactDecimal.cmpScaled(
+            LibTestExactDecimal.add(scaled, LibTestExactDecimal.u512(1)),
+            anchorExponent - gap,
+            limitMagnitude,
+            anchorExponent
         );
+        if (!accepted) {
+            assertGt(exactOrder, 0, "refused without the exact spread exceeding the limit");
+        }
+        if (exactOrder <= 0) {
+            assertTrue(accepted, "refused an exact spread within the limit");
+        }
     }
 
     /// Away from the cliff the check is exactly the integer comparison, for
@@ -516,10 +550,11 @@ contract LibDecimalFloatAgreeTest is Test {
     function testAgreeGuardHoldsForArbitraryTolerances(bytes32 absoluteRaw, bytes32 proportionalRaw) external {
         Float absolute = Float.wrap(absoluteRaw);
         Float proportional = Float.wrap(proportionalRaw);
-        Float zero = f(0, 0);
+        (int256 signedCoefficientAbsolute,) = absolute.unpack();
+        (int256 signedCoefficientProportional,) = proportional.unpack();
 
-        bool anyNegative = absolute.lt(zero) || proportional.lt(zero);
-        bool nonePositive = !absolute.gt(zero) && !proportional.gt(zero);
+        bool anyNegative = signedCoefficientAbsolute < 0 || signedCoefficientProportional < 0;
+        bool nonePositive = signedCoefficientAbsolute <= 0 && signedCoefficientProportional <= 0;
 
         if (anyNegative) {
             vm.expectRevert(abi.encodeWithSelector(AgreeToleranceNegative.selector, absolute, proportional));

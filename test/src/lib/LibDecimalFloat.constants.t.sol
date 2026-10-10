@@ -3,10 +3,6 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {
-    MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
-    MAXIMIZED_ZERO_EXPONENT
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatConstantsTest is Test {
@@ -28,13 +24,16 @@ contract LibDecimalFloatConstantsTest is Test {
         assertEq(Float.unwrap(minValue), Float.unwrap(expected));
     }
 
+    /// Every non-zero magnitude is at least the smallest positive value.
     function testFloatMinPositiveValueIsMin(Float a) external pure {
-        vm.assume(!a.isZero());
-        // cant abs smallest negative value because of overflow.
-        vm.assume(a.gt(LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE));
-        a = a.abs();
+        assertEq(a.abs().gte(LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE), !a.isZero());
+    }
 
-        assertTrue(a.gte(LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE));
+    function testFloatMinNegativeValueAbsIsMaxPositiveValue() external pure {
+        assertEq(
+            Float.unwrap(LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE.abs()),
+            Float.unwrap(LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE)
+        );
     }
 
     function testFloatMaxNegativeValue() external pure {
@@ -80,8 +79,7 @@ contract LibDecimalFloatConstantsTest is Test {
 
     function testFloatZero() external pure {
         Float zero = LibDecimalFloat.FLOAT_ZERO;
-        Float expected = LibDecimalFloat.packLossless(MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
-        assertEq(Float.unwrap(zero), Float.unwrap(expected));
+        assertEq(Float.unwrap(zero), bytes32(0));
     }
 
     function testFloatOne() external pure {

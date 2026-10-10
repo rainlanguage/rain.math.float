@@ -2,80 +2,87 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LogTest} from "../../../abstract/LogTest.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation, LOG10_RAW_ERROR} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
 import {LibTranscendentalOracle} from "../../../lib/LibTranscendentalOracle.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 /// `log10Unrounded` against the oracle, which is within 1e-67, and its proven
 /// `LOG10_RAW_ERROR` units of 1e-50, plus under a unit of the exponent of the
 /// oracle's sum when the characteristic is summed by `add`.
-contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
-    function log10UnroundedExternal(int256 signedCoefficient, int256 exponent) external returns (int256, int256) {
-        return LibDecimalFloatImplementation.log10Unrounded(logTables(), signedCoefficient, exponent);
+contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
+    function log10UnroundedExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
+        return LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
     }
 
     function abs(int256 value) internal pure returns (int256) {
         return value < 0 ? -value : value;
     }
 
-    /// |log10Unrounded - oracle| and the oracle's log as a float.
-    function errorAgainstOracle(int256 signedCoefficient, int256 exponent)
-        internal
-        returns (int256, int256, int256, int256)
-    {
+    /// Whether |log10Unrounded - oracle| is within the bound terms, exactly.
+    function withinOracle(
+        int256 signedCoefficient,
+        int256 exponent,
+        int256[] memory boundCoefficients,
+        int256[] memory boundExponents
+    ) internal pure returns (bool) {
         (int256 actualCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.log10Unrounded(logTables(), signedCoefficient, exponent);
+            LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        int256[] memory coefficients = new int256[](3);
+        int256[] memory exponents = new int256[](3);
+        (coefficients[0], exponents[0]) = (actualCoefficient, actualExponent);
+        (coefficients[1], exponents[1]) = (-characteristic, 0);
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 signedFraction = int256(fraction);
-        (int256 expectedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.add(characteristic, 0, signedFraction, -70);
-        (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, characteristic, 0);
-        (errorCoefficient, errorExponent) =
-            LibDecimalFloatImplementation.sub(errorCoefficient, errorExponent, signedFraction, -70);
-        return (abs(errorCoefficient), errorExponent, expectedCoefficient, expectedExponent);
+        (coefficients[2], exponents[2]) = (-int256(fraction), -70);
+        return LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents);
     }
 
-    function checkAbsolute(int256 signedCoefficient, int256 exponent) internal {
-        (int256 errorCoefficient, int256 errorExponent,, int256 expectedExponent) =
-            errorAgainstOracle(signedCoefficient, exponent);
+    function checkAbsolute(int256 signedCoefficient, int256 exponent) internal pure {
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 boundCoefficient, int256 boundExponent) = (int256(LOG10_RAW_ERROR) * 1e17 + 1, int256(-67));
-        if (expectedExponent > -50) {
-            (boundCoefficient, boundExponent) =
-                LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, expectedExponent);
+        (int256 characteristic,) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        int256[] memory boundCoefficients = new int256[](3);
+        int256[] memory boundExponents = new int256[](3);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (boundCoefficients[0], boundExponents[0]) = (int256(LOG10_RAW_ERROR), -50);
+        (boundCoefficients[1], boundExponents[1]) = (1, -67);
+        // `add` rounds the sum to the characteristic's int256 unit.
+        if (characteristic != 0) {
+            int256 unit = LibTestExactDecimal.int256Unit(characteristic, 0);
+            if (unit > -50) {
+                (boundCoefficients[2], boundExponents[2]) = (1, unit);
+            }
         }
-        assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, boundCoefficient, boundExponent),
-            "log10Unrounded error"
-        );
+        assertTrue(withinOracle(signedCoefficient, exponent, boundCoefficients, boundExponents), "log10Unrounded error");
     }
 
     /// Within a factor 1.001 of 1 the log is all correction and the error is
     /// under 3.27e-49 of it.
-    function checkRelative(int256 signedCoefficient, int256 exponent) internal {
-        (int256 errorCoefficient, int256 errorExponent, int256 expectedCoefficient, int256 expectedExponent) =
-            errorAgainstOracle(signedCoefficient, exponent);
-        (int256 boundCoefficient, int256 boundExponent) =
-            LibDecimalFloatImplementation.mul(abs(expectedCoefficient), expectedExponent, 327, -51);
-        (boundCoefficient, boundExponent) = LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, -67);
+    function checkRelative(int256 signedCoefficient, int256 exponent) internal pure {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 expected = characteristic * 1e70 + int256(fraction);
+        int256[] memory boundCoefficients = new int256[](2);
+        int256[] memory boundExponents = new int256[](2);
+        (boundCoefficients[0], boundExponents[0]) = (abs(expected) * 327, -121);
+        (boundCoefficients[1], boundExponents[1]) = (1, -67);
         assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, boundCoefficient, boundExponent),
+            withinOracle(signedCoefficient, exponent, boundCoefficients, boundExponents),
             "log10Unrounded relative error"
         );
     }
 
-    function checkExact(int256 signedCoefficient, int256 exponent, int256 expected) internal {
+    function checkExact(int256 signedCoefficient, int256 exponent, int256 expected) internal pure {
         (int256 actualCoefficient, int256 actualExponent) =
-            LibDecimalFloatImplementation.log10Unrounded(logTables(), signedCoefficient, exponent);
+            LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         assertEq(actualCoefficient, expected, "coefficient");
         assertEq(actualExponent, 0, "exponent");
     }
 
-    function testLog10UnroundedPowersOfTen() external {
+    function testLog10UnroundedPowersOfTen() external pure {
         checkExact(1, 0, 0);
         checkExact(1, -1, -1);
         checkExact(10, 5, 6);
@@ -86,7 +93,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
 
     /// Within 75 of the floor the shift the exponent cannot take is the
     /// shortfall, and the log is still exact.
-    function testLog10UnroundedPowersOfTenAtFloor() external {
+    function testLog10UnroundedPowersOfTenAtFloor() external pure {
         int256 min = type(int256).min;
         checkExact(1, min, min);
         checkExact(10, min, min + 1);
@@ -109,7 +116,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
 
     /// Either side of each 1.001 edge, near 1 where the seed is exact and
     /// with a characteristic where it is not.
-    function testLog10UnroundedTableEdges() external {
+    function testLog10UnroundedTableEdges() external pure {
         int256[4] memory edges = [int256(1.001e75 - 1), 1.001e75, 9.999e75 - 1, 9.999e75];
         for (uint256 i = 0; i < edges.length; i++) {
             checkAbsolute(edges[i], -75);
@@ -124,13 +131,13 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
     /// 1.000878 has z about 4.39e-4, where the atanh series' z^14 term is
     /// just under 1000 units of 1e-50 and still moves the log by more than its
     /// relative bound.
-    function testLog10UnroundedRelativeSeriesTail() external {
+    function testLog10UnroundedRelativeSeriesTail() external pure {
         checkRelative(1000878e69, -75);
     }
 
     /// Either side of the 1e25 characteristic where `add` takes over, and
     /// past where the fixed point sum would overflow.
-    function testLog10UnroundedLargeCharacteristic() external {
+    function testLog10UnroundedLargeCharacteristic() external pure {
         checkAbsolute(2, 1e25 - 1);
         checkAbsolute(2, 1e25);
         checkAbsolute(2, 9e26);
@@ -140,13 +147,13 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is LogTest {
         checkAbsolute(31415926535, 1e40);
     }
 
-    function testLog10UnroundedOracle(int256 signedCoefficient, int256 exponent) external {
+    function testLog10UnroundedOracle(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         exponent = bound(exponent, -200, 200);
         checkAbsolute(signedCoefficient, exponent);
     }
 
-    function testLog10UnroundedOracleLargeExponent(int256 signedCoefficient, int256 exponent) external {
+    function testLog10UnroundedOracleLargeExponent(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         exponent = bound(exponent, -1e40, 1e40);
         checkAbsolute(signedCoefficient, exponent);

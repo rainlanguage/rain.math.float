@@ -13,6 +13,7 @@ import {
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {MaximizeOverflow} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMaximizeTest is Test {
     /// External wrapper so `vm.expectRevert` has a call boundary to catch the
@@ -168,38 +169,11 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         assertEq(secondShortfall, 0, "no second shortfall");
     }
 
-    /// Independent oracle for `maximize`, not sharing any structure with the
-    /// production staircase. It greedily multiplies the coefficient by ten
-    /// until the next multiply would overflow `int256`, then lowers the
-    /// exponent by that shift, stopping at `type(int256).min` and reporting
-    /// what is left as the shortfall.
-    function maximizeOracle(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, int256) {
-        if (signedCoefficient == 0) {
-            return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT, 0);
-        }
-        int256 shift = 0;
-        while (true) {
-            int256 next;
-            unchecked {
-                next = signedCoefficient * 10;
-            }
-            if (next / 10 != signedCoefficient) {
-                break;
-            }
-            signedCoefficient = next;
-            ++shift;
-        }
-        if (exponent < type(int256).min + shift) {
-            return (signedCoefficient, type(int256).min, shift - (exponent - type(int256).min));
-        }
-        return (signedCoefficient, exponent - shift, 0);
-    }
-
     function checkOracle(int256 signedCoefficient, int256 exponent) internal pure {
         (int256 actualCoefficient, int256 actualExponent, int256 actualShortfall) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
         (int256 expectedCoefficient, int256 expectedExponent, int256 expectedShortfall) =
-            maximizeOracle(signedCoefficient, exponent);
+            LibTestExactDecimal.maximize(signedCoefficient, exponent);
         assertEq(actualCoefficient, expectedCoefficient, "oracle coefficient");
         assertEq(actualExponent, expectedExponent, "oracle exponent");
         assertEq(actualShortfall, expectedShortfall, "oracle shortfall");
@@ -308,7 +282,8 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         int256 c = cs[cSel % 6];
         int256 e = es[eSel % 6];
 
-        (int256 expectedCoefficient, int256 expectedExponent, int256 expectedShortfall) = maximizeOracle(c, e);
+        (int256 expectedCoefficient, int256 expectedExponent, int256 expectedShortfall) =
+            LibTestExactDecimal.maximize(c, e);
 
         if (expectedShortfall == 0) {
             (int256 actualCoefficient, int256 actualExponent) = this.maximizeFullExternal(c, e);

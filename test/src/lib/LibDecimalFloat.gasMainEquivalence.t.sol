@@ -3,7 +3,6 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloatGasMain} from "test/lib/LibDecimalFloatGasMain.sol";
 
@@ -26,30 +25,6 @@ contract LibDecimalFloatGasMainEquivalenceTest is Test {
         return LibDecimalFloatImplementation.mul(a, ea, b, eb);
     }
 
-    function mainPackLossy(int256 c, int256 e) external pure returns (Float, bool) {
-        return LibDecimalFloatGasMain.packLossy(c, e);
-    }
-
-    function prPackLossy(int256 c, int256 e) external pure returns (Float, bool) {
-        return LibDecimalFloat.packLossy(c, e);
-    }
-
-    function mainPackLossless(int256 c, int256 e) external pure returns (Float) {
-        return LibDecimalFloatGasMain.packLossless(c, e);
-    }
-
-    function prPackLossless(int256 c, int256 e) external pure returns (Float) {
-        return LibDecimalFloat.packLossless(c, e);
-    }
-
-    function mainPackArithmeticResult(int256 c, int256 e) external pure returns (Float) {
-        return LibDecimalFloatGasMain.packArithmeticResult(c, e);
-    }
-
-    function prPackArithmeticResult(int256 c, int256 e) external pure returns (Float) {
-        return LibDecimalFloat.packArithmeticResult(c, e);
-    }
-
     function same(bytes memory mainCall, bytes memory prCall) internal view {
         (bool mainOk, bytes memory mainRet) = address(this).staticcall(mainCall);
         (bool prOk, bytes memory prRet) = address(this).staticcall(prCall);
@@ -63,12 +38,6 @@ contract LibDecimalFloatGasMainEquivalenceTest is Test {
 
     function checkMul(int256 a, int256 ea, int256 b, int256 eb) internal view {
         same(abi.encodeCall(this.mainMul, (a, ea, b, eb)), abi.encodeCall(this.prMul, (a, ea, b, eb)));
-    }
-
-    function checkPack(int256 c, int256 e) internal view {
-        same(abi.encodeCall(this.mainPackLossy, (c, e)), abi.encodeCall(this.prPackLossy, (c, e)));
-        same(abi.encodeCall(this.mainPackLossless, (c, e)), abi.encodeCall(this.prPackLossless, (c, e)));
-        same(abi.encodeCall(this.mainPackArithmeticResult, (c, e)), abi.encodeCall(this.prPackArithmeticResult, (c, e)));
     }
 
     /// A coefficient of `d` digits in [1, 77], either sign, `x` choosing where
@@ -155,13 +124,6 @@ contract LibDecimalFloatGasMainEquivalenceTest is Test {
         checkMul(a, ea, b, eb);
     }
 
-    function testGasMainPack(uint256 ck, uint256 d, uint256 x, int256 raw, bool neg, uint256 ek, int256 e)
-        external
-        view
-    {
-        checkPack(coefficientOf(ck, d, x, raw, neg), exponentOf(ek, e));
-    }
-
     /// Every digit count at both ends, both signs, against exponents near
     /// each bound.
     function testGasMainDigitCounts() external view {
@@ -176,17 +138,12 @@ contract LibDecimalFloatGasMainEquivalenceTest is Test {
                 checkMaximize(hi, e);
                 checkMaximize(-lo, e);
                 checkMaximize(-hi, e);
-                checkPack(lo, e);
-                checkPack(hi, e);
-                checkPack(-lo, e);
-                checkPack(-hi, e);
                 checkMul(hi, e, hi, -18);
                 checkMul(-hi, e, lo, 5);
                 checkMul(lo, -1, -lo, e);
             }
         }
         checkMaximize(type(int256).min, 0);
-        checkPack(type(int256).min, 0);
         checkMul(type(int256).min, 0, type(int256).min, 0);
         checkMul(type(int256).min, 0, -1, 0);
     }

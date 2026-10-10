@@ -172,4 +172,29 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         checkParse("1.5e");
         checkParse("1.5e+3");
     }
+
+    /// Exponents at the int256 bounds, from the fraction and from an integer
+    /// part past int256, and exponent digits past int256.
+    function testParsePr321EquivalenceExponentBounds() external view {
+        string memory min = vm.toString(type(int256).min);
+        string memory max = vm.toString(type(int256).max);
+        string memory past = string.concat("1", vm.toString(type(uint256).max), "0");
+        checkParse(string.concat("1.5e", min));
+        checkParse(string.concat("1.50000e", min));
+        checkParse(string.concat("1e", min));
+        checkParse(string.concat("1.5e", max));
+        checkParse(string.concat("1e", max));
+        checkParse(
+            string.concat("100000000000000000000000000000000000000000000000000000000000000000000000000000000e", max)
+        );
+        checkParse(
+            string.concat("100000000000000000000000000000000000000000000000000000000000000000000000000000000.000e", max)
+        );
+        checkParse(
+            string.concat("100000000000000000000000000000000000000000000000000000000000000000000000000000000.0010")
+        );
+        checkParse(string.concat("0.0e", past));
+        checkParse(string.concat("1.0e", past));
+        checkParse(past);
+    }
 }

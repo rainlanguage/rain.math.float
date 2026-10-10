@@ -2,49 +2,46 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LogTest, console2} from "../../abstract/LogTest.sol";
+import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 
-/// Gas of log10, pow10, pow, sqrt and mul on packed inputs, the common shape
+/// Gas of log10, pow10, pow, sqrt, mul, the conversions and parse on packed inputs, the common shape
 /// as values arrive packed, and on each function's worst case. Run with
 /// `forge test --mc LibDecimalFloatGasTest -vv`; each line is the gas of the
 /// internal call alone.
-contract LibDecimalFloatGasTest is LogTest {
+contract LibDecimalFloatGasTest is Test {
     using LibDecimalFloat for Float;
 
     function f(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
         return LibDecimalFloat.packLossless(signedCoefficient, exponent);
     }
 
-    function logLog10(string memory name, Float a) internal {
-        address tables = logTables();
+    function logLog10(string memory name, Float a) internal view {
         uint256 before = gasleft();
-        a.log10(tables);
+        a.log10();
         uint256 used = before - gasleft();
         console2.log(string.concat("log10 ", name), used);
     }
 
-    function logPow10(string memory name, Float a) internal {
-        address tables = logTables();
+    function logPow10(string memory name, Float a) internal view {
         uint256 before = gasleft();
-        a.pow10(tables);
+        a.pow10();
         uint256 used = before - gasleft();
         console2.log(string.concat("pow10 ", name), used);
     }
 
-    function logPow(string memory name, Float a, Float b) internal {
-        address tables = logTables();
+    function logPow(string memory name, Float a, Float b) internal view {
         uint256 before = gasleft();
-        a.pow(b, tables);
+        a.pow(b);
         uint256 used = before - gasleft();
         console2.log(string.concat("pow ", name), used);
     }
 
-    function logSqrt(string memory name, Float a) internal {
-        address tables = logTables();
+    function logSqrt(string memory name, Float a) internal view {
         uint256 before = gasleft();
-        a.sqrt(tables);
+        a.sqrt();
         uint256 used = before - gasleft();
         console2.log(string.concat("sqrt ", name), used);
     }
@@ -56,7 +53,7 @@ contract LibDecimalFloatGasTest is LogTest {
         console2.log(string.concat("mul ", name), used);
     }
 
-    function testGasLog10() external {
+    function testGasLog10() external view {
         logLog10("2", f(2, 0));
         logLog10("1.5", f(15, -1));
         logLog10("0.5", f(5, -1));
@@ -69,7 +66,7 @@ contract LibDecimalFloatGasTest is LogTest {
         logLog10("worst 9.9989999", f(99989999, -7));
     }
 
-    function testGasPow10() external {
+    function testGasPow10() external view {
         logPow10("0.5", f(5, -1));
         logPow10("1.2345", f(12345, -4));
         logPow10("-2.5", f(-25, -1));
@@ -80,10 +77,15 @@ contract LibDecimalFloatGasTest is LogTest {
         logPow10("worst 41 digits 0.999", f(99999999999999999999999999999999999999999, -41));
     }
 
-    function testGasPow() external {
+    function testGasPow() external view {
         logPow("2^0.5", f(2, 0), f(5, -1));
         logPow("2^1.5", f(2, 0), f(15, -1));
         logPow("2^-0.5", f(2, 0), f(-5, -1));
+        logPow("2^-1.5", f(2, 0), f(-15, -1));
+        logPow("7^10.5", f(7, 0), f(105, -1));
+        logPow("1e18 scale ^ 2.5", f(1234567890123456789, -18), f(25, -1));
+        logPow("int224 max^1.5", f(type(int224).max, 0), f(15, -1));
+        logPow("worst half 1.0000001^2147483647.5", f(10000001, -7), f(21474836475, -1));
         logPow("2^3", f(2, 0), f(3, 0));
         logPow("1.0001^365", f(10001, -4), f(365, 0));
         logPow("1e18 scale ^ 3.7", f(1234567890123456789, -18), f(37, -1));
@@ -95,7 +97,7 @@ contract LibDecimalFloatGasTest is LogTest {
         logPow("worst 1.0000001^2147483647.999", f(10000001, -7), f(2147483647999, -3));
     }
 
-    function testGasSqrt() external {
+    function testGasSqrt() external view {
         logSqrt("2", f(2, 0));
         logSqrt("4", f(4, 0));
         logSqrt("1e18 scale 1.234567890123456789", f(1234567890123456789, -18));
@@ -113,5 +115,53 @@ contract LibDecimalFloatGasTest is LogTest {
             f(14142135623730950488016887242096980785697, -40)
         );
         logMul("int224 max", f(type(int224).max, 0), f(type(int224).max, 0));
+    }
+
+    function logPackLossless(string memory name, int256 signedCoefficient, int256 exponent) internal view {
+        uint256 before = gasleft();
+        LibDecimalFloat.packLossless(signedCoefficient, exponent);
+        uint256 used = before - gasleft();
+        console2.log(string.concat("packLossless ", name), used);
+    }
+
+    function logFromFixed(string memory name, uint256 value, uint8 decimals) internal view {
+        uint256 before = gasleft();
+        LibDecimalFloat.fromFixedDecimalLosslessPacked(value, decimals);
+        uint256 used = before - gasleft();
+        console2.log(string.concat("fromFixedDecimalLosslessPacked ", name), used);
+    }
+
+    function logToFixed(string memory name, Float a, uint8 decimals) internal view {
+        uint256 before = gasleft();
+        a.toFixedDecimalLossy(decimals);
+        uint256 used = before - gasleft();
+        console2.log(string.concat("toFixedDecimalLossy ", name), used);
+    }
+
+    function logParse(string memory s) internal view {
+        uint256 before = gasleft();
+        LibParseDecimalFloat.parseDecimalFloat(s);
+        uint256 used = before - gasleft();
+        console2.log(string.concat("parseDecimalFloat ", s), used);
+    }
+
+    function testGasConversions() external view {
+        logPackLossless("1", 1, 0);
+        logPackLossless("1e18 scale", 1234567890123456789, -18);
+        logPackLossless("int256 multiple of 1e9", 1e76, -9);
+        logFromFixed("1e18", 1e18, 18);
+        logFromFixed("1.234567890123456789", 1234567890123456789, 18);
+        logFromFixed("int224 max", uint256(int256(type(int224).max)), 6);
+        logToFixed("1 to 18", f(1, 0), 18);
+        logToFixed("1.234567890123456789 to 6", f(1234567890123456789, -18), 6);
+        logToFixed("1e18 scale to 18", f(1234567890123456789, -18), 18);
+    }
+
+    function testGasParse() external view {
+        logParse("1");
+        logParse("1.5");
+        logParse("1.234567890123456789");
+        logParse("-1.5e-10");
+        logParse("1e18");
     }
 }

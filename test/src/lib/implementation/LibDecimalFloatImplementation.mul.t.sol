@@ -9,7 +9,7 @@ import {
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMulTest is Test {
     function checkMul(
@@ -123,13 +123,11 @@ contract LibDecimalFloatImplementationMulTest is Test {
         exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX / 2);
 
         (int256 resultCoeff, int256 resultExp) = LibDecimalFloatImplementation.mul(signedCoefficient, exponent, 1, 0);
-        assertTrue(
-            LibDecimalFloatImplementation.eq(resultCoeff, resultExp, signedCoefficient, exponent),
-            "a * 1 should equal a"
-        );
+        assertTrue(LibTestExactDecimal.eq(resultCoeff, resultExp, signedCoefficient, exponent), "a * 1 should equal a");
     }
 
-    /// a * b == b * a for all in-range inputs.
+    /// a * b and b * a are both the exact product's parts. The exponent
+    /// sum stays above the floor, so no digits are shed into it.
     function testMulCommutative(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -144,8 +142,12 @@ contract LibDecimalFloatImplementationMulTest is Test {
         (int256 coeffBA, int256 expBA) =
             LibDecimalFloatImplementation.mul(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
 
-        assertEq(coeffAB, coeffBA, "commutative coefficient");
-        assertEq(expAB, expBA, "commutative exponent");
+        (int256 expectedCoeff, int256 expectedExp) =
+            LibTestExactDecimal.mulParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertEq(coeffAB, expectedCoeff, "a * b coefficient");
+        assertEq(expAB, expectedExp, "a * b exponent");
+        assertEq(coeffBA, expectedCoeff, "b * a coefficient");
+        assertEq(expBA, expectedExp, "b * a exponent");
     }
 
     function testMulNotRevertAnyExpectation(
@@ -159,10 +161,10 @@ contract LibDecimalFloatImplementationMulTest is Test {
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatSlow.mulSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibTestExactDecimal.mulParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
 
-        assertEq(signedCoefficient, expectedSignedCoefficient);
-        assertEq(exponent, expectedExponent);
+        assertEq(signedCoefficient, expectedSignedCoefficient, "signedCoefficient");
+        assertEq(exponent, expectedExponent, "exponent");
     }
 
     /// `pow`'s squaring loop hands `mul` exponents up to `type(int128).max` in
@@ -180,27 +182,17 @@ contract LibDecimalFloatImplementationMulTest is Test {
         assertEq(exponent - 2 * bound, 77);
     }
 
-    /// `mul` in a frame shifted up by 2^254 per operand, with the exponent
-    /// moved back down and lifted to `type(int256).min` by shedding digits.
+    /// The exact product floored to 256 bits as `mulParts`, with the digits
+    /// below `10^type(int256).min` truncated towards zero.
     function mulBelowFloorExpected(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
     ) internal pure returns (int256, int256) {
-        int256 shift = 2 ** 254;
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.mul(
-            signedCoefficientA, exponentA + shift, signedCoefficientB, exponentB + shift
-        );
-        if (exponent >= 0) {
-            return (signedCoefficient, exponent + type(int256).min);
-        }
-        if (exponent < -76) {
-            return (0, 0);
-        }
-        // forge-lint: disable-next-line(unsafe-typecast)
-        signedCoefficient /= int256(10 ** uint256(-exponent));
-        return (signedCoefficient, signedCoefficient == 0 ? int256(0) : type(int256).min);
+        (int256 signedCoefficient, int256 shed) =
+            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+        return LibTestExactDecimal.atFloor(signedCoefficient, exponentA - type(int256).min + exponentB + shed);
     }
 
     function checkMulBelowFloor(
@@ -221,7 +213,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         (int256 q, int256 qe) =
             LibDecimalFloatImplementation.div(19507 * -77, type(int256).min, -77, type(int256).min + 11002);
         (int256 back, int256 backE) = LibDecimalFloatImplementation.mul(q, qe, -77, type(int256).min + 11002);
-        assertTrue(LibDecimalFloatImplementation.eq(back, backE, 19507 * -77, type(int256).min));
+        assertTrue(LibTestExactDecimal.eq(back, backE, 19507 * -77, type(int256).min));
     }
 
     /// The digits `mul` drops when the product is wider than 256 bits lift
@@ -244,7 +236,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         checkMul(type(int256).min, min, type(int256).min, min, 0, 0);
     }
 
-    function testMulExponentSumBelowFloorMatchesShifted(
+    function testMulExponentSumBelowFloorExact(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
@@ -258,7 +250,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
 
     /// Exponent sums within 80 of the floor, where the lift and the digit
     /// shedding meet.
-    function testMulExponentSumNearFloorMatchesShifted(
+    function testMulExponentSumNearFloorExact(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
@@ -295,6 +287,14 @@ contract LibDecimalFloatImplementationMulTest is Test {
         checkMulExponentOverflow(1, max, 1, 1);
         checkMulExponentOverflow(-1, 1, 1, max);
         checkMulExponentOverflow(1, max, 1, max);
+    }
+
+    /// Both repros from #325, and the second with its operands swapped.
+    function testMulIssue325Repros() external {
+        int256 max = type(int256).max;
+        checkMulExponentOverflow(1, max, 1, 1);
+        checkMulExponentOverflow(type(int256).min, max, -1, 0);
+        checkMulExponentOverflow(-1, 0, type(int256).min, max);
     }
 
     /// The sum fits but the normalisation lift of up to 77 does not.
@@ -343,7 +343,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         int256 exponentB
     ) internal {
         (int256 expectedSignedCoefficient, int256 normalisedExponent) =
-            LibDecimalFloatSlow.mulSlow(signedCoefficientA, 0, signedCoefficientB, 0);
+            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
         // exponentA is non-negative and exponentB + normalisedExponent small,
         // so neither side wraps.
         if (exponentB + normalisedExponent > type(int256).max - exponentA) {
@@ -397,7 +397,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         exponentA = bound(exponentA, 0, type(int256).max);
         exponentB = bound(exponentB, 0, type(int256).max);
         (int256 expectedSignedCoefficient, int256 normalisedExponent) =
-            LibDecimalFloatSlow.mulSlow(signedCoefficientA, 0, signedCoefficientB, 0);
+            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
         if (exponentB > type(int256).max - exponentA - normalisedExponent) {
             checkMulExponentOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         } else {
@@ -409,6 +409,86 @@ contract LibDecimalFloatImplementationMulTest is Test {
                 expectedSignedCoefficient,
                 exponentA + exponentB + normalisedExponent
             );
+        }
+    }
+
+    /// True iff `exponentA + exponentB + lift` is above `type(int256).max`,
+    /// for `lift` in [0, 78].
+    function exceedsCeiling(int256 exponentA, int256 exponentB, int256 lift) internal pure returns (bool) {
+        if (exponentA >= 0) {
+            if (exponentB > type(int256).max - exponentA) {
+                return true;
+            }
+        } else if (exponentB < type(int256).min - exponentA) {
+            return false;
+        }
+        return exponentA + exponentB > type(int256).max - lift;
+    }
+
+    /// Any operands: `mul` either returns or reverts `ExponentOverflow` with
+    /// the first operand, and reverts iff the exact result exponent is above
+    /// `type(int256).max`. Never a panic.
+    function checkMulRevertsOnlyExponentOverflow(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal view {
+        bool overflows = false;
+        if (signedCoefficientA != 0 && signedCoefficientB != 0) {
+            (, int256 lift) = LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+            overflows = exceedsCeiling(exponentA, exponentB, lift);
+        }
+        try this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) {
+            assertFalse(overflows, "returned past the ceiling");
+        } catch (bytes memory err) {
+            assertEq(err, abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA, exponentA), "revert");
+            assertTrue(overflows, "reverted below the ceiling");
+        }
+    }
+
+    function testMulRevertsOnlyExponentOverflow(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) external view {
+        checkMulRevertsOnlyExponentOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    /// The same over every pairing of edge operands.
+    function testMulRevertsOnlyExponentOverflowEdges() external view {
+        int256 min = type(int256).min;
+        int256 max = type(int256).max;
+        int256[10] memory coefficients = [min, min + 1, -1e76, -10, -1, 1, 9, 1e76, max - 1, max];
+        int256[16] memory exponents = [
+            min,
+            min + 1,
+            min + 77,
+            -(2 ** 254) - 1,
+            -(2 ** 254),
+            -(2 ** 253) - 1,
+            -(2 ** 253),
+            -1,
+            0,
+            1,
+            2 ** 253 - 1,
+            2 ** 253,
+            2 ** 254,
+            max - 78,
+            max - 77,
+            max
+        ];
+        for (uint256 ia = 0; ia < coefficients.length; ia++) {
+            for (uint256 ib = 0; ib < coefficients.length; ib++) {
+                for (uint256 ja = 0; ja < exponents.length; ja++) {
+                    for (uint256 jb = 0; jb < exponents.length; jb++) {
+                        checkMulRevertsOnlyExponentOverflow(
+                            coefficients[ia], exponents[ja], coefficients[ib], exponents[jb]
+                        );
+                    }
+                }
+            }
         }
     }
 }

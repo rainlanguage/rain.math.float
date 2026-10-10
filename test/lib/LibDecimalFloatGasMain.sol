@@ -2,18 +2,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ExponentOverflow, ExponentUnderflow, CoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
-/// `mul`, `maximize`, `packLossy`, `packLossless` and `packArithmeticResult`
-/// verbatim from main a8df3d32b2d7c9af59129a6b666dce6fd48cb984, before the
-/// gas changes of issue #310. The helpers they call are unchanged since that
-/// commit, so they are qualified to the live library. Equivalence tests only.
+/// `mul`, `mulExponentBelowFloor`, `mulExponentNearCeiling` and `maximize`
+/// verbatim from main 8fd3980250fae214fc2b4273545654ee1921c0ad, before the
+/// gas changes of issue #310. The helpers they call are unchanged on main, so
+/// they are qualified to the live library. Equivalence tests only.
 library LibDecimalFloatGasMain {
     function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
@@ -191,142 +190,5 @@ library LibDecimalFloatGasMain {
             }
             return (signedCoefficient, maximizedExponent, 0);
         }
-    }
-
-    function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
-        unchecked {
-            int256 initialSignedCoefficient = signedCoefficient;
-            int256 initialExponent = exponent;
-
-            // truncation here is intentional if it happens as that is what we
-            // are testing for.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            bool fits = int224(signedCoefficient) == signedCoefficient;
-
-            if (!fits) {
-                if (signedCoefficient / 1e72 != 0) {
-                    signedCoefficient /= 1e5;
-                    exponent += 5;
-                }
-
-                // truncation here is intentional if it happens as that is what we
-                // are testing for.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                while (int224(signedCoefficient) != signedCoefficient) {
-                    signedCoefficient /= 10;
-                    ++exponent;
-                }
-            } else {
-                if (signedCoefficient == 0) {
-                    // The literal is the bool this function returns, not a condition operand.
-                    //forge-lint: disable-next-line(boolean-cst)
-                    return (LibDecimalFloat.FLOAT_ZERO, true);
-                }
-            }
-
-            // truncation here is intentional if it happens as that is what we
-            // are testing for.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            if (int32(exponent) != exponent) {
-                // Shedding raises the exponent by at most ten digits, so an
-                // exponent past the ceiling started positive, and one that
-                // started positive and is out of range is past the ceiling,
-                // or wrapped through int256.max by the unchecked shedding.
-                if (initialExponent > 0) {
-                    // Lower the exponent by multiplying the coefficient by ten
-                    // per step, which is exact, while int224 has the headroom.
-                    // A coefficient shed to fit int224 has none, and a non-zero
-                    // int224 has at most 68 digits so an excess of 68 or more
-                    // never has it. Either way the magnitude exceeds every
-                    // representable Float.
-                    int256 excess = exponent - type(int32).max;
-                    if (!fits || excess > 67) {
-                        revert ExponentOverflow(initialSignedCoefficient, initialExponent);
-                    }
-                    // excess is in [1, 67] so 10 ** excess fits int256 and the
-                    // casts cannot truncate.
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    int256 scale = int256(10 ** uint256(excess));
-                    // Nothing was shed, so the initial coefficient is the one to
-                    // lift.
-                    if (
-                        initialSignedCoefficient > type(int224).max / scale
-                            || initialSignedCoefficient < type(int224).min / scale
-                    ) {
-                        revert ExponentOverflow(initialSignedCoefficient, initialExponent);
-                    }
-                    signedCoefficient = initialSignedCoefficient * scale;
-                    exponent = type(int32).max;
-                } else {
-                    // The exponent is below the int32 floor. Every division of the
-                    // coefficient by ten raises the exponent by one, so the
-                    // shortfall is exactly the number of digits to shed. The
-                    // coefficient fits int224 here, so it has at most 68 decimal
-                    // digits and a shortfall of 68 or more sheds every one of
-                    // them: that is zero without computing it. `exponent` is
-                    // negative here and below int32.min, so the subtraction cannot
-                    // overflow and the shortfall is positive.
-                    int256 shortfall = int256(type(int32).min) - exponent;
-                    if (shortfall > 67) {
-                        // The literal is the bool this function returns, not a condition operand.
-                        //forge-lint: disable-next-line(boolean-cst)
-                        return (LibDecimalFloat.FLOAT_ZERO, false);
-                    }
-                    // shortfall is in [1, 67] so 10 ** shortfall fits int256 and the
-                    // casts cannot truncate.
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    signedCoefficient /= int256(10 ** uint256(shortfall));
-                    if (signedCoefficient == 0) {
-                        // Every digit was shed: the value is smaller in magnitude
-                        // than any representable Float, so this is the underflow
-                        // zero and it is not a lossless conversion.
-                        // The literal is the bool this function returns, not a condition operand.
-                        //forge-lint: disable-next-line(boolean-cst)
-                        return (LibDecimalFloat.FLOAT_ZERO, false);
-                    }
-                    exponent = type(int32).min;
-                }
-            }
-
-            // Lossless iff every digit shed was a zero, which is iff the
-            // original coefficient is an exact multiple of ten to the number of
-            // digits shed. Shedding only raises the exponent and lifting only
-            // lowers it, and never both, so an exponent at or below the initial
-            // one shed nothing. Otherwise the number shed is the rise, which is
-            // in [1, 76] for any non-zero result (an int256 has at most 77
-            // digits and at least one survived), so the power fits int256.
-            if (exponent <= initialExponent) {
-                // The literal is the bool this function returns, not a condition operand.
-                //forge-lint: disable-next-line(boolean-cst)
-                lossless = true;
-            } else {
-                // The rise is in [1, 76] so the casts cannot truncate.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                lossless = initialSignedCoefficient % int256(10 ** uint256(exponent - initialExponent)) == 0;
-            }
-
-            // Need a mask to zero out the bits that could be set to 1 if the
-            // coefficient is negative.
-            uint256 mask = type(uint224).max;
-            assembly ("memory-safe") {
-                float := or(and(signedCoefficient, mask), shl(0xe0, exponent))
-            }
-        }
-    }
-
-    function packLossless(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
-        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
-        if (!lossless) {
-            revert CoefficientOverflow(signedCoefficient, exponent);
-        }
-        return c;
-    }
-
-    function packArithmeticResult(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
-        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
-        if (!lossless && Float.unwrap(c) == bytes32(0)) {
-            revert ExponentUnderflow(signedCoefficient, exponent);
-        }
-        return c;
     }
 }

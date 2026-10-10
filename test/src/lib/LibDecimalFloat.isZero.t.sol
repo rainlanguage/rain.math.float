@@ -12,15 +12,12 @@ contract LibDecimalFloatIsZeroTest is Test {
         return a.isZero();
     }
 
-    function testIsZeroDeployed(Float a) external {
-        try this.isZeroExternal(a) returns (bool b) {
-            bool deployedB = a.isZero();
-
-            assertEq(b, deployedB);
-        } catch (bytes memory err) {
-            vm.expectRevert(err);
-            a.isZero();
-        }
+    /// Never reverts, and is true exactly when the coefficient is zero,
+    /// whatever the exponent bits hold.
+    function testIsZeroDeployed(Float a) external view {
+        bool expected = uint256(Float.unwrap(a)) & type(uint224).max == 0;
+        assertEq(this.isZeroExternal(a), expected, "external");
+        assertEq(a.isZero(), expected, "internal");
     }
 
     function testIsZeroEqZero(Float a) external pure {

@@ -18,15 +18,20 @@ import {
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters
 } from "src/error/ErrParse.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 
 /// `LibParseDecimalFloat` verbatim from
-/// `src/lib/parse/LibParseDecimalFloat.sol` at ce55522 (#321), before #310's
+/// `src/lib/parse/LibParseDecimalFloat.sol` at ff6d70c (main), before #310's
 /// parse change. Equivalence tests only.
 library LibParseDecimalFloatPr321 {
     /// @notice Parses a decimal float from a substring defined by [start, end).
+    /// A literal whose exponent is below int256.min has a non-zero coefficient
+    /// and is smaller than every Float, so it is `ParseDecimalPrecisionLoss`,
+    /// as `parseDecimalFloat` reports any literal smaller than every Float.
+    /// An integer part past int256 returns its trailing zeros in the exponent,
+    /// and a zero coefficient takes exponent digits of any size.
     /// @param start The starting index of the substring (inclusive).
     /// @param end The ending index of the substring (exclusive).
     /// @return errorSelector The error selector if an error occurred, otherwise
@@ -54,7 +59,12 @@ library LibParseDecimalFloatPr321 {
                 (bytes4 signedCoefficientErrorSelector, int256 signedCoefficientTmp) =
                     LibParseDecimal.unsafeDecimalStringToSignedInt(start, cursor);
                 if (signedCoefficientErrorSelector != 0) {
-                    return (signedCoefficientErrorSelector, cursor, 0, 0);
+                    // A nonempty digit run fails only past int256.
+                    (signedCoefficientErrorSelector, cursor, signedCoefficientTmp, exponent) =
+                        parseIntegerPastInt256(start, cursor, end);
+                    if (signedCoefficientErrorSelector != 0) {
+                        return (signedCoefficientErrorSelector, cursor, 0, 0);
+                    }
                 }
                 signedCoefficient = signedCoefficientTmp;
             }
@@ -159,16 +169,27 @@ library LibParseDecimalFloatPr321 {
                 {
                     (bytes4 eErrorSelector, int256 eValueTmp) =
                         LibParseDecimal.unsafeDecimalStringToSignedInt(eStart, cursor);
+                    // Exponent digits fail only past int256, which is no
+                    // Float unless the coefficient is zero. The failed parse
+                    // leaves eValueTmp zero.
                     if (eErrorSelector != 0) {
-                        return (eErrorSelector, cursor, 0, 0);
+                        if (signedCoefficient != 0) {
+                            return (eErrorSelector, cursor, 0, 0);
+                        }
                     }
                     eValue = eValueTmp;
                 }
 
                 {
+                    // The sum wraps exactly when it moves against eValue's
+                    // sign. A fraction makes exponent negative and trailing
+                    // zeros past int256 make it positive, so either way can
+                    // wrap: below int256.min the value is smaller than every
+                    // Float, above int256.max it is larger than every Float.
                     int256 newExponent = exponent + eValue;
-                    if ((eValue > 0 && newExponent < exponent) || (eValue < 0 && newExponent > exponent)) {
-                        return (ExponentOverflow.selector, cursor, 0, 0);
+                    if ((newExponent < exponent) != (eValue < 0)) {
+                        return
+                            (eValue < 0 ? ParseDecimalPrecisionLoss.selector : ExponentOverflow.selector, cursor, 0, 0);
                     }
                     exponent = newExponent;
                 }
@@ -182,10 +203,60 @@ library LibParseDecimalFloatPr321 {
         }
     }
 
+    /// @notice Parses an integer part past int256, `[start, intEnd)` with any
+    /// sign, by moving its trailing zeros into the exponent. With significant
+    /// digits still past int256 it is `ParseDecimalOverflow`, and a nonzero
+    /// fraction digit after it is `ParseDecimalPrecisionLoss`: either needs a
+    /// coefficient past int256, so neither is a Float. An all-zero fraction
+    /// is consumed here.
+    /// @param start The start of the integer part, at its sign if any.
+    /// @param intEnd The end of the integer part's digits, which hold a
+    /// nonzero digit.
+    /// @param end The end of the whole string.
+    /// @return errorSelector The error selector if an error occurred,
+    /// otherwise 0.
+    /// @return cursor The position after the integer part and any fraction.
+    /// @return signedCoefficient The integer part without its trailing zeros.
+    /// @return exponent The number of trailing zeros.
+    function parseIntegerPastInt256(uint256 start, uint256 intEnd, uint256 end)
+        private
+        pure
+        returns (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent)
+    {
+        unchecked {
+            uint256 significantEnd = intEnd;
+            while (LibParseChar.isMask(significantEnd - 1, end, CMASK_ZERO) == 1) {
+                significantEnd--;
+            }
+            (errorSelector, signedCoefficient) = LibParseDecimal.unsafeDecimalStringToSignedInt(start, significantEnd);
+            cursor = intEnd;
+            if (errorSelector != 0) {
+                return (errorSelector, cursor, 0, 0);
+            }
+            if (LibParseChar.isMask(cursor, end, CMASK_DECIMAL_POINT) == 1) {
+                cursor++;
+                uint256 fracStart = cursor;
+                cursor = LibParseChar.skipMask(cursor, end, CMASK_NUMERIC_0_9);
+                if (cursor == fracStart) {
+                    return (MalformedDecimalPoint.selector, cursor, 0, 0);
+                }
+                if (LibParseChar.skipMask(fracStart, cursor, CMASK_ZERO) != cursor) {
+                    return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
+                }
+            }
+            // The zero count is bounded by memory.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            exponent = int256(intEnd - significantEnd);
+        }
+    }
+
     /// @notice Parses a decimal float from a string. This a high-level wrapper
     /// around `parseDecimalFloatInline` that handles string memory layout and
     /// returns a packed `Float` amenable to subsequent operations with
-    /// `LibDecimalFloat`.
+    /// `LibDecimalFloat`. A literal larger in magnitude than every Float is
+    /// `ExponentOverflow`: a revert from packing, or the selector when its
+    /// exponent is past int256. Any other literal that is not exactly a Float, one
+    /// smaller than every Float included, returns `ParseDecimalPrecisionLoss`.
     /// @param str The string to parse.
     /// @return errorSelector The error selector if an error occurred, otherwise
     /// 0.

@@ -133,6 +133,11 @@ pub(crate) fn pair() -> BoxedStrategy<(Dec, Dec)> {
                 let b = related(a.clone(), c, off, kind);
                 (a, b)
             }),
+        // A result within a few of the int224 bound, past it or not.
+        1 => (0i64..=4, -4i64..=4, exponent(), any::<bool>()).prop_map(|(d, s, e, neg)| {
+            let c = if neg { r::int224_min() + d } else { r::int224_max() - d };
+            (Dec::new(c, e), Dec::new(s, e))
+        }),
     ]
     .boxed()
 }
@@ -696,24 +701,25 @@ pub(crate) fn literal() -> BoxedStrategy<String> {
 pub(crate) fn check_parse(s: &str) -> Result<(), TestCaseError> {
     let case = format!("parse({s})");
     let want = r::parse(s);
-    // The digit limits before packing are the parser's own; past them python
-    // decides the literal's value and whether it packs, reading the string
-    // itself wherever its exponent is in the decimal module's range.
-    if let Ok(unpacked) = r::parse_unpacked(s) {
+    let unpacked = r::parse_unpacked(s);
+    if let Ok(unpacked) = &unpacked {
         let lit = r::literal_value(s);
         prop_assert!(
             unpacked.eq_value(&lit) || unpacked.e.abs() > 1 << 60,
             "{case}: unpacked {unpacked:?}, literal {lit:?}"
         );
-        if unpacked.e.abs() < 1_000_000_000_000_000 {
-            match (&want, py_float(&ask(json!({"op": "parse_value", "s": s})))) {
-                (Ok(w), Ok(p)) => {
-                    prop_assert!(w.eq_value(&p), "{case}: reference {w:?}, python {p:?}")
-                }
-                (Err(w), Err(p)) => prop_assert_eq!(w.name(), p, "{}", case),
-                (w, p) => prop_assert!(false, "{case}: reference {w:?}, python {p:?}"),
+    }
+    // Python reads every literal's value and decides whether it is a Float,
+    // so every representable literal parses to exactly its value. Which error
+    // a literal that is no Float gets is the parser's own before packing.
+    match (&want, py_float(&ask(json!({"op": "parse_value", "s": s})))) {
+        (Ok(w), Ok(p)) => prop_assert!(w.eq_value(&p), "{case}: reference {w:?}, python {p:?}"),
+        (Err(w), Err(p)) => {
+            if unpacked.is_ok() {
+                prop_assert_eq!(w.name(), p, "{}", case)
             }
         }
+        (w, p) => prop_assert!(false, "{case}: reference {w:?}, python {p:?}"),
     }
     match (sol_parse(s), want) {
         (Ok(f), Ok(w)) => {
@@ -967,6 +973,71 @@ mod found {
         run(check_mul(&Dec::new(1, I32_MAX), &Dec::new(1, 1)));
     }
 
+    /// #326: an int224.min coefficient negates to int224.max at the same
+    /// exponent, the ceiling included.
+    #[test]
+    fn minus_int224_min() {
+        for e in [I32_MIN, -1, 0, 1, I32_MAX] {
+            let a = Dec::new(r::int224_min(), e);
+            for want in [r::minus(&a).unwrap(), r::abs(&a).unwrap()] {
+                assert_eq!((want.c, want.e), (r::int224_max(), e));
+            }
+            run(check_unary(&a));
+        }
+    }
+
+    /// #332: a sum or product just past int224 packs as int224.max at its
+    /// own exponent, as `minus` does, so `add(int224.max, 1)` is not below
+    /// int224.max.
+    #[test]
+    fn arithmetic_past_int224_max() {
+        let max = Dec::new(r::int224_max(), 0);
+        let min = Dec::new(r::int224_min(), 0);
+        let one = Dec::new(1, 0);
+        let neg_one = Dec::new(-1, 0);
+        let want = max.to_bytes();
+        let cases = [
+            (sol_add(&max, &one), r::add(&max, &one)),
+            (
+                sol_add(&max, &Dec::new(2, 0)),
+                r::add(&max, &Dec::new(2, 0)),
+            ),
+            (sol_sub(&Dec::zero(), &min), r::sub(&Dec::zero(), &min)),
+            (sol_sub(&max, &neg_one), r::sub(&max, &neg_one)),
+            (
+                sol_float(T::mulCall {
+                    a: min.to_bytes(),
+                    b: neg_one.to_bytes(),
+                }),
+                r::mul(&min, &neg_one),
+            ),
+            (
+                sol_float(T::divCall {
+                    a: min.to_bytes(),
+                    b: neg_one.to_bytes(),
+                }),
+                r::div(&min, &neg_one),
+            ),
+            (
+                sol_float(T::minusCall { a: min.to_bytes() }),
+                r::minus(&min),
+            ),
+        ];
+        for (sol, reference) in cases {
+            let sol = sol.unwrap();
+            assert_eq!(sol.to_bytes(), want, "solidity {sol:?}");
+            assert!(reference.unwrap().eq_value(&max));
+        }
+        let neg = Dec::new(-r::int224_max(), 0);
+        assert!(sol_sub(&neg, &Dec::new(2, 0)).unwrap().eq_value(&min));
+        assert!(r::sub(&neg, &Dec::new(2, 0)).unwrap().eq_value(&min));
+        run(check_add(&max, &one));
+        run(check_sub(&Dec::zero(), &min));
+        run(check_sub(&neg, &Dec::new(2, 0)));
+        run(check_mul(&min, &neg_one));
+        run(check_div(&min, &neg_one));
+    }
+
     #[test]
     fn parse_at_the_exponent_ceiling() {
         run(check_parse("1e2147483648"));
@@ -1001,6 +1072,69 @@ mod found {
                 }
                 run(check_parse(&s));
             }
+        }
+    }
+
+    /// #341: a literal past int256 that is a Float parses to exactly its
+    /// value, and zero takes an exponent of any size.
+    #[test]
+    fn parse_past_int256() {
+        let zeros = |n: usize| "0".repeat(n);
+        let max = r::int256_max();
+        let past = &max + 1u32;
+        for (s, c, e) in [
+            (format!("1{}", zeros(77)), BigInt::from(1), 77),
+            (format!("-1{}", zeros(77)), BigInt::from(-1), 77),
+            (format!("1{}", zeros(100)), BigInt::from(1), 100),
+            (format!("-0001{}", zeros(100)), BigInt::from(-1), 100),
+            (format!("6{}", zeros(76)), BigInt::from(6), 76),
+            (format!("5{}", zeros(76)), BigInt::from(5), 76),
+            (
+                format!("{}{}", r::int224_max(), zeros(20)),
+                r::int224_max(),
+                20,
+            ),
+            (
+                format!("{}{}", r::int224_min(), zeros(20)),
+                r::int224_min(),
+                20,
+            ),
+            (format!("1{}.000e-77", zeros(77)), BigInt::from(1), 0),
+            (
+                format!("1{}e2147483567", zeros(80)),
+                BigInt::from(1),
+                I32_MAX,
+            ),
+            (
+                format!("1{}e-2147483728", zeros(80)),
+                BigInt::from(1),
+                I32_MIN,
+            ),
+            (format!("0e{past}"), BigInt::zero(), 0),
+            (format!("0e-{}", &past + 1u32), BigInt::zero(), 0),
+            (format!("-0.000E+{past}000"), BigInt::zero(), 0),
+            (format!("0.0e-9{}", zeros(200)), BigInt::zero(), 0),
+        ] {
+            let want = Dec::new(c, e);
+            let got = sol_parse(&s);
+            assert!(matches!(&got, Ok(f) if f.eq_value(&want)), "{s}: {got:?}");
+            run(check_parse(&s));
+        }
+        // No Float.
+        for s in [
+            format!("{past}"),
+            format!("{past}0"),
+            format!("{max}0000"),
+            format!("{}{}", r::int224_max() + 1u32, zeros(20)),
+            format!("1{}.5", zeros(77)),
+            format!("1{}.0001", zeros(77)),
+            format!("1{}e-2147483729", zeros(80)),
+            format!("1e{past}"),
+            format!("-0.1e-{}", &past + 1u32),
+            format!("1{}e{past}", zeros(80)),
+        ] {
+            assert!(sol_parse(&s).is_err(), "{s}");
+            run(check_parse(&s));
         }
     }
 }
