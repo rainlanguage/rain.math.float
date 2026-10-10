@@ -769,5 +769,26 @@
       "testsAfter": 842,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-09T18:30:50Z",
+    "commit": "7d900415f834f5980fa58c66435b85711dc7d78e",
+    "testsAfterCommit": "8c3fc494897d7fa80ebdc088516c6464e8f8425b",
+    "publishedTag": "sol-v0.2.34",
+    "commitsAheadOfTag": 17,
+    "scope": "issues #374/#368 (PR branch 2026-10-09-issue-374-div-inv-exact): the changed lines of LibDecimalFloat.div (inlined pack, overflow fast path at int32.max - 10, range errors reporting a), LibDecimalFloat.inv (DivisionByZero reporting the input, underflow reporting the input) and LibDecimalFloatImplementation.div (shedding below the floor before the sign). Probe suite: full forge test (854 tests). M01 overflow check skipped, M02 fast path at int32.max - 9, M03 overflow reports b, M04 div underflow without !lossless, M05/M10 underflow reported as overflow, M06 underflow reports b, M07 inv zero check removed, M08 inv zero reports exponent 0, M09 inv underflow without !lossless, M11 floor shed one digit more, M12 zero after the floor shed not normalised, M13 zero cutoff at 75, M14 divisor sign dropped, M15 a 2^255 quotient sheds a digit before the floor shed (the #368 shape). All killed but M09, which is equivalent: no inverse of a non-zero Float is exactly zero and zero is rejected first, so the guard was removed at 8c3fc49. Not probed: underflowExponentBy > 0 as >= 0 and the 76 cutoff as 77, both equivalent (dividing by 10^0; 2^255 / 10^77 is zero).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 15,
+      "killedBefore": 14,
+      "killedAfter": 0,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 854,
+      "testsAfter": 854,
+      "filed": []
+    }
   }
 ]

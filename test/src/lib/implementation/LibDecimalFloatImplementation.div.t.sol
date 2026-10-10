@@ -493,4 +493,59 @@ contract LibDecimalFloatImplementationDivTest is Test {
         // Both sides divided by 10^type(int256).min.
         assertTrue(LibTestExactDecimal.productEq(q, qe, divisor, shift, numerator, 0), "(a / b) * b == a");
     }
+
+    /// The quotient against the parts the NatSpec states and the exact
+    /// quotient they truncate, or `ExponentOverflow` where those parts'
+    /// exponent is above `type(int256).max`.
+    function checkDivExact(int256 a, int256 ea, int256 b, int256 eb) internal {
+        (bool overflows, int256 c, int256 e) = LibTestExactDecimal.divPartsWide(a, ea, b, eb);
+        if (overflows) {
+            vm.expectPartialRevert(ExponentOverflow.selector);
+            this.divExternal(a, ea, b, eb);
+            return;
+        }
+        (int256 signedCoefficient, int256 exponent) = this.divExternal(a, ea, b, eb);
+        assertEq(signedCoefficient, c, "coefficient");
+        assertEq(exponent, e, "exponent");
+        assertTrue(LibTestExactDecimal.isTruncatedQuotient(a, ea, b, eb, c, e), "truncated quotient");
+    }
+
+    /// Spreads coefficients over every digit count.
+    function testDivExact(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external {
+        b >>= sb;
+        vm.assume(b != 0);
+        checkDivExact(a >> sa, ea, b, eb);
+    }
+
+    /// Exponents near the floor, where the quotient truncates at it.
+    function testDivExactNearFloor(int256 a, uint256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external {
+        b >>= sb;
+        vm.assume(b != 0);
+        checkDivExact(a >> sa, type(int256).min + int256(bound(ea, 0, 300)), b, eb);
+    }
+
+    /// #368: `type(int256).min` over a negative power of ten is 2^255, which
+    /// int256 does not hold. Below the floor it keeps every digit the floor
+    /// has room for rather than first shedding one to fit int256.
+    function testDivMinByMinusPowerOfTenBelowFloor(uint256 digits, uint256 exponentB, bool negative) external {
+        digits = bound(digits, 0, 76);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 b = int256(10 ** digits);
+        b = negative ? -b : b;
+        checkDivExact(type(int256).min, type(int256).min, b, int256(bound(exponentB, 1, 300)));
+    }
+
+    /// #368: the reported case, 2^255 10^int256.min over 10^5, truncated at the
+    /// floor.
+    function testDivMinByMinusOneBelowFloor() external {
+        checkDiv(
+            type(int256).min,
+            type(int256).min,
+            -1,
+            5,
+            578960446186580977117854925043439539266349923328202820197287920039565648,
+            type(int256).min
+        );
+        checkDivExact(type(int256).min, type(int256).min, -1, 5);
+    }
 }

@@ -316,31 +316,112 @@ library LibTestExactDecimal {
         return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(dropped));
     }
 
-    /// The parts `div` of two Floats hands to packing, for a non-zero `cb`:
-    /// both operands maximized, the dividend's magnitude scaled by the largest
-    /// power of ten not above the divisor's and floor divided by it, as
-    /// `signedParts`.
+    /// `|ca| / |cb|` in units of `10^-offset`, truncated: the dividend
+    /// lifted to its int256 unit over the divisor's leading digit, so `offset`
+    /// is `int256UnitShift(ca) + digits(cb) - 1`. At most `2^255`.
+    function quotientAtUnit(int256 ca, int256 cb) internal pure returns (uint256 magnitude, int256 offset) {
+        int256 lift = int256UnitShift(ca);
+        int256 leadB = digits(u512(abs(cb))) - 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        magnitude = Math.mulDiv(abs(ca) * 10 ** uint256(lift), 10 ** uint256(leadB), abs(cb));
+        offset = lift + leadB;
+    }
+
+    /// The parts `div` of two Floats returns, for a non-zero `cb`, as its
+    /// NatSpec states them: `a / b` truncated toward zero at `10^(ua - lb)`,
+    /// `ua` the dividend's int256 unit and `lb` the divisor's leading digit's
+    /// exponent, as `signedParts`.
     function divParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         if (ca == 0) {
             return (0, 0);
         }
-        (int256 maximizedA, int256 exponentA) = maximizeFloat(ca, ea);
-        (int256 maximizedB, int256 exponentB) = maximizeFloat(cb, eb);
-        uint256 magnitudeB = abs(maximizedB);
-        uint256 scaleDigits = 0;
-        while (10 ** (scaleDigits + 1) <= magnitudeB) {
-            scaleDigits++;
-        }
-        uint256 magnitude = Math.mulDiv(abs(maximizedA), 10 ** scaleDigits, magnitudeB);
-        // scaleDigits is at most 76.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return signedParts((ca < 0) != (cb < 0), magnitude, exponentA - int256(scaleDigits) - exponentB);
+        (uint256 magnitude, int256 offset) = quotientAtUnit(ca, cb);
+        // ua - lb is ea - lift - (eb + digits(cb) - 1).
+        return signedParts((ca < 0) != (cb < 0), magnitude, ea - eb - offset);
     }
 
-    /// The parts `inv` of a non-zero Float hands to packing: `1e76 × 10^-76`
-    /// divided by it.
+    /// The parts `inv` of a non-zero Float returns: `1e76 × 10^-76` over it.
     function invParts(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         return divParts(1e76, -76, signedCoefficient, exponent);
+    }
+
+    /// `divParts` for any int256 parts and a non-zero `cb`, or `overflowed`
+    /// where `ua - lb` is above `type(int256).max`. A positive 2^255 sheds its
+    /// last digit, which overflows at `type(int256).max`. Below
+    /// `type(int256).min` the exact quotient truncates toward zero at it, and
+    /// zero is `(0, 0)`.
+    function divPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
+        internal
+        pure
+        returns (bool overflowed, int256 c, int256 e)
+    {
+        if (ca == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
+            return (false, 0, 0);
+        }
+        bool negative = (ca < 0) != (cb < 0);
+        (uint256 magnitude, int256 offset) = quotientAtUnit(ca, cb);
+        int256 cls;
+        (cls, e) = wideExponent(ea, eb, 0, -offset);
+        if (cls == 1 || (cls == 0 && !negative && magnitude > uint256(type(int256).max) && e == type(int256).max)) {
+            // forge-lint: disable-next-line(boolean-cst)
+            return (true, 0, 0);
+        }
+        if (cls == -1) {
+            // The unit is `e` digits below the floor: shed them from the
+            // truncated quotient, which truncates the exact one there.
+            magnitude = shed(magnitude, e);
+            e = magnitude == 0 ? int256(0) : type(int256).min;
+        }
+        (c, e) = signedParts(negative, magnitude, e);
+    }
+
+    /// Whether `(c, e)` is `a / b` truncated toward zero at `10^e`, decided in
+    /// exact integer arithmetic for any int256 parts and a non-zero `cb`.
+    /// Zero is `(0, 0)`, only for a quotient below `10^type(int256).min`.
+    function isTruncatedQuotient(int256 ca, int256 ea, int256 cb, int256 eb, int256 c, int256 e)
+        internal
+        pure
+        returns (bool)
+    {
+        if (ca == 0) {
+            return c == 0 && e == 0;
+        }
+        if (c != 0 && (c < 0) != ((ca < 0) != (cb < 0))) {
+            return false;
+        }
+        U512 memory a = u512(abs(ca));
+        uint256 b = abs(cb);
+        if (c == 0) {
+            // |a| 10^ea < |b| 10^(eb + int256.min).
+            return e == 0 && cmpWide(u512(b), eb, ea, type(int256).min, 0, a) > 0;
+        }
+        // |c| |b| 10^(e + eb) <= |a| 10^ea < (|c| + 1) |b| 10^(e + eb).
+        return cmpWide(mul(abs(c), b), e, ea, eb, 0, a) <= 0 && cmpWide(mul(abs(c) + 1, b), e, ea, eb, 0, a) > 0;
+    }
+
+    /// `a / b` truncated toward zero to 76 digits, `[1e75, 1e76)`, for Float
+    /// parts and a non-zero `cb`. Every Float past int224 sheds at least eight
+    /// of them, so packing this is packing the exact quotient.
+    function quotient76(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        uint256 magnitudeA = abs(ca);
+        uint256 magnitudeB = abs(cb);
+        // magnitudeA lifted to [1e75, 1e76) over magnitudeB's leading digit
+        // is in (1e74, 1e76).
+        int256 liftA = 76 - digits(u512(magnitudeA));
+        int256 leadB = digits(u512(magnitudeB)) - 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 x = magnitudeA * 10 ** uint256(liftA);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 q = Math.mulDiv(x, 10 ** uint256(leadB), magnitudeB);
+        if (q < 1e75) {
+            leadB++;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            q = Math.mulDiv(x, 10 ** uint256(leadB), magnitudeB);
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedQ = int256(q);
+        return ((ca < 0) != (cb < 0) ? -signedQ : signedQ, ea - liftA - eb - leadB);
     }
 
     /// `signedCoefficient × 10^(type(int256).min + headroom)` held at the

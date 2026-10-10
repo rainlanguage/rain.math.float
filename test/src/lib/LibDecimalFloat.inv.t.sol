@@ -4,18 +4,11 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatInvTest is Test {
     using LibDecimalFloat for Float;
-
-    function invExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
-        Float float = LibDecimalFloat.packArithmeticResult(signedCoefficient, exponent);
-        return float;
-    }
 
     function invExternal(Float float) external pure returns (Float) {
         return LibDecimalFloat.inv(float);
@@ -47,41 +40,54 @@ contract LibDecimalFloatInvTest is Test {
 
     /// `inv` of a Float whose inverse magnitude is genuinely below any
     /// representable Float reverts `ExponentUnderflow` instead of silently
-    /// producing `FLOAT_ZERO`. `1e67` at the exponent ceiling inverts to
-    /// `1e-67` at `-int32.max`, i.e. `1` at `int32.min - 66`: every digit would
-    /// have to be shed to reach the floor, so the magnitude is gone. `1e76 ×
-    /// 10^-76` over `1e67` maximized to `1e76 × 10^(int32.max - 9)`, scaled by
-    /// `1e76`, is `1e76 × 10^(-76 - 76 - (int32.max - 9))`.
+    /// producing `FLOAT_ZERO`, reporting the input. `1e67` at the exponent
+    /// ceiling inverts to `1e-67` at `-int32.max`, i.e. `1` at
+    /// `int32.min - 66`.
     function testInvRevertsOnExponentUnderflow() external {
         Float float = LibDecimalFloat.packLossless(1e67, int256(type(int32).max));
-        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e76), int256(-2147483790)));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e67), int256(type(int32).max)));
         this.invExternal(float);
     }
 
+    /// The least magnitude, `1e-2147483648`, inverts to `10 10^int32.max`, the
+    /// largest inverse, for both signs. To 76 digits that is 1e76
+    /// 10^(int32.max - 75), which packs as 1e67 10^(int32.max - 66).
+    function testInvOfTheLeastMagnitude(bool negative) external view {
+        int256 sign = negative ? int256(-1) : int256(1);
+        Float inverse = this.invExternal(LibDecimalFloat.packLossless(sign, type(int32).min));
+        (int256 signedCoefficient, int256 exponent) = inverse.unpack();
+        assertEq(signedCoefficient, sign * 1e67, "coefficient");
+        assertEq(exponent, int256(type(int32).max) - 66, "exponent");
+    }
+
+    /// Every zero reverts `DivisionByZero` with itself, whatever its exponent.
+    function testInvZeroReportsTheInput(int32 exponent) external {
+        vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, int256(0), int256(exponent)));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        this.invExternal(Float.wrap(bytes32(uint256(uint32(exponent)) << 224)));
+    }
+
     /// Reverts only on zero, or where the exact inverse is below the smallest
-    /// positive Float, and otherwise agrees with the unpacked path. No inverse
-    /// overflows: the smallest magnitude is `1e-2147483648`, whose inverse is
-    /// `10 × 10^int32.max`.
+    /// positive Float, with the input as the range error's payload. Otherwise
+    /// the inverse is the Float closest to the exact one that does not exceed
+    /// its magnitude: the exact inverse to 76 digits, packed. No inverse
+    /// overflows.
     function testInvMem(Float float) external {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         if (signedCoefficient == 0) {
-            vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, int256(1e76), int256(-76)));
+            vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, signedCoefficient, exponent));
             this.invExternal(float);
             return;
         }
         assertFalse(LibTestExactDecimal.divOverflows(1, 0, signedCoefficient, exponent), "inverse overflows");
         if (LibTestExactDecimal.divUnderflows(1, 0, signedCoefficient, exponent)) {
-            (int256 signedCoefficientInv, int256 exponentInv) =
-                LibTestExactDecimal.invParts(signedCoefficient, exponent);
-            vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficientInv, exponentInv));
+            vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
             this.invExternal(float);
             return;
         }
-        Float floatParts = this.invExternal(signedCoefficient, exponent);
-        (int256 signedCoefficientResult, int256 exponentResult) = floatParts.unpack();
-        Float floatInv = this.invExternal(float);
-        (int256 signedCoefficientResultUnpacked, int256 exponentResultUnpacked) = floatInv.unpack();
-        assertEq(signedCoefficientResultUnpacked, signedCoefficientResult);
-        assertEq(exponentResultUnpacked, exponentResult);
+        (int256 signedCoefficientExact, int256 exponentExact) =
+            LibTestExactDecimal.quotient76(1, 0, signedCoefficient, exponent);
+        (Float expected,) = LibDecimalFloat.packLossy(signedCoefficientExact, exponentExact);
+        assertEq(Float.unwrap(this.invExternal(float)), Float.unwrap(expected), "inverse");
     }
 }

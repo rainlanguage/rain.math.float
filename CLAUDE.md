@@ -65,8 +65,8 @@ to fetch them.
     legitimate parse result reported via `ParseDecimalPrecisionLoss`.
   - `packArithmeticResult`: tolerates coefficient truncation, reverts on
     exponent underflow. Used by every public arithmetic operation but `minus`,
-    `abs`, `pow` and `pow10`. `pow` and `pow10` inline it with range errors that
-    report the call's input.
+    `abs`, `div`, `inv`, `pow` and `pow10`. The last four inline it with range
+    errors that report the call's input.
 
 ## License
 

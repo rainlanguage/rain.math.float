@@ -6,6 +6,7 @@
 use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
 use crate::oracle::{self, ask};
 use crate::reference::{self as r, Dec, I32_MAX, I32_MIN, RefError, pow10};
+use crate::transcendental::revert_data;
 use alloy::primitives::{B256, Bytes, U256};
 use alloy::sol_types::SolInterface;
 use core::cmp::Ordering;
@@ -226,6 +227,21 @@ pub(crate) fn check_float(
     Ok(())
 }
 
+/// `check_float`, and a revert is exactly its error reporting `input`.
+fn check_float_reporting(
+    case: &str,
+    sol: Sol<Dec>,
+    want: Result<Dec, RefError>,
+    py: Value,
+    input: &Dec,
+) -> Result<(), TestCaseError> {
+    if let (Err(Fail::Revert(out)), Err(w)) = (&sol, &want) {
+        let data = revert_data(*w, input, None);
+        prop_assert_eq!(out.as_ref(), data.as_slice(), "{}: revert data", case);
+    }
+    check_float(case, sol, want, py)
+}
+
 fn ask2(op: &str, a: &Dec, b: &Dec) -> Value {
     ask(json!({"op": op, "a": oracle::float(a), "b": oracle::float(b)}))
 }
@@ -292,7 +308,7 @@ fn check_div(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
         a: a.to_bytes(),
         b: b.to_bytes(),
     });
-    check_float(&case, sol, r::div(a, b), ask2("div", a, b))
+    check_float_reporting(&case, sol, r::div(a, b), ask2("div", a, b), a)
 }
 
 fn check_compare(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
@@ -364,11 +380,12 @@ fn check_unary(a: &Dec) -> Result<(), TestCaseError> {
         r::abs(a),
         ask1("abs", a),
     )?;
-    check_float(
+    check_float_reporting(
         &format!("inv({s})"),
         sol_float(T::invCall { a: f }),
         r::inv(a),
         ask1("inv", a),
+        a,
     )?;
     check_float(
         &format!("integer({s})"),

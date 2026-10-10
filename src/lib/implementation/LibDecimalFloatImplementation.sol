@@ -399,6 +399,15 @@ library LibDecimalFloatImplementation {
     /// > The result is then rounded to precision digits, if necessary, according
     /// > to the rounding algorithm and taking into account the remainder from
     /// > the division.
+    ///
+    /// The quotient is `a / b` truncated toward zero at `10^(ua - lb)`: `ua`
+    /// is the dividend's int256 unit, the least exponent at which its
+    /// coefficient is an int256, and `lb` is the exponent of the divisor's
+    /// leading digit. That keeps 75 to 77 digits. A positive 2^255, which
+    /// int256 does not hold, sheds its last digit. Where `ua - lb` is below
+    /// `type(int256).min` the quotient truncates at `type(int256).min`, and is
+    /// `(0, 0)` if no digit is left there. Above `type(int256).max` it reverts
+    /// `ExponentOverflow`.
     /// @param signedCoefficientA The signed coefficient of the dividend.
     /// @param exponentA The exponent of the dividend.
     /// @param signedCoefficientB The signed coefficient of the divisor.
@@ -416,7 +425,6 @@ library LibDecimalFloatImplementation {
         } else if (signedCoefficientA == 0) {
             return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
         } else {
-            int256 signedCoefficient;
             int256 exponent;
             int256 shortfallA;
             int256 shortfallB;
@@ -502,13 +510,10 @@ library LibDecimalFloatImplementation {
                     revert ExponentOverflow(signedCoefficientA, exponentA);
                 }
 
-                (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
-                    signedCoefficientA,
-                    signedCoefficientB,
-                    mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs),
-                    exponent
-                );
+                uint256 quotientAbs = mulDiv(signedCoefficientAAbs, scale, signedCoefficientBAbs);
 
+                // Shed before the sign, so a 2^255 quotient does not first
+                // shed a digit to fit int256 and lift off the floor.
                 if (underflowExponentBy > 0) {
                     if (underflowExponentBy > 76) {
                         // |q| <= 2^255 < 1e77, so q / 10^u is zero.
@@ -517,12 +522,13 @@ library LibDecimalFloatImplementation {
 
                     // underflowExponentBy [1, 76]
                     // forge-lint: disable-next-line(unsafe-typecast)
-                    signedCoefficient /= int256(10 ** uint256(underflowExponentBy));
-                    if (signedCoefficient == 0) {
-                        exponent = MAXIMIZED_ZERO_EXPONENT;
+                    quotientAbs /= 10 ** uint256(underflowExponentBy);
+                    if (quotientAbs == 0) {
+                        return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
                     }
                 }
-                return (signedCoefficient, exponent);
+
+                return unabsUnsignedMulOrDivLossy(signedCoefficientA, signedCoefficientB, quotientAbs, exponent);
             }
         }
     }
