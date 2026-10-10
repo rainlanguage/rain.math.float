@@ -23,17 +23,13 @@ contract LibDecimalFloatSubTest is Test {
         return LibDecimalFloat.sub(floatA, floatB);
     }
 
-    function packLossyExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float, bool) {
-        return LibDecimalFloat.packLossy(signedCoefficient, exponent);
-    }
-
     /// The exact counterexample from issue #271. Both operands sit at the
     /// packed exponent floor, so `add` maximises them to `3e75` and `1e76` at
     /// `-2147483723` and the difference comes back as `-7e75` there. Dropping
     /// the 75 trailing zeros maximisation added is enough to lift the exponent
     /// back to `int32.min` without discarding a significant digit, so the
-    /// packed path must produce `-7e-2147483648` exactly as the reference path
-    /// does, rather than revert `ExponentUnderflow`.
+    /// packed path must produce `-7e-2147483648` rather than revert
+    /// `ExponentUnderflow`.
     function testSubPackedIssue271Counterexample() external view {
         Float a = Float.wrap(0x8000000000000000000000000000000000000000000000000000000000000003);
         Float b = Float.wrap(0x800000000000000000000000000000000000000000000000000000000000000a);
@@ -47,15 +43,15 @@ contract LibDecimalFloatSubTest is Test {
         Float c = this.subExternal(a, b);
         assertUnpacks(c, -7, type(int32).min, "packed");
 
-        // The reference path, as `testSubPacked` runs it: unpacked sub, then
-        // packLossy of the result. The result is maximised, so the packing has
-        // to shed the trailing zeros to fit the exponent, and that is lossless.
+        // The parts handed to packing are the rule's, below the floor, and
+        // packing them is the rule's difference.
+        (int256 signedCoefficientParts, int256 exponentParts) =
+            LibTestExactDecimal.addParts(3, type(int32).min, -10, type(int32).min);
         (int256 signedCoefficient, int256 exponent) = this.subExternal(3, type(int32).min, 10, type(int32).min);
-        assertEq(signedCoefficient, -7e75, "reference coefficient");
-        assertEq(exponent, int256(type(int32).min) - 75, "reference exponent");
-        (Float expected, bool lossless) = this.packLossyExternal(signedCoefficient, exponent);
-        assertTrue(lossless, "reference pack lossless");
-        assertTrue(c.eq(expected), "packed path disagrees with reference path");
+        assertEq(signedCoefficient, signedCoefficientParts, "parts coefficient");
+        assertEq(exponent, exponentParts, "parts exponent");
+        (signedCoefficient, exponent) = expectedDifference(3, type(int32).min, 10, type(int32).min);
+        assertTrue(c.eq(LibDecimalFloat.packLossless(signedCoefficient, exponent)), "difference");
 
         // And the mirror, so the sign of the result is not what made it work.
         assertUnpacks(this.subExternal(b, a), 7, type(int32).min, "mirror");
@@ -68,7 +64,7 @@ contract LibDecimalFloatSubTest is Test {
     }
 
     /// Reverts only where the exact difference is beyond the largest Float of
-    /// its sign, and otherwise agrees with the unpacked path.
+    /// its sign, and otherwise is `expectedDifference`.
     function testSubPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -83,11 +79,33 @@ contract LibDecimalFloatSubTest is Test {
             this.subExternal(a, b);
             return;
         }
+        (int256 signedCoefficientExpected, int256 exponentExpected) =
+            expectedDifference(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (int256 signedCoefficient, int256 exponent) = this.subExternal(a, b).unpack();
+        assertTrue(
+            LibTestExactDecimal.eq(signedCoefficient, exponent, signedCoefficientExpected, exponentExpected),
+            "difference"
+        );
+    }
+
+    /// `a - b` as `sub`'s NatSpec states it, given it does not overflow:
+    /// `addParts` of `a` and `-b`, packed to the Float closest to it that does
+    /// not exceed its magnitude.
+    function expectedDifference(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 exponentB
+    ) internal pure returns (int256, int256) {
         (int256 signedCoefficient, int256 exponent) =
-            this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (Float float,) = this.packLossyExternal(signedCoefficient, exponent);
-        Float floatImplementation = this.subExternal(a, b);
-        assertTrue(float.eq(floatImplementation));
+            LibTestExactDecimal.addParts(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
+        if (signedCoefficient == 0) {
+            return (0, 0);
+        }
+        return
+            LibTestExactDecimal.floatFloor(
+                signedCoefficient < 0, LibTestExactDecimal.abs(signedCoefficient), 1, exponent
+            );
     }
 
     /// #340: magnitudes cancel, so `1 - 1e-100` rounds away from zero at

@@ -316,6 +316,63 @@ library LibTestExactDecimal {
         return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(dropped));
     }
 
+    /// `floor(n × 10^t / d)` by long division, for a non-zero `d` below 2^255
+    /// and a result below 2^255.
+    function floorScaled(uint256 n, uint256 d, int256 t) internal pure returns (uint256 q) {
+        q = n / d;
+        if (t < 0) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return -t > 77 ? 0 : q / 10 ** uint256(-t);
+        }
+        uint256 r = n % d;
+        for (int256 i = 0; i < t; i++) {
+            r *= 10;
+            q = q * 10 + r / d;
+            r %= d;
+        }
+    }
+
+    /// The Float closest to `±(n / d) × 10^exponent` that does not exceed its
+    /// magnitude, for a non-zero `n` and `d` below 2^255, where that is neither
+    /// past the largest Float nor below the smallest. Coefficients are capped
+    /// at the int224 bound of the sign. The finest exponent whose floor fits is
+    /// closest, unless the bound one exponent down is closer.
+    function floatFloor(bool negative, uint256 n, uint256 d, int256 exponent) internal pure returns (int256, int256) {
+        uint256 bound = negative ? 2 ** 223 : 2 ** 223 - 1;
+        // At this t the floor is at least 10^68, above the bound.
+        int256 t = digits(u512(d)) - digits(u512(n)) + 69;
+        uint256 q = floorScaled(n, d, t);
+        while (q > bound) {
+            q /= 10;
+            t--;
+        }
+        int256 e = exponent - t;
+        if (e < type(int32).min) {
+            e = type(int32).min;
+        } else if (e > type(int32).max) {
+            e = type(int32).max;
+        }
+        q = floorScaled(n, d, exponent - e);
+        require(q != 0, "floatFloor underflow");
+        if (q > bound) {
+            q = bound;
+        }
+        if (e > type(int32).min && bound > q * 10) {
+            (q, e) = (bound, e - 1);
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (negative ? -int256(q) : int256(q), e);
+    }
+
+    /// The Float `div` of two Floats packs to: the exact quotient as
+    /// `floatFloor`, for a non-zero `cb`.
+    function divFloat(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        if (ca == 0) {
+            return (0, 0);
+        }
+        return floatFloor((ca < 0) != (cb < 0), abs(ca), abs(cb), ea - eb);
+    }
+
     /// The parts `div` of two Floats hands to packing, for a non-zero `cb`:
     /// both operands maximized, the dividend's magnitude scaled by the largest
     /// power of ten not above the divisor's and floor divided by it, as
