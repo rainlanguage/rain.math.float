@@ -525,6 +525,68 @@ library LibTestExactDecimal {
         return sa * cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb);
     }
 
+    /// Whether `|ca × 10^ea| <= |cb × 10^eb|`, exactly.
+    function absLte(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
+        return cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) <= 0;
+    }
+
+    /// `addPartsWide` of a sum whose exponent stays within int256: towards
+    /// zero where the signs agree, away from zero where they differ.
+    function sumParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        (bool overflowed, int256 c, int256 e) = addPartsWide(ca, ea, cb, eb);
+        require(!overflowed, "sumParts exponent overflow");
+        return (c, e);
+    }
+
+    /// `a / b` for a nonzero `b`, truncated towards zero to under 2e-74
+    /// relative: |a| scaled to 75 digits over |b| at its digit count is in
+    /// (1e74, 1e76).
+    function quotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        if (ca == 0) {
+            return (0, 0);
+        }
+        uint256 a = abs(ca);
+        uint256 b = abs(cb);
+        uint256 da = Math.log10(a) + 1;
+        uint256 db = Math.log10(b) + 1;
+        if (da > 75) {
+            a /= 10 ** (da - 75);
+        } else {
+            a *= 10 ** (75 - da);
+        }
+        uint256 q = Math.mulDiv(a, 10 ** db, b);
+        // q is below 1e76, and da and db are at most 78.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedQ = int256(q);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 e = ea + int256(da) - 75 - int256(db) - eb;
+        return ((ca < 0) != (cb < 0) ? -signedQ : signedQ, e);
+    }
+
+    /// `c × 10^e - 1`, exact where both fit int256 at `e`, otherwise as
+    /// `sumParts` of -1.
+    function minusOne(int256 c, int256 e) internal pure returns (int256, int256) {
+        if (e < 0 && e >= -76 && c < 1e76 && c > -1e76) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return (c - int256(10 ** uint256(-e)), e);
+        }
+        return sumParts(c, e, -1, 0);
+    }
+
+    /// The coefficient of `c × 10^e` at exponent `target`, truncated towards
+    /// zero, and reverting where it does not fit int256.
+    function atExponent(int256 c, int256 e, int256 target) internal pure returns (int256) {
+        if (e >= target) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return c == 0 ? int256(0) : c * int256(10 ** uint256(e - target));
+        }
+        if (target - e > 76) {
+            return 0;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return c / int256(10 ** uint256(target - e));
+    }
+
     /// Exact numeric equality of two Floats' parts.
     function eq(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
         if (ca == 0 || cb == 0) {

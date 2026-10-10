@@ -2,13 +2,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation, LOG10_RAW_ERROR} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
 import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestErrorBound} from "../../../lib/LibTestErrorBound.sol";
+import {LibTestErrorBound, DOCUMENTED_LOG10_RAW_ERROR} from "../../../lib/LibTestErrorBound.sol";
+import {LibTestExactDecimal} from "../../../lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationLog10Test is Test {
     function checkLog10(
@@ -39,34 +40,40 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         checkLog10(1e76, -76, 0, 0);
     }
 
-    /// |actual - reference| <= bound, all as floats.
+    /// |actual - reference| <= |bound| + unit, exactly.
     function assertErrorWithin(
         int256 signedCoefficient,
         int256 exponent,
         int256[4] memory expected,
         int256 boundCoefficient,
-        int256 boundExponent
+        int256 boundExponent,
+        int256 unitExponent
     ) internal pure {
-        (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(signedCoefficient, exponent, expected[2], expected[3]);
-        if (errorCoefficient < 0) {
-            errorCoefficient = -errorCoefficient;
-        }
+        int256[] memory coefficients = new int256[](2);
+        int256[] memory exponents = new int256[](2);
+        (coefficients[0], exponents[0]) = (signedCoefficient, exponent);
+        (coefficients[1], exponents[1]) = (-expected[2], expected[3]);
+        int256[] memory boundCoefficients = new int256[](2);
+        int256[] memory boundExponents = new int256[](2);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (boundCoefficients[0], boundExponents[0]) = (int256(LibTestExactDecimal.abs(boundCoefficient)), boundExponent);
+        (boundCoefficients[1], boundExponents[1]) =
+        (unitExponent == type(int256).min ? int256(0) : int256(1), unitExponent);
         assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, boundCoefficient, boundExponent),
-            "log10 error"
+            LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), "log10 error"
         );
     }
 
-    /// Away from powers of ten the error is within `LOG10_RAW_ERROR` units of
+    /// Away from powers of ten the error is within `DOCUMENTED_LOG10_RAW_ERROR` units of
     /// 1e-50, and the 70 digit references are within 1e-67.
     function testLog10Accuracy() external pure {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 boundCoefficient = int256(DOCUMENTED_LOG10_RAW_ERROR) * 1e17 + 1;
         int256[4][] memory references = log10References();
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.log10Unrounded(references[i][0], references[i][1]);
-            // forge-lint: disable-next-line(unsafe-typecast)
-            assertErrorWithin(signedCoefficient, exponent, references[i], int256(LOG10_RAW_ERROR) * 1e17 + 1, -67);
+            assertErrorWithin(signedCoefficient, exponent, references[i], boundCoefficient, -67, type(int256).min);
         }
     }
 
@@ -80,11 +87,10 @@ contract LibDecimalFloatImplementationLog10Test is Test {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.log10Unrounded(references[i][0], references[i][1]);
             (int256 boundCoefficient, int256 boundExponent) =
-                LibDecimalFloatImplementation.mul(references[i][2], references[i][3], 327, -51);
-            if (boundCoefficient < 0) {
-                boundCoefficient = -boundCoefficient;
-            }
-            assertErrorWithin(signedCoefficient, exponent, references[i], boundCoefficient, boundExponent);
+                LibTestExactDecimal.mulParts(references[i][2], references[i][3], 327, -51);
+            assertErrorWithin(
+                signedCoefficient, exponent, references[i], boundCoefficient, boundExponent, type(int256).min
+            );
         }
     }
 
@@ -99,7 +105,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         (int256 powerCoefficient, int256 powerExponent) =
             LibDecimalFloatImplementation.pow10(logCoefficient, logExponent);
-        assertTrue(LibDecimalFloatImplementation.eq(powerCoefficient, powerExponent, signedCoefficient, exponent));
+        assertTrue(LibTestExactDecimal.eq(powerCoefficient, powerExponent, signedCoefficient, exponent));
     }
 
     /// log10 is within its proven bound of the 70 digit reference, plus a
@@ -108,12 +114,11 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.log10(references[i][0], references[i][1]);
-            (int256 boundCoefficient, int256 boundExponent) = LibDecimalFloat.unpack(
-                LibTestErrorBound.log10(LibDecimalFloat.packLossless(signedCoefficient, exponent))
+            (int256 boundCoefficient, int256 boundExponent) =
+                LibDecimalFloat.unpack(LibTestErrorBound.log10(references[i][0], references[i][1]));
+            assertErrorWithin(
+                signedCoefficient, exponent, references[i], boundCoefficient, boundExponent, references[i][3]
             );
-            (boundCoefficient, boundExponent) =
-                LibDecimalFloatImplementation.add(boundCoefficient, boundExponent, 1, references[i][3]);
-            assertErrorWithin(signedCoefficient, exponent, references[i], boundCoefficient, boundExponent);
         }
     }
 
@@ -501,10 +506,10 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         int256 expectedCoefficient,
         int256 expectedExponent
     ) internal pure returns (uint256) {
-        (int256 errorCoefficient, int256 errorExponent) = LibDecimalFloatImplementation.sub(
-            actualCoefficient, actualExponent, expectedCoefficient, expectedExponent
+        (int256 errorCoefficient, int256 errorExponent) = LibTestExactDecimal.sumParts(
+            actualCoefficient, actualExponent, -expectedCoefficient, expectedExponent
         );
-        int256 error = LibDecimalFloatImplementation.withTargetExponent(
+        int256 error = LibTestExactDecimal.atExponent(
             errorCoefficient, errorExponent, ulpExponent(actualCoefficient, actualExponent) - 9
         );
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -560,7 +565,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         return Math.mulDiv(error, 1e9, 10 ** uint256(70 + ulpExponent(logCoefficient, logExponent)));
     }
 
-    /// Half a unit plus `LOG10_RAW_ERROR` units of 1e-50, which is 200
+    /// Half a unit plus `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, which is 200
     /// billionths of a last place at least 1e-43. The oracle is within 101
     /// units of 1e-70: each truncated prime log is under a unit low and
     /// log10OnePlus is within 2. That is under 1e-16 billionths, and the
@@ -570,17 +575,23 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         pure
     {
         assertLe(
-            log10OracleError(primeSeed, j, p, d, negative, n, true), 500000000 + LOG10_RAW_ERROR * 100, "log10 error"
+            log10OracleError(primeSeed, j, p, d, negative, n, true),
+            500000000 + DOCUMENTED_LOG10_RAW_ERROR * 100,
+            "log10 error"
         );
     }
 
-    /// `LOG10_RAW_ERROR` units of 1e-50, plus the oracle's 101 units of 1e-70
+    /// `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, plus the oracle's 101 units of 1e-70
     /// and the unit the comparison truncates.
     function testLog10UnroundedOracleFuzz(uint256 primeSeed, uint256 j, uint256 p, uint256 d, bool negative, int256 n)
         external
         pure
     {
-        assertLe(log10OracleError(primeSeed, j, p, d, negative, n, false), LOG10_RAW_ERROR * 1e20 + 102, "log10 error");
+        assertLe(
+            log10OracleError(primeSeed, j, p, d, negative, n, false),
+            DOCUMENTED_LOG10_RAW_ERROR * 1e20 + 102,
+            "log10 error"
+        );
     }
 
     /// x = 1 ± d / 10^p, within a factor 1.001 of 1, and log10(x) from the
@@ -598,7 +609,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         exponent = -int256(p);
         uint256 ratio = Math.mulDiv(LibTranscendentalOracle.lnOnePlusOverU(d, p, negative), ORACLE_ONE, ORACLE_LN10);
         // d and ratio are below 1e72.
-        (expectedCoefficient, expectedExponent) = LibDecimalFloatImplementation.mul(
+        (expectedCoefficient, expectedExponent) = LibTestExactDecimal.mulParts(
             // forge-lint: disable-next-line(unsafe-typecast)
             negative ? -int256(d) : int256(d),
             exponent,
@@ -615,9 +626,9 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         (int256 actualCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
+            LibTestExactDecimal.sumParts(actualCoefficient, actualExponent, -expectedCoefficient, expectedExponent);
         (errorCoefficient, errorExponent) =
-            LibDecimalFloatImplementation.div(errorCoefficient, errorExponent, expectedCoefficient, expectedExponent);
+            LibTestExactDecimal.quotient(errorCoefficient, errorExponent, expectedCoefficient, expectedExponent);
         return (errorCoefficient < 0 ? -errorCoefficient : errorCoefficient, errorExponent);
     }
 
@@ -625,7 +636,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
     /// within 5e-69 relative.
     function testLog10UnroundedNearOneOracleFuzz(uint256 p, uint256 d, bool negative) external pure {
         (int256 errorCoefficient, int256 errorExponent) = log10NearOneRelativeError(p, d, negative);
-        assertTrue(LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 327, -51), "log10 relative error");
+        assertTrue(LibTestExactDecimal.cmpParts(errorCoefficient, errorExponent, 327, -51) <= 0, "log10 relative error");
     }
 
     /// |log10(x) - oracle| for x near 1, in billionths of a unit in the
@@ -671,20 +682,22 @@ contract LibDecimalFloatImplementationLog10Test is Test {
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         (int256 shiftedCoefficient, int256 shiftedExponent) =
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent + shift);
-        (logCoefficient, logExponent) = LibDecimalFloatImplementation.add(logCoefficient, logExponent, shift, 0);
+        (logCoefficient, logExponent) = LibTestExactDecimal.sumParts(logCoefficient, logExponent, shift, 0);
         if (logExponent < -50 || shiftedExponent < -50) {
             (int256 errorCoefficient, int256 errorExponent) =
-                LibDecimalFloatImplementation.sub(shiftedCoefficient, shiftedExponent, logCoefficient, logExponent);
+                LibTestExactDecimal.sumParts(shiftedCoefficient, shiftedExponent, -logCoefficient, logExponent);
             assertTrue(
-                LibDecimalFloatImplementation.lt(
-                    errorCoefficient < 0 ? -errorCoefficient : errorCoefficient, errorExponent, 1, -50
-                ),
+                LibTestExactDecimal.cmpScaled(
+                    LibTestExactDecimal.u512(LibTestExactDecimal.abs(errorCoefficient)),
+                    errorExponent,
+                    LibTestExactDecimal.u512(1),
+                    -50
+                ) < 0,
                 "near zero shift"
             );
         } else {
             assertTrue(
-                LibDecimalFloatImplementation.eq(shiftedCoefficient, shiftedExponent, logCoefficient, logExponent),
-                "shift"
+                LibTestExactDecimal.eq(shiftedCoefficient, shiftedExponent, logCoefficient, logExponent), "shift"
             );
         }
     }
@@ -700,8 +713,8 @@ contract LibDecimalFloatImplementationLog10Test is Test {
             characteristic++;
         }
         (int256 logCoefficient, int256 logExponent) = LibDecimalFloatImplementation.log10(signedCoefficient, exponent);
-        assertTrue(LibDecimalFloatImplementation.gte(logCoefficient, logExponent, characteristic, 0), "floor");
-        assertTrue(LibDecimalFloatImplementation.lte(logCoefficient, logExponent, characteristic + 1, 0), "ceiling");
+        assertTrue(LibTestExactDecimal.cmpParts(logCoefficient, logExponent, characteristic, 0) >= 0, "floor");
+        assertTrue(LibTestExactDecimal.cmpParts(logCoefficient, logExponent, characteristic + 1, 0) <= 0, "ceiling");
     }
 
     /// log10(10^k) = k exactly, written with any number of trailing zeros.
@@ -712,7 +725,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         int256 signedCoefficient = int256(10 ** zeros);
         (int256 logCoefficient, int256 logExponent) = LibDecimalFloatImplementation.log10(signedCoefficient, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
-        assertTrue(LibDecimalFloatImplementation.eq(logCoefficient, logExponent, exponent + int256(zeros), 0));
+        assertTrue(LibTestExactDecimal.eq(logCoefficient, logExponent, exponent + int256(zeros), 0));
     }
 
     /// x < y implies log10(x) <= log10(y) + 2E, down to adjacent 76 digit
@@ -727,7 +740,12 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         Float low = LibDecimalFloat.packLossless(lowCoefficient, lowExponent);
         Float high = LibDecimalFloat.packLossless(highCoefficient, highExponent);
         assertTrue(
-            LibTestErrorBound.monotoneAbsolute(low, high, LibTestErrorBound.log10(low), LibTestErrorBound.log10(high)),
+            LibTestErrorBound.monotoneAbsolute(
+                low,
+                high,
+                LibTestErrorBound.log10(signedCoefficient, exponent),
+                LibTestErrorBound.log10(signedCoefficient + gap, exponent)
+            ),
             "monotone"
         );
     }

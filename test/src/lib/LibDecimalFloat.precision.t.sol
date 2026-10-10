@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
@@ -36,24 +36,36 @@ contract LibDecimalFloatPrecisionTest is Test {
         pure
     {
         (int256 boundCoefficient, int256 boundExponent) = bound.unpack();
-        if (errorCoefficient < 0) {
-            errorCoefficient = -errorCoefficient;
-        }
-        assertTrue(
-            LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, boundCoefficient, boundExponent), what
-        );
+        assertTrue(LibTestExactDecimal.absLte(errorCoefficient, errorExponent, boundCoefficient, boundExponent), what);
     }
 
-    function assertWithin(Float error, Float bound, string memory what) internal pure {
-        assertTrue(error.lte(bound), what);
+    /// |Σ cᵢ 10^eᵢ| within the bound, exactly.
+    function assertWithinSum(int256[] memory coefficients, int256[] memory exponents, Float bound, string memory what)
+        internal
+        pure
+    {
+        int256[] memory boundCoefficients = new int256[](1);
+        int256[] memory boundExponents = new int256[](1);
+        (boundCoefficients[0], boundExponents[0]) = bound.unpack();
+        assertTrue(LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), what);
     }
 
-    function relativeError(Float actual, Float expected) internal pure returns (Float) {
-        return actual.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs();
+    function cmp(Float a, Float b) internal pure returns (int256) {
+        (int256 ca, int256 ea) = a.unpack();
+        (int256 cb, int256 eb) = b.unpack();
+        return LibTestExactDecimal.cmpParts(ca, ea, cb, eb);
     }
 
-    function absoluteError(Float actual, Float expected) internal pure returns (Float) {
-        return actual.sub(expected).abs();
+    /// actual / expected - 1, unpacked.
+    function relativeError(int256 ca, int256 ea, Float expected) internal pure returns (int256, int256) {
+        (int256 cb, int256 eb) = expected.unpack();
+        (ca, ea) = LibTestExactDecimal.quotient(ca, ea, cb, eb);
+        return LibTestExactDecimal.minusOne(ca, ea);
+    }
+
+    function relativeError(Float actual, Float expected) internal pure returns (int256, int256) {
+        (int256 ca, int256 ea) = actual.unpack();
+        return relativeError(ca, ea, expected);
     }
 
     /// actual / (power 10^exponent) - 1, unpacked.
@@ -62,8 +74,8 @@ contract LibDecimalFloatPrecisionTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedPower = int256(power);
         (signedCoefficient, actualExponent) =
-            LibDecimalFloatImplementation.div(signedCoefficient, actualExponent, signedPower, exponent);
-        return LibDecimalFloatImplementation.sub(signedCoefficient, actualExponent, 1, 0);
+            LibTestExactDecimal.quotient(signedCoefficient, actualExponent, signedPower, exponent);
+        return LibTestExactDecimal.minusOne(signedCoefficient, actualExponent);
     }
 
     /// The floor's term relative to the oracle's power, which is within 1e-67
@@ -84,7 +96,12 @@ contract LibDecimalFloatPrecisionTest is Test {
     /// |y| up to 2.1e9, so 10^y within ln 10 of that, plus the 1e-67 of the
     /// oracle's power and the quotient.
     function powSlack(Float b) internal pure returns (Float) {
-        return b.abs().mul(LibDecimalFloat.packLossless(3, -67)).add(LibDecimalFloat.packLossless(2, -65));
+        (int256 signedCoefficient, int256 exponent) = b.unpack();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (signedCoefficient, exponent) =
+            LibTestExactDecimal.mulParts(int256(LibTestExactDecimal.abs(signedCoefficient)), exponent, 3, -67);
+        (Float slack,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+        return LibTestErrorBound.plus(slack, LibDecimalFloat.packLossless(2, -65));
     }
 
     /// a with up to 1e9 added to its coefficient, held to int224.
@@ -159,21 +176,26 @@ contract LibDecimalFloatPrecisionTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
-        return LibDecimalFloatImplementation.add(characteristic, 0, int256(fraction), -70);
+        return LibTestExactDecimal.sumParts(characteristic, 0, int256(fraction), -70);
     }
 
-    /// log10 a within half a unit plus `LOG10_RAW_ERROR` units of 1e-50, plus
+    /// log10 a within half a unit plus `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, plus
     /// the oracle's 1e-67.
     function assertLog10Reference(Float a, string memory what) internal view {
-        Float actual = this.log10External(a);
-        (int256 actualCoefficient, int256 actualExponent) = actual.unpack();
-        (int256 expectedCoefficient, int256 expectedExponent) = oracleLog10(a);
-        (int256 errorCoefficient, int256 errorExponent) =
-            LibDecimalFloatImplementation.sub(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
-        assertWithin(
-            errorCoefficient,
-            errorExponent,
-            LibTestErrorBound.log10(actual).add(LibDecimalFloat.packLossless(1, -67)),
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        // a is positive.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        int256[] memory coefficients = new int256[](3);
+        int256[] memory exponents = new int256[](3);
+        (coefficients[0], exponents[0]) = this.log10External(a).unpack();
+        (coefficients[1], exponents[1]) = (-characteristic, 0);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (coefficients[2], exponents[2]) = (-int256(fraction), -70);
+        assertWithinSum(
+            coefficients,
+            exponents,
+            LibTestErrorBound.plus(LibTestErrorBound.log10(a), LibDecimalFloat.packLossless(1, -67)),
             what
         );
     }
@@ -185,7 +207,9 @@ contract LibDecimalFloatPrecisionTest is Test {
         assertWithin(
             errorCoefficient,
             errorExponent,
-            LibTestErrorBound.pow10().add(floorOf(power, powerExponent)).add(exp10Slack()),
+            LibTestErrorBound.plus(
+                LibTestErrorBound.plus(LibTestErrorBound.pow10(), floorOf(power, powerExponent)), exp10Slack()
+            ),
             what
         );
     }
@@ -195,7 +219,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         (int256 logCoefficient, int256 logExponent) = oracleLog10(a);
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.mul(signedCoefficientB, exponentB, logCoefficient, logExponent);
+            LibTestExactDecimal.mulParts(signedCoefficientB, exponentB, logCoefficient, logExponent);
         return LibTranscendentalOracle.exp10(signedCoefficient, exponent);
     }
 
@@ -206,45 +230,46 @@ contract LibDecimalFloatPrecisionTest is Test {
         assertWithin(
             errorCoefficient,
             errorExponent,
-            LibTestErrorBound.pow(b).add(floorOf(power, powerExponent)).add(powSlack(b)),
+            LibTestErrorBound.plus(
+                LibTestErrorBound.plus(LibTestErrorBound.pow(b), floorOf(power, powerExponent)), powSlack(b)
+            ),
             what
         );
     }
 
-    /// The product's packing moves its log by under 4.4e-67, and each packed
-    /// sum or difference of logs at most 420 loses under 4.2e-64.
+    /// The product's packing moves its log by under 4.4e-67.
     function log10ProductSlack() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(1, -63);
+        return LibDecimalFloat.packLossless(1, -66);
     }
 
-    /// Each packed quotient, product or difference near 1 loses under 1e-66.
+    /// The `quotient` near 1 truncates under 2e-74 and `mulParts` under
+    /// 2e-76 relative.
     function packingSlack() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(1, -65);
+        return LibDecimalFloat.packLossless(1, -73);
     }
 
     /// |log10(a b) - log10 a - log10 b| within the three logs' bounds.
     function assertLog10Product(Float a, Float b) internal view {
-        Float logA = this.log10External(a);
-        Float logB = this.log10External(b);
-        Float logProduct = this.log10External(a.mul(b));
-        assertWithin(
-            absoluteError(logProduct, logA.add(logB)),
-            LibTestErrorBound.log10(logProduct).add(LibTestErrorBound.log10(logA)).add(LibTestErrorBound.log10(logB))
-                .add(log10ProductSlack()),
-            "log10 product"
-        );
+        Float product = a.mul(b);
+        int256[] memory coefficients = new int256[](3);
+        int256[] memory exponents = new int256[](3);
+        (coefficients[0], exponents[0]) = this.log10External(product).unpack();
+        (coefficients[1], exponents[1]) = this.log10External(a).unpack();
+        (coefficients[2], exponents[2]) = this.log10External(b).unpack();
+        (coefficients[1], coefficients[2]) = (-coefficients[1], -coefficients[2]);
+        Float bound = LibTestErrorBound.plus(LibTestErrorBound.log10(product), LibTestErrorBound.log10(a));
+        bound = LibTestErrorBound.plus(bound, LibTestErrorBound.log10(b));
+        assertWithinSum(coefficients, exponents, LibTestErrorBound.plus(bound, log10ProductSlack()), "log10 product");
     }
 
     /// pow10(log10 a) / a - 1. The log is within E of log10 a, which moves
     /// the power by under 2.3027 E relative for E below 1e-30.
     function assertPow10Log10(Float a) internal view {
         Float log = this.log10External(a);
-        assertWithin(
-            relativeError(this.pow10External(log), a),
-            LibTestErrorBound.pow10().add(LibTestErrorBound.log10(log).mul(LibDecimalFloat.packLossless(23027, -4)))
-                .add(packingSlack()),
-            "pow10 log10"
-        );
+        (int256 errorCoefficient, int256 errorExponent) = relativeError(this.pow10External(log), a);
+        Float bound = LibTestErrorBound.times(LibTestErrorBound.log10(a), LibDecimalFloat.packLossless(23027, -4));
+        bound = LibTestErrorBound.plus(LibTestErrorBound.pow10(), bound);
+        assertWithin(errorCoefficient, errorExponent, LibTestErrorBound.plus(bound, packingSlack()), "pow10 log10");
     }
 
     /// pow(a, b) pow(a, c) / pow(a, b + c) - 1, within the three powers'
@@ -252,21 +277,29 @@ contract LibDecimalFloatPrecisionTest is Test {
     /// 2e6 times log10 a at most 210, so the power by under 1e-57.
     function assertPowProduct(Float a, Float b, Float c) internal view {
         Float sum = b.add(c);
+        (int256 powerB, int256 exponentB) = this.powExternal(a, b).unpack();
+        (int256 powerC, int256 exponentC) = this.powExternal(a, c).unpack();
+        (powerB, exponentB) = LibTestExactDecimal.mulParts(powerB, exponentB, powerC, exponentC);
+        (int256 errorCoefficient, int256 errorExponent) = relativeError(powerB, exponentB, this.powExternal(a, sum));
+        Float bound = LibTestErrorBound.plus(LibTestErrorBound.pow(b), LibTestErrorBound.pow(c));
+        bound = LibTestErrorBound.plus(bound, LibTestErrorBound.pow(sum));
         assertWithin(
-            relativeError(this.powExternal(a, b).mul(this.powExternal(a, c)), this.powExternal(a, sum)),
-            LibTestErrorBound.pow(b).add(LibTestErrorBound.pow(c)).add(LibTestErrorBound.pow(sum))
-                .add(LibDecimalFloat.packLossless(2, -57)),
+            errorCoefficient,
+            errorExponent,
+            LibTestErrorBound.plus(bound, LibDecimalFloat.packLossless(2, -57)),
             "pow product"
         );
     }
 
     /// sqrt(a)^2 / a - 1, within twice the root's bound plus its square.
     function assertSqrtSquare(Float a) internal view {
-        Float root = this.sqrtExternal(a);
+        (int256 root, int256 rootExponent) = this.sqrtExternal(a).unpack();
+        (root, rootExponent) = LibTestExactDecimal.mulParts(root, rootExponent, root, rootExponent);
+        (int256 errorCoefficient, int256 errorExponent) = relativeError(root, rootExponent, a);
         Float error = LibTestErrorBound.sqrt();
-        assertWithin(
-            relativeError(root, a.div(root)), error.add(error).add(error.mul(error)).add(packingSlack()), "sqrt square"
-        );
+        Float bound =
+            LibTestErrorBound.plus(LibTestErrorBound.plus(error, error), LibTestErrorBound.times(error, error));
+        assertWithin(errorCoefficient, errorExponent, LibTestErrorBound.plus(bound, packingSlack()), "sqrt square");
     }
 
     /// A base with |log10 a| <= 210 and a power with |b| <= 1e6, or a base
@@ -295,35 +328,93 @@ contract LibDecimalFloatPrecisionTest is Test {
         b = LibDecimalFloat.packLossless(coefficientB, exponentB);
     }
 
-    /// pow10 over every antilog table input, x = idx / 1e4 for idx 0-9999.
-    /// Neighbours differ by 2.3e-4 relative, far above the 41 digit rounding,
-    /// so the grid strictly increases.
-    function testPow10Grid() external view {
-        Float previous = LibDecimalFloat.FLOAT_ZERO;
-        for (uint256 idx = 0; idx < 10000; idx++) {
+    function freeMemoryPointer() internal pure returns (uint256) {
+        uint256 pointer;
+        assembly ("memory-safe") {
+            pointer := mload(0x40)
+        }
+        return pointer;
+    }
+
+    /// Frees what a grid step allocated. Only stack values cross steps.
+    function reclaim(uint256 pointer) internal pure {
+        assembly ("memory-safe") {
+            mstore(0x40, pointer)
+        }
+    }
+
+    /// pow10 over antilog table inputs x = idx / 1e4 for idx in [start, end),
+    /// each above the previous index's. Neighbours differ by 2.3e-4 relative,
+    /// far above the 41 digit rounding, so the grid strictly increases.
+    function checkPow10Grid(uint256 start, uint256 end) internal view {
+        Float previous = start == 0
+            ? LibDecimalFloat.FLOAT_ZERO
+            // forge-lint: disable-next-line(unsafe-typecast)
+            : this.pow10External(LibDecimalFloat.packLossless(int256(start - 1), -4));
+        uint256 pointer = freeMemoryPointer();
+        for (uint256 idx = start; idx < end; idx++) {
             // forge-lint: disable-next-line(unsafe-typecast)
             Float x = LibDecimalFloat.packLossless(int256(idx), -4);
             Float actual = this.pow10External(x);
-            assertTrue(actual.gt(previous), "pow10 grid increasing");
+            assertTrue(cmp(actual, previous) > 0, "pow10 grid increasing");
             previous = actual;
             assertPow10Reference(x, actual, "pow10 grid");
+            reclaim(pointer);
         }
+    }
+
+    /// The four slices cover idx 0-9999, each under the call gas limit.
+    function testPow10Grid0() external view {
+        checkPow10Grid(0, 2500);
+    }
+
+    function testPow10Grid1() external view {
+        checkPow10Grid(2500, 5000);
+    }
+
+    function testPow10Grid2() external view {
+        checkPow10Grid(5000, 7500);
+    }
+
+    function testPow10Grid3() external view {
+        checkPow10Grid(7500, 10000);
     }
 
     /// log10 is non decreasing over every four digit mantissa. Neighbours'
     /// logs differ by over 4.3e-5, far above twice its error bound.
     function testLog10GridMonotone() external view {
         Float previous = this.log10External(LibDecimalFloat.packLossless(1000, 0));
+        uint256 pointer = freeMemoryPointer();
         for (uint256 n = 1001; n < 10000; n++) {
             // forge-lint: disable-next-line(unsafe-typecast)
             Float actual = this.log10External(LibDecimalFloat.packLossless(int256(n), 0));
-            assertTrue(actual.gte(previous), "log10 grid monotone");
+            assertTrue(cmp(actual, previous) >= 0, "log10 grid monotone");
             previous = actual;
+            reclaim(pointer);
         }
     }
 
     function testLog10Reference(int224 coefficient, int32 exponent, uint8 region) external view {
         assertLog10Reference(positive(coefficient, exponent, region), "log10");
+    }
+
+    /// log10 a three units of the 41st digit inside a power of ten in
+    /// magnitude, where the true log's unit is a tenth of the power's. The
+    /// logs, from `bc -l`, are within 1e-66 of 1 - 3e-41, -1 + 3e-41 and
+    /// 10 - 3e-40.
+    function testLog10ReferenceInsidePowersOfTen() external view {
+        assertLog10Reference(
+            LibDecimalFloat.packLossless(9999999999999999999999999999999999999999309224472101786294794602563, -66),
+            "inside 1"
+        );
+        assertLog10Reference(
+            LibDecimalFloat.packLossless(1000000000000000000000000000000000000000069077552789821370520539743, -67),
+            "inside -1"
+        );
+        assertLog10Reference(
+            LibDecimalFloat.packLossless(9999999999999999999999999999999999999993092244721017862947946025635, -57),
+            "inside 10"
+        );
     }
 
     /// log10(10^k) is exactly k, for every k a Float can hold, whatever power
@@ -333,15 +424,14 @@ contract LibDecimalFloatPrecisionTest is Test {
         int256 exponent = bound(k, int256(type(int32).min), int256(type(int32).max) - shift);
         // forge-lint: disable-next-line(unsafe-typecast)
         Float a = LibDecimalFloat.packLossless(int256(10 ** uint256(shift)), exponent);
-        assertTrue(this.log10External(a).eq(LibDecimalFloat.packLossless(exponent + shift, 0)), "log10 anchor");
+        assertTrue(cmp(this.log10External(a), LibDecimalFloat.packLossless(exponent + shift, 0)) == 0, "log10 anchor");
     }
 
     function assertLog10Monotone(Float a, Float b, string memory what) internal view {
         Float low = this.log10External(a);
         Float high = this.log10External(b);
         assertTrue(
-            LibTestErrorBound.monotoneAbsolute(low, high, LibTestErrorBound.log10(low), LibTestErrorBound.log10(high)),
-            what
+            LibTestErrorBound.monotoneAbsolute(low, high, LibTestErrorBound.log10(a), LibTestErrorBound.log10(b)), what
         );
     }
 
@@ -382,7 +472,7 @@ contract LibDecimalFloatPrecisionTest is Test {
     /// pow10(k) is exactly 10^k for every whole k whose power packs.
     function testPow10Anchors(int32 k) external view {
         assertTrue(
-            this.pow10External(LibDecimalFloat.packLossless(k, 0)).eq(LibDecimalFloat.packLossless(1, k)),
+            cmp(this.pow10External(LibDecimalFloat.packLossless(k, 0)), LibDecimalFloat.packLossless(1, k)) == 0,
             "pow10 anchor"
         );
     }
@@ -453,6 +543,16 @@ contract LibDecimalFloatPrecisionTest is Test {
         } catch (bytes memory reason) {
             assertTrue(LibTestPowRange.mayRevert(range, false), "underflow above the floor");
             assertEq(reason, LibTestPowRange.rangeError(false, a));
+            (uint256 power, int256 powerExponent) = oraclePow(a, b);
+            // The oracle's power is below 1e71 and so fits.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 signedPower = int256(power);
+            assertTrue(
+                LibTestExactDecimal.cmpParts(
+                    signedPower, powerExponent, 100000000000000000000000000000000000000001, -2147483688
+                ) < 0,
+                "underflow below the floor"
+            );
         }
     }
 
@@ -498,6 +598,6 @@ contract LibDecimalFloatPrecisionTest is Test {
 
     function testSqrtMonotone(int224 coefficient, int32 exponent, uint8 region, uint256 step) external view {
         Float a = positive(coefficient, exponent, region);
-        assertTrue(this.sqrtExternal(a).lte(this.sqrtExternal(stepUp(a, step))), "sqrt monotone");
+        assertTrue(cmp(this.sqrtExternal(a), this.sqrtExternal(stepUp(a, step))) <= 0, "sqrt monotone");
     }
 }

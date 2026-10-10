@@ -8,7 +8,8 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibTranscendentalOracle, ORACLE_ONE} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibTestErrorBound} from "../../../lib/LibTestErrorBound.sol";
+import {LibTestErrorBound, DOCUMENTED_POW_GUARD, DOCUMENTED_POW10_RAW_ERROR} from "../../../lib/LibTestErrorBound.sol";
+import {LibTestExactDecimal} from "../../../lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationPow10Test is Test {
     using LibDecimalFloat for Float;
@@ -35,30 +36,27 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         checkPow10(-20, -1, 1, -2);
     }
 
-    /// The result is within half a unit plus `POW10_RAW_ERROR` units of 1e-50
-    /// over a unit of `POW_GUARD` of them, 3.28e-8, and the 70 digit
-    /// reference is within 1e-29 of a unit.
+    /// The result is within half a unit of the true power's 41st digit plus
+    /// `DOCUMENTED_POW10_RAW_ERROR` over `DOCUMENTED_POW_GUARD` of that unit,
+    /// and the 70 digit reference is within 1e-29 of it, inside 1e-11.
     function testPow10Accuracy() external pure {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 boundUnits = int256((DOCUMENTED_POW_GUARD / 2 + DOCUMENTED_POW10_RAW_ERROR) * 10 + 1);
         int256[4][] memory references = pow10References();
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.pow10(references[i][0], references[i][1]);
-            (int256 errorCoefficient, int256 errorExponent) =
-                LibDecimalFloatImplementation.sub(signedCoefficient, exponent, references[i][2], references[i][3]);
-            if (errorCoefficient < 0) {
-                errorCoefficient = -errorCoefficient;
-            }
-            // The unit in the 41st significant digit of the result.
-            while (signedCoefficient < 1e40) {
-                signedCoefficient *= 10;
-                exponent -= 1;
-            }
-            if (signedCoefficient == 1e41) {
-                exponent += 1;
-            }
+            int256 unitExponent = references[i][3]
+                + LibTestExactDecimal.digits(LibTestExactDecimal.u512(LibTestExactDecimal.abs(references[i][2]))) - 41;
+            int256[] memory coefficients = new int256[](2);
+            int256[] memory exponents = new int256[](2);
+            (coefficients[0], exponents[0]) = (signedCoefficient, exponent);
+            (coefficients[1], exponents[1]) = (-references[i][2], references[i][3]);
+            int256[] memory boundCoefficients = new int256[](1);
+            int256[] memory boundExponents = new int256[](1);
+            (boundCoefficients[0], boundExponents[0]) = (boundUnits, unitExponent - 11);
             assertTrue(
-                LibDecimalFloatImplementation.lte(errorCoefficient, errorExponent, 50000003281, exponent - 11),
-                "pow10 error"
+                LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), "pow10 error"
             );
         }
     }
@@ -67,7 +65,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
     /// 220, as (input coefficient, input exponent, power coefficient, power
     /// exponent).
     function pow10References() internal pure returns (int256[4][] memory references) {
-        references = new int256[4][](57);
+        references = new int256[4][](59);
         references[0] = [int256(2), 0, 1000000000000000000000000000000000000000000000000000000000000000000000, -67];
         references[1] = [int256(-2), 0, 1000000000000000000000000000000000000000000000000000000000000000000000, -71];
         references[2] = [int256(15), -1, 3162277660168379331998893544432718533719555139325216826857504852792594, -68];
@@ -354,6 +352,20 @@ contract LibDecimalFloatImplementationPow10Test is Test {
             4901210439088553342950526591647952577144864592790904433897627154847901,
             -75
         ];
+        // Three units of the 41st digit below 1 and 1e7, where the true
+        // power's unit is a tenth of the power of ten's.
+        references[57] = [
+            int256(-1302883445709755482953386756749815246883),
+            -80,
+            9999999999999999999999999999999999999999700000000000000000000000000000,
+            -70
+        ];
+        references[58] = [
+            int256(6999999999999999999999999999999999999999986971165542902445170466133),
+            -66,
+            9999999999999999999999999999999999999999700000000000000000000000013067,
+            -63
+        ];
     }
 
     function boundFloat(int224 x, int32 exponent) internal pure returns (int224, int32) {
@@ -414,7 +426,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         int256 x = int256(j * LibTranscendentalOracle.log10Prime(base)) + n * int256(ORACLE_ONE);
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(x, -70);
         // forge-lint: disable-next-line(unsafe-typecast)
-        assertTrue(LibDecimalFloatImplementation.eq(signedCoefficient, exponent, int256(base ** j), n), "exact");
+        assertTrue(LibTestExactDecimal.eq(signedCoefficient, exponent, int256(base ** j), n), "exact");
     }
 
     /// |pow10(x) - oracle| in billionths of a unit in the result's last place,
