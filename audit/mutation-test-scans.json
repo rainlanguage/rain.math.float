@@ -769,5 +769,26 @@
       "testsAfter": 842,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-10T12:34:08Z",
+    "commit": "51a34512ad010f3465f290df554ecc519b014575",
+    "testsAfterCommit": "3e7c3e0111ce7822e8a9cd1da309032a105a4837",
+    "publishedTag": "sol-v0.2.34",
+    "commitsAheadOfTag": 62,
+    "scope": "Issue #388 (PR #406): pow at the overflow threshold. Before = LibDecimalFloatPowTest at main 51a3451, with testPowExactlyAtTheOverflowThreshold asserting a revert inside the error bound. After = LibDecimalFloatPowTest at 3e7c3e0, where testPowEitherSideOfTheOverflowThreshold decides revert or return with LibTestPowRange.powRange at b just past the bound either side of the threshold for a = (int224.max / 10 + 1) 10^int32.max, and inside the bound only requires a revert to report a. Probe suite: forge test --mc LibDecimalFloatPowTest. Mutants of src/lib/LibDecimalFloat.sol: M1 revertIfPastLargestFloat gte to gt, M2 threshold +1 to +2, M3 threshold +1 dropped, M4 carry-fallback guard forced false, M5 carry-fallback range check removed, M6 carry fallback packs the rounded value, M7 excess <= 67 to <= 26, M8 excess > 0 to > 27, M9 rounded-path range check removed. 9/9 killed before and after. The new test alone kills M1, M2, M5, M8.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 9,
+      "killedBefore": 9,
+      "killedAfter": 9,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 854,
+      "testsAfter": 854,
+      "filed": []
+    }
   }
 ]
