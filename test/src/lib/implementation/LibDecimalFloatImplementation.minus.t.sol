@@ -8,21 +8,32 @@ import {
     EXPONENT_MAX
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMinusTest is Test {
-    /// Minus is the same as `0 - x`.
-    function testMinusIsSubZero(int256 exponentZero, int256 signedCoefficient, int256 exponent) external pure {
-        exponentZero = bound(exponentZero, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponent = bound(exponent, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-
+    /// Minus is the exact `-x` at the same exponent, by the
+    /// representable-range rule: only int256.min, whose negation 2^255 is no
+    /// int256, sheds a digit.
+    function testMinusMatchesRule(int256 signedCoefficient, int256 exponent) external pure {
+        vm.assume(signedCoefficient != type(int256).min || exponent != type(int256).max);
+        (int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.signedParts(signedCoefficient > 0, LibTestExactDecimal.abs(signedCoefficient), exponent);
         (int256 signedCoefficientMinus, int256 exponentMinus) =
             LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.sub(0, exponentZero, signedCoefficient, exponent);
+        assertEq(signedCoefficientMinus, expectedSignedCoefficient, "coefficient");
+        assertEq(exponentMinus, expectedExponent, "exponent");
+    }
 
-        assertEq(signedCoefficientMinus, expectedSignedCoefficient);
-        assertEq(exponentMinus, expectedExponent);
+    /// `-int256.min` is 2^255, which floors to
+    /// 5789604461865809771178549250434395392663499233282028201972879200395656481996e1.
+    function testMinusMinSignedValue(int256 exponent) external pure {
+        exponent = bound(exponent, type(int256).min, type(int256).max - 1);
+        (int256 signedCoefficientMinus, int256 exponentMinus) =
+            LibDecimalFloatImplementation.minus(type(int256).min, exponent);
+        assertEq(signedCoefficientMinus, 5789604461865809771178549250434395392663499233282028201972879200395656481996);
+        assertEq(exponentMinus, exponent + 1);
     }
 
     /// a + (-a) == 0 for all in-range inputs.
@@ -45,8 +56,9 @@ contract LibDecimalFloatImplementationMinusTest is Test {
         (int256 negCoeff, int256 negExp) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
         (int256 doubleNegCoeff, int256 doubleNegExp) = LibDecimalFloatImplementation.minus(negCoeff, negExp);
 
+        assertTrue(LibTestExactDecimal.eq(negCoeff, negExp, -signedCoefficient, exponent), "-a");
         assertTrue(
-            LibDecimalFloatImplementation.eq(signedCoefficient, exponent, doubleNegCoeff, doubleNegExp),
+            LibTestExactDecimal.eq(signedCoefficient, exponent, doubleNegCoeff, doubleNegExp),
             "double negation should be identity"
         );
     }
