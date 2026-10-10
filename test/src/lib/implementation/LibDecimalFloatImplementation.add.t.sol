@@ -71,8 +71,9 @@ contract LibDecimalFloatImplementationAddTest is Test {
         int256 unit,
         bool swap
     ) internal pure {
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.addParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        (bool overflowed, int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertFalse(overflowed, "sum past int256 exponent");
         assertEq(LibTestExactDecimal.int256Unit(signedCoefficientA, exponentA), unit, "unit");
         assertEq(expectedExponent, unit + 1, "sum past int256");
         if (swap) {
@@ -433,8 +434,8 @@ contract LibDecimalFloatImplementationAddTest is Test {
         assertEq(exponent, expectedExponent, "exponent mismatch");
     }
 
-    /// a + b == b + a for all in-range inputs (compared via eq, since zero
-    /// can have different exponent representations).
+    /// a + b and b + a are both the exact sum rounded by the documented rule,
+    /// compared by value since zero can have different exponents.
     function testAddCommutative(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -449,7 +450,11 @@ contract LibDecimalFloatImplementationAddTest is Test {
         (int256 coeffBA, int256 expBA) =
             LibDecimalFloatImplementation.add(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
 
-        assertTrue(LibDecimalFloatImplementation.eq(coeffAB, expAB, coeffBA, expBA), "add not commutative");
+        (bool overflowed, int256 expectedCoeff, int256 expectedExp) =
+            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        assertFalse(overflowed, "overflowed");
+        assertTrue(LibTestExactDecimal.eq(coeffAB, expAB, expectedCoeff, expectedExp), "a + b");
+        assertTrue(LibTestExactDecimal.eq(coeffBA, expBA, expectedCoeff, expectedExp), "b + a");
     }
 
     /// Adding any zero to any value returns the non-zero value.
@@ -490,34 +495,19 @@ contract LibDecimalFloatImplementationAddTest is Test {
         checkAdd(1e76, min + 1, 1, min, 1e76, min + 1);
     }
 
-    /// Near the floor, the sum is the sum of the same operands shifted up by
-    /// `-type(int256).min`, truncated to the floor.
-    function testAddNearFloorMatchesShifted(
+    /// Near the floor, the sum is the exact sum rounded as `add` states it,
+    /// with the digits below `10^type(int256).min` truncated towards zero.
+    function testAddNearFloorExact(
         int256 signedCoefficientA,
         int256 signedCoefficientB,
         uint256 headroomA,
         uint256 headroomB
-    ) external pure {
+    ) external view {
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 exponentA = int256(bound(headroomA, 0, 80));
+        int256 exponentA = type(int256).min + int256(bound(headroomA, 0, 80));
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 exponentB = int256(bound(headroomB, 0, 80));
-        (int256 expectedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        if (expectedExponent < 0) {
-            expectedCoefficient =
-                LibDecimalFloatImplementation.withTargetExponent(expectedCoefficient, expectedExponent, 0);
-            expectedExponent = 0;
-        }
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.add(
-            signedCoefficientA, type(int256).min + exponentA, signedCoefficientB, type(int256).min + exponentB
-        );
-        assertTrue(
-            LibDecimalFloatImplementation.eq(
-                signedCoefficient, exponent - type(int256).min, expectedCoefficient, expectedExponent
-            ),
-            "shifted sum"
-        );
+        int256 exponentB = type(int256).min + int256(bound(headroomB, 0, 80));
+        checkAddExact(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// `add` returns the parts its NatSpec states for any int256 parts, and
