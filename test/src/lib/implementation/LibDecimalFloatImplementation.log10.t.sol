@@ -702,9 +702,10 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         U512 memory actual;
         uint256 resultMagnitude = LibTestExactDecimal.abs(resultCoefficient);
         if (resultExponent >= -70) {
+            // Non-negative in this branch.
             // forge-lint: disable-next-line(unsafe-typecast)
-            actual =
-                LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(resultMagnitude), uint256(resultExponent + 70));
+            uint256 shift = uint256(resultExponent + 70);
+            actual = LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(resultMagnitude), shift);
         } else if (resultExponent >= -70 - 77) {
             // forge-lint: disable-next-line(unsafe-typecast)
             actual = LibTestExactDecimal.u512(resultMagnitude / 10 ** uint256(-70 - resultExponent));
