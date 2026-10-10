@@ -660,18 +660,19 @@ contract LibDecimalFloatPowTest is Test {
     }
 
     /// b = B 10^-57 with b log10 a past `target` 10^-57 in magnitude when
-    /// `past`, else short of it, for an a above 1. log10 a is the oracle's,
-    /// within 1e-67, so it is taken 1e-67 to whichever side keeps b there.
+    /// `past`, else short of it, for an a above 1. The oracle's log10 a is
+    /// within 1e-67, so truncated to `log` 10^-66, which fits to int32.max, the
+    /// exact log10 a is in (log - 1, log + 2) 10^-66.
     function thresholdPower(Float a, int256 target, bool past) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 log = uint256(characteristic) * 1e70 + fraction;
+        uint256 log = uint256(characteristic) * 1e66 + fraction / 1e4;
         uint256 magnitude = LibTestExactDecimal.abs(target);
         uint256 power = past
-            ? Math.mulDiv(magnitude, 1e70, log - 1000, Math.Rounding.Ceil)
-            : Math.mulDiv(magnitude, 1e70, log + 1000, Math.Rounding.Floor);
+            ? Math.mulDiv(magnitude, 1e66, log - 1, Math.Rounding.Ceil)
+            : Math.mulDiv(magnitude, 1e66, log + 2, Math.Rounding.Floor);
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedPower = int256(power);
         return LibDecimalFloat.packLossless(target < 0 ? -signedPower : signedPower, -57);
@@ -687,16 +688,21 @@ contract LibDecimalFloatPowTest is Test {
         }
     }
 
-    /// b's fraction times log10(a) truncates to exactly 1 at 1e-50, so the
-    /// leg is exactly 10 and the unrounded power is exactly a 10, which is
-    /// (int224.max / 10 + 1) 10^(int32.max + 1): the least value that
-    /// overflows, reported as a.
-    function testPowExactlyAtTheOverflowThreshold() external {
-        int256 signedCoefficientA = type(int224).max / 10 + 1;
-        int256 exponentA = type(int32).max;
-        Float b = LibDecimalFloat.packLossless(1000000000465661273184989617541055125131739873881019438247110325622, -66);
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA, exponentA));
-        this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
+    /// a is c 10^int32.max for c = int224.max / 10 + 1, so a^b overflows
+    /// from a 10. No Float power is exactly a 10: c is squarefree, so
+    /// a^b = a 10 forces b = ±1/q and a = (a 10)^±q, none of them a Float. So
+    /// b is taken just past the error bound either side.
+    function testPowEitherSideOfTheOverflowThreshold() external {
+        int256 overflow = LOG10_OVERFLOW / 1e9;
+        Float a = LibDecimalFloat.packLossless(type(int224).max / 10 + 1, type(int32).max);
+        checkPowThreshold(a, thresholdPower(a, overflow + 1 + THRESHOLD_SLACK, true), PowRange.Over);
+        checkPowThreshold(a, thresholdPower(a, overflow - THRESHOLD_SLACK, false), PowRange.Inside);
+
+        // a^b is 2.604e-57 relative past a 10, inside the bound, so either
+        // outcome is allowed, but a revert reports a.
+        powChecked(
+            a, LibDecimalFloat.packLossless(1000000000465661273184989617541055125131739873881019438247110325622, -66)
+        );
     }
 
     /// A negative base to an odd power is past the range on its magnitude.
