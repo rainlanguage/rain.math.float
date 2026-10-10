@@ -80,9 +80,8 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         signedCoefficient = bound(signedCoefficient, 0, 1e18);
         exponent = bound(exponent, 0, 30);
         decimals = uint8(bound(decimals, 0, 18));
-        (uint256 expectedResult, bool success) =
-            LibDecimalFloat.toFixedDecimalLossy(signedCoefficient, exponent, decimals);
-        assertTrue(success, "Lossy conversion failed");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 expectedResult = uint256(signedCoefficient) * 10 ** (uint256(exponent) + decimals);
 
         uint256 result = LibDecimalFloat.toFixedDecimalLossless(signedCoefficient, exponent, decimals);
         assertEq(result, expectedResult, "Lossless conversion failed");
@@ -100,6 +99,113 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         assertEq(uint256(signedCoefficient), value);
         assertEq(exponent, -int256(uint256(decimals)));
+    }
+
+    /// `value × 10^-decimals` is exactly a Float iff stripping its trailing
+    /// zeros leaves an int224 coefficient, as the exponent is always in range.
+    /// An exact value packs `value` with the fewest digits shed that fit
+    /// int224, zero as `FLOAT_ZERO`. Any other value reverts
+    /// LossyConversionToFloat with `fromFixedDecimalLossy`'s parts: `value` at
+    /// `-decimals`, or past int256.max, `value / 10` at `1 - decimals`.
+    function checkFromFixedDecimalLosslessPackedRule(uint256 value, uint8 decimals) internal {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 int224Max = uint256(int256(type(int224).max));
+        uint256 stripped = value;
+        while (stripped != 0 && stripped % 10 == 0) {
+            stripped /= 10;
+        }
+        if (stripped <= int224Max) {
+            uint256 coefficient = value;
+            int256 exponent = -int256(uint256(decimals));
+            while (coefficient > int224Max) {
+                coefficient /= 10;
+                exponent++;
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bytes32 expected = coefficient == 0 ? bytes32(0) : bytes32(uint256(exponent) << 224 | coefficient);
+            assertEq(Float.unwrap(this.fromFixedDecimalLosslessPackedExternal(value, decimals)), expected);
+        } else {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bool past = value > uint256(type(int256).max);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 signedCoefficient = past ? int256(value / 10) : int256(value);
+            int256 exponent = (past ? int256(1) : int256(0)) - int256(uint256(decimals));
+            vm.expectRevert(abi.encodeWithSelector(LossyConversionToFloat.selector, signedCoefficient, exponent));
+            this.fromFixedDecimalLosslessPackedExternal(value, decimals);
+        }
+    }
+
+    function testFromFixedDecimalLosslessPackedRule(uint256 value, uint8 decimals) external {
+        checkFromFixedDecimalLosslessPackedRule(value, decimals);
+    }
+
+    /// The rule at each boundary, which fuzzing hits only by chance.
+    function testFromFixedDecimalLosslessPackedRuleBoundaries() external {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 int224Max = uint256(int256(type(int224).max));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 int256Max = uint256(type(int256).max);
+        uint256[9] memory values = [
+            0,
+            1,
+            int224Max,
+            int224Max + 1,
+            int224Max * 10,
+            int256Max,
+            int256Max + 1,
+            int256Max / 10 * 10 + 10,
+            type(uint256).max
+        ];
+        uint8[3] memory decimalsList = [0, 18, 255];
+        for (uint256 i = 0; i < values.length; i++) {
+            for (uint256 j = 0; j < decimalsList.length; j++) {
+                checkFromFixedDecimalLosslessPackedRule(values[i], decimalsList[j]);
+            }
+        }
+    }
+
+    /// Uniform values almost never end in zeros, so this also fuzzes
+    /// `m × 10^z`, where the exact values past int224 are.
+    function testFromFixedDecimalLosslessPackedRuleTrailingZeros(uint256 m, uint256 z, uint8 decimals) external {
+        z = bound(z, 0, 77);
+        m = bound(m, 0, type(uint256).max / 10 ** z);
+        checkFromFixedDecimalLosslessPackedRule(m * 10 ** z, decimals);
+    }
+
+    function expectLossyPacked(uint256 value, uint8 decimals, int256 signedCoefficient, int256 exponent) internal {
+        vm.expectRevert(abi.encodeWithSelector(LossyConversionToFloat.selector, signedCoefficient, exponent));
+        this.fromFixedDecimalLosslessPackedExternal(value, decimals);
+    }
+
+    /// The packed conversion's boundaries, each exact.
+    function testFromFixedDecimalLosslessPackedBoundaries() external {
+        int256 int224Max = type(int224).max;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 twiceMax = uint256(type(int256).max) * 2;
+        // int224.max fits; one more sheds a non-zero digit packing.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        this.fromFixedDecimalLosslessPackedExternal(uint256(int224Max), 18);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        expectLossyPacked(uint256(int224Max + 1), 18, int224Max + 1, -18);
+        // Trailing zeros shed exactly.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float shed = this.fromFixedDecimalLosslessPackedExternal(uint256(int224Max * 10), 18);
+        (int256 shedCoefficient, int256 shedExponent) = shed.unpack();
+        assertEq(shedCoefficient, int224Max, "shed coefficient");
+        assertEq(shedExponent, -17, "shed exponent");
+        // int256.max has a non-zero digit past int224.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        expectLossyPacked(uint256(type(int256).max), 6, type(int256).max, -6);
+        // Past int256.max: a non-zero last digit is lost dividing by ten.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        expectLossyPacked(uint256(type(int256).max) + 1, 6, type(int256).min / -10, -5);
+        // 2 int256.max ends in 4, lost dividing by ten.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        expectLossyPacked(twiceMax, 6, type(int256).max / 5, -5);
+        // A zero last digit past int256.max: the digit lost is packing's.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        expectLossyPacked(twiceMax - 4, 6, type(int256).max / 5, -5);
+        expectLossyPacked(type(uint256).max, 0, type(int256).max / 5, 1);
     }
 
     function testFromFixedDecimalLosslessFail(uint256 value, uint8 decimals) external {

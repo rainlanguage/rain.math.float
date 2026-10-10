@@ -3,10 +3,11 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
+import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
 
 /// log10, pow10, pow and sqrt against the `bc` constant oracle, within 1e-67,
 /// and against each other, each within the proven bound LibTestErrorBound
@@ -36,6 +37,17 @@ contract LibDecimalFloatPrecisionTest is Test {
     {
         (int256 boundCoefficient, int256 boundExponent) = bound.unpack();
         assertTrue(LibTestExactDecimal.absLte(errorCoefficient, errorExponent, boundCoefficient, boundExponent), what);
+    }
+
+    /// |Σ cᵢ 10^eᵢ| within the bound, exactly.
+    function assertWithinSum(int256[] memory coefficients, int256[] memory exponents, Float bound, string memory what)
+        internal
+        pure
+    {
+        int256[] memory boundCoefficients = new int256[](1);
+        int256[] memory boundExponents = new int256[](1);
+        (boundCoefficients[0], boundExponents[0]) = bound.unpack();
+        assertTrue(LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), what);
     }
 
     function cmp(Float a, Float b) internal pure returns (int256) {
@@ -164,20 +176,25 @@ contract LibDecimalFloatPrecisionTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
-        return LibTestExactDecimal.addParts(characteristic, 0, int256(fraction), -70);
+        return LibTestExactDecimal.sumParts(characteristic, 0, int256(fraction), -70);
     }
 
     /// log10 a within half a unit plus `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, plus
     /// the oracle's 1e-67.
     function assertLog10Reference(Float a, string memory what) internal view {
-        Float actual = this.log10External(a);
-        (int256 actualCoefficient, int256 actualExponent) = actual.unpack();
-        (int256 expectedCoefficient, int256 expectedExponent) = oracleLog10(a);
-        (int256 errorCoefficient, int256 errorExponent) =
-            LibTestExactDecimal.subParts(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
-        assertWithin(
-            errorCoefficient,
-            errorExponent,
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        // a is positive.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        int256[] memory coefficients = new int256[](3);
+        int256[] memory exponents = new int256[](3);
+        (coefficients[0], exponents[0]) = this.log10External(a).unpack();
+        (coefficients[1], exponents[1]) = (-characteristic, 0);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (coefficients[2], exponents[2]) = (-int256(fraction), -70);
+        assertWithinSum(
+            coefficients,
+            exponents,
             LibTestErrorBound.plus(LibTestErrorBound.log10(a), LibDecimalFloat.packLossless(1, -67)),
             what
         );
@@ -220,9 +237,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         );
     }
 
-    /// The product's packing moves its log by under 4.4e-67, and each
-    /// `subParts` of logs at most 280 truncates under a unit of a maximized
-    /// coefficient above 5.7e75, so under 4.9e-74.
+    /// The product's packing moves its log by under 4.4e-67.
     function log10ProductSlack() internal pure returns (Float) {
         return LibDecimalFloat.packLossless(1, -66);
     }
@@ -235,19 +250,16 @@ contract LibDecimalFloatPrecisionTest is Test {
 
     /// |log10(a b) - log10 a - log10 b| within the three logs' bounds.
     function assertLog10Product(Float a, Float b) internal view {
-        (int256 logA, int256 exponentA) = this.log10External(a).unpack();
-        (int256 logB, int256 exponentB) = this.log10External(b).unpack();
         Float product = a.mul(b);
-        (int256 errorCoefficient, int256 errorExponent) = this.log10External(product).unpack();
-        (errorCoefficient, errorExponent) =
-            LibTestExactDecimal.subParts(errorCoefficient, errorExponent, logA, exponentA);
-        (errorCoefficient, errorExponent) =
-            LibTestExactDecimal.subParts(errorCoefficient, errorExponent, logB, exponentB);
+        int256[] memory coefficients = new int256[](3);
+        int256[] memory exponents = new int256[](3);
+        (coefficients[0], exponents[0]) = this.log10External(product).unpack();
+        (coefficients[1], exponents[1]) = this.log10External(a).unpack();
+        (coefficients[2], exponents[2]) = this.log10External(b).unpack();
+        (coefficients[1], coefficients[2]) = (-coefficients[1], -coefficients[2]);
         Float bound = LibTestErrorBound.plus(LibTestErrorBound.log10(product), LibTestErrorBound.log10(a));
         bound = LibTestErrorBound.plus(bound, LibTestErrorBound.log10(b));
-        assertWithin(
-            errorCoefficient, errorExponent, LibTestErrorBound.plus(bound, log10ProductSlack()), "log10 product"
-        );
+        assertWithinSum(coefficients, exponents, LibTestErrorBound.plus(bound, log10ProductSlack()), "log10 product");
     }
 
     /// pow10(log10 a) / a - 1. The log is within E of log10 a, which moves
@@ -316,30 +328,69 @@ contract LibDecimalFloatPrecisionTest is Test {
         b = LibDecimalFloat.packLossless(coefficientB, exponentB);
     }
 
-    /// pow10 over every antilog table input, x = idx / 1e4 for idx 0-9999.
-    /// Neighbours differ by 2.3e-4 relative, far above the 41 digit rounding,
-    /// so the grid strictly increases.
-    function testPow10Grid() external view {
-        Float previous = LibDecimalFloat.FLOAT_ZERO;
-        for (uint256 idx = 0; idx < 10000; idx++) {
+    function freeMemoryPointer() internal pure returns (uint256) {
+        uint256 pointer;
+        assembly ("memory-safe") {
+            pointer := mload(0x40)
+        }
+        return pointer;
+    }
+
+    /// Frees what a grid step allocated. Only stack values cross steps.
+    function reclaim(uint256 pointer) internal pure {
+        assembly ("memory-safe") {
+            mstore(0x40, pointer)
+        }
+    }
+
+    /// pow10 over antilog table inputs x = idx / 1e4 for idx in [start, end),
+    /// each above the previous index's. Neighbours differ by 2.3e-4 relative,
+    /// far above the 41 digit rounding, so the grid strictly increases.
+    function checkPow10Grid(uint256 start, uint256 end) internal view {
+        Float previous = start == 0
+            ? LibDecimalFloat.FLOAT_ZERO
+            // forge-lint: disable-next-line(unsafe-typecast)
+            : this.pow10External(LibDecimalFloat.packLossless(int256(start - 1), -4));
+        uint256 pointer = freeMemoryPointer();
+        for (uint256 idx = start; idx < end; idx++) {
             // forge-lint: disable-next-line(unsafe-typecast)
             Float x = LibDecimalFloat.packLossless(int256(idx), -4);
             Float actual = this.pow10External(x);
             assertTrue(cmp(actual, previous) > 0, "pow10 grid increasing");
             previous = actual;
             assertPow10Reference(x, actual, "pow10 grid");
+            reclaim(pointer);
         }
+    }
+
+    /// The four slices cover idx 0-9999, each under the call gas limit.
+    function testPow10Grid0() external view {
+        checkPow10Grid(0, 2500);
+    }
+
+    function testPow10Grid1() external view {
+        checkPow10Grid(2500, 5000);
+    }
+
+    function testPow10Grid2() external view {
+        checkPow10Grid(5000, 7500);
+    }
+
+    function testPow10Grid3() external view {
+        checkPow10Grid(7500, 10000);
     }
 
     /// log10 is non decreasing over every four digit mantissa. Neighbours'
     /// logs differ by over 4.3e-5, far above twice its error bound.
     function testLog10GridMonotone() external view {
         Float previous = this.log10External(LibDecimalFloat.packLossless(1000, 0));
+        uint256 pointer = freeMemoryPointer();
         for (uint256 n = 1001; n < 10000; n++) {
             // forge-lint: disable-next-line(unsafe-typecast)
             Float actual = this.log10External(LibDecimalFloat.packLossless(int256(n), 0));
             assertTrue(cmp(actual, previous) >= 0, "log10 grid monotone");
             previous = actual;
+            reclaim(pointer);
         }
     }
 
@@ -468,8 +519,9 @@ contract LibDecimalFloatPrecisionTest is Test {
 
     /// a^b for b in [1, 2] with a placed so b log10 a is within a few units
     /// of [-2147483660, -2147483600], across the floor region: within the
-    /// proven bound plus the floor's 1e-2147483648 absolute, or reverting
-    /// `ExponentUnderflow` only for a true value below 1e-2147483648.
+    /// proven bound plus the floor's 1e-2147483648 absolute where it returns,
+    /// and returning or reverting `ExponentUnderflow` as
+    /// `LibTestPowRange.powRange` decides.
     function testPowFloor(int256 coefficientA, int256 target, int256 coefficientB) external view {
         coefficientA = bound(coefficientA, 1, 1e67);
         target = bound(target, -2147483660, -2147483600);
@@ -484,11 +536,13 @@ contract LibDecimalFloatPrecisionTest is Test {
         }
         Float a = LibDecimalFloat.packLossless(coefficientA, exponentA);
         Float b = LibDecimalFloat.packLossless(coefficientB, -18);
+        PowRange range = LibTestPowRange.powRange(a, b);
         try this.powExternal(a, b) returns (Float actual) {
+            assertTrue(LibTestPowRange.mayReturn(range), "returned below the floor");
             assertPowReference(a, b, actual, "pow floor");
         } catch (bytes memory reason) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            assertEq(bytes4(reason), ExponentUnderflow.selector);
+            assertTrue(LibTestPowRange.mayRevert(range, false), "underflow above the floor");
+            assertEq(reason, LibTestPowRange.rangeError(false, a));
             (uint256 power, int256 powerExponent) = oraclePow(a, b);
             // The oracle's power is below 1e71 and so fits.
             // forge-lint: disable-next-line(unsafe-typecast)

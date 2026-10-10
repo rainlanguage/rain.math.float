@@ -40,18 +40,27 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         checkLog10(1e76, -76, 0, 0);
     }
 
-    /// |actual - reference| <= bound, all as floats.
+    /// |actual - reference| <= |bound| + unit, exactly.
     function assertErrorWithin(
         int256 signedCoefficient,
         int256 exponent,
         int256[4] memory expected,
         int256 boundCoefficient,
-        int256 boundExponent
+        int256 boundExponent,
+        int256 unitExponent
     ) internal pure {
-        (int256 errorCoefficient, int256 errorExponent) =
-            LibTestExactDecimal.subParts(signedCoefficient, exponent, expected[2], expected[3]);
+        int256[] memory coefficients = new int256[](2);
+        int256[] memory exponents = new int256[](2);
+        (coefficients[0], exponents[0]) = (signedCoefficient, exponent);
+        (coefficients[1], exponents[1]) = (-expected[2], expected[3]);
+        int256[] memory boundCoefficients = new int256[](2);
+        int256[] memory boundExponents = new int256[](2);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (boundCoefficients[0], boundExponents[0]) = (int256(LibTestExactDecimal.abs(boundCoefficient)), boundExponent);
+        (boundCoefficients[1], boundExponents[1]) =
+        (unitExponent == type(int256).min ? int256(0) : int256(1), unitExponent);
         assertTrue(
-            LibTestExactDecimal.absLte(errorCoefficient, errorExponent, boundCoefficient, boundExponent), "log10 error"
+            LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), "log10 error"
         );
     }
 
@@ -64,7 +73,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.log10Unrounded(references[i][0], references[i][1]);
-            assertErrorWithin(signedCoefficient, exponent, references[i], boundCoefficient, -67);
+            assertErrorWithin(signedCoefficient, exponent, references[i], boundCoefficient, -67, type(int256).min);
         }
     }
 
@@ -79,7 +88,9 @@ contract LibDecimalFloatImplementationLog10Test is Test {
                 LibDecimalFloatImplementation.log10Unrounded(references[i][0], references[i][1]);
             (int256 boundCoefficient, int256 boundExponent) =
                 LibTestExactDecimal.mulParts(references[i][2], references[i][3], 327, -51);
-            assertErrorWithin(signedCoefficient, exponent, references[i], boundCoefficient, boundExponent);
+            assertErrorWithin(
+                signedCoefficient, exponent, references[i], boundCoefficient, boundExponent, type(int256).min
+            );
         }
     }
 
@@ -105,9 +116,9 @@ contract LibDecimalFloatImplementationLog10Test is Test {
                 LibDecimalFloatImplementation.log10(references[i][0], references[i][1]);
             (int256 boundCoefficient, int256 boundExponent) =
                 LibDecimalFloat.unpack(LibTestErrorBound.log10(references[i][0], references[i][1]));
-            (boundCoefficient, boundExponent) =
-                LibTestExactDecimal.addParts(boundCoefficient, boundExponent, 1, references[i][3]);
-            assertErrorWithin(signedCoefficient, exponent, references[i], boundCoefficient, boundExponent);
+            assertErrorWithin(
+                signedCoefficient, exponent, references[i], boundCoefficient, boundExponent, references[i][3]
+            );
         }
     }
 
@@ -495,8 +506,8 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         int256 expectedCoefficient,
         int256 expectedExponent
     ) internal pure returns (uint256) {
-        (int256 errorCoefficient, int256 errorExponent) = LibTestExactDecimal.subParts(
-            actualCoefficient, actualExponent, expectedCoefficient, expectedExponent
+        (int256 errorCoefficient, int256 errorExponent) = LibTestExactDecimal.sumParts(
+            actualCoefficient, actualExponent, -expectedCoefficient, expectedExponent
         );
         int256 error = LibTestExactDecimal.atExponent(
             errorCoefficient, errorExponent, ulpExponent(actualCoefficient, actualExponent) - 9
@@ -615,7 +626,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         (int256 actualCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         (int256 errorCoefficient, int256 errorExponent) =
-            LibTestExactDecimal.subParts(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
+            LibTestExactDecimal.sumParts(actualCoefficient, actualExponent, -expectedCoefficient, expectedExponent);
         (errorCoefficient, errorExponent) =
             LibTestExactDecimal.quotient(errorCoefficient, errorExponent, expectedCoefficient, expectedExponent);
         return (errorCoefficient < 0 ? -errorCoefficient : errorCoefficient, errorExponent);
@@ -671,12 +682,17 @@ contract LibDecimalFloatImplementationLog10Test is Test {
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         (int256 shiftedCoefficient, int256 shiftedExponent) =
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent + shift);
-        (logCoefficient, logExponent) = LibTestExactDecimal.addParts(logCoefficient, logExponent, shift, 0);
+        (logCoefficient, logExponent) = LibTestExactDecimal.sumParts(logCoefficient, logExponent, shift, 0);
         if (logExponent < -50 || shiftedExponent < -50) {
             (int256 errorCoefficient, int256 errorExponent) =
-                LibTestExactDecimal.subParts(shiftedCoefficient, shiftedExponent, logCoefficient, logExponent);
+                LibTestExactDecimal.sumParts(shiftedCoefficient, shiftedExponent, -logCoefficient, logExponent);
             assertTrue(
-                LibTestExactDecimal.cmpWords(LibTestExactDecimal.abs(errorCoefficient), errorExponent, 1, -50) < 0,
+                LibTestExactDecimal.cmpScaled(
+                    LibTestExactDecimal.u512(LibTestExactDecimal.abs(errorCoefficient)),
+                    errorExponent,
+                    LibTestExactDecimal.u512(1),
+                    -50
+                ) < 0,
                 "near zero shift"
             );
         } else {

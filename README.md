@@ -69,6 +69,33 @@ For example
 > division rounds towards zero. This means that
 > `int256(-5) / int256(2) == int256(-2)`.
 
+#### Addition and subtraction
+
+`add` and `sub` do not always round towards zero. `sub(a, b)` rounds as
+`add(a, -b)`, and `add` rounds the exact sum twice:
+
+1. To a multiple of the larger operand's int256 unit, the place of its last
+   digit when written with as many digits as an int256 coefficient holds (77, or
+   76 when 77 would exceed int256). This rounds towards zero when the signs
+   agree, so the magnitudes add, and away from zero when the signs differ, so
+   the magnitudes cancel.
+2. Packed as every arithmetic result is, truncating towards zero to an int224
+   coefficient.
+
+So when the magnitudes add, the result is the exact sum truncated towards zero.
+When they cancel it is neither always that nor always the closest Float:
+
+| Sum                  | Result         | Truncated towards zero |
+| -------------------- | -------------- | ---------------------- |
+| `1e100 + 1e-100`     | `1e100`        | `1e100`                |
+| `1e100 - 1`          | `1e100`        | `(1e67 - 1)e33`        |
+| `1 - 1e-100`         | `1`            | `0.` then 67 nines     |
+| `1e100 - (1e33 + 1)` | `1e100 - 1e33` | `1e100 - 2e33`         |
+| `1e100 - 1.7e33`     | `1e100 - 2e33` | `1e100 - 2e33`         |
+
+The unit of `1e100` is `1e24` and the unit of `1` is `1e-76`. `1e100 - 1.7e33`
+is exact at `1e24`, so only packing rounds it.
+
 #### Approach to preserving precision
 
 For basic mul/div/add/sub behaviour the library aligns exponents and uses 512
@@ -119,8 +146,10 @@ exponent and signed coefficient together into a single value.
 Necessarily there will be cases where packing 2 values into a single value of
 the same size results in loss of information.
 
-The information loss follows the rules explained here, truncation is allowed and
-rounds towards zero, exponents may underflow and exponent overflows will error.
+The information loss follows the rules explained here. A value that does not fit
+packs to the Float closest to it that does not exceed its magnitude, for every
+operation, so `2^223` packs as int224.max rather than `2^223 - 8` at the next
+exponent. Exponents may underflow and exponent overflows will error.
 
 There is a "lossless" version of packing provided in the library interface that
 doesn't magically resolve the information loss but converts all precision loss
@@ -260,4 +289,10 @@ and an exactly representable power such as `10^2` is exact.
 `pow` calculates an integer exponent by squaring, and the fractional component
 of a non-integer exponent as `pow10(frac(b) * log10(a))` with its guard digits,
 then rounds the product to 41 significant digits, so it is within about 5e-41
-relative of the true value and a power such as `sqrt(4)` is exact.
+relative of the true value and a power such as `4^1.5` is exact. A fractional
+part of exactly a half instead takes the square root of `a^(2N+1)`, for N the
+integer part of |b|.
+
+`sqrt` takes the integer square root of the coefficient scaled to 81 or 82
+digits and rounds it to nearest, so it is correctly rounded and a root such as
+`sqrt(4)` is exact.

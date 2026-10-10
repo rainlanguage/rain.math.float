@@ -2,14 +2,13 @@
 //! integers. A value is `c × 10^e` with an unbounded `c` and an `i64` `e`, so
 //! no operation here rounds unless it says so.
 //!
-//! Every rounding below is the one the library documents: a result is
-//! truncated towards zero to the largest coefficient that fits int224
-//! (`packLossy`), and lifted to the int32 exponent floor by shedding further
-//! digits. A result that sheds every digit is `ExponentUnderflow`; a result
+//! Every rounding below is the one the library documents: a result becomes
+//! the Float closest to it that does not exceed its magnitude (`packLossy`).
+//! A result no non-zero Float is within is `ExponentUnderflow`; a result
 //! larger in magnitude than every Float is `ExponentOverflow`. Addition first
-//! aligns its operands as `LibDecimalFloatImplementation.add` and
-//! `LibDecimalFloat.agree` describe, discarding the smaller operand's digits
-//! below the unit of the larger operand's maximized coefficient.
+//! rounds the exact sum to a multiple of the larger operand's int256 unit,
+//! towards zero when the signs agree and away from zero when they differ, as
+//! `LibDecimalFloat.add` documents.
 
 use alloy::primitives::{B256, U256};
 use core::cmp::Ordering;
@@ -22,7 +21,6 @@ pub enum RefError {
     ExponentOverflow,
     ExponentUnderflow,
     DivisionByZero,
-    CoefficientOverflow,
     LossyConversionToFloat,
     LossyConversionFromFloat,
     NegativeFixedDecimalConversion,
@@ -45,7 +43,6 @@ impl RefError {
             Self::ExponentOverflow => "ExponentOverflow(int256,int256)",
             Self::ExponentUnderflow => "ExponentUnderflow(int256,int256)",
             Self::DivisionByZero => "DivisionByZero(int256,int256)",
-            Self::CoefficientOverflow => "CoefficientOverflow(int256,int256)",
             Self::LossyConversionToFloat => "LossyConversionToFloat(int256,int256)",
             Self::LossyConversionFromFloat => "LossyConversionFromFloat(int256,int256)",
             Self::NegativeFixedDecimalConversion => "NegativeFixedDecimalConversion(int256,int256)",
@@ -287,47 +284,73 @@ fn sign_rank(s: Sign) -> i8 {
 /// The result of fitting an exact value into a Float.
 #[derive(Debug, Clone)]
 pub enum Packed {
-    /// The value truncated towards zero, and whether that was exact.
+    /// The Float closest to the value that does not exceed its magnitude,
+    /// and whether that is the value.
     Value(Dec, bool),
-    /// Every digit was shed lifting the exponent to the int32 floor.
+    /// No non-zero Float is within the value's magnitude.
     Underflow,
-    /// Larger in magnitude than every Float.
+    /// Larger in magnitude than every Float, past rounding into one.
     Overflow,
 }
 
-/// Fit an exact value into a Float: shed the fewest digits (truncating
-/// towards zero) that fit the coefficient in int224, then lift an exponent
-/// below int32.min to the floor by shedding more. An exponent above int32.max
-/// is lowered by growing the coefficient when the grown coefficient still
-/// fits, because the value is then exactly representable; otherwise the value
-/// exceeds every Float.
+/// The coefficient of `x` at exponent `f`, truncated towards zero, then
+/// clamped to int224.
+fn coefficient_at(x: &Dec, f: i64) -> BigInt {
+    let c = if f >= x.e {
+        shed(&x.c, (f - x.e) as u64)
+    } else {
+        // Past 80 digits up the clamp is reached anyway.
+        &x.c * pow10(((x.e - f) as u64).min(80))
+    };
+    c.clamp(int224_min(), int224_max())
+}
+
+/// The largest in magnitude of `c × 10^f` not exceeding `|x|`, over int224
+/// `c` and `f` in `[lo, hi]`. Every exponent below `x`'s 70th digit clamps to
+/// a smaller bound, and every exponent above its 66th truncates further, so
+/// the window between and the two ends hold the best.
+fn nearest_within(x: &Dec, lo: i64, hi: i64) -> Dec {
+    let top = x.e + digits(&x.c) as i64;
+    let mut best = Dec::zero();
+    for f in (top - 70..=top - 66).chain([lo, hi]) {
+        let f = f.clamp(lo, hi);
+        let candidate = Dec::new(coefficient_at(x, f), f);
+        if candidate.abs().cmp_value(&best.abs()) == Ordering::Greater {
+            best = candidate;
+        }
+    }
+    best
+}
+
+/// Fit an exact value into a Float: the Float closest to it that does not
+/// exceed its magnitude, written at the exponent nearest the value's own.
+/// The value overflows when that Float, with the exponent unbounded, is past
+/// every Float of its sign, and underflows when it is zero within int32.
 pub fn pack(x: &Dec) -> Packed {
     if x.c.is_zero() {
         return Packed::Value(Dec::zero(), true);
     }
-    let n = digits(&x.c);
-    let mut k = n.saturating_sub(68);
-    while !fits_int224(&shed(&x.c, k)) {
-        k += 1;
+    let top = x.e + digits(&x.c) as i64;
+    let unbounded = nearest_within(x, top - 70, top - 66);
+    if unbounded.cmp_value(&Dec::new(int224_max(), I32_MAX)) == Ordering::Greater
+        || unbounded.cmp_value(&Dec::new(int224_min(), I32_MAX)) == Ordering::Less
+    {
+        return Packed::Overflow;
     }
-    let mut c = shed(&x.c, k);
-    let mut e = x.e + k as i64;
-    if e > I32_MAX {
-        let grow = (e - I32_MAX) as u64;
-        let grown = &c * pow10(grow.min(80));
-        if k == 0 && grow <= 68 && fits_int224(&grown) {
-            c = grown;
-            e = I32_MAX;
-        } else {
-            return Packed::Overflow;
-        }
+    let best = nearest_within(x, I32_MIN, I32_MAX);
+    if best.is_zero() {
+        return Packed::Underflow;
     }
-    if e < I32_MIN {
-        c = shed(&c, (I32_MIN - e) as u64);
-        e = I32_MIN;
-        if c.is_zero() {
-            return Packed::Underflow;
-        }
+    // Every exponent `best` is exact at, within int32.
+    let (mut c, mut e) = (best.c.clone(), best.e);
+    while e > I32_MIN && fits_int224(&(&c * 10)) {
+        c *= 10;
+        e -= 1;
+    }
+    let target = x.e.clamp(e, I32_MAX);
+    while e < target && (&c % 10u32).is_zero() {
+        c /= 10;
+        e += 1;
     }
     let out = Dec::new(c, e);
     let lossless = out.eq_value(x);
@@ -344,38 +367,58 @@ pub fn arithmetic(x: &Dec) -> Result<Dec, RefError> {
     }
 }
 
-/// `c × 10^k` for the largest `k` that keeps it in int256, as
-/// `LibDecimalFloatImplementation.maximize` documents.
-fn maximize(x: &Dec) -> Dec {
-    let mut c = x.c.clone();
-    let mut e = x.e;
-    loop {
-        let next = &c * 10;
-        if !fits_int256(&next) {
-            return Dec::new(c, e);
-        }
-        c = next;
-        e -= 1;
+/// The exponent of `x`'s int256 unit: its last digit when written with as
+/// many digits as an int256 coefficient holds, 77 or 76.
+fn int256_unit(x: &Dec) -> i64 {
+    let top = x.e + digits(&x.c) as i64;
+    if fits_int256(&(&x.c * pow10(77 - digits(&x.c)))) {
+        top - 77
+    } else {
+        top - 76
     }
 }
 
-/// `add` under its documented alignment: both operands maximized, the one
-/// with the smaller exponent truncated towards zero to the other's unit, then
-/// the sum packed.
-pub fn add(a: &Dec, b: &Dec) -> Result<Dec, RefError> {
+/// `add`'s sum before packing, as its NatSpec states it: the exact sum
+/// rounded to a multiple of the larger operand's int256 unit, towards zero
+/// when the signs agree and away from zero when they differ.
+fn rounded_sum(a: &Dec, b: &Dec) -> Dec {
     if a.is_zero() {
-        return arithmetic(b);
+        return b.clone();
     }
     if b.is_zero() {
-        return arithmetic(a);
+        return a.clone();
     }
-    let (mut big, mut small) = (maximize(a), maximize(b));
-    if small.e > big.e {
-        core::mem::swap(&mut big, &mut small);
+    let (big, small) = if a.abs().cmp_value(&b.abs()) == Ordering::Less {
+        (b, a)
+    } else {
+        (a, b)
+    };
+    let unit = int256_unit(big);
+    // Under one unit, `small` leaves the exact sum strictly within a unit of
+    // `big`, a multiple of it: outwards when the signs agree, so towards zero
+    // is `big`, and inwards when they differ, so away from zero is `big`.
+    if small.e + (digits(&small.c) as i64) <= unit {
+        return big.clone();
     }
-    let gap = (big.e - small.e) as u64;
-    let aligned = shed(&small.c, gap);
-    arithmetic(&Dec::new(&big.c + aligned, big.e))
+    let exact = big
+        .add_exact(small)
+        .expect("operands within a unit's 77 digits");
+    if exact.e >= unit {
+        return exact;
+    }
+    let k = (unit - exact.e) as u64;
+    let mut c = shed(&exact.c, k);
+    if a.is_negative() != b.is_negative()
+        && Dec::new(c.clone(), unit).cmp_value(&exact) != Ordering::Equal
+    {
+        c += if exact.is_negative() { -1 } else { 1 };
+    }
+    Dec::new(c, unit)
+}
+
+/// `add`: the rounded sum, packed.
+pub fn add(a: &Dec, b: &Dec) -> Result<Dec, RefError> {
+    arithmetic(&rounded_sum(a, b))
 }
 
 pub fn sub(a: &Dec, b: &Dec) -> Result<Dec, RefError> {
@@ -471,19 +514,12 @@ pub fn from_fixed_decimal_lossy(value: U256, decimals: u8) -> (Dec, bool) {
     }
 }
 
-/// `fromFixedDecimalLossless`: a value above int256.max is first divided by
-/// ten (`LossyConversionToFloat` when that drops a non-zero digit), then the
-/// result must pack losslessly (`CoefficientOverflow`).
+/// `fromFixedDecimalLosslessPacked`: a value that is not exactly a Float is
+/// `LossyConversionToFloat`.
 pub fn from_fixed_decimal_lossless(value: U256, decimals: u8) -> Result<Dec, RefError> {
-    let (v, lossless) = from_fixed_decimal_lossy(value, decimals);
-    if lossless {
-        return Ok(v);
-    }
-    let big = u256_to_big(value);
-    if big > int256_max() && !(&big % 10u32).is_zero() {
-        Err(RefError::LossyConversionToFloat)
-    } else {
-        Err(RefError::CoefficientOverflow)
+    match from_fixed_decimal_lossy(value, decimals) {
+        (v, true) => Ok(v),
+        (_, false) => Err(RefError::LossyConversionToFloat),
     }
 }
 
@@ -535,11 +571,13 @@ pub fn pack_lossy(c: &BigInt, e: &BigInt) -> Result<(Dec, bool), RefError> {
     }
 }
 
-/// `packLossless`: `packLossy`, with any lost digit `CoefficientOverflow`.
+/// `packLossless`: past every Float is `ExponentOverflow`, any other value
+/// that is not exactly a Float `LossyConversionToFloat`.
 pub fn pack_lossless(c: &BigInt, e: &BigInt) -> Result<Dec, RefError> {
-    match pack_lossy(c, e)? {
-        (v, true) => Ok(v),
-        (_, false) => Err(RefError::CoefficientOverflow),
+    match pack(&Dec::new(c.clone(), pin(e))) {
+        Packed::Value(v, true) => Ok(v),
+        Packed::Overflow => Err(RefError::ExponentOverflow),
+        Packed::Value(_, false) | Packed::Underflow => Err(RefError::LossyConversionToFloat),
     }
 }
 
@@ -566,7 +604,7 @@ pub fn canonicalize(x: &Dec) -> Dec {
 /// `agree`, as its NatSpec states it: a negative tolerance is
 /// `AgreeToleranceNegative`, neither positive `AgreeNoPositiveTolerance`;
 /// otherwise `highest - lowest <= max(absolute, proportional * max(|lowest|,
-/// |highest|))`, the spread aligned as `sub` aligns it and nothing packed.
+/// |highest|))`, the spread rounded as `sub` rounds it and nothing packed.
 pub fn agree(
     absolute: &Dec,
     proportional: &Dec,
@@ -579,7 +617,7 @@ pub fn agree(
     if absolute.is_zero() && proportional.is_zero() {
         return Err(RefError::AgreeNoPositiveTolerance);
     }
-    let spread = aligned_sum(highest, &lowest.neg());
+    let spread = rounded_sum(highest, &lowest.neg());
     let anchor = if lowest.abs().cmp_value(&highest.abs()) == Ordering::Greater {
         lowest.abs()
     } else {
@@ -592,22 +630,6 @@ pub fn agree(
         scaled
     };
     Ok(spread.cmp_value(&limit) != Ordering::Greater)
-}
-
-/// The sum under `add`'s documented alignment, before packing.
-fn aligned_sum(a: &Dec, b: &Dec) -> Dec {
-    if a.is_zero() {
-        return b.clone();
-    }
-    if b.is_zero() {
-        return a.clone();
-    }
-    let (mut big, mut small) = (maximize(a), maximize(b));
-    if small.e > big.e {
-        core::mem::swap(&mut big, &mut small);
-    }
-    let gap = (big.e - small.e) as u64;
-    Dec::new(&big.c + shed(&small.c, gap), big.e)
 }
 
 /// `isOdd`: an odd whole number.
@@ -638,20 +660,13 @@ pub fn from_fixed_decimal_lossless_unpacked(value: U256, decimals: u8) -> Result
     }
 }
 
-/// `toFixedDecimalLossy` over any int256 coefficient and exponent:
-/// `exponent + decimals` past int256.max is `ExponentOverflow`, otherwise as
+/// `toFixedDecimalLossy` over any int256 coefficient and exponent, as
 /// `to_fixed_decimal_lossy`.
 pub fn to_fixed_decimal_lossy_unpacked(
     c: &BigInt,
     e: &BigInt,
     decimals: u8,
 ) -> Result<(U256, bool), RefError> {
-    if c.is_negative() {
-        return Err(RefError::NegativeFixedDecimalConversion);
-    }
-    if !c.is_zero() && !fits_int256(&(e + decimals)) {
-        return Err(RefError::ExponentOverflow);
-    }
     to_fixed_decimal_lossy(&Dec::new(c.clone(), pin(e)), decimals)
 }
 
@@ -770,13 +785,15 @@ pub fn literal_value(s: &str) -> Dec {
     }
 }
 
-/// `LibParseDecimalFloat.parseDecimalFloat` over a well formed literal: the
-/// integer part, fraction digits (trailing zeros dropped) and exponent are
-/// each read as int256 (`ParseDecimalOverflow`); a non-zero integer part
+/// `LibParseDecimalFloat.parseDecimalFloat` over a well formed literal: an
+/// integer part past int256 moves its trailing zeros into the exponent, and
+/// then its significant digits, fraction digits (trailing zeros dropped) and
+/// a nonzero coefficient's exponent are each read as int256
+/// (`ParseDecimalOverflow`); a fraction digit after an integer part past
+/// int256 is `ParseDecimalPrecisionLoss`; a non-zero integer part
 /// takes at most 67 fraction digits and the combined coefficient must fit
-/// int224 (`ParseDecimalPrecisionLoss`); the exponent sum must fit int256
-/// (`ExponentOverflow`); then the value packs, where any lost digit is
-/// `ParseDecimalPrecisionLoss` and a value past every Float is
+/// int224 (`ParseDecimalPrecisionLoss`); then the value packs, where any lost
+/// digit is `ParseDecimalPrecisionLoss` and a value past every Float is
 /// `ExponentOverflow`.
 pub fn parse(s: &str) -> Result<Dec, RefError> {
     parse_packed(&parse_unpacked(s)?)
@@ -814,7 +831,8 @@ pub fn pin(e: &BigInt) -> i64 {
 
 /// `parseDecimalFloatInline` over a whole well formed literal: the
 /// coefficient and int256 exponent `parse_unpacked` describes, zero at
-/// exponent zero.
+/// exponent zero. A value with no int256 exponent is the error `parse_packed`
+/// gives it.
 pub fn parse_inline(s: &str) -> Result<(BigInt, BigInt), RefError> {
     let (mantissa, exp_str) = match s.find(['e', 'E']) {
         Some(i) => (&s[..i], Some(&s[i + 1..])),
@@ -826,54 +844,61 @@ pub fn parse_inline(s: &str) -> Result<(BigInt, BigInt), RefError> {
     };
     let negative = int_str.starts_with('-');
     let int: BigInt = int_str.parse().unwrap();
-    let int_limit = if negative {
-        -int256_min()
-    } else {
-        int256_max()
-    };
-    if int.abs() > int_limit {
-        return Err(RefError::ParseDecimalOverflow);
-    }
+    let frac = frac_str
+        .map(|f| f.trim_end_matches('0'))
+        .filter(|f| !f.is_empty());
     let mut c = int.clone();
     let mut e: BigInt = BigInt::zero();
-    if let Some(frac_str) = frac_str {
-        let trimmed = frac_str.trim_end_matches('0');
-        if !trimmed.is_empty() {
-            let f: BigInt = trimmed.parse().unwrap();
-            if f > int256_max() {
-                return Err(RefError::ParseDecimalOverflow);
+    if !fits_int256(&int) {
+        // Its trailing zeros move into the exponent. Significant digits past
+        // int256, or any fraction digit after them, need a coefficient past
+        // int256, so neither is a Float.
+        let mut zeros = 0u64;
+        while (&c % 10u32).is_zero() {
+            c /= 10u32;
+            zeros += 1;
+        }
+        if !fits_int256(&c) {
+            return Err(RefError::ParseDecimalOverflow);
+        }
+        if frac.is_some() {
+            return Err(RefError::ParseDecimalPrecisionLoss);
+        }
+        e = BigInt::from(zeros);
+    } else if let Some(trimmed) = frac {
+        let f: BigInt = trimmed.parse().unwrap();
+        if f > int256_max() {
+            return Err(RefError::ParseDecimalOverflow);
+        }
+        let f = if negative { -f } else { f };
+        let scale = trimmed.len() as u64;
+        e = -BigInt::from(scale);
+        if int.is_zero() {
+            c = f;
+        } else {
+            if scale > 67 {
+                return Err(RefError::ParseDecimalPrecisionLoss);
             }
-            let f = if negative { -f } else { f };
-            let scale = trimmed.len() as u64;
-            e = -BigInt::from(scale);
-            if int.is_zero() {
-                c = f;
-            } else {
-                if scale > 67 {
-                    return Err(RefError::ParseDecimalPrecisionLoss);
-                }
-                let rescaled = &int * pow10(scale);
-                if !fits_int224(&rescaled) {
-                    return Err(RefError::ParseDecimalPrecisionLoss);
-                }
-                c = rescaled + f;
+            let rescaled = &int * pow10(scale);
+            if !fits_int224(&rescaled) {
+                return Err(RefError::ParseDecimalPrecisionLoss);
             }
+            c = rescaled + f;
         }
     }
     if let Some(exp_str) = exp_str {
         let x: BigInt = exp_str.trim_start_matches('+').parse().unwrap();
-        let limit = if x.is_negative() {
-            -int256_min()
-        } else {
-            int256_max()
-        };
-        if x.abs() > limit {
+        // Zero is zero at any exponent; past int256 nothing else is a Float.
+        if c.is_zero() {
+            return Ok((BigInt::zero(), BigInt::zero()));
+        }
+        if !fits_int256(&x) {
             return Err(RefError::ParseDecimalOverflow);
         }
         e += x;
-        if !fits_int256(&e) {
-            return Err(RefError::ExponentOverflow);
-        }
+    }
+    if !c.is_zero() && !fits_int256(&e) {
+        return Err(parse_packed(&Dec::new(c, pin(&e))).unwrap_err());
     }
     if c.is_zero() {
         return Ok((BigInt::zero(), BigInt::zero()));
@@ -927,7 +952,7 @@ mod tests {
         let Packed::Value(v, false) = pack(&Dec::new(-int224_min(), 0)) else {
             panic!()
         };
-        assert_eq!(v.e, 1);
+        assert_eq!((v.c, v.e), (int224_max(), 0));
     }
 
     #[test]
@@ -943,15 +968,42 @@ mod tests {
         }
     }
 
+    /// `add`'s NatSpec examples, #340.
     #[test]
-    fn add_drops_digits_below_the_aligned_unit() {
-        // agree's NatSpec: 1 - (-1e-100) is exactly 1 to sub.
-        let one = Dec::new(1, 0);
-        let r = sub(&one, &Dec::new(-1, -100)).unwrap();
-        assert!(r.eq_value(&one));
-        // 1e100 + -1 keeps 1e100: the -1 is below the aligned unit.
-        let r = add(&Dec::new(1, 100), &Dec::new(-1, 0)).unwrap();
-        assert!(r.eq_value(&Dec::new(1, 100)));
+    fn add_rounding_examples() {
+        let nines = |e| Dec::new(pow10(67) - 1u32, e);
+        let cases = [
+            // Signs agree: towards zero.
+            ((1, 100), (1, -100), Dec::new(1, 100)),
+            ((-1, 100), (-1, -100), Dec::new(-1, 100)),
+            ((1, 0), (1, -100), Dec::new(1, 0)),
+            // Signs differ: away from zero at the larger operand's unit, then
+            // packed.
+            ((1, 100), (-1, 0), Dec::new(1, 100)),
+            ((-1, 100), (1, 0), Dec::new(-1, 100)),
+            ((1, 0), (-1, -100), Dec::new(1, 0)),
+            ((1, 100), (-17, 32), Dec::new(pow10(67) - 2u32, 33)),
+            ((1, 100), (-(10i128.pow(33) + 1), 0), nines(33)),
+            (
+                (1, 100),
+                (-(15 * 10i128.pow(32) + 1), 0),
+                Dec::new(pow10(67) - 2u32, 33),
+            ),
+            ((1, 0), (-15, -77), nines(-67)),
+        ];
+        for ((ca, ea), (cb, eb), want) in cases {
+            let (a, b) = (Dec::new(ca, ea), Dec::new(cb, eb));
+            let r = add(&a, &b).unwrap();
+            assert!(
+                r.eq_value(&want),
+                "add({a:?}, {b:?}) = {r:?}, want {want:?}"
+            );
+            let r = sub(&a, &b.neg()).unwrap();
+            assert!(
+                r.eq_value(&want),
+                "sub({a:?}, -{b:?}) = {r:?}, want {want:?}"
+            );
+        }
     }
 
     #[test]

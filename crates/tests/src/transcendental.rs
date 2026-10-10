@@ -31,11 +31,35 @@ use serde_json::{Value, json};
 
 // ----------------------------------------------------------------- the EVM
 
-/// A result, or the selector of the error it reverted with.
-type Sol = Result<Dec, [u8; 4]>;
+/// A result, or the data it reverted with.
+type Sol = Result<Dec, Vec<u8>>;
 
 fn call<C: SolCall<Return = B256>>(c: C) -> Sol {
-    evm::float(c).map_err(|output| output[..4].try_into().unwrap())
+    evm::float(c).map_err(|output| output.to_vec())
+}
+
+/// `x` as an int256 word.
+fn word(x: &BigInt) -> [u8; 32] {
+    let mut w = [if x.is_negative() { 0xff } else { 0 }; 32];
+    let b = x.to_signed_bytes_be();
+    w[32 - b.len()..].copy_from_slice(&b);
+    w
+}
+
+/// The revert data of `e` from a call whose first input is `a`. Every error
+/// reports `a` as its coefficient and exponent, but `Log10Zero`, which reports
+/// nothing, and `ZeroNegativePower`, which reports pow's `b` packed.
+fn revert_data(e: RefError, a: &Dec, b: Option<&Dec>) -> Vec<u8> {
+    let mut out = e.selector().to_vec();
+    match e {
+        RefError::Log10Zero => {}
+        RefError::ZeroNegativePower => out.extend_from_slice(bytes(b.expect("pow's b")).as_slice()),
+        _ => {
+            out.extend_from_slice(&word(&a.c));
+            out.extend_from_slice(&word(&BigInt::from(a.e)));
+        }
+    }
+    out
 }
 
 fn bytes(a: &Dec) -> B256 {
@@ -164,43 +188,81 @@ pub fn pack_rounded(x: &Dec) -> Result<Dec, RefError> {
     r::arithmetic(&rounded)
 }
 
-/// `b` as p/q in lowest terms, when both are small enough to raise to.
-fn small_ratio(b: &Dec) -> Option<(BigInt, u32)> {
-    let n = b.normalized();
-    if n.e >= 0 {
-        if n.e > 3 {
-            return None;
-        }
-        let p = &n.c * pow10(n.e as u64);
-        return (p.abs() <= BigInt::from(256)).then_some((p, 1));
+/// a > 0 as c 2^i 5^j, c coprime to ten.
+fn split_ten(a: &Dec) -> (BigInt, i64, i64) {
+    let n = a.normalized();
+    let (mut c, mut i, mut j) = (n.c, n.e, n.e);
+    while c.is_even() {
+        c /= 2;
+        i += 1;
     }
-    if n.e < -6 {
-        return None;
+    while (&c % 5u32).is_zero() {
+        c /= 5;
+        j += 1;
     }
-    let den = pow10((-n.e) as u64);
-    let g = n.c.gcd(&den);
-    let (p, q) = (&n.c / &g, den / &g);
-    (p.abs() <= BigInt::from(256) && q <= BigInt::from(64)).then(|| (p, u32::try_from(&q).unwrap()))
+    (c, i, j)
 }
 
 fn power(d: &Dec, k: u32) -> Dec {
     Dec::new(num_traits::pow(d.c.clone(), k as usize), d.e * k as i64)
 }
 
-/// The exact a^b for a > 0 when it has at most 41 significant digits and b
-/// is a small ratio p/q: g = round41(approx) is exact iff g^q = a^p.
-fn exact_power(a: &Dec, b: &Dec, t: &Approx) -> Option<Dec> {
-    let (p, q) = small_ratio(b)?;
-    let g = round41(&t.value).normalized();
-    let pa = u32::try_from(p.magnitude()).unwrap();
-    let lhs = power(&g, q);
-    let rhs = power(a, pa);
-    let equal = if p.is_positive() {
-        lhs.eq_value(&rhs)
+/// The exact a^b for a > 0 when it has at most 41 significant digits, from
+/// exact maths alone. For b = p/q in lowest terms a^b is rational only when
+/// a = r^q for a rational r, and is then r^p. With a = c 2^i 5^j, c coprime
+/// to ten, r = s 2^(i/q) 5^(j/q): q divides i and j, and c = s^q. r^p is a
+/// terminating decimal only when s^p is an integer, so s = 1 for p < 0, and
+/// its significant digits are those of s^p 2^(X - t) 5^(Y - t), X = pi/q,
+/// Y = pj/q, t = min(X, Y), with no trailing zero as one of the two powers is
+/// one.
+///
+/// None past b = c 10^12 or c 10^-40: there q has 2^41 or 5^41 in it, which
+/// divides neither i nor j under 2^33 unless both are zero, nor c under 2^224
+/// unless c is one and a is one, so a^b is not exact; or |p| is over 10^12,
+/// which an exact power under 1e41 has only for r a power of ten, past every
+/// Float, as is any t past 2^40.
+fn exact_power(a: &Dec, b: &Dec) -> Option<Dec> {
+    let b = b.normalized();
+    if b.e > 12 || b.e < -40 {
+        return None;
+    }
+    let (p, q) = if b.e >= 0 {
+        (&b.c * pow10(b.e as u64), BigInt::from(1))
     } else {
-        lhs.mul_exact(&rhs).eq_value(&Dec::new(1, 0))
+        let den = pow10((-b.e) as u64);
+        let g = b.c.gcd(&den);
+        (&b.c / &g, den / g)
     };
-    equal.then_some(g)
+    let (c, i, j) = split_ten(a);
+    let (i, j) = (BigInt::from(i), BigInt::from(j));
+    if !i.is_multiple_of(&q) || !j.is_multiple_of(&q) {
+        return None;
+    }
+    let s = if c == BigInt::from(1) {
+        c
+    } else {
+        // c >= 3, so s >= 3 and a 41 digit s^p has 0 < p <= 84.
+        let k = u32::try_from(&q).ok()?;
+        let s = c.nth_root(k);
+        if num_traits::pow(s.clone(), k as usize) != c || p.is_negative() || p > BigInt::from(84) {
+            return None;
+        }
+        s
+    };
+    let x = &i / &q * &p;
+    let y = &j / &q * &p;
+    let t = x.clone().min(y.clone());
+    let (d2, d5) = (&x - &t, &y - &t);
+    // 2^137 and 5^59 are past 1e41.
+    if d2 > BigInt::from(137) || d5 > BigInt::from(59) {
+        return None;
+    }
+    let p = usize::try_from(&p).unwrap_or(0);
+    let m = num_traits::pow(s, p)
+        * num_traits::pow(BigInt::from(2), usize::try_from(&d2).unwrap())
+        * num_traits::pow(BigInt::from(5), usize::try_from(&d5).unwrap());
+    let t = i64::try_from(&t).ok().filter(|t| t.abs() < 1 << 40)?;
+    (r::digits(&m) <= 41).then(|| Dec::new(m, t))
 }
 
 /// a^b as `LibDecimalFloat.pow` documents it.
@@ -254,15 +316,15 @@ pub fn truth_pow(a: &Dec, b: &Dec) -> Truth {
             err: t.err,
         });
     }
+    if let Some(g) = exact_power(&base, b) {
+        return Truth::exact(sign(g));
+    }
     match precise::pow_true(&base, b) {
         Err(rising) => Truth::err(past(rising)),
-        Ok(t) => match exact_power(&base, b, &t) {
-            Some(g) => Truth::exact(sign(g)),
-            None => Truth::near(Approx {
-                value: sign(t.value),
-                err: t.err,
-            }),
-        },
+        Ok(t) => Truth::near(Approx {
+            value: sign(t.value),
+            err: t.err,
+        }),
     }
 }
 
@@ -327,8 +389,15 @@ fn floor_carve(lowest: &Dec) -> Dec {
     }
 }
 
-fn check_sol(case: &str, sol: Sol, truth: &Truth, bound: &Bound) -> Result<(), TestCaseError> {
-    let reverted = |e: RefError| matches!(&sol, Err(s) if *s == e.selector());
+/// `want` is the revert data of each error from this call.
+fn check_sol(
+    case: &str,
+    sol: Sol,
+    truth: &Truth,
+    bound: &Bound,
+    want: impl Fn(RefError) -> Vec<u8>,
+) -> Result<(), TestCaseError> {
+    let reverted = |e: RefError| matches!(&sol, Err(s) if *s == want(e));
     let t = match &truth.value {
         Err(e) => {
             prop_assert!(reverted(*e), "{case}: solidity {sol:?}, want {e:?}");
@@ -425,7 +494,9 @@ pub fn check_log10(a: &Dec) -> Result<(), TestCaseError> {
         &truth,
         &ask(json!({"op": "log10", "a": float_json(a)})),
     )?;
-    check_sol(&case, sol_log10(a), &truth, &Bound::Log10)
+    check_sol(&case, sol_log10(a), &truth, &Bound::Log10, |e| {
+        revert_data(e, a, None)
+    })
 }
 
 /// floor(x) for |x| at most RANGE. Past it the truth is an error and the
@@ -451,6 +522,7 @@ pub fn check_pow10(x: &Dec) -> Result<(), TestCaseError> {
         sol_pow10(x),
         &truth,
         &Bound::Pow10(floor_in_range(x)),
+        |e| revert_data(e, x, None),
     )
 }
 
@@ -474,7 +546,9 @@ pub fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     } else {
         BigInt::zero()
     };
-    check_sol(&case, sol_pow(a, b), &truth, &Bound::Pow(n))
+    check_sol(&case, sol_pow(a, b), &truth, &Bound::Pow(n), |e| {
+        revert_data(e, a, Some(b))
+    })
 }
 
 pub fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
@@ -483,7 +557,9 @@ pub fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
     let truth = truth_pow(a, &half);
     let py = ask(json!({"op": "pow", "a": float_json(a), "b": float_json(&half)}));
     check_python(&case, &truth, &py)?;
-    check_sol(&case, sol_sqrt(a), &truth, &Bound::Sqrt)
+    check_sol(&case, sol_sqrt(a), &truth, &Bound::Sqrt, |e| {
+        revert_data(e, a, None)
+    })
 }
 
 // ------------------------------------------------------------ monotonicity
@@ -728,6 +804,14 @@ fn small_b() -> BoxedStrategy<Dec> {
     .boxed()
 }
 
+/// n + 1/2 in any representation, either sign, which `pow` takes as the root
+/// of a^(2n + 1).
+fn half_b() -> BoxedStrategy<Dec> {
+    (-400i64..=400, 0u64..=60)
+        .prop_map(|(n, j)| Dec::new(BigInt::from(2 * n + 1) * 5 * pow10(j), -(j as i64) - 1))
+        .boxed()
+}
+
 /// b = t / log10(a) for a = 10^j, with t at the edges of the range.
 fn edge_pow() -> BoxedStrategy<(Dec, Dec)> {
     (
@@ -772,10 +856,32 @@ fn root_anchor() -> BoxedStrategy<(Dec, Dec)> {
     .boxed()
 }
 
+/// r^q and p/q for r = g 10^e, whose power is exactly r^p, for every q
+/// dividing a power of ten that some g > 1 has a q-th power inside int224.
+/// Past q 223 only a power of ten has a q-th root.
+fn rational_power() -> BoxedStrategy<(Dec, Dec)> {
+    (
+        prop::sample::select(vec![
+            2u32, 4, 5, 8, 10, 16, 20, 25, 32, 40, 50, 64, 80, 100, 125, 128, 160, 200,
+        ]),
+        2u64..=1000,
+        prop_oneof![-3i64..=3, -10_000_000i64..=10_000_000],
+        (-100i64..=100).prop_filter("p", |p| *p != 0),
+    )
+        .prop_filter_map("g^q and e q fit", |(q, g, e, p)| {
+            let a = power(&Dec::new(g, e), q);
+            let n = (0..=8).find(|n| (pow10(*n) % q).is_zero())?;
+            (r::fits_int224(&a.c) && a.e.abs() <= I32_MAX)
+                .then(|| (a, Dec::new(BigInt::from(p) * pow10(n) / q, -(n as i64))))
+        })
+        .boxed()
+}
+
 fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
     prop_oneof![
         2 => (float(), float()),
         4 => (moderate(), small_b()),
+        2 => (moderate(), half_b()),
         2 => edge_pow(),
         // a within 1e-66 of one, and a large b.
         1 => (-1000i64..=1000, crate::exact::coefficient(), 40i64..=80).prop_map(|(d, c, e)| {
@@ -790,6 +896,7 @@ fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
         // Small integer powers, often exact.
         2 => (1i64..=1_000_000, -3i64..=3, -30i64..=30).prop_map(|(g, e, n)| (Dec::new(g, e), Dec::new(n, 0))),
         2 => root_anchor(),
+        3 => rational_power(),
     ]
     .boxed()
 }
@@ -833,6 +940,9 @@ proptest! {
     fn monotone_pow_neighbours((a, b) in (moderate(), small_b())) { monotone_pow(&a, &b)?; }
 
     #[test]
+    fn monotone_pow_half_neighbours((a, b) in (moderate(), half_b())) { monotone_pow(&a, &b)?; }
+
+    #[test]
     fn monotone_sqrt_neighbours(a in a_sqrt()) { monotone_sqrt(&a)?; }
 }
 
@@ -848,8 +958,21 @@ mod checker {
         Truth::near(Approx { value, err })
     }
 
+    /// The input of every made-up call.
+    fn input() -> Dec {
+        Dec::new(-3, -1)
+    }
+
+    /// The revert data of `e` from a made-up call.
+    fn reverting(e: RefError) -> Sol {
+        Err(revert_data(e, &input(), None))
+    }
+
     fn accepts(truth: &Truth, bound: &Bound, sol: Sol) -> bool {
-        check_sol("checker", sol, truth, bound).is_ok()
+        check_sol("checker", sol, truth, bound, |e| {
+            revert_data(e, &input(), None)
+        })
+        .is_ok()
     }
 
     /// `v + within - err` is the furthest result the bound admits, and a
@@ -899,7 +1022,7 @@ mod checker {
             &Dec::new(1, -310),
         );
         // Never past every Float.
-        let under = || -> Sol { Err(RefError::ExponentUnderflow.selector()) };
+        let under = || -> Sol { reverting(RefError::ExponentUnderflow) };
         assert!(!accepts(&near(Dec::new(1, I32_MIN)), &Bound::Sqrt, under()));
     }
 
@@ -945,8 +1068,8 @@ mod checker {
     /// A revert is accepted only where the bound reaches past every Float.
     #[test]
     fn reverts() {
-        let under = || -> Sol { Err(RefError::ExponentUnderflow.selector()) };
-        let over = || -> Sol { Err(RefError::ExponentOverflow.selector()) };
+        let under = || -> Sol { reverting(RefError::ExponentUnderflow) };
+        let over = || -> Sol { reverting(RefError::ExponentOverflow) };
         let ordinary = near(Dec::new(5, -100));
         assert!(!accepts(&ordinary, &Bound::Pow(BigInt::zero()), under()));
         assert!(!accepts(&ordinary, &Bound::Pow(BigInt::zero()), over()));
@@ -988,6 +1111,45 @@ mod checker {
         assert!(largest(false).eq_value(&Dec::new(r::int224_max(), I32_MAX)));
     }
 
+    /// An exact power one unit in the last place off is within pow's bound,
+    /// so only exactness rejects it, for every q and every count of decimals.
+    #[test]
+    fn pow_exact_past_small_ratios() {
+        for (a, b, want) in [
+            ("42535295865117307932921825928971026432", "0.008", "2"),
+            ("42535295865117307932921825928971026432", "-0.008", "0.5"),
+            (
+                "42535295865117307932921825928971026432",
+                "1.056",
+                "5444517870735015415413993718908291383296",
+            ),
+            (
+                "11790184577738583171520872861412518665678211592275841109096961",
+                "0.0078125",
+                "3",
+            ),
+            ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
+        ] {
+            let (a, b, want) = (
+                r::literal_value(a),
+                r::literal_value(b),
+                r::literal_value(want),
+            );
+            let bound = Bound::Pow(integer_part(&b));
+            let ulp = Dec::new(1, order(&want) - 40);
+            let off = sum(&want, &ulp.neg());
+            assert!(
+                accepts(&near(want.clone()), &bound, Ok(off.clone())),
+                "{off:?}"
+            );
+            assert!(
+                !accepts(&truth_pow(&a, &b), &bound, Ok(off.clone())),
+                "{off:?}"
+            );
+            assert!(accepts(&truth_pow(&a, &b), &bound, Ok(want)));
+        }
+    }
+
     #[test]
     fn exact_and_errors() {
         let two = Truth::exact(Dec::new(2, 0));
@@ -1001,36 +1163,57 @@ mod checker {
         assert!(accepts(
             &past,
             &Bound::Pow10(0),
-            Err(RefError::ExponentOverflow.selector())
+            reverting(RefError::ExponentOverflow)
         ));
         assert!(!accepts(
             &past,
             &Bound::Pow10(0),
-            Err(RefError::ExponentUnderflow.selector())
+            reverting(RefError::ExponentUnderflow)
         ));
         let gone = Truth::exact(Dec::new(1, I32_MIN - 1));
         assert!(accepts(
             &gone,
             &Bound::Pow10(0),
-            Err(RefError::ExponentUnderflow.selector())
+            reverting(RefError::ExponentUnderflow)
         ));
         assert!(!accepts(
             &gone,
             &Bound::Pow10(0),
-            Err(RefError::ExponentOverflow.selector())
+            reverting(RefError::ExponentOverflow)
         ));
         let e = Truth::err(RefError::Log10Zero);
-        assert!(accepts(
-            &e,
-            &Bound::Log10,
-            Err(RefError::Log10Zero.selector())
-        ));
+        assert!(accepts(&e, &Bound::Log10, reverting(RefError::Log10Zero)));
         assert!(!accepts(
             &e,
             &Bound::Log10,
-            Err(RefError::Log10Negative.selector())
+            reverting(RefError::Log10Negative)
         ));
         assert!(!accepts(&e, &Bound::Log10, Ok(Dec::zero())));
+    }
+
+    /// A revert is accepted only with the call's input as its arguments.
+    #[test]
+    fn revert_args() {
+        let past = Truth::exact(Dec::new(1, I32_MAX + 68));
+        let over = RefError::ExponentOverflow;
+        let bare = Err(over.selector().to_vec());
+        assert!(!accepts(&past, &Bound::Pow10(0), bare));
+        let other = Err(revert_data(over, &Dec::new(-3, 0), None));
+        assert!(!accepts(&past, &Bound::Pow10(0), other));
+        let e = Truth::err(RefError::Log10Negative);
+        let bare = Err(RefError::Log10Negative.selector().to_vec());
+        assert!(!accepts(&e, &Bound::Log10, bare));
+        let other = Err(revert_data(
+            RefError::Log10Negative,
+            &Dec::new(-3, -2),
+            None,
+        ));
+        assert!(!accepts(&e, &Bound::Log10, other));
+        assert!(accepts(
+            &e,
+            &Bound::Log10,
+            reverting(RefError::Log10Negative)
+        ));
     }
 
     #[test]
@@ -1222,6 +1405,40 @@ mod anchors {
         run(check_log10(&Dec::new(pow10(66), I32_MAX)));
     }
 
+    /// a^b is exact only for a rational power with at most 41 digits.
+    #[test]
+    fn exact_power_is_rational_and_short() {
+        for (a, b, want) in [
+            ("2", "0.5", None),
+            ("3", "-1", None),
+            ("6", "-1", None),
+            ("16", "-0.0000025", None),
+            ("2", "137", None),
+            (
+                "2",
+                "136",
+                Some("87112285931760246646623899502532662132736"),
+            ),
+            ("2", "-136", None),
+            ("2", "-40", Some("9094947017729282379150390625e-40")),
+            ("0.04", "0.5", Some("0.2")),
+            ("0.04", "-1.5", Some("125")),
+            ("1e-10", "0.2", Some("0.01")),
+            ("8e30", "0.3333333", None),
+            ("1e3", "1e-50", None),
+            ("7", "1e13", None),
+        ] {
+            let got = exact_power(&d(a), &d(b));
+            match want {
+                None => assert!(got.is_none(), "{a}^{b}: {got:?}"),
+                Some(w) => assert!(
+                    got.as_ref().is_some_and(|g| g.eq_value(&d(w))),
+                    "{a}^{b}: {got:?}, want {w}"
+                ),
+            }
+        }
+    }
+
     #[test]
     fn exact_powers_and_roots() {
         for (a, b, want) in [
@@ -1241,6 +1458,20 @@ mod anchors {
             ("-0.1", "-3", "-1000"),
             ("7", "0", "1"),
             ("1", "1e100", "1"),
+            // q past 64, or b past 6 decimals.
+            ("42535295865117307932921825928971026432", "0.008", "2"),
+            ("42535295865117307932921825928971026432", "-0.008", "0.5"),
+            (
+                "42535295865117307932921825928971026432",
+                "1.056",
+                "5444517870735015415413993718908291383296",
+            ),
+            (
+                "11790184577738583171520872861412518665678211592275841109096961",
+                "0.0078125",
+                "3",
+            ),
+            ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
         ] {
             exactly(truth_pow(&d(a), &d(b)), want);
             run(check_pow(&d(a), &d(b)));

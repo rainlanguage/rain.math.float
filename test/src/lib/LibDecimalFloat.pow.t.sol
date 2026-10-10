@@ -8,8 +8,10 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {ZeroNegativePower, PowNegativeBase, ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
-import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
+import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "test/lib/LibTestPowRange.sol";
+import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 contract LibDecimalFloatPowTest is Test {
     using LibDecimalFloat for Float;
@@ -140,75 +142,58 @@ contract LibDecimalFloatPowTest is Test {
         }
     }
 
-    /// The one revert pow(a, b) may have, derived from the inputs: the exact
-    /// error, or only its selector where its arguments are pow's
-    /// intermediates, or empty where pow must return. `mayReturn` is false
-    /// where no result is representable.
-    function expectedPowError(Float a, Float b) internal pure returns (bool mayReturn, bytes memory err) {
+    /// The reverts pow(a, b) may have, derived from the inputs: none where it
+    /// must return, and the range errors `LibTestPowRange.powRange` allows.
+    /// `mayReturn` is false where no result is representable.
+    function expectedPowError(Float a, Float b)
+        internal
+        pure
+        returns (bool mayReturn, bytes memory err, bytes memory otherErr)
+    {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         if (signedCoefficientB == 0) {
             // forge-lint: disable-next-line(boolean-cst)
-            return (true, "");
+            return (true, "", "");
         } else if (signedCoefficientA == 0) {
             return signedCoefficientB < 0
                 // forge-lint: disable-next-line(boolean-cst)
-                ? (false, abi.encodeWithSelector(ZeroNegativePower.selector, b))
+                ? (false, abi.encodeWithSelector(ZeroNegativePower.selector, b), bytes(""))
                 // forge-lint: disable-next-line(boolean-cst)
-                : (true, bytes(""));
+                : (true, bytes(""), bytes(""));
         } else if (signedCoefficientA < 0 && !LibTestExactDecimal.isWhole(signedCoefficientB, exponentB)) {
             // forge-lint: disable-next-line(boolean-cst)
-            return (false, abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA));
+            return (false, abi.encodeWithSelector(PowNegativeBase.selector, signedCoefficientA, exponentA), bytes(""));
         } else if (LibTestExactDecimal.eq(
                 signedCoefficientA < 0 ? -signedCoefficientA : signedCoefficientA, exponentA, 1, 0
             )) {
             // forge-lint: disable-next-line(boolean-cst)
-            return (true, "");
+            return (true, "", "");
         }
-        PowRange range = powRange(a, b);
-        if (range == PowRange.Inside) {
-            // forge-lint: disable-next-line(boolean-cst)
-            return (true, "");
+        PowRange range = LibTestPowRange.powRange(a, b);
+        mayReturn = LibTestPowRange.mayReturn(range);
+        if (LibTestPowRange.mayRevert(range, true)) {
+            err = LibTestPowRange.rangeError(true, a);
         }
-        bool edge = range == PowRange.OverEdge || range == PowRange.UnderEdge;
-        bool over = range == PowRange.Over || range == PowRange.OverEdge;
-        return (edge, abi.encodePacked(over ? ExponentOverflow.selector : ExponentUnderflow.selector));
+        if (LibTestPowRange.mayRevert(range, false)) {
+            otherErr = LibTestPowRange.rangeError(false, a);
+        }
     }
 
-    /// Where |a|^b lands, for a nonzero a other than +-1. L = b log10 |a| from
-    /// the oracle. pow's bound E is relative, but its integer leg truncates
-    /// multiplicatively, (1 - 1e-75)^(2N + 1), which moves L by under
-    /// (2N + 1) 1e-75 / ln 10; the leg and the rounding move it by under
-    /// 5.0000004e-41. So E, with |b| for N, is a slack on L both ways.
-    function powRange(Float a, Float b) internal pure returns (PowRange) {
-        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
-        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (int256 signedCoefficientL, int256 exponentL) = LibTestPowRange.log10Abs(signedCoefficientA, exponentA);
-        (signedCoefficientL, exponentL) =
-            LibTestExactDecimal.mulParts(signedCoefficientL, exponentL, signedCoefficientB, exponentB);
-        (int256 slackCoefficient, int256 slackExponent) = LibTestExactDecimal.mulParts(
-            signedCoefficientB < 0 ? -signedCoefficientB : signedCoefficientB, exponentB, 3, -75
-        );
-        (slackCoefficient, slackExponent) = LibTestExactDecimal.addParts(slackCoefficient, slackExponent, 50000004, -48);
-        return LibTestPowRange.range(signedCoefficientL, exponentL, slackCoefficient, slackExponent);
-    }
-
-    /// pow(a, b), failing on any revert but the one `expectedPowError`
+    /// pow(a, b), failing on any revert but those `expectedPowError`
     /// derives, and on a value where it derives none is representable.
     function powChecked(Float a, Float b) internal view returns (bool returned, Float c) {
-        (bool mayReturn, bytes memory err) = expectedPowError(a, b);
+        (bool mayReturn, bytes memory err, bytes memory otherErr) = expectedPowError(a, b);
         try this.powExternal(a, b) returns (Float result) {
             assertTrue(mayReturn, "pow returned past the range");
             // forge-lint: disable-next-line(boolean-cst)
             return (true, result);
         } catch (bytes memory reason) {
-            assertTrue(err.length > 0, "pow reverted inside the range");
-            if (err.length == 4) {
-                // forge-lint: disable-next-line(unsafe-typecast)
-                assertEq(bytes4(reason), bytes4(err), "pow revert selector");
-            } else {
-                assertEq(reason, err, "pow revert");
-            }
+            assertTrue(
+                (err.length > 0 && keccak256(reason) == keccak256(err))
+                    || (otherErr.length > 0 && keccak256(reason) == keccak256(otherErr)),
+                "pow revert"
+            );
             // forge-lint: disable-next-line(boolean-cst)
             return (false, c);
         }
@@ -358,6 +343,74 @@ contract LibDecimalFloatPowTest is Test {
             LibDecimalFloat.FLOAT_ONE.div(LibDecimalFloat.packLossless(3, 0)),
             LibDecimalFloat.packLossless(1e6, 0)
         );
+    }
+
+    /// b = n + 1/2, which pow takes as the root of a^(2N+1). References are
+    /// a^b from `bc -l` at scale 400, rounded to 41 digits; each true value is
+    /// at least 0.04 of a unit from a rounding midpoint.
+    function testPowHalfReference() external view {
+        int256 m = type(int224).max;
+        checkPowExact(2, 0, 5, -1, 14142135623730950488016887242096980785697, -40);
+        checkPowExact(2, 0, 15, -1, 28284271247461900976033774484193961571393, -40);
+        checkPowExact(2, 0, -5, -1, 70710678118654752440084436210484903928484, -41);
+        checkPowExact(2, 0, -15, -1, 35355339059327376220042218105242451964242, -41);
+        checkPowExact(3, 0, 25, -1, 15588457268119895641747017073552851302485, -39);
+        checkPowExact(7, 0, 105, -1, 74735926038504668213500094491157274492835, -32);
+        checkPowExact(10001, -4, 3655, -1, 10372242686267163625948684644874211166049, -40);
+        checkPowExact(
+            12345678901234567890123456789012345678901, -40, 15, -1, 13717420939643347448902607016495201211796, -40
+        );
+        checkPowExact(m, 0, 5, -1, 36715083186035844657140163036746987446154, -7);
+        // m^3 passes 1e76 in the coefficient, so a digit is dropped before the root.
+        checkPowExact(m, 0, 15, -1, 49491834228776278184956125696820890771745, 60);
+        checkPowExact(m, 0, 25, -1, 66714860563363448814354475902698812823710, 127);
+        checkPowExact(m, 0, -15, -1, 20205353379660459832413064675171877816182, -141);
+        checkPowExact(2, 0, 1005, -1, 17927286711931564773994220232786614963942, -10);
+        checkPowExact(999, -2, 25, -1, 31543778943002358670330350761941590124385, -38);
+        checkPowExact(7, -30, 15, -1, 18520259177452134133511310275474822979972, -84);
+        checkPowExact(5, -1, -25, -1, 56568542494923801952067548968387923142787, -40);
+    }
+
+    /// A = floor((2c + 1)^2 / 4e16) has a root just below the midpoint
+    /// (c + 1/2) 1e-8 and A + 1 one just above it, so a half power of each
+    /// rounds to c 1e-8 and (c + 1) 1e-8, in every representation of a half
+    /// down to the most digits a packed coefficient holds, 5e66 10^-67.
+    function testPowHalfMidpoint(uint256 c) external view {
+        c = bound(c, 1e40, 1e41 - 1);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 a = int256(Math.mulDiv(2 * c + 1, 2 * c + 1, 4e16));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedC = int256(c);
+        int256[4] memory digits = [int256(0), 30, 65, 66];
+        for (uint256 i = 0; i < digits.length; i++) {
+            int256 j = digits[i];
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 half = 5 * int256(10 ** uint256(j));
+            checkPowExact(a, 0, half, -j - 1, signedC, -8);
+            checkPowExact(a + 1, 0, half, -j - 1, signedC + 1, -8);
+        }
+    }
+
+    /// A half in any representation takes the same root.
+    function testPowHalfRepresentations() external view {
+        checkPowExact(2, 0, 50, -2, 14142135623730950488016887242096980785697, -40);
+        checkPowExact(2, 0, 1500000, -6, 28284271247461900976033774484193961571393, -40);
+        checkPowExact(2, 0, 15e60, -61, 28284271247461900976033774484193961571393, -40);
+        checkPowExact(2, 0, -15e60, -61, 35355339059327376220042218105242451964242, -41);
+    }
+
+    /// a^(1/2) is sqrt a, correctly rounded.
+    function testPowHalfIsSqrt(int224 signedCoefficient, int32 exponent) external view {
+        vm.assume(signedCoefficient > 0);
+        Float a = LibDecimalFloat.packLossless(signedCoefficient, exponent);
+        assertTrue(this.powExternal(a, LibDecimalFloat.FLOAT_HALF).eq(a.sqrt()), "sqrt");
+    }
+
+    /// A fractional part next to a half takes the log path, within its bound.
+    /// References are a^b to 45 digits from `bc -l` at scale 100.
+    function testPowNearHalf() external view {
+        checkPowPrecision(2, 0, 4999999, -7, 141421346434728409926273288890691513652913439, -44);
+        checkPowPrecision(2, 0, 5000001, -7, 141421366039891279297232822101374230501114564, -44);
     }
 
     /// a^b is error for negative a and all b.
@@ -513,11 +566,8 @@ contract LibDecimalFloatPowTest is Test {
         (int256 signedCoefficient, int256 exponent) = this.powExternal(a, LibDecimalFloat.FLOAT_ONE).unpack();
         assertEq(signedCoefficient, type(int224).min);
         assertEq(exponent, type(int32).max);
-        // 2^446 to 41 digits from `bc -l`.
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentOverflow.selector, int256(18170968107390172263733095197200113358841), int256(4294967388)
-            )
+            abi.encodeWithSelector(ExponentOverflow.selector, int256(type(int224).min), int256(type(int32).max))
         );
         this.powExternal(a, LibDecimalFloat.packLossless(2, 0));
     }
@@ -557,7 +607,9 @@ contract LibDecimalFloatPowTest is Test {
         assertEq(exponent, type(int32).max);
 
         // A square above the largest Float still reverts.
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(13689), int256(type(int32).max) + 63));
+        vm.expectRevert(
+            abi.encodeWithSelector(ExponentOverflow.selector, int256(117), int256(type(int32).max / 2 + 32))
+        );
         this.powExternal(
             LibDecimalFloat.packLossless(117, type(int32).max / 2 + 32), LibDecimalFloat.packLossless(2, 0)
         );
@@ -598,16 +650,14 @@ contract LibDecimalFloatPowTest is Test {
         );
     }
 
-    /// A rounded power without the headroom to lift reverts with the unrounded
-    /// value up to an excess of 67, and with the rounded value past it.
+    /// A rounded power without the headroom to lift reverts with a, whether
+    /// the unrounded value is packed, up to an excess of 67, or not, past it.
     function testPowRoundedPastTheTopRevertValue() external {
         // (3000000000000000000001e1073741856)^2 is
         // 9000000000000000000006000000000000000000001e2147483712, rounded to
         // 90000000000000000000060000000000000000000e2147483714, excess 67.
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentOverflow.selector, int256(9000000000000000000006000000000000000000001), int256(2147483712)
-            )
+            abi.encodeWithSelector(ExponentOverflow.selector, int256(3000000000000000000001), int256(1073741856))
         );
         this.powExternal(
             LibDecimalFloat.packLossless(3000000000000000000001, 1073741856), LibDecimalFloat.packLossless(2, 0)
@@ -617,9 +667,7 @@ contract LibDecimalFloatPowTest is Test {
         // 999999999999999999998000000000000000000001e2147483714, rounded to
         // 99999999999999999999800000000000000000000e2147483715, excess 68.
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentOverflow.selector, int256(99999999999999999999800000000000000000000), int256(2147483715)
-            )
+            abi.encodeWithSelector(ExponentOverflow.selector, int256(999999999999999999999), int256(1073741857))
         );
         this.powExternal(
             LibDecimalFloat.packLossless(999999999999999999999, 1073741857), LibDecimalFloat.packLossless(2, 0)
@@ -643,8 +691,160 @@ contract LibDecimalFloatPowTest is Test {
         );
         // (12e1073741856)^2 is 1.44e67, above the largest Float.
         a = LibDecimalFloat.packLossless(12, 1073741856);
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(144), int256(2147483712)));
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(12), int256(1073741856)));
         this.powExternal(a, LibDecimalFloat.packLossless(2, 0));
+    }
+
+    /// A fractional power's unrounded value is wider than int224, so the carry
+    /// fallback sheds digits to pack it. From `bc -l`, a^1.25 for this a is
+    /// 1.34799733335753198973335075435098153368185299...e2147483714: its 41
+    /// digit rounding carries above the largest Float, and it is below the
+    /// overflow threshold, (int224.max / 10 + 1) 10^(int32.max + 1). The leg
+    /// is within 3.34e-48 relative of it and the pack truncates, so the packed
+    /// coefficient at int32.max is within 4.51e19 of the true one. a (1 + 1e-39)
+    /// is past the threshold.
+    function testPowCarryShedsTheUnrounded() external {
+        int256 signedCoefficientA = 2012571074104523405533623944864037356347794582055760651559118452;
+        int256 exponentA = 1717986908;
+        Float b = LibDecimalFloat.packLossless(125, -2);
+        (bool returned, Float c) = powChecked(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
+        assertTrue(returned, "returned");
+        (int256 signedCoefficient, int256 exponent) = c.unpack();
+        assertEq(exponent, type(int32).max);
+        int256 trueCoefficient = 13479973333575319897333507543509815336818529999999999999999999993262;
+        assertApproxEqAbs(signedCoefficient, trueCoefficient, 45023110934141568458);
+
+        int256 signedCoefficientPast = 2012571074104523405533623944864037356349807153129865174964652075;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientPast, exponentA));
+        this.powExternal(LibDecimalFloat.packLossless(signedCoefficientPast, exponentA), b);
+    }
+
+    /// A half power is a correctly rounded root, so no carry fallback: this
+    /// a^1.5 is 1.34799733335753198973335075435098153368185722112713e2147483714
+    /// from `bc`, at or above the overflow threshold by c^3 against
+    /// (int224.max / 10 + 1)^2 10^67 exactly.
+    function testPowHalfPastTheThreshold() external {
+        int256 signedCoefficientA = 2629012728145285679841056168393364475926807479622600963406791093691;
+        int256 exponentA = 1431655743;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA, exponentA));
+        this.powExternal(
+            LibDecimalFloat.packLossless(signedCoefficientA, exponentA), LibDecimalFloat.packLossless(15, -1)
+        );
+    }
+
+    /// a^b with b log10 a at THRESHOLD_SLACK past each threshold must revert,
+    /// and as far inside must return.
+    function testPowThresholds() external {
+        int256 overflow = LOG10_OVERFLOW / 1e9;
+        int256 underflow = int256(type(int32).min) * 1e57;
+        uint256[3] memory bases = [uint256(10), 2, 7];
+        for (uint256 i = 0; i < bases.length; i++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            Float a = LibDecimalFloat.packLossless(int256(bases[i]), 0);
+            checkPowThreshold(a, thresholdPower(a, overflow + 1 + THRESHOLD_SLACK, true), PowRange.Over);
+            checkPowThreshold(a, thresholdPower(a, overflow - THRESHOLD_SLACK, false), PowRange.Inside);
+            checkPowThreshold(a, thresholdPower(a, underflow - 1 - THRESHOLD_SLACK, true), PowRange.Under);
+            checkPowThreshold(a, thresholdPower(a, underflow + THRESHOLD_SLACK, false), PowRange.Inside);
+        }
+    }
+
+    /// b = B 10^-57 with b log10 a past `target` 10^-57 in magnitude when
+    /// `past`, else short of it, for an a above 1. log10 a is the oracle's,
+    /// within 1e-67, so it is taken 1e-67 to whichever side keeps b there.
+    function thresholdPower(Float a, int256 target, bool past) internal pure returns (Float) {
+        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 log = uint256(characteristic) * 1e70 + fraction;
+        uint256 magnitude = LibTestExactDecimal.abs(target);
+        uint256 power = past
+            ? Math.mulDiv(magnitude, 1e70, log - 1000, Math.Rounding.Ceil)
+            : Math.mulDiv(magnitude, 1e70, log + 1000, Math.Rounding.Floor);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedPower = int256(power);
+        return LibDecimalFloat.packLossless(target < 0 ? -signedPower : signedPower, -57);
+    }
+
+    function checkPowThreshold(Float a, Float b, PowRange expected) internal {
+        assertTrue(LibTestPowRange.powRange(a, b) == expected, "range");
+        if (expected == PowRange.Inside) {
+            this.powExternal(a, b);
+        } else {
+            vm.expectRevert(LibTestPowRange.rangeError(expected == PowRange.Over, a));
+            this.powExternal(a, b);
+        }
+    }
+
+    /// b's fraction times log10(a) truncates to exactly 1 at 1e-50, so the
+    /// leg is exactly 10 and the unrounded power is exactly a 10, which is
+    /// (int224.max / 10 + 1) 10^(int32.max + 1): the least value that
+    /// overflows, reported as a.
+    function testPowExactlyAtTheOverflowThreshold() external {
+        int256 signedCoefficientA = type(int224).max / 10 + 1;
+        int256 exponentA = type(int32).max;
+        Float b = LibDecimalFloat.packLossless(1000000000465661273184989617541055125131739873881019438247110325622, -66);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientA, exponentA));
+        this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
+    }
+
+    /// A negative base to an odd power is past the range on its magnitude.
+    /// (-2e715827904)^3 is -8e65 10^int32.max, inside it. (-2e715827905)^3 is
+    /// -8e2147483715, past (int224.max / 10 + 1) 10^(int32.max + 1), and rounds
+    /// at an excess of 28, where the carry fallback checks the unrounded value.
+    /// (-2e715827950)^3 rounds at an excess of 163, past the fallback.
+    function testPowNegativeOddPowerPastTheRange() external {
+        Float three = LibDecimalFloat.packLossless(3, 0);
+        (int256 signedCoefficient, int256 exponent) =
+            this.powExternal(LibDecimalFloat.packLossless(-2, 715827904), three).unpack();
+        assertTrue(LibTestExactDecimal.eq(signedCoefficient, exponent, -8e65, type(int32).max), "inside");
+
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-2), int256(715827905)));
+        this.powExternal(LibDecimalFloat.packLossless(-2, 715827905), three);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-2), int256(715827950)));
+        this.powExternal(LibDecimalFloat.packLossless(-2, 715827950), three);
+    }
+
+    /// A half power past the range reverts with a, the input of pow. The
+    /// largest Float is about 1.35e2147483714 and the least positive is
+    /// 1e-2147483648. (1e1431655809)^1.5 is sqrt(10) 1e2147483713, inside, and
+    /// (1e1431655810)^1.5 is 1e2147483715, past. (1e-1431655765)^1.5 is
+    /// sqrt(10) 1e-2147483648, which sheds to 3 at the floor, and
+    /// (1e-1431655766)^1.5 is 1e-2147483649, below it. -1.5 takes the inverse
+    /// of each past base to the other side. b = 2^100 + 0.5 trips the squaring
+    /// guard before the root.
+    function testPowHalfPastTheRange() external {
+        Float threeHalves = LibDecimalFloat.packLossless(15, -1);
+        Float a = LibDecimalFloat.packLossless(1, 1431655809);
+        (int256 signedCoefficient, int256 exponent) = this.powExternal(a, threeHalves).unpack();
+        assertTrue(
+            LibTestExactDecimal.eq(signedCoefficient, exponent, 31622776601683793319988935444327185337196, 2147483673),
+            "inside over"
+        );
+        a = LibDecimalFloat.packLossless(1, 1431655810);
+        vm.expectRevert(LibTestPowRange.rangeError(true, a));
+        this.powExternal(a, threeHalves);
+        a = LibDecimalFloat.packLossless(1, -1431655810);
+        vm.expectRevert(LibTestPowRange.rangeError(true, a));
+        this.powExternal(a, threeHalves.minus());
+
+        a = LibDecimalFloat.packLossless(1, -1431655765);
+        (signedCoefficient, exponent) = this.powExternal(a, threeHalves).unpack();
+        assertTrue(LibTestExactDecimal.eq(signedCoefficient, exponent, 3, type(int32).min), "inside under");
+        a = LibDecimalFloat.packLossless(1, -1431655766);
+        vm.expectRevert(LibTestPowRange.rangeError(false, a));
+        this.powExternal(a, threeHalves);
+        a = LibDecimalFloat.packLossless(1, 1431655766);
+        vm.expectRevert(LibTestPowRange.rangeError(false, a));
+        this.powExternal(a, threeHalves.minus());
+
+        Float hugeHalf = LibDecimalFloat.packLossless(int256(2 ** 100) * 10 + 5, -1);
+        a = LibDecimalFloat.packLossless(1, 2000000000);
+        vm.expectRevert(LibTestPowRange.rangeError(true, a));
+        this.powExternal(a, hugeHalf);
+        a = LibDecimalFloat.packLossless(1, -2000000000);
+        vm.expectRevert(LibTestPowRange.rangeError(false, a));
+        this.powExternal(a, hugeHalf);
     }
 
     /// Issue #297 review: a^1 kept all 67 digits of a, and 2 - 1e-50 put a
@@ -762,9 +962,7 @@ contract LibDecimalFloatPowTest is Test {
         // 2 ^ 1e10 pushes the squared base exponent past EXPONENT_MAX and
         // reverts with ExponentOverflow. A round trip catches this rather than
         // treating it as a math regression.
-        vm.expectRevert(
-            abi.encodeWithSelector(ExponentOverflow.selector, 43632686345562428988582910876713633851546, 3010299916)
-        );
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2), int256(0)));
         this.powExternal(a, LibDecimalFloat.packLossless(1, 10));
     }
 
@@ -772,21 +970,13 @@ contract LibDecimalFloatPowTest is Test {
     /// base's exponent past int256 panicked instead of reverting typed.
     function testPowSquaringPastInt256Underflow() external {
         Float a = LibDecimalFloat.packLossless(1, 1700000000);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentUnderflow.selector, int256(1e76), int256(-269375752548498747818049431142400000076)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(1700000000)));
         this.powExternal(a, LibDecimalFloat.packLossless(-8, 69));
     }
 
     function testPowSquaringPastInt256Overflow() external {
         Float a = LibDecimalFloat.packLossless(1, 1700000000);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentOverflow.selector, int256(1), int256(269375752548498747818049431142400000000)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(1700000000)));
         this.powExternal(a, LibDecimalFloat.packLossless(8, 69));
     }
 
@@ -804,16 +994,19 @@ contract LibDecimalFloatPowTest is Test {
     }
 
     /// Issue #297 review: 0.1^2147483645.5 is 316.2277e-2147483648, below
-    /// 1e-2147483608, so it sheds digits at the int32 floor.
-    function testPowFloor() external view {
+    /// 1e-2147483608, so it sheds digits at the int32 floor. 0.1^2147483648.5
+    /// is 0.316e-2147483648 and sheds every digit.
+    function testPowFloor() external {
         checkPow(1, -1, 21474836455, -1, 316, type(int32).min);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(-1)));
+        this.powExternal(LibDecimalFloat.packLossless(1, -1), LibDecimalFloat.packLossless(21474836485, -1));
     }
 
     /// The base's inverse is the result when the power is -1, so it still
-    /// underflows: 10^-2147483713 is 1e40 · 10^-2147483753.
+    /// underflows: 10^-2147483713.
     function testPowMinusOneHugeBaseUnderflows() external {
         Float a = LibDecimalFloat.packLossless(1e66, type(int32).max);
-        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e40), int256(-2147483753)));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e66), int256(type(int32).max)));
         this.powExternal(a, LibDecimalFloat.packLossless(-1, 0));
     }
 
@@ -896,39 +1089,21 @@ contract LibDecimalFloatPowTest is Test {
     /// `lastExponent` is the last e where (1e66 · 10^e)^b packs. The true
     /// value there is 10^((e + 66) · b), so it lands on the smallest Float,
     /// and e + 1 underflows.
-    function checkPowNegativeBoundary(
-        Float b,
-        int256 lastExponent,
-        int256 expectedCoefficient,
-        int256 underflowCoefficient,
-        int256 underflowExponent
-    ) internal {
+    function checkPowNegativeBoundary(Float b, int256 lastExponent, int256 expectedCoefficient) internal {
         (int256 coefficient, int256 exponent) =
             this.powExternal(LibDecimalFloat.packLossless(1e66, lastExponent), b).unpack();
         assertEq(coefficient, expectedCoefficient, "coefficient");
         assertEq(exponent, type(int32).min, "exponent");
 
-        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, underflowCoefficient, underflowExponent));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e66), lastExponent + 1));
         this.powExternal(LibDecimalFloat.packLossless(1e66, lastExponent + 1), b);
     }
 
     function testPowNegativeExponentHugeBaseBoundary() external {
-        checkPowNegativeBoundary(LibDecimalFloat.packLossless(-1, 0), 2147483582, 1, 1e40, -2147483689);
-        checkPowNegativeBoundary(
-            LibDecimalFloat.packLossless(-10000001, -7),
-            2147483367,
-            1,
-            17850755436588146297541876494389270655413,
-            -2147483689
-        );
-        checkPowNegativeBoundary(
-            LibDecimalFloat.packLossless(-1000001, -6),
-            2147481434,
-            3,
-            32998864808301811879257186566783903264015,
-            -2147483689
-        );
-        checkPowNegativeBoundary(LibDecimalFloat.packLossless(-2, 0), 1073741758, 1, 1e40, -2147483690);
+        checkPowNegativeBoundary(LibDecimalFloat.packLossless(-1, 0), 2147483582, 1);
+        checkPowNegativeBoundary(LibDecimalFloat.packLossless(-10000001, -7), 2147483367, 1);
+        checkPowNegativeBoundary(LibDecimalFloat.packLossless(-1000001, -6), 2147481434, 3);
+        checkPowNegativeBoundary(LibDecimalFloat.packLossless(-2, 0), 1073741758, 1);
     }
 
     /// The inverse of the smallest base is 10^2147483648, which still packs,
@@ -940,25 +1115,18 @@ contract LibDecimalFloatPowTest is Test {
         assertEq(coefficient, 1e40, "coefficient");
         assertEq(exponent, 2147483608, "exponent");
 
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentOverflow.selector, int256(63095734448019324943436013662234386467295), int256(2362231972)
-            )
-        );
+        bytes memory overflow = abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(type(int32).min));
+        vm.expectRevert(overflow);
         this.powExternal(a, LibDecimalFloat.packLossless(-11, -1));
 
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e40), int256(4294967256)));
+        vm.expectRevert(overflow);
         this.powExternal(a, LibDecimalFloat.packLossless(-2, 0));
 
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e40), int256(2147483647999999960)));
+        vm.expectRevert(overflow);
         this.powExternal(a, LibDecimalFloat.packLossless(-1, 9));
 
         // The squared base passes int128 before the loop ends.
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentOverflow.selector, int256(1e76), int256(340282366920938463463374607431768211380)
-            )
-        );
+        vm.expectRevert(overflow);
         this.powExternal(a, LibDecimalFloat.packLossless(-1, 30));
     }
 
@@ -967,11 +1135,13 @@ contract LibDecimalFloatPowTest is Test {
     function testPowIssue276Counterexample() external {
         Float a = Float.wrap(0x5061727365206572726f7220286e656729000000000000000000000000000000);
         Float b = Float.wrap(0x00000003b58e88c75313ec9d329eaaa18fb92f75215b170fffffffffffffffff);
+        // a's coefficient and exponent, its low 224 and high 32 bits, from
+        // `bc`.
         vm.expectRevert(
             abi.encodeWithSelector(
                 ExponentUnderflow.selector,
-                int256(28887451280490018407141552948600676295694378589943120383753856872962994543013),
-                int256(-213688438148915952713935726556846144011)
+                int256(10649868514120859750743193552471890618207833841010459988146104827904),
+                int256(1348563571)
             )
         );
         this.powExternal(a, b);
@@ -1007,27 +1177,36 @@ contract LibDecimalFloatPowTest is Test {
         vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e67 - 1), int256(-67)));
         this.powExternal(below, wide);
 
-        // A negative b inverts a first.
-        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.invParts(2, 0);
-        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
+        // A negative b inverts a first, and the error reports a.
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(2), int256(0)));
         this.powExternal(LibDecimalFloat.packLossless(2, 0), b.minus());
-        (signedCoefficient, exponent) = LibTestExactDecimal.invParts(5, -1);
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(5), int256(-1)));
         this.powExternal(LibDecimalFloat.packLossless(5, -1), b.minus());
 
         // A whole b keeps a negative base, by its magnitude.
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2), int256(0)));
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-2), int256(0)));
         this.powExternal(LibDecimalFloat.packLossless(-2, 0), b);
 
+        // b = 1e76 fits int256, and (1 - 1e-67)^(±1e76) is 10^(∓434294481.9)
+        // with every truncation moving it under 9 in log10: inside the range.
+        Float c = this.powExternal(below, LibDecimalFloat.packLossless(1, 76));
+        assertTrue(c.gt(LibDecimalFloat.packLossless(1, -434294501)), "1e76 below floor");
+        assertTrue(c.lt(LibDecimalFloat.packLossless(1, -434294461)), "1e76 below ceiling");
+        c = this.powExternal(below, LibDecimalFloat.packLossless(-1, 76));
+        assertTrue(c.gt(LibDecimalFloat.packLossless(1, 434294461)), "-1e76 below floor");
+        assertTrue(c.lt(LibDecimalFloat.packLossless(1, 434294501)), "-1e76 below ceiling");
+
         // 5.7e76 still fits int256 and goes to the squaring loop.
-        // `bc -l`: 7.0556238177305947296050112001e2475478546. The squaring
-        // loop agrees to 27 digits, inside no bound at this N.
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentOverflow.selector, int256(70556238177305947296050111997187013240152), int256(2475478506)
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e67 + 1), int256(-67)));
         this.powExternal(above, LibDecimalFloat.packLossless(57, 75));
+
+        // The largest integer b the squaring loop takes, by the closest a on
+        // either side of 1, still lands past the range on that side.
+        Float widest = LibDecimalFloat.packLossless(type(int256).max / 1e10, 10);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e67 + 1), int256(-67)));
+        this.powExternal(above, widest);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1e67 - 1), int256(-67)));
+        this.powExternal(below, widest);
     }
 
     /// The most negative Float as b, or as a base with a whole b, does not
@@ -1036,25 +1215,18 @@ contract LibDecimalFloatPowTest is Test {
     function testPowMostNegativeFloat() external {
         Float most = LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
 
-        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.invParts(2, 0);
-        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(2), int256(0)));
         this.powExternal(LibDecimalFloat.packLossless(2, 0), most);
-        (signedCoefficient, exponent) = LibTestExactDecimal.invParts(5, -1);
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(5), int256(-1)));
         this.powExternal(LibDecimalFloat.packLossless(5, -1), most);
 
-        // most is -2^223 10^2147483647. From `bc -l`, 2^-223 and 2^446 rounded
-        // to 41 digits.
+        // most is int224.min 10^int32.max.
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentUnderflow.selector, int256(-74184123013748427714634705230952790267351), int256(-2147483755)
-            )
+            abi.encodeWithSelector(ExponentUnderflow.selector, int256(type(int224).min), int256(type(int32).max))
         );
         this.powExternal(most, LibDecimalFloat.packLossless(-1, 0));
         vm.expectRevert(
-            abi.encodeWithSelector(
-                ExponentOverflow.selector, int256(18170968107390172263733095197200113358841), int256(4294967388)
-            )
+            abi.encodeWithSelector(ExponentOverflow.selector, int256(type(int224).min), int256(type(int32).max))
         );
         this.powExternal(most, LibDecimalFloat.packLossless(2, 0));
         assertEq(
@@ -1191,7 +1363,7 @@ contract LibDecimalFloatPowTest is Test {
             (int256 lowCoefficient, int256 lowExponent) = low.unpack();
             (int256 highCoefficient, int256 highExponent) = high.unpack();
             (int256 flip, int256 flipExponent) =
-                LibTestExactDecimal.subParts(lowCoefficient, lowExponent, highCoefficient, highExponent);
+                LibTestExactDecimal.sumParts(lowCoefficient, lowExponent, -highCoefficient, highExponent);
             assertTrue(LibTestExactDecimal.eq(flip, flipExponent, 1, ulpExponent(high)), "one ulp");
         }
     }

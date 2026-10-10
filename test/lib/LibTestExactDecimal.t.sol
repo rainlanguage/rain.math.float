@@ -5,19 +5,44 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 
-/// The single word helpers the error bounds use, against the 512 bit ones.
+/// The helpers the error bounds use, against plain 512 bit alignment.
 contract LibTestExactDecimalTest is Test {
-    function testCmpWordsIsCmpScaled(uint256 x, int256 ex, uint256 y, int256 ey) external pure {
+    function cmpWords(uint256 x, int256 ex, uint256 y, int256 ey) private pure returns (int256) {
+        return LibTestExactDecimal.cmpScaled(LibTestExactDecimal.u512(x), ex, LibTestExactDecimal.u512(y), ey);
+    }
+
+    /// Single words aligned at the lower exponent, which fits 512 bits for a
+    /// gap of at most 77 digits; past that the higher exponent's nonzero word
+    /// is at least 10^78 units of the lower's, above any word.
+    function testCmpScaledWords(uint256 x, int256 ex, uint256 y, int256 ey) external pure {
         ex = bound(ex, -200, 200);
         ey = bound(ey, -200, 200);
+        int256 expected;
+        if (x == 0 || y == 0) {
+            expected = x < y ? int256(-1) : x > y ? int256(1) : int256(0);
+        } else if (ex - ey >= 78) {
+            expected = 1;
+        } else if (ey - ex >= 78) {
+            expected = -1;
+        } else {
+            U512 memory a = LibTestExactDecimal.u512(x);
+            U512 memory b = LibTestExactDecimal.u512(y);
+            if (ex > ey) {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                a = LibTestExactDecimal.mulPow10(a, uint256(ex - ey));
+            } else {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                b = LibTestExactDecimal.mulPow10(b, uint256(ey - ex));
+            }
+            expected = LibTestExactDecimal.cmp(a, b);
+        }
         assertEq(
-            LibTestExactDecimal.cmpWords(x, ex, y, ey),
-            LibTestExactDecimal.cmpScaled(LibTestExactDecimal.u512(x), ex, LibTestExactDecimal.u512(y), ey)
+            LibTestExactDecimal.cmpScaled(LibTestExactDecimal.u512(x), ex, LibTestExactDecimal.u512(y), ey), expected
         );
     }
 
     /// Equal leading digits at different exponents, the case that aligns.
-    function testCmpWordsAligned(uint256 x, uint256 shift, int256 delta) external pure {
+    function testCmpScaledAligned(uint256 x, uint256 shift, int256 delta) external pure {
         shift = bound(shift, 1, 76);
         x = bound(x, 1, type(uint256).max / 10 ** shift);
         delta = bound(delta, -1, 1);
@@ -32,8 +57,8 @@ contract LibTestExactDecimalTest is Test {
             y += 1;
             expected = -1;
         }
-        assertEq(LibTestExactDecimal.cmpWords(x, ex, y, 0), expected);
-        assertEq(LibTestExactDecimal.cmpWords(y, 0, x, ex), -expected);
+        assertEq(cmpWords(x, ex, y, 0), expected);
+        assertEq(cmpWords(y, 0, x, ex), -expected);
     }
 
     function testCmpPartsSigned(int256 a, int256 ea, int256 b, int256 eb) external pure {
@@ -43,16 +68,16 @@ contract LibTestExactDecimalTest is Test {
         b = bound(b, type(int256).min + 1, type(int256).max);
         int256 expected;
         if (a < 0 && b < 0) {
-            expected = LibTestExactDecimal.cmpWords(LibTestExactDecimal.abs(b), eb, LibTestExactDecimal.abs(a), ea);
+            expected = cmpWords(LibTestExactDecimal.abs(b), eb, LibTestExactDecimal.abs(a), ea);
         } else if (a >= 0 && b >= 0) {
-            expected = LibTestExactDecimal.cmpWords(LibTestExactDecimal.abs(a), ea, LibTestExactDecimal.abs(b), eb);
+            expected = cmpWords(LibTestExactDecimal.abs(a), ea, LibTestExactDecimal.abs(b), eb);
         } else {
             expected = a < b ? int256(-1) : int256(1);
         }
         assertEq(LibTestExactDecimal.cmpParts(a, ea, b, eb), expected);
         assertEq(
             LibTestExactDecimal.absLte(a, ea, b, eb),
-            LibTestExactDecimal.cmpWords(LibTestExactDecimal.abs(a), ea, LibTestExactDecimal.abs(b), eb) <= 0
+            cmpWords(LibTestExactDecimal.abs(a), ea, LibTestExactDecimal.abs(b), eb) <= 0
         );
     }
 
@@ -88,12 +113,12 @@ contract LibTestExactDecimalTest is Test {
         assertEq(e, 0);
     }
 
-    /// Exact on the fast path, and agreeing with `subParts` off it.
+    /// Exact on the fast path, and agreeing with `sumParts` of -1 off it.
     function testMinusOne(int256 c, int256 e) external pure {
         c = bound(c, type(int224).min, type(int224).max);
         e = bound(e, -90, 10);
         (int256 r, int256 re) = LibTestExactDecimal.minusOne(c, e);
-        (int256 s, int256 se) = LibTestExactDecimal.subParts(c, e, 1, 0);
+        (int256 s, int256 se) = LibTestExactDecimal.sumParts(c, e, -1, 0);
         assertTrue(LibTestExactDecimal.eq(r, re, s, se));
         if (e < 0 && e >= -67) {
             // forge-lint: disable-next-line(unsafe-typecast)

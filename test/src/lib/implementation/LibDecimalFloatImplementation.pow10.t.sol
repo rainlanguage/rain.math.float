@@ -46,13 +46,17 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.pow10(references[i][0], references[i][1]);
-            (int256 errorCoefficient, int256 errorExponent) =
-                LibTestExactDecimal.subParts(signedCoefficient, exponent, references[i][2], references[i][3]);
             int256 unitExponent = references[i][3]
                 + LibTestExactDecimal.digits(LibTestExactDecimal.u512(LibTestExactDecimal.abs(references[i][2]))) - 41;
+            int256[] memory coefficients = new int256[](2);
+            int256[] memory exponents = new int256[](2);
+            (coefficients[0], exponents[0]) = (signedCoefficient, exponent);
+            (coefficients[1], exponents[1]) = (-references[i][2], references[i][3]);
+            int256[] memory boundCoefficients = new int256[](1);
+            int256[] memory boundExponents = new int256[](1);
+            (boundCoefficients[0], boundExponents[0]) = (boundUnits, unitExponent - 11);
             assertTrue(
-                LibTestExactDecimal.absLte(errorCoefficient, errorExponent, boundUnits, unitExponent - 11),
-                "pow10 error"
+                LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), "pow10 error"
             );
         }
     }

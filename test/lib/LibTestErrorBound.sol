@@ -72,10 +72,10 @@ library LibTestErrorBound {
         return sum(unitCoefficient, unitExponent, int256(DOCUMENTED_LOG10_RAW_ERROR), -50);
     }
 
-    /// Two bound terms summed by `addParts` and packed, both truncating
+    /// Two bound terms summed by `sumParts` and packed, both truncating
     /// towards zero, so a positive bound is never looser.
     function sum(int256 ca, int256 ea, int256 cb, int256 eb) private pure returns (Float) {
-        (ca, ea) = LibTestExactDecimal.addParts(ca, ea, cb, eb);
+        (ca, ea) = LibTestExactDecimal.sumParts(ca, ea, cb, eb);
         (Float bound,) = LibDecimalFloat.packLossy(ca, ea);
         return bound;
     }
@@ -138,10 +138,10 @@ library LibTestErrorBound {
     function monotoneAbsolute(Float low, Float high, Float lowError, Float highError) internal pure returns (bool) {
         (int256 ca, int256 ea) = low.unpack();
         (int256 cb, int256 eb) = high.unpack();
-        (int256 spreadCoefficient, int256 spreadExponent) = LibTestExactDecimal.subParts(ca, ea, cb, eb);
+        (int256 spreadCoefficient, int256 spreadExponent) = LibTestExactDecimal.sumParts(ca, ea, -cb, eb);
         (ca, ea) = lowError.unpack();
         (cb, eb) = highError.unpack();
-        (ca, ea) = LibTestExactDecimal.addParts(ca, ea, cb, eb);
+        (ca, ea) = LibTestExactDecimal.sumParts(ca, ea, cb, eb);
         return LibTestExactDecimal.cmpParts(spreadCoefficient, spreadExponent, ca, ea) <= 0;
     }
 
@@ -175,13 +175,13 @@ library LibTestErrorBound {
         (int256 limitCoefficient, int256 limitExponent) = scaled(highError, low);
         (int256 signedCoefficient, int256 exponent) = scaled(lowError, high);
         (limitCoefficient, limitExponent) =
-            LibTestExactDecimal.addParts(limitCoefficient, limitExponent, signedCoefficient, exponent);
+            LibTestExactDecimal.sumParts(limitCoefficient, limitExponent, signedCoefficient, exponent);
         (limitCoefficient, limitExponent) =
-            LibTestExactDecimal.addParts(limitCoefficient, limitExponent, 3, type(int32).min);
+            LibTestExactDecimal.sumParts(limitCoefficient, limitExponent, 3, type(int32).min);
         (int256 lowCoefficient, int256 lowExponent) = low.unpack();
         (int256 highCoefficient, int256 highExponent) = high.unpack();
         (signedCoefficient, exponent) =
-            LibTestExactDecimal.subParts(lowCoefficient, lowExponent, highCoefficient, highExponent);
+            LibTestExactDecimal.sumParts(lowCoefficient, lowExponent, -highCoefficient, highExponent);
         return LibTestExactDecimal.cmpParts(signedCoefficient, exponent, limitCoefficient, limitExponent) <= 0;
     }
 }

@@ -5,9 +5,10 @@ pragma solidity =0.8.25;
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 contract LibDecimalFloatSqrtTest is Test {
@@ -20,8 +21,8 @@ contract LibDecimalFloatSqrtTest is Test {
         (int256 errorCoefficient, int256 errorExponent) = LibTestErrorBound.sqrt().unpack();
         (int256 limitCoefficient, int256 limitExponent) = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_TWO).unpack();
         (limitCoefficient, limitExponent) =
-            LibTestExactDecimal.addParts(limitCoefficient, limitExponent, 2 * errorCoefficient, errorExponent);
-        return LibTestExactDecimal.addParts(limitCoefficient, limitExponent, 1, -73);
+            LibTestExactDecimal.sumParts(limitCoefficient, limitExponent, 2 * errorCoefficient, errorExponent);
+        return LibTestExactDecimal.sumParts(limitCoefficient, limitExponent, 1, -73);
     }
 
     function sqrtExternal(Float a) external pure returns (Float) {
@@ -46,10 +47,22 @@ contract LibDecimalFloatSqrtTest is Test {
         assertEq(actualExponent, expectedExponent, "exponent");
     }
 
+    /// The root r is under 5e-41 relative from sqrt a, so r^2 is strictly
+    /// between a (1 - 5e-41)^2 and a (1 + 5e-41)^2. Scaled by 1e82 and
+    /// compared exactly: c^2 10^(2e + 82) against A (1e41 +- 5)^2 10^f.
+    /// And the root squared by `pow` is within `diffLimit` of a.
     function checkRoundTrip(int256 signedCoefficient, int256 exponent) internal pure {
-        Float a = LibDecimalFloat.packLossless(signedCoefficient, exponent);
-        Float c = a.sqrt();
-        (int256 roundTripCoefficient, int256 roundTripExponent) = c.pow(LibDecimalFloat.FLOAT_TWO).unpack();
+        (int256 c, int256 e) = LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt().unpack();
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory square = LibTestExactDecimal.mul(uint256(c), uint256(c));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 a = uint256(signedCoefficient);
+        U512 memory upper = LibTestExactDecimal.mulSmall(LibTestExactDecimal.mul(a, 1e41 + 5), 1e41 + 5);
+        U512 memory lower = LibTestExactDecimal.mulSmall(LibTestExactDecimal.mul(a, 1e41 - 5), 1e41 - 5);
+        assertLt(LibTestExactDecimal.cmpScaled(square, 2 * e + 82, upper, exponent), 0, "round trip above");
+        assertGt(LibTestExactDecimal.cmpScaled(square, 2 * e + 82, lower, exponent), 0, "round trip below");
+        (int256 roundTripCoefficient, int256 roundTripExponent) =
+            LibDecimalFloat.packLossless(c, e).pow(LibDecimalFloat.FLOAT_TWO).unpack();
         (int256 diffCoefficient, int256 diffExponent) =
             LibTestExactDecimal.quotient(signedCoefficient, exponent, roundTripCoefficient, roundTripExponent);
         (diffCoefficient, diffExponent) = LibTestExactDecimal.minusOne(diffCoefficient, diffExponent);
@@ -121,7 +134,7 @@ contract LibDecimalFloatSqrtTest is Test {
 
     function testRoundTripFuzzSqrt(int224 signedCoefficient, int32 exponent) external pure {
         signedCoefficient = int224(bound(signedCoefficient, 1, type(int224).max));
-        exponent = int32(bound(exponent, type(int16).min, type(int16).max));
+        exponent = int32(bound(exponent, -1e9, 1e9));
         checkRoundTrip(signedCoefficient, exponent);
     }
 
@@ -148,40 +161,96 @@ contract LibDecimalFloatSqrtTest is Test {
             exponent = bound(exponent, 1, 1e9);
             shift = bound(shift, 0, 5e8);
         }
-        Float root = LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt();
-        Float shifted = LibDecimalFloat.packLossless(signedCoefficient, exponent + 2 * shift).sqrt();
-        (int256 rootCoefficient, int256 rootExponent) = root.unpack();
-        (int256 shiftedCoefficient, int256 shiftedExponent) = shifted.unpack();
+        (int256 rootCoefficient, int256 rootExponent) =
+            LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt().unpack();
+        (int256 shiftedCoefficient, int256 shiftedExponent) =
+            LibDecimalFloat.packLossless(signedCoefficient, exponent + 2 * shift).sqrt().unpack();
         assertTrue(
             LibTestExactDecimal.eq(shiftedCoefficient, shiftedExponent, rootCoefficient, rootExponent + shift), "shift"
         );
     }
 
-    /// |sqrt(x) - true root| in billionths of a unit in the root's last
-    /// place, from x / root^2 = 1 - 2 error to first order.
-    function sqrtUlpError(int256 signedCoefficient, int256 exponent) internal pure returns (uint256) {
+    /// floor(sqrt n) for n in [1e80, 1e82), by bisection on exact squares.
+    function floorRoot(U512 memory n) internal pure returns (uint256) {
+        uint256 low = 1e40;
+        uint256 high = 1e41;
+        while (high - low > 1) {
+            uint256 mid = (low + high) / 2;
+            if (LibTestExactDecimal.cmp(LibTestExactDecimal.mul(mid, mid), n) <= 0) {
+                low = mid;
+            } else {
+                high = mid;
+            }
+        }
+        return low;
+    }
+
+    /// a = A 10^f with A in [1e75, 1e76) is N 10^(f - s) for N = A 10^s with
+    /// s 5 or 6 making f - s even, so sqrt a is sqrt N 10^((f - s) / 2) with
+    /// sqrt N in [1e40, 1e41). Its 41 digit rounding is the integer nearest
+    /// sqrt N: r + 1 for r = floor(sqrt N) when N > (r + 1/2)^2, which for
+    /// integers is N > r^2 + r, else r.
+    function referenceRoot(uint256 a, int256 exponent) internal pure returns (int256, int256) {
+        while (a < 1e75) {
+            a *= 10;
+            exponent -= 1;
+        }
+        uint256 s = exponent % 2 == 0 ? 6 : 5;
+        U512 memory n = LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(a), s);
+        uint256 r = floorRoot(n);
+        U512 memory midpointFloor = LibTestExactDecimal.add(LibTestExactDecimal.mul(r, r), LibTestExactDecimal.u512(r));
+        if (LibTestExactDecimal.cmp(n, midpointFloor) > 0) {
+            r += 1;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (int256(r), (exponent - int256(s)) / 2);
+    }
+
+    function checkReference(int256 rootCoefficient, int256 rootExponent, uint256 a, int256 exponent) internal pure {
+        (int256 expectedCoefficient, int256 expectedExponent) = referenceRoot(a, exponent);
+        assertTrue(
+            LibTestExactDecimal.eq(rootCoefficient, rootExponent, expectedCoefficient, expectedExponent), "reference"
+        );
+    }
+
+    function testSqrtReferenceFuzz(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int224).max);
         exponent = bound(exponent, -1e9, 1e9);
         (int256 rootCoefficient, int256 rootExponent) =
             LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt().unpack();
-        (int256 squareCoefficient, int256 squareExponent) =
-            LibTestExactDecimal.mulParts(rootCoefficient, rootExponent, rootCoefficient, rootExponent);
-        (int256 ratioCoefficient, int256 ratioExponent) =
-            LibTestExactDecimal.quotient(signedCoefficient, exponent, squareCoefficient, squareExponent);
-        (ratioCoefficient, ratioExponent) = LibTestExactDecimal.minusOne(ratioCoefficient, ratioExponent);
-        (ratioCoefficient, ratioExponent) =
-            LibTestExactDecimal.mulParts(ratioCoefficient, ratioExponent, rootCoefficient, 9);
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 error = LibTestExactDecimal.atExponent(ratioCoefficient, ratioExponent, 0) / 2;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return uint256(error < 0 ? -error : error);
+        checkReference(rootCoefficient, rootExponent, uint256(signedCoefficient), exponent);
     }
 
-    /// Correctly rounded: within half a unit, and never at it as a root is
-    /// never a midpoint. The estimate's second order and truncation are far
-    /// below a billionth.
-    function testSqrtUlpFuzz(int256 signedCoefficient, int256 exponent) external pure {
-        assertLe(sqrtUlpError(signedCoefficient, exponent), 5e8, "sqrt error");
+    /// The implementation takes any coefficient below 1e76, as pow hands it.
+    function testImplementationSqrtReferenceFuzz(uint256 coefficient, int256 exponent) external pure {
+        coefficient = bound(coefficient, 1, 1e76 - 1);
+        exponent = bound(exponent, -1e9, 1e9);
+        // coefficient is below 1e76, so it fits int256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = int256(coefficient);
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
+        checkReference(rootCoefficient, rootExponent, coefficient, exponent);
+    }
+
+    /// A 10^s is 2^256 - 2^(s + 5) mod 2^256 for A 10^s with s 5 and 6, so
+    /// its 512 bit product's low word is within its high word of 2^256 and
+    /// the high word takes a borrow.
+    function testImplementationSqrtLowWordBorrow() external pure {
+        uint256 odd = 3256073549353331415310816098444303968833951968797812660789547262302517205475;
+        uint256 even = 2460466104203731836555459860449609353974133904160196345274434202584146091719;
+        (uint256 oddHigh, uint256 oddLow) = Math.mul512(odd, 1e5);
+        (uint256 evenHigh, uint256 evenLow) = Math.mul512(even, 1e6);
+        assertEq(oddHigh, 2811, "odd high");
+        assertEq(type(uint256).max - oddLow, 31, "odd low");
+        assertEq(evenHigh, 21248, "even high");
+        assertEq(type(uint256).max - evenLow, 63, "even low");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(int256(odd), -75);
+        checkReference(rootCoefficient, rootExponent, odd, -75);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (rootCoefficient, rootExponent) = LibDecimalFloatImplementation.sqrt(int256(even), -76);
+        checkReference(rootCoefficient, rootExponent, even, -76);
     }
 
     /// x < y implies sqrt(x) <= sqrt(y), down to adjacent coefficients.
