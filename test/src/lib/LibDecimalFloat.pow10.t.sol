@@ -4,15 +4,12 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibTestPowRange, PowRange} from "test/lib/LibTestPowRange.sol";
+import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "test/lib/LibTestPowRange.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 
 contract LibDecimalFloatPow10Test is Test {
     using LibDecimalFloat for Float;
-
-    function pow10External(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
-        return LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
-    }
 
     function pow10External(Float float) external pure returns (Float) {
         return LibDecimalFloat.pow10(float);
@@ -88,63 +85,104 @@ contract LibDecimalFloatPow10Test is Test {
         this.pow10External(LibDecimalFloat.packLossless(int256(type(int32).max) + 68, 0));
     }
 
-    /// pow10 matches its implementation packed. It reverts only for an x past
-    /// the range by more than twice pow10's relative bound, the slack it puts
-    /// on 10^x in log10, and returns for any x inside it by as much.
-    function testPow10Packed(Float float) external {
-        (int256 signedCoefficientFloat, int256 exponentFloat) = float.unpack();
-        PowRange range = LibTestPowRange.range(signedCoefficientFloat, exponentFloat, 11, -41);
-        try this.pow10External(signedCoefficientFloat, exponentFloat) returns (
-            int256 signedCoefficient, int256 exponent
-        ) {
-            if (exponent > type(int32).max) {
-                // Digits are taken back to pack at int32.max when int224 holds
-                // them.
-                int256 excess = exponent - type(int32).max;
-                int256 lifted = signedCoefficient;
-                // forge-lint: disable-next-line(unsafe-typecast)
-                for (int256 i = 0; i < excess && int224(lifted) == lifted; i++) {
-                    lifted *= 10;
-                }
-                // forge-lint: disable-next-line(unsafe-typecast)
-                if (int224(lifted) == lifted) {
-                    (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = this.pow10External(float).unpack();
-                    assertEq(signedCoefficientUnpacked, lifted);
-                    assertEq(exponentUnpacked, type(int32).max);
-                    assertTrue(range != PowRange.Over, "returned past the range");
-                } else {
-                    assertTrue(range == PowRange.Over || range == PowRange.OverEdge, "overflow inside the range");
-                    vm.expectRevert(LibTestPowRange.rangeError(true, float));
-                    this.pow10External(float);
-                }
-            } else {
-                // Predict whether packing underflows.
-                (Float predicted, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-                if (!lossless && Float.unwrap(predicted) == bytes32(0)) {
-                    assertTrue(range == PowRange.Under || range == PowRange.UnderEdge, "underflow inside the range");
-                    vm.expectRevert(LibTestPowRange.rangeError(false, float));
-                    this.pow10External(float);
-                } else {
-                    Float floatPower10 = this.pow10External(float);
-                    (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = floatPower10.unpack();
-                    (signedCoefficient, exponent) = predicted.unpack();
-                    assertEq(signedCoefficient, signedCoefficientUnpacked);
-                    assertEq(exponent, exponentUnpacked);
-                    assertTrue(range != PowRange.Over && range != PowRange.Under, "returned past the range");
-                }
-            }
-        } catch {
-            // The implementation cannot rescale an integer part past int256,
-            // which for any nonzero x is far past the range.
-            if (signedCoefficientFloat == 0) {
-                assertEq(Float.unwrap(this.pow10External(float)), Float.unwrap(LibDecimalFloat.FLOAT_ONE));
-            } else {
-                assertTrue(
-                    range == PowRange.Over || range == PowRange.Under, "implementation reverted inside the range"
-                );
-                vm.expectRevert(LibTestPowRange.rangeError(range == PowRange.Over, float));
-                this.pow10External(float);
-            }
+    /// pow10 returns inside the range, reverts the range error past it, and
+    /// may do either at an edge, as `LibTestPowRange.pow10Range` decides.
+    function testPow10Range(Float float) external view {
+        checkPow10(float);
+    }
+
+    /// x 10^-57 for x within 1e-40 of each threshold, across the edge.
+    function testPow10NearThresholds(int256 offset, bool overflowSide) external view {
+        offset = bound(offset, -1e17, 1e17);
+        int256 threshold = overflowSide ? LOG10_OVERFLOW / 1e9 : int256(type(int32).min) * 1e57;
+        checkPow10(LibDecimalFloat.packLossless(threshold + offset, -57));
+    }
+
+    /// x 10^-57 at THRESHOLD_SLACK past each threshold must revert and as far
+    /// inside must return. LOG10_OVERFLOW / 1e9 is the overflow threshold
+    /// truncated at 1e-57, and one more is above it.
+    function testPow10Thresholds() external {
+        int256 overflow = LOG10_OVERFLOW / 1e9;
+        int256 underflow = int256(type(int32).min) * 1e57;
+        Float past = LibDecimalFloat.packLossless(overflow + 1 + THRESHOLD_SLACK, -57);
+        Float inside = LibDecimalFloat.packLossless(overflow - THRESHOLD_SLACK, -57);
+        assertTrue(LibTestPowRange.pow10Range(past) == PowRange.Over, "over");
+        assertTrue(LibTestPowRange.pow10Range(inside) == PowRange.Inside, "inside over");
+        assertPow10Value(inside, this.pow10External(inside));
+        vm.expectRevert(LibTestPowRange.rangeError(true, past));
+        this.pow10External(past);
+
+        past = LibDecimalFloat.packLossless(underflow - 1 - THRESHOLD_SLACK, -57);
+        inside = LibDecimalFloat.packLossless(underflow + THRESHOLD_SLACK, -57);
+        assertTrue(LibTestPowRange.pow10Range(past) == PowRange.Under, "under");
+        assertTrue(LibTestPowRange.pow10Range(inside) == PowRange.Inside, "inside under");
+        assertPow10Value(inside, this.pow10External(inside));
+        vm.expectRevert(LibTestPowRange.rangeError(false, past));
+        this.pow10External(past);
+    }
+
+    function checkPow10(Float x) internal view {
+        PowRange range = LibTestPowRange.pow10Range(x);
+        try this.pow10External(x) returns (Float result) {
+            assertTrue(LibTestPowRange.mayReturn(range), "returned past the range");
+            assertPow10Value(x, result);
+        } catch (bytes memory reason) {
+            bool over = keccak256(reason) == keccak256(LibTestPowRange.rangeError(true, x));
+            assertTrue(over || keccak256(reason) == keccak256(LibTestPowRange.rangeError(false, x)), "pow10 revert");
+            assertTrue(LibTestPowRange.mayRevert(range, over), "reverted inside the range");
         }
+    }
+
+    /// A returned 10^x is exactly 1 for a zero x, exactly 10^x for a whole x,
+    /// and otherwise within 5.0000005e-41 of the oracle's power P: pow10's
+    /// 5.0000004e-41 of the true power, which is within 1e-67 of P. Below
+    /// 1e-2147483608 the bound adds 1e-2147483648.
+    function assertPow10Value(Float x, Float result) internal pure {
+        (int256 signedCoefficientX, int256 exponentX) = x.unpack();
+        (int256 signedCoefficient, int256 exponent) = result.unpack();
+        assertTrue(signedCoefficient > 0, "positive");
+        if (signedCoefficientX == 0) {
+            assertTrue(LibTestExactDecimal.eq(signedCoefficient, exponent, 1, 0), "pow10 zero");
+            return;
+        }
+        if (LibTestExactDecimal.isWhole(signedCoefficientX, exponentX)) {
+            // A returned x is within int32 of zero, so its whole value and
+            // the power of ten it is read with fit, and a whole x below 1e-67
+            // is zero.
+            int256 whole;
+            if (exponentX >= 0) {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                whole = signedCoefficientX * int256(10 ** uint256(exponentX));
+            } else {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                whole = signedCoefficientX / int256(10 ** uint256(-exponentX));
+            }
+            assertTrue(LibTestExactDecimal.eq(signedCoefficient, exponent, 1, whole), "pow10 whole");
+            return;
+        }
+        (uint256 power, int256 powerExponent) = LibTranscendentalOracle.exp10(signedCoefficientX, exponentX);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 magnitude = uint256(signedCoefficient);
+        assertTrue(
+            LibTestExactDecimal.cmpScaled(
+                LibTestExactDecimal.u512(magnitude),
+                exponent,
+                LibTestExactDecimal.mul(power, 1e48 + 50000005),
+                powerExponent - 48
+            ) <= 0,
+            "pow10 above the bound"
+        );
+        if (exponent == type(int32).min && magnitude < 1e40) {
+            magnitude += 1;
+        }
+        assertTrue(
+            LibTestExactDecimal.cmpScaled(
+                LibTestExactDecimal.u512(magnitude),
+                exponent,
+                LibTestExactDecimal.mul(power, 1e48 - 50000005),
+                powerExponent - 48
+            ) >= 0,
+            "pow10 below the bound"
+        );
     }
 }
