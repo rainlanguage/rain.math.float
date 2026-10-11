@@ -76,22 +76,22 @@ contract LibDecimalFloatSubTest is Test {
     /// after the point.
     function testSubRoundingCancelAway() external pure {
         Float difference = LibDecimalFloat.packLossless(1, 0).sub(LibDecimalFloat.packLossless(1, -100));
-        assertTrue(difference.eq(LibDecimalFloat.packLossless(1, 0)));
+        assertValue(difference, 1, 0, "difference");
         difference = LibDecimalFloat.packLossless(-1, 0).sub(LibDecimalFloat.packLossless(-1, -100));
-        assertTrue(difference.eq(LibDecimalFloat.packLossless(-1, 0)));
+        assertValue(difference, -1, 0, "difference");
     }
 
     /// #340: `1 - 1.5e-76` rounds away from zero at `1e-76` to `1 - 1e-76`,
     /// then packing truncates that towards zero to 67 nines after the point.
     function testSubRoundingCancelAwayThenPack() external pure {
         Float difference = LibDecimalFloat.packLossless(1, 0).sub(LibDecimalFloat.packLossless(15, -77));
-        assertTrue(difference.eq(LibDecimalFloat.packLossless(1e67 - 1, -67)));
+        assertValue(difference, 1e67 - 1, -67, "difference");
     }
 
     /// #340: magnitudes add, so `1 - (-1e-100)` truncates towards zero.
     function testSubRoundingSameSign() external pure {
         Float difference = LibDecimalFloat.packLossless(1, 0).sub(LibDecimalFloat.packLossless(-1, -100));
-        assertTrue(difference.eq(LibDecimalFloat.packLossless(1, 0)));
+        assertValue(difference, 1, 0, "difference");
     }
 
     /// #332: 0 - int224.min is 2^223, which packs as int224.max at the same
