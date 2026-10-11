@@ -120,23 +120,33 @@ fn literal_after(text: &str, marker: &str) -> BigInt {
     digits.parse().unwrap()
 }
 
-/// exp10Fixed's series coefficients, highest power first, as the source
-/// writes them: the initial value, then each Horner step's literal.
+/// exp10Fixed's series coefficients, highest power first: the
+/// `EXP10_HORNER_j` constants, which the body takes in Horner order from
+/// the ninth power down, then ln 10 and one.
 fn series_coefficients() -> Vec<BigInt> {
     let start = IMPL.find("function exp10Fixed(").unwrap();
     let body = &IMPL[start..];
     let body = &body[..1 + body[1..].find("    function ").unwrap()];
-    let mut out = vec![literal_after(body, "uint256 series = ")];
-    for line in body.lines() {
-        if let Some(rest) = line.trim().strip_prefix("series = ")
-            && rest.starts_with(|c: char| c.is_ascii_digit())
-        {
-            out.push(literal_after(rest, ""));
-        }
+    let mut steps = vec!["let series := EXP10_HORNER_9".to_string()];
+    steps.extend(
+        (2..=8)
+            .rev()
+            .map(|j| format!("series := add(EXP10_HORNER_{j}, series)")),
+    );
+    steps.push("series := add(POW_FIXED_LN10, series)".to_string());
+    steps.push("series := add(POW_FIXED_ONE, series)".to_string());
+    let mut from = 0;
+    for step in &steps {
+        let at = body[from..]
+            .find(step.as_str())
+            .unwrap_or_else(|| panic!("`{step}` not in order"));
+        assert_eq!(body.matches(step.as_str()).count(), 1, "`{step}`");
+        from += at + step.len();
     }
-    assert!(body.contains("series = POW_FIXED_LN10 + mulDivFixedUnguarded(series, x);"));
-    assert!(body.contains("series = POW_FIXED_ONE + mulDivFixedUnguarded(series, x);"));
-    out
+    (2..=9)
+        .rev()
+        .map(|j| literal_after(IMPL, &format!("uint256 constant EXP10_HORNER_{j} = ")))
+        .collect()
 }
 
 /// ln 10 at 1e-LN10_SCALE: lo <= ln 10 10^LN10_SCALE < lo + 2.
