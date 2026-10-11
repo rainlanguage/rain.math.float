@@ -7,7 +7,8 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
-import {ParseDecimalOverflow} from "rain-string-0.3.9/src/error/ErrParse.sol";
+import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
@@ -104,11 +105,11 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         checkExact(string.concat("-6", zeros(76)), -6, 76, -6, 76);
         // int256.min fits int256, one past it does not.
         checkLoss(string.concat("-", INT256_MAX_PLUS_ONE), type(int256).min, 0);
-        checkFail(string.concat("-", INT256_MAX_PLUS_TWO), ParseDecimalOverflow.selector, 78);
+        checkFail(string.concat("-", INT256_MAX_PLUS_TWO), ParseDecimalPrecisionLoss.selector, 78);
         checkLoss(INT256_MAX, type(int256).max, 0);
-        checkFail(INT256_MAX_PLUS_ONE, ParseDecimalOverflow.selector, 77);
+        checkFail(INT256_MAX_PLUS_ONE, ParseDecimalPrecisionLoss.selector, 77);
         // Trailing zeros do not help significant digits past int256.
-        checkFail(string.concat(INT256_MAX_PLUS_ONE, "0"), ParseDecimalOverflow.selector, 78);
+        checkFail(string.concat(INT256_MAX_PLUS_ONE, "0"), ParseDecimalPrecisionLoss.selector, 78);
         // Significant digits within int256 but past int224 are no Float.
         checkLoss(string.concat(INT256_MAX, "0000"), type(int256).max, 4);
         checkLoss(string.concat("-", INT256_MAX_PLUS_ONE, "00"), type(int256).min, 2);
@@ -137,8 +138,8 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         checkFail(string.concat(e77, "."), MalformedDecimalPoint.selector, 79);
         checkFail(string.concat(e77, ".e1"), MalformedDecimalPoint.selector, 79);
         checkFail(string.concat(e77, ".-1"), MalformedDecimalPoint.selector, 79);
-        // Significant digits past int256 report that before the fraction.
-        checkFail(string.concat(INT256_MAX_PLUS_ONE, ".5"), ParseDecimalOverflow.selector, 77);
+        // Significant digits past int256 with a fraction are no Float.
+        checkFail(string.concat(INT256_MAX_PLUS_ONE, ".5"), ParseDecimalPrecisionLoss.selector, 79);
         // What follows is left to the caller.
         (bytes4 err, uint256 cursor, int256 c, int256 e) = this.parseInline(string.concat(e77, ".00x"));
         assertEq(err, bytes4(0));
@@ -174,14 +175,31 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         }
     }
 
-    /// A nonzero coefficient with an exponent past int256 is no Float.
+    /// A nonzero coefficient with an exponent past int256 is past every Float
+    /// or below every nonzero Float, by the exponent's sign.
     function testParseNonZeroHugeExponent() external view {
         string memory s = string.concat("1e", INT256_MAX_PLUS_ONE);
-        checkFail(s, ParseDecimalOverflow.selector, bytes(s).length);
+        checkFail(s, ExponentOverflow.selector, bytes(s).length);
         s = string.concat("-0.1e-", INT256_MAX_PLUS_TWO);
-        checkFail(s, ParseDecimalOverflow.selector, bytes(s).length);
+        checkFail(s, ParseDecimalPrecisionLoss.selector, bytes(s).length);
         s = string.concat("1", zeros(80), "e", INT256_MAX_PLUS_ONE);
-        checkFail(s, ParseDecimalOverflow.selector, bytes(s).length);
+        checkFail(s, ExponentOverflow.selector, bytes(s).length);
+    }
+
+    /// Issue #375's literals take their errors by value: 2^255 written out is
+    /// below every bound but no Float, `1e` 2^255 is past every Float, 78
+    /// fraction digits are no Float, and `1e-` (2^255 + 1) is below every
+    /// nonzero Float. `2` + 66 zeros + `.5` is exactly 2e67 + 5 tenths, past
+    /// int224 so no Float.
+    function testParseIssue375Literals() external view {
+        checkFail(INT256_MAX_PLUS_ONE, ParseDecimalPrecisionLoss.selector, 77);
+        string memory s = string.concat("1e", INT256_MAX_PLUS_ONE);
+        checkFail(s, ExponentOverflow.selector, bytes(s).length);
+        s = string.concat("0.", "123456789012345678901234567890123456789012345678901234567890123456789012345678");
+        checkFail(s, ParseDecimalPrecisionLoss.selector, bytes(s).length);
+        s = string.concat("1e-", INT256_MAX_PLUS_TWO);
+        checkFail(s, ParseDecimalPrecisionLoss.selector, bytes(s).length);
+        checkLoss(string.concat("2", zeros(66), ".5"), 2e67 + 5, -1);
     }
 
     /// Any int224 followed by any number of zeros parses to exactly its value.
@@ -189,10 +207,7 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         string memory s = string.concat(Strings.toStringSigned(c), zeros(z));
         (bytes4 err, Float float) = this.parse(s);
         assertEq(err, bytes4(0), "error");
-        if (c == 0) {
-            assertEq(Float.unwrap(float), bytes32(0), "zero");
-        } else {
-            assertTrue(float.eq(LibDecimalFloat.packLossless(c, int256(uint256(z)))), "value");
-        }
+        (int256 actualC, int256 actualE) = float.unpack();
+        assertTrue(LibTestExactDecimal.eq(c, int256(uint256(z)), actualC, actualE), "value");
     }
 }
