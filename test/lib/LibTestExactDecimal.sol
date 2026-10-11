@@ -506,6 +506,22 @@ library LibTestExactDecimal {
         (overflowed, c, e,) = addPartsInexact(ca, ea, cb, eb);
     }
 
+    /// `addPartsWide` with the magnitude rounded up instead, so never below
+    /// the exact sum's, for a bound term that must not be underestimated.
+    function addPartsWideUp(int256 ca, int256 ea, int256 cb, int256 eb)
+        internal
+        pure
+        returns (bool overflowed, int256 c, int256 e)
+    {
+        bool inexact;
+        (overflowed, c, e, inexact) = addPartsInexact(ca, ea, cb, eb);
+        if (inexact && !overflowed) {
+            // A truncated zero takes the sign of the larger operand.
+            bool negative = c == 0 ? (cmpWide(u512(abs(ca)), ea, eb, 0, 0, u512(abs(cb))) < 0 ? cb < 0 : ca < 0) : c < 0;
+            c += negative ? int256(-1) : int256(1);
+        }
+    }
+
     /// `addPartsWide`, and whether the truncation shed anything, so the exact
     /// sum is strictly between `c × 10^e` and one unit of `10^e` further from
     /// zero.

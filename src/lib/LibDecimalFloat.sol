@@ -1399,10 +1399,9 @@ library LibDecimalFloat {
     /// representable values should answer, not revert.
     ///
     /// THE COMPARISON IS EXACT ONLY TO REPRESENTABLE PRECISION. The spread is a
-    /// subtraction, and a subtraction aligns exponents by discarding the
-    /// smaller operand's low digits; past a gap of `ADD_MAX_EXPONENT_DIFF` the
-    /// smaller operand is dropped whole. When those discarded digits would have
-    /// carried the spread above the limit, and the spread as computed lands
+    /// subtraction, truncated towards zero to the larger operand's last
+    /// aligned digit. When the truncated digits would have carried the spread
+    /// above the limit, and the spread as computed lands
     /// exactly on the limit, this returns true where an exact comparison would
     /// return false. `agree(0, 1, -1e-100, 1)` is such a case: the real spread
     /// is `1 + 1e-100`, needing 101 significant digits against the
