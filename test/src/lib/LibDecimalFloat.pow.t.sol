@@ -560,12 +560,11 @@ contract LibDecimalFloatPowTest is Test {
             "bound"
         );
         if (tight) {
-            // The difference rounds away from zero, so the N term is never
-            // smaller.
+            // The difference rounds up, so the N term is never smaller.
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 base = int256(POW_RELATIVE_ERROR_E52);
             (, int256 nTerm, int256 nTermExponent) =
-                LibTestExactDecimal.addPartsWide(boundCoefficient, boundExponent, -base, -52);
+                LibTestExactDecimal.addPartsWideUp(boundCoefficient, boundExponent, -base, -52);
             (nTerm, nTermExponent) = LibTestExactDecimal.mulPayload(nTerm, nTermExponent, 9, -1);
             assertTrue(
                 LibTestExactDecimal.cmpScaled(

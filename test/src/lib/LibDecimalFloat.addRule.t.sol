@@ -7,11 +7,10 @@ import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-/// `add`'s documented rounding (#340), worked by hand: round the exact sum to
-/// the larger operand's int256 unit, towards zero when the magnitudes add and
-/// away from zero when they cancel, then pack towards zero. Each case pins the
-/// library's result and that `LibTestExactDecimal.isSumResult` accepts it and
-/// rejects the Float on its other side.
+/// `add`'s documented rounding (#350), worked by hand: the exact sum rounded
+/// once towards zero, the closest Float not exceeding it in magnitude. Each
+/// case pins the library's result and that `LibTestExactDecimal.isSumResult`
+/// accepts it and rejects the Float on its other side.
 contract LibDecimalFloatAddRuleTest is Test {
     using LibDecimalFloat for Float;
 
@@ -25,62 +24,59 @@ contract LibDecimalFloatAddRuleTest is Test {
         assertFalse(LibTestExactDecimal.isSumResult(ca, ea, cb, eb, otherC, otherE), "other rejected");
     }
 
-    /// `1e100 - 1`: unit `1e24`, away from zero to `1e100`.
-    function testAddRuleCancelAway() external pure {
-        checkCase(1, 100, -1, 0, 1, 100, 1e67 - 1, 33);
+    /// `1e100 - 1`: towards zero to `(1e67 - 1)e33`.
+    function testAddRuleCancelTowardsZero() external pure {
+        checkCase(1, 100, -1, 0, 1e67 - 1, 33, 1, 100);
     }
 
     /// `-1 + 1e100`: the larger operand is the second.
     function testAddRuleCancelLargerSecond() external pure {
-        checkCase(-1, 0, 1, 100, 1, 100, 1e67 - 1, 33);
+        checkCase(-1, 0, 1, 100, 1e67 - 1, 33, 1, 100);
     }
 
-    /// `-1e100 + 1`: negative, away from zero to `-1e100`.
-    function testAddRuleCancelAwayNegative() external pure {
-        checkCase(-1, 100, 1, 0, -1, 100, -(1e67 - 1), 33);
+    /// `-1e100 + 1`: negative, towards zero to `-(1e67 - 1)e33`.
+    function testAddRuleCancelTowardsZeroNegative() external pure {
+        checkCase(-1, 100, 1, 0, -(1e67 - 1), 33, -1, 100);
     }
 
-    /// `1e76 - 1000000001.5`: unit `1`, away to `1e76 - 1000000001`, packed
-    /// towards zero to `(10^67 - 2)e9`, below the exact sum.
-    function testAddRuleCancelAwayThenPackTowards() external pure {
+    /// `1e76 - 1000000001.5`: towards zero to `(10^67 - 2)e9`, below the
+    /// exact sum.
+    function testAddRuleCancelPackTowards() external pure {
         checkCase(1e66, 10, -10000000015, -1, 1e67 - 2, 9, 1e67 - 1, 9);
     }
 
-    /// `1e100 - (1e33 + 1)`: away at `1e24` to `1e100 - 1e33`, which packs
-    /// exactly.
-    function testAddRuleCancelPartialDigitAway() external pure {
-        checkCase(1, 100, -(1e33 + 1), 0, 1e67 - 1, 33, 1e67 - 2, 33);
+    /// `1e100 - (1e33 + 1)`: towards zero to `1e100 - 2e33`.
+    function testAddRuleCancelPartialDigit() external pure {
+        checkCase(1, 100, -(1e33 + 1), 0, 1e67 - 2, 33, 1e67 - 1, 33);
     }
 
-    /// `1e100 - 1.7e33`: exact at `1e24`, packed towards zero.
+    /// `1e100 - 1.7e33`: towards zero to `1e100 - 2e33`.
     function testAddRuleCancelExactAtUnit() external pure {
         checkCase(1, 100, -17, 32, 1e67 - 2, 33, 1e67 - 1, 33);
     }
 
-    /// `1e100 - 1.5e24`: one and a half units, away to `1e100 - 1e24`, packed
-    /// towards zero to `1e100 - 1e33`.
+    /// `1e100 - 1.5e24`: towards zero to `1e100 - 1e33`.
     function testAddRuleCancelUnitAndAHalf() external pure {
         checkCase(1, 100, -15e61, -38, 1e67 - 1, 33, 1, 100);
     }
 
-    /// `1 - 1.5e-76`: unit `1e-76`, away to `1 - 1e-76`, packed towards zero.
-    function testAddRuleCancelAwayThenPack() external pure {
+    /// `1 - 1.5e-76`: towards zero to 67 nines after the point.
+    function testAddRuleCancelThenPack() external pure {
         checkCase(1, 0, -15, -77, 1e67 - 1, -67, 1, 0);
     }
 
-    /// `1 - 1e-100`: away to `1`.
-    function testAddRuleCancelTinyAway() external pure {
-        checkCase(1, 0, -1, -100, 1, 0, 1e67 - 1, -67);
+    /// `1 - 1e-100`: towards zero to 67 nines after the point.
+    function testAddRuleCancelTiny() external pure {
+        checkCase(1, 0, -1, -100, 1e67 - 1, -67, 1, 0);
     }
 
-    /// `6 - 1.5e-76`: `6 × 10^76` exceeds int256, so the unit is `1e-75`, and
-    /// the sum rounds away to `6`. At `1e-76` it would round to `6 - 1e-76`
-    /// and pack to 66 nines after `5.`.
+    /// `6 - 1.5e-76`: towards zero to 66 nines after `5.`. `6`'s int256 unit
+    /// is `1e-75`, as `6 × 10^76` exceeds int256.
     function testAddRuleCancelUnit76Digits() external pure {
-        checkCase(6, 0, -15, -77, 6, 0, 6e66 - 1, -66);
+        checkCase(6, 0, -15, -77, 6e66 - 1, -66, 6, 0);
     }
 
-    /// `1e20 - 1.5e11`: both within one unit grid, exact.
+    /// `1e20 - 1.5e11`: exact.
     function testAddRuleCancelExact() external pure {
         checkCase(1e20, 0, -15, 10, 9999999985, 10, 9999999986, 10);
     }
@@ -118,10 +114,10 @@ contract LibDecimalFloatAddRuleTest is Test {
     /// `a` with under 67 digits, and `b` reaching `s` digits below `a`'s int256
     /// unit with a non-zero remainder there. `b`'s part at or above the unit
     /// is `q` units, where `q` is a multiple of `10^10` when the magnitudes
-    /// cancel and one less than one when they add. Step 1 then lands on a
-    /// multiple of `10^10` units when cancelling and one unit below one when
-    /// adding, and packing's step is at most `10^10` units, so rounding the
-    /// other way at step 1 moves the packed result.
+    /// cancel and one less than one when they add. Either way the exact sum is
+    /// strictly within one unit below a multiple of `10^10` units in
+    /// magnitude, and packing's step is at most `10^10` units, so rounding
+    /// away from zero at the unit would move the packed result.
     function roundingOperands(int256 ca, int256 ea, bool sameSign, uint256 q, uint256 s, uint256 r)
         internal
         pure

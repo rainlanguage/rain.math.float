@@ -325,6 +325,11 @@ contract LibDecimalFloatImplementationAddTest is Test {
         // ADD_MAX_EXPONENT_DIFF = 76
         // forge-lint: disable-next-line(unsafe-typecast)
         vm.assume(cls == 1 || (cls == 0 && gap > int256(ADD_MAX_EXPONENT_DIFF)));
+        // A non-zero `a` of the other sign, under one unit of `b`, puts the
+        // exact sum strictly inside the unit below `b`'s magnitude.
+        if ((signedCoefficientA < 0) != (signedCoefficientB < 0)) {
+            expectedSignedCoefficient -= expectedSignedCoefficient < 0 ? int256(-1) : int256(1);
+        }
 
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
@@ -600,8 +605,14 @@ contract LibDecimalFloatImplementationAddTest is Test {
     }
 
     /// Float operands maximize to coefficients with a zero last digit, so no
-    /// carry is lost and `add` returns what it did before #394.
-    function testAddFloatRangeMatchesPre394(int224 a, int32 ea, int224 b, int32 eb) external pure {
+    /// carry is lost and `add` returns what it did before #394 where the
+    /// magnitudes add. Where they cancel, #350 moved the sum towards zero, so
+    /// it is checked against the exact sum.
+    function testAddFloatRangeMatchesPre394(int224 a, int32 ea, int224 b, int32 eb) external view {
+        if (a != 0 && b != 0 && (a < 0) != (b < 0)) {
+            checkAddExact(a, ea, b, eb);
+            return;
+        }
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
             LibDecimalFloatImplementationAddPre394.add(a, ea, b, eb);
         checkAdd(a, ea, b, eb, expectedSignedCoefficient, expectedExponent);
