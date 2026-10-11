@@ -897,6 +897,48 @@
     }
   },
   {
+    "timestamp": "2026-10-11T11:12:39Z",
+    "commit": "51a34512ad010f3465f290df554ecc519b014575",
+    "testsAfterCommit": "6aa038686b32b8c8a6aa06b82feffb493a39e75e",
+    "publishedTag": "sol-v0.2.34",
+    "commitsAheadOfTag": 62,
+    "scope": "issues #374/#368 (PR #421, branch 2026-10-09-issue-374-div-inv-exact): the changed lines of LibDecimalFloat.div (inlined pack, overflow fast path at int32.max - 10, range errors reporting a), LibDecimalFloat.inv (DivisionByZero reporting the input, underflow reporting the input) and LibDecimalFloatImplementation.div (shedding below the floor before the sign). Mutants on the PR src (79b529d, identical to 6aa0386), probed with mutation-probe and the full forge test. killedBefore: test/ restored to main at merge-base 51a3451, before this PR's tests (854 tests, compiles unchanged); four of them pin the pre-PR revert payloads this PR changes and are red on the unmutated PR src, so the probe suite excludes testDivPacked, testDivRevertsOnExponentUnderflow, testInvMem and testInvRevertsOnExponentUnderflow (850 run). They kill 4: M04, M11, M12, M14. killedAfter: the 10 more that test/ at 6aa0386 (864 tests, identical to 79b529d) kills: M01, M02, M03, M05, M06, M07, M08, M10, M13, M15. M01 overflow check skipped, M02 fast path at int32.max - 9, M03 overflow reports b, M04 div underflow without !lossless, M05/M10 underflow reported as overflow, M06 underflow reports b, M07 inv zero check removed, M08 inv zero reports exponent 0, M09 inv underflow without !lossless, M11 floor shed one digit more, M12 zero after the floor shed not normalised, M13 zero cutoff at 75, M14 divisor sign dropped, M15 a positive 2^255 quotient sheds a digit before the floor shed (the #368 shape). M09 is equivalent: no inverse of a non-zero Float is exactly zero and zero is rejected first, so the guard was removed at 8c3fc49. Not probed: underflowExponentBy > 0 as >= 0 and the 76 cutoff as 77, both equivalent (dividing by 10^0; 2^255 / 10^77 is zero).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 15,
+      "killedBefore": 4,
+      "killedAfter": 10,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 850,
+      "testsAfter": 864,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-11T11:18:05Z",
+    "commit": "369aee06683d248021fa836464efaf7fb262f9df",
+    "testsAfterCommit": "347bd3a8ca13f063d9c2487955ea9503f36e6b6d",
+    "publishedTag": "sol-v0.2.38",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #376: LibFormatDecimalFloat formats every Float. Before = main 369aee0 source and tests. After = 347bd3a, both UnformatableExponent guards deleted, only the ±1000 non-scientific cap left. Probe suite: forge test --mc \"LibFormatDecimalFloat|LibDecimalFloatFormatParse|LibDecimalFloatExoticFloat\". Shared mutants in both trees: S1 cap upper > to >=, S2 cap lower side dropped, S3 display exponent 75 to 76, S4 negative exponent magnitude off by one, S5 exponent marker e to E, S6 exponent digits start one byte low. Guard behaviour, mirrored: before, M1-M3 delete the scientific int32 guard, the exponent >= 68 guard and the int224 quotient guard; after, R1-R3 reintroduce each one. Before 8/9 killed: S1 survived because main expected (1, 1000) to revert, and the cap reverts it with the same data. After 9/9 killed: testFormatNonScientificCapBoundaries and testFormatEveryFloatNonScientificInsideCap kill S1. R1-R3 are also killed by the format suite alone (--mc LibFormatDecimalFloatToDecimalStringTest), by testFormatEveryFloatScientific, testFormatExtremeFloats, testFormatScientificExponentPastInt32, testFormatNonScientificIntegerPastInt224 and testFormatNonScientificCapBoundaries.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 9,
+      "killedBefore": 8,
+      "killedAfter": 9,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 873,
+      "testsAfter": 870,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-11T13:34:24Z",
     "commit": "4ecd21232b7a94ce357032e4dbc8956f738e5975",
     "testsAfterCommit": "076d58570eae03831c7dca3ee98bb6274cc05a2b",

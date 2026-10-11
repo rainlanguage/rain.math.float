@@ -2,11 +2,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
+import {EXPONENT_MIN, EXPONENT_MAX} from "test/lib/LibTestExponentBounds.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {
     LibDecimalFloatImplementation,
-    EXPONENT_MIN,
-    EXPONENT_MAX,
     DivisionByZero,
     ExponentOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
@@ -73,14 +72,14 @@ contract LibDecimalFloatImplementationDivTest is Test {
         checkDivByMaxTruncatesTheExactQuotient(type(int256).min, exponent);
     }
 
-    /// The exact quotient floored as `divPayload` at a zero exponent
+    /// The exact quotient floored as `divParts` at a zero exponent
     /// difference, moved by `exponent - int32.max`, with the digits below
     /// `10^type(int256).min` truncated towards zero as `atFloor`.
     function checkDivByMaxTruncatesTheExactQuotient(int256 signedCoefficient, int256 exponent) internal pure {
         (int256 q, int256 qExponent) =
             LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
         (int256 expectedQ, int256 expectedExponent) =
-            LibTestExactDecimal.divPayload(signedCoefficient, 0, type(int256).max, 0);
+            LibTestExactDecimal.divParts(signedCoefficient, 0, type(int256).max, 0);
         // exponent - int256.min, which is in [0, 2^256).
         uint256 aboveFloor;
         unchecked {
@@ -443,7 +442,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
     }
 
     /// A numerator at the floor, full or not, divides to the exact quotient
-    /// floored as `divPayload`, which only the exponent difference reaches.
+    /// floored as `divParts`, which only the exponent difference reaches.
     function testDivFloorNumeratorExact(int256 signedCoefficientA, int256 signedCoefficientB, int256 shift)
         external
         pure
@@ -452,7 +451,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         vm.assume(signedCoefficientB != 0);
         shift = bound(shift, 76, type(int128).max);
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.divPayload(signedCoefficientA, 0, signedCoefficientB, shift);
+            LibTestExactDecimal.divParts(signedCoefficientA, 0, signedCoefficientB, shift);
         checkDiv(
             signedCoefficientA,
             type(int256).min,
@@ -464,7 +463,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
     }
 
     /// Both operands near the floor, either one short of its full shift,
-    /// divide to the exact quotient floored as `divPayload`.
+    /// divide to the exact quotient floored as `divParts`.
     function testDivNearFloorExact(
         int256 signedCoefficientA,
         int256 signedCoefficientB,
@@ -478,7 +477,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = int256(bound(headroomB, 0, 80));
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.divPayload(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibTestExactDecimal.divParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         checkDiv(
             signedCoefficientA,
             type(int256).min + exponentA,
@@ -549,5 +548,60 @@ contract LibDecimalFloatImplementationDivTest is Test {
             LibDecimalFloatImplementation.div(numerator, type(int256).min, divisor, type(int256).min + shift);
         // Both sides divided by 10^type(int256).min.
         assertTrue(LibTestExactDecimal.productEq(q, qe, divisor, shift, numerator, 0), "(a / b) * b == a");
+    }
+
+    /// The quotient against the parts the NatSpec states and the exact
+    /// quotient they truncate, or `ExponentOverflow` where those parts'
+    /// exponent is above `type(int256).max`.
+    function checkDivExact(int256 a, int256 ea, int256 b, int256 eb) internal {
+        (bool overflows, int256 c, int256 e) = LibTestExactDecimal.divPartsWide(a, ea, b, eb);
+        if (overflows) {
+            vm.expectPartialRevert(ExponentOverflow.selector);
+            this.divExternal(a, ea, b, eb);
+            return;
+        }
+        (int256 signedCoefficient, int256 exponent) = this.divExternal(a, ea, b, eb);
+        assertEq(signedCoefficient, c, "coefficient");
+        assertEq(exponent, e, "exponent");
+        assertTrue(LibTestExactDecimal.isTruncatedQuotient(a, ea, b, eb, c, e), "truncated quotient");
+    }
+
+    /// Spreads coefficients over every digit count.
+    function testDivExact(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external {
+        b >>= sb;
+        vm.assume(b != 0);
+        checkDivExact(a >> sa, ea, b, eb);
+    }
+
+    /// Exponents near the floor, where the quotient truncates at it.
+    function testDivExactNearFloor(int256 a, uint256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external {
+        b >>= sb;
+        vm.assume(b != 0);
+        checkDivExact(a >> sa, type(int256).min + int256(bound(ea, 0, 300)), b, eb);
+    }
+
+    /// #368: `type(int256).min` over a negative power of ten is 2^255, which
+    /// int256 does not hold. Below the floor it keeps every digit the floor
+    /// has room for rather than first shedding one to fit int256.
+    function testDivMinByMinusPowerOfTenBelowFloor(uint256 digits, uint256 exponentB, bool negative) external {
+        digits = bound(digits, 0, 76);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 b = int256(10 ** digits);
+        b = negative ? -b : b;
+        checkDivExact(type(int256).min, type(int256).min, b, int256(bound(exponentB, 1, 300)));
+    }
+
+    /// #368: the reported case, 2^255 10^int256.min over 10^5, truncated at the
+    /// floor.
+    function testDivMinByMinusOneBelowFloor() external {
+        checkDiv(
+            type(int256).min,
+            type(int256).min,
+            -1,
+            5,
+            578960446186580977117854925043439539266349923328202820197287920039565648,
+            type(int256).min
+        );
+        checkDivExact(type(int256).min, type(int256).min, -1, 5);
     }
 }
