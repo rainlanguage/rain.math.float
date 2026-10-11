@@ -9,7 +9,13 @@ import {
     MulDivOverflow,
     DivisionByZero,
     MaximizeOverflow,
-    Log10RatioRelativeSumTooSmall
+    Log10RatioRelativeSumTooSmall,
+    Log10RatioOutOfRange,
+    SqrtOutOfRange,
+    Exp10FixedOutOfRange,
+    Log10ReduceOutOfRange,
+    AbsCoefficientOverflow,
+    ScaleUpOutOfRange
 } from "../../error/ErrDecimalFloat.sol";
 
 /// @dev Thrown when attempting to rescale a coefficient to a target exponent
@@ -60,6 +66,10 @@ uint256 constant POW10_RAW_ERROR = 328;
 /// @dev The most, in units of 1e-50, that the true log can lie from
 /// `log10Unrounded`. See `log10Unrounded`.
 uint256 constant LOG10_RAW_ERROR = 2;
+
+/// @dev The largest z, at 1e-50, whose 16th power is below 1e-50, so the
+/// eighth power of z^2 in `log10Ratio` floors to zero.
+uint256 constant LOG10_RATIO_Z_MAX = 74989420933245582730218427561513643844186791816;
 
 /// @dev Library implementing core DecimalFloat operations using only stack
 /// variables.
@@ -541,8 +551,31 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// mulDiv(x, y, POW_FIXED_ONE) for a quotient below 2^256.
+    /// mulDiv(x, y, POW_FIXED_ONE), reverting `MulDivOverflow` for a quotient
+    /// of 2^256 or more.
     function mulDivFixed(uint256 x, uint256 y) internal pure returns (uint256 result) {
+        uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
+        uint256 prod1;
+        assembly ("memory-safe") {
+            let mm := mulmod(x, y, not(0))
+            let prod0 := mul(x, y)
+            // slither-disable-next-line too-many-digits
+            let remainder := mulmod(x, y, 100000000000000000000000000000000000000000000000000)
+            prod1 := sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0))
+            prod0 := sub(prod0, remainder)
+            result := mul(or(shr(50, prod0), shl(206, prod1)), inverse)
+        }
+        // [prod1 prod0] is x y less its remainder, a multiple of 1e50, so the
+        // quotient is below 2^256 exactly when prod1 is below 1e50.
+        if (prod1 >= POW_FIXED_ONE) {
+            revert MulDivOverflow(x, y, POW_FIXED_ONE);
+        }
+    }
+
+    /// `mulDivFixed` without its range check, for the series in `log10Ratio`
+    /// and `exp10Fixed`, whose factors are each at most 1e51 so the quotient
+    /// is below 1e52.
+    function mulDivFixedUnguarded(uint256 x, uint256 y) private pure returns (uint256 result) {
         uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
         assembly ("memory-safe") {
             let mm := mulmod(x, y, not(0))
@@ -976,11 +1009,14 @@ library LibDecimalFloatImplementation {
     ///   log below log10(1.001), under 1.5e-52.
     /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. R
     ///   is within 16.7 units of C / 10^S, 1.67e-74 relative, which moves its
-    ///   log by under 1e-24 units. With log10Ratio's 1.0043 units the true
-    ///   log is within 1.0044 units, which rounds up to 2.
+    ///   log by under 1e-24 units. With log10Ratio's 1 + 8.3 z, under 1.0043
+    ///   units for z at most 5e-4, the true log is within 1.0044 units, which
+    ///   rounds up to 2.
     /// - log10(10^k) is exactly k.
     /// A characteristic of 1e25 or more is summed by `add`, which loses under
-    /// a unit of the sum's exponent, at least -50.
+    /// a unit of the sum's exponent, at least -50. A characteristic past
+    /// `type(int256).max`, the floor of the log or one more from 9.999 of a
+    /// power of ten, reverts `ExponentOverflow` with the input.
     ///
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
@@ -995,25 +1031,35 @@ library LibDecimalFloatImplementation {
                 revert Log10Negative(signedCoefficient, exponent);
             }
         }
+        int256 inputCoefficient = signedCoefficient;
+        int256 inputExponent = exponent;
         int256 shortfall = 0;
         // A coefficient of at least 1e75 is in place. Below it, scaleUp shifts
         // by at most 75 digits, which the exponent takes unless it is within
         // 75 of the floor, where maximize returns the shortfall.
         if (signedCoefficient < 1e75) {
             if (exponent >= type(int256).min + 75) {
-                (signedCoefficient, exponent) = scaleUp(signedCoefficient, exponent);
+                (signedCoefficient, exponent) = scaleUpUnguarded(signedCoefficient, exponent);
             } else {
                 (signedCoefficient, exponent, shortfall) = maximize(signedCoefficient, exponent);
             }
         }
 
-        if (signedCoefficient >= 1e76) {
-            signedCoefficient /= 10;
-            exponent += 1;
-        }
         // The input is the coefficient at 10^(exponent - shortfall), and its
-        // log is at least int256.min, so the characteristic cannot overflow.
-        int256 characteristic = exponent + 75 - shortfall;
+        // log is at least int256.min, so the characteristic cannot pass it.
+        // shortfall is at most 75, so the characteristic is below exponent
+        // only by wrapping past int256.max.
+        int256 characteristic;
+        unchecked {
+            characteristic = exponent + 75 - shortfall;
+            if (signedCoefficient >= 1e76) {
+                signedCoefficient /= 10;
+                characteristic += 1;
+            }
+        }
+        if (characteristic < exponent) {
+            revert ExponentOverflow(inputCoefficient, inputExponent);
+        }
         if (signedCoefficient == 1e75) {
             return (characteristic, 0);
         }
@@ -1024,7 +1070,12 @@ library LibDecimalFloatImplementation {
         if (signedCoefficient < 1.001e75) {
             estimate = 1e75;
         } else if (signedCoefficient >= 9.999e75) {
-            characteristic += 1;
+            if (characteristic == type(int256).max) {
+                revert ExponentOverflow(inputCoefficient, inputExponent);
+            }
+            unchecked {
+                characteristic += 1;
+            }
             estimate = 1e76;
         } else {
             estimate = 1e75;
@@ -1057,23 +1108,25 @@ library LibDecimalFloatImplementation {
     /// a and b within a few parts in ten thousand of each other.
     ///
     /// Error, in units of 1e-50 unless stated, for z = |a - b| / (a + b) at
-    /// most 5.1e-4. That holds as a / b is within a factor 1.001 at a power
-    /// of ten and within 10^(2^-16) after `log10Reduce`.
+    /// most `LOG10_RATIO_Z_MAX`, 7.499e-4. A larger z, a + b past 2^256 or b
+    /// of zero reverts `Log10RatioOutOfRange`. `log10Unrounded` passes z at
+    /// most 5e-4: a / b within a factor 1.001 at a power of ten and within
+    /// 10^(2^-16) after `log10Reduce`.
     /// - The floored z and z^2 make each power of z^2 at most 2.001 below its
     ///   exact value, then at most 1.000001 once the floor dominates. Each
-    ///   term's divide floors a further unit. z^16 is below 1e-50, so the loop
-    ///   stops by the eighth power and the floored series is at most 8.4 below
-    ///   atanh(z) / z.
+    ///   term's divide floors a further unit. z^16 is below 1e-50, so the
+    ///   eighth power floors to zero and the floored series is at most 8.4
+    ///   below atanh(z) / z.
     /// - Scaling by 2 / ln 10 floors a unit, and POW_FIXED_LN10 is 0.2976
     ///   below ln 10 1e50, so the scaled series is within (-8.3, 1.3e-51
     ///   relative] of 2 atanh(z) / (z ln 10).
     /// - The last mulDiv multiplies that by z, or by z 10^k when `relative`,
     ///   and floors a unit. Not relative, the result is within 1 + 8.3 z,
-    ///   under 1.0043, units of the log. Relative, it is within the coefficient C times 9.6e-50, plus
+    ///   under 1.0063, units of the log. Relative, it is within the coefficient C times 9.6e-50, plus
     ///   a unit, below and 1.3e-51 relative above, so within C / 1e49 + 2
     ///   units of its exponent.
-    /// @param a The numerator, at most 1e76.
-    /// @param b The denominator, at most 1e76.
+    /// @param a The numerator.
+    /// @param b The denominator.
     /// @param relative `true` for at least 48 significant digits however small
     /// the log, which needs a + b of at least 1e50 and reverts
     /// `Log10RatioRelativeSumTooSmall` below it, `false` for a coefficient at
@@ -1084,14 +1137,24 @@ library LibDecimalFloatImplementation {
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
-        uint256 sum = a + b;
+        uint256 sum;
+        unchecked {
+            sum = a + b;
+        }
         uint256 z;
         int256 exponent = -50;
         if (relative) {
+            // sum is below a only by wrapping past 2^256.
+            if (sum < a) {
+                revert Log10RatioOutOfRange(a, b);
+            }
             if (sum < POW_FIXED_ONE) {
                 revert Log10RatioRelativeSumTooSmall(a, b);
             }
             z = mulDiv(difference, POW_FIXED_ONE, sum);
+            if (z > LOG10_RATIO_Z_MAX) {
+                revert Log10RatioOutOfRange(a, b);
+            }
             // Scale the difference by the largest power of ten that keeps it
             // within int256.max, as maximizeFull does.
             unchecked {
@@ -1127,14 +1190,21 @@ library LibDecimalFloatImplementation {
                 }
             }
         } else {
+            // sum is at most a by wrapping past 2^256 or for b of zero.
+            if (sum <= a) {
+                revert Log10RatioOutOfRange(a, b);
+            }
             z = mulDiv(difference, POW_FIXED_ONE, sum);
+            if (z > LOG10_RATIO_Z_MAX) {
+                revert Log10RatioOutOfRange(a, b);
+            }
         }
-        uint256 zSquared = mulDivFixed(z, z);
+        uint256 zSquared = mulDivFixedUnguarded(z, z);
         // atanh(z) / z
         uint256 series = POW_FIXED_ONE;
         uint256 term = POW_FIXED_ONE;
         for (uint256 k = 3; term > 0; k += 2) {
-            term = mulDivFixed(term, zSquared);
+            term = mulDivFixedUnguarded(term, zSquared);
             series += term / k;
         }
         // The scaled series is below 0.8686e50, so the quotient is below it
@@ -1145,13 +1215,35 @@ library LibDecimalFloatImplementation {
         return (below ? -signedCoefficient : signedCoefficient, exponent);
     }
 
-    /// Scales a coefficient in (0, 1e75) up into [1e75, 1e76), lowering the
-    /// exponent by the at most 75 digits of the shift.
-    /// @param signedCoefficient The signed coefficient, in (0, 1e75).
-    /// @param exponent The exponent, at least `type(int256).min + 75`.
+    /// Scales a coefficient in (0, 1e76) into [1e75, 1e76), lowering the
+    /// exponent by the at most 75 digits of the shift. A coefficient outside
+    /// (0, 1e76), or a shift that takes the exponent past `type(int256).min`,
+    /// reverts `ScaleUpOutOfRange`.
+    /// @param signedCoefficient The signed coefficient.
+    /// @param exponent The exponent.
     /// @return signedCoefficient The scaled coefficient.
     /// @return exponent The exponent of the scaled coefficient.
     function scaleUp(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        unchecked {
+            // A coefficient below 1 wraps to at least 2^255 - 1.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (uint256(signedCoefficient) - 1 >= 1e76 - 1) {
+                revert ScaleUpOutOfRange(signedCoefficient, exponent);
+            }
+        }
+        (int256 scaledCoefficient, int256 scaledExponent) = scaleUpUnguarded(signedCoefficient, exponent);
+        // The shift is at most 75, so the exponent rises only by wrapping
+        // past int256.min.
+        if (scaledExponent > exponent) {
+            revert ScaleUpOutOfRange(signedCoefficient, exponent);
+        }
+        return (scaledCoefficient, scaledExponent);
+    }
+
+    /// `scaleUp` without its range checks, for `log10Unrounded` and `sqrt`,
+    /// which pass a coefficient in (0, 1e76) and check the exponent
+    /// themselves.
+    function scaleUpUnguarded(int256 signedCoefficient, int256 exponent) private pure returns (int256, int256) {
         unchecked {
             // Each step multiplies by 10^s only when c < 10^(76 - s), so c
             // stays below 1e76, and leaves c at least 10^(76 - s). That holds
@@ -1194,16 +1286,28 @@ library LibDecimalFloatImplementation {
     /// The square root of a positive float, rounded to nearest at 41
     /// significant digits. There is never a tie: the root is taken of an
     /// integer N, and r + 1/2 squared is r^2 + r + 1/4, never an integer.
-    /// @param signedCoefficient The coefficient, in (0, 1e76).
-    /// @param exponent The exponent, at least `type(int256).min + 81`.
+    /// A coefficient outside (0, 1e76), or an exponent that scaling the
+    /// coefficient into [1e75, 1e76) and evening would take past
+    /// `type(int256).min`, reverts `SqrtOutOfRange`.
+    /// @param signedCoefficient The coefficient.
+    /// @param exponent The exponent.
     /// @return signedCoefficient The root's coefficient, in [1e40, 1e41].
     /// @return exponent The root's exponent.
     function sqrt(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+        int256 inputCoefficient = signedCoefficient;
+        int256 inputExponent = exponent;
+        unchecked {
+            // A coefficient below 1 wraps to at least 2^255 - 1.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (uint256(signedCoefficient) - 1 >= 1e76 - 1) {
+                revert SqrtOutOfRange(signedCoefficient, exponent);
+            }
+        }
         // The value is C 10^e with C in [1e75, 1e76). A root halves e, so it
         // is taken of N 10^(e - s) with N = C 10^s and e - s even: s is 5 for
         // an odd e and 6 for an even one. N is in [1e80, 1e82), so sqrt N is
         // in [1e40, 1e41) at exponent (e - s) / 2.
-        (signedCoefficient, exponent) = scaleUp(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = scaleUpUnguarded(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 coefficient = uint256(signedCoefficient);
@@ -1217,7 +1321,13 @@ library LibDecimalFloatImplementation {
                 estimate = coefficient / 10;
             }
             // forge-lint: disable-next-line(unsafe-typecast)
-            exponent = (exponent - (scale == 1e5 ? int256(5) : int256(6))) / 2;
+            exponent -= scale == 1e5 ? int256(5) : int256(6);
+            // The scale and s take off at most 81, so exponent is above the
+            // input's only by wrapping past int256.min.
+            if (exponent > inputExponent) {
+                revert SqrtOutOfRange(inputCoefficient, inputExponent);
+            }
+            exponent /= 2;
             uint256 root;
             // A Newton step replaces a guess x of sqrt E by the average of x
             // and E / x. One is above the root and the other below it, so the
@@ -1273,12 +1383,19 @@ library LibDecimalFloatImplementation {
     /// the reduced x is within (-16.7, 0.7] of x / 10^seed. A step leaves x
     /// below the next threshold, so the reduced x is in (1e75 - 1.05,
     /// 1e75 10^(2^-16)).
-    /// @param x A value in [1e75, 1e76).
+    /// @param x A value in [1e75, 1e76), reverting `Log10ReduceOutOfRange` outside
+    /// it.
     /// @return The reduced x.
     /// @return seed The summed powers at the `POW_FIXED_ONE` scale.
     // slither-disable-start too-many-digits
     //slither-disable-next-line cyclomatic-complexity
     function log10Reduce(uint256 x) internal pure returns (uint256, uint256 seed) {
+        unchecked {
+            // x below 1e75 wraps to at least 2^256 - 1e75.
+            if (x - 1e75 >= 9e75) {
+                revert Log10ReduceOutOfRange(x);
+            }
+        }
         assembly ("memory-safe") {
             // x is the reduced x times 10^(seed / 1e50), so log10(x) is
             // log10(reduced) + seed / 1e50. Step i finds the i-th binary
@@ -1483,10 +1600,14 @@ library LibDecimalFloatImplementation {
     ///   sum under 0.079, so it is under 1.079 below 10^r, which is at least 1.
     /// - The last multiply floors under a unit.
     /// In all that is under 30.471.
-    /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1).
+    /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1), reverting
+    /// `Exp10FixedOutOfRange` past it.
     /// @return result The power at the `POW_FIXED_ONE` scale, in [1, 10).
     //slither-disable-next-line cyclomatic-complexity
     function exp10Fixed(uint256 x) internal pure returns (uint256 result) {
+        if (x >= POW_FIXED_ONE) {
+            revert Exp10FixedOutOfRange(x);
+        }
         unchecked {
             result = POW_FIXED_ONE;
             if (x >= 5e49) {
@@ -1495,75 +1616,75 @@ library LibDecimalFloatImplementation {
             }
             if (x >= 2.5e49) {
                 x -= 2.5e49;
-                result = mulDivFixed(result, 177827941003892280122542119519268484473579052640225);
+                result = mulDivFixedUnguarded(result, 177827941003892280122542119519268484473579052640225);
             }
             if (x >= 1.25e49) {
                 x -= 1.25e49;
-                result = mulDivFixed(result, 133352143216332402567593171529533109241566796476437);
+                result = mulDivFixedUnguarded(result, 133352143216332402567593171529533109241566796476437);
             }
             if (x >= 6.25e48) {
                 x -= 6.25e48;
-                result = mulDivFixed(result, 115478198468945817966648288729550828156694804147961);
+                result = mulDivFixedUnguarded(result, 115478198468945817966648288729550828156694804147961);
             }
             if (x >= 3.125e48) {
                 x -= 3.125e48;
-                result = mulDivFixed(result, 107460782832131749721594153196434359466719822837527);
+                result = mulDivFixedUnguarded(result, 107460782832131749721594153196434359466719822837527);
             }
             if (x >= 1.5625e48) {
                 x -= 1.5625e48;
-                result = mulDivFixed(result, 103663292843769799729165172492534446770887303110100);
+                result = mulDivFixedUnguarded(result, 103663292843769799729165172492534446770887303110100);
             }
             if (x >= 7.8125e47) {
                 x -= 7.8125e47;
-                result = mulDivFixed(result, 101815172171818184147422688857883534761587963866759);
+                result = mulDivFixedUnguarded(result, 101815172171818184147422688857883534761587963866759);
             }
             if (x >= 3.90625e47) {
                 x -= 3.90625e47;
-                result = mulDivFixed(result, 100903504484144743775925442390642133138116897958823);
+                result = mulDivFixedUnguarded(result, 100903504484144743775925442390642133138116897958823);
             }
             if (x >= 1.953125e47) {
                 x -= 1.953125e47;
-                result = mulDivFixed(result, 100450736425446251566479469434131766413696548644885);
+                result = mulDivFixedUnguarded(result, 100450736425446251566479469434131766413696548644885);
             }
             if (x >= 9.765625e46) {
                 x -= 9.765625e46;
-                result = mulDivFixed(result, 100225114829291291546567363886657119245424113020822);
+                result = mulDivFixedUnguarded(result, 100225114829291291546567363886657119245424113020822);
             }
             if (x >= 4.8828125e46) {
                 x -= 4.8828125e46;
-                result = mulDivFixed(result, 100112494139987987588542643436571177327133841887328);
+                result = mulDivFixedUnguarded(result, 100112494139987987588542643436571177327133841887328);
             }
             if (x >= 2.44140625e46) {
                 x -= 2.44140625e46;
-                result = mulDivFixed(result, 100056231260220863661851136780963697869649047983110);
+                result = mulDivFixedUnguarded(result, 100056231260220863661851136780963697869649047983110);
             }
             if (x >= 1.220703125e46) {
                 x -= 1.220703125e46;
-                result = mulDivFixed(result, 100028111678778013239925736576968704561701000407571);
+                result = mulDivFixedUnguarded(result, 100028111678778013239925736576968704561701000407571);
             }
             if (x >= 6.103515625e45) {
                 x -= 6.103515625e45;
-                result = mulDivFixed(result, 100014054851694725816277118785892892480765770706773);
+                result = mulDivFixedUnguarded(result, 100014054851694725816277118785892892480765770706773);
             }
             if (x >= 3.0517578125e45) {
                 x -= 3.0517578125e45;
-                result = mulDivFixed(result, 100007027178941143553881363867653576320883673909194);
+                result = mulDivFixedUnguarded(result, 100007027178941143553881363867653576320883673909194);
             }
             if (x >= 1.52587890625e45) {
                 x -= 1.52587890625e45;
-                result = mulDivFixed(result, 100003513527746185660858233586155663318996214797054);
+                result = mulDivFixedUnguarded(result, 100003513527746185660858233586155663318996214797054);
             }
             uint256 series = 501392883377544009807090987164215453583108663277;
-            series = 1959769462647852369682789087147690310674843760584 + mulDivFixed(series, x);
-            series = 6808936507443706236540404026537606122629959236393 + mulDivFixed(series, x);
-            series = 20699584869686809669966601589738494188245922773010 + mulDivFixed(series, x);
-            series = 53938292919558141019969155571017253478007614081814 + mulDivFixed(series, x);
-            series = 117125514891226696317825761603265234076100689858139 + mulDivFixed(series, x);
-            series = 203467859229347619683099119171381053024105502647771 + mulDivFixed(series, x);
-            series = 265094905523919900528083319429700884579872503956640 + mulDivFixed(series, x);
-            series = POW_FIXED_LN10 + mulDivFixed(series, x);
-            series = POW_FIXED_ONE + mulDivFixed(series, x);
-            result = mulDivFixed(result, series);
+            series = 1959769462647852369682789087147690310674843760584 + mulDivFixedUnguarded(series, x);
+            series = 6808936507443706236540404026537606122629959236393 + mulDivFixedUnguarded(series, x);
+            series = 20699584869686809669966601589738494188245922773010 + mulDivFixedUnguarded(series, x);
+            series = 53938292919558141019969155571017253478007614081814 + mulDivFixedUnguarded(series, x);
+            series = 117125514891226696317825761603265234076100689858139 + mulDivFixedUnguarded(series, x);
+            series = 203467859229347619683099119171381053024105502647771 + mulDivFixedUnguarded(series, x);
+            series = 265094905523919900528083319429700884579872503956640 + mulDivFixedUnguarded(series, x);
+            series = POW_FIXED_LN10 + mulDivFixedUnguarded(series, x);
+            series = POW_FIXED_ONE + mulDivFixedUnguarded(series, x);
+            result = mulDivFixedUnguarded(result, series);
         }
     }
 
@@ -1776,11 +1897,21 @@ library LibDecimalFloatImplementation {
     /// int224, so for the most negative coefficient it raises the exponent,
     /// and reverts `ExponentOverflow` when the exponent is already at its
     /// maximum. Here the coefficient is already widened to an int256, so
-    /// negating an int224 is exact and cannot overflow.
-    /// @param signedCoefficient The coefficient, within int224.
+    /// negating an int224 is exact and cannot overflow. Every int256 but
+    /// `type(int256).min` negates exactly; that one reverts
+    /// `AbsCoefficientOverflow`.
+    /// @param signedCoefficient The coefficient.
     /// @return The non-negative coefficient.
     function absCoefficient(int256 signedCoefficient) internal pure returns (int256) {
-        return signedCoefficient < 0 ? -signedCoefficient : signedCoefficient;
+        if (signedCoefficient < 0) {
+            if (signedCoefficient == type(int256).min) {
+                revert AbsCoefficientOverflow(signedCoefficient);
+            }
+            unchecked {
+                return -signedCoefficient;
+            }
+        }
+        return signedCoefficient;
     }
 
     /// Whether A is less than B, without packing either.
