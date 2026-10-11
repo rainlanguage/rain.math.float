@@ -7,7 +7,8 @@ import {LibDecimalFloatPackLossyLiftFirst} from "test/lib/LibDecimalFloatPackLos
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 /// `packLossy` returns and reverts the same bytes as the lift-first version
-/// for every input.
+/// for every input. Equivalence only, not a value check:
+/// `checkPackLossyValue` checks values against exact math.
 contract LibDecimalFloatPackLossyLiftFirstEquivalenceTest is Test {
     function liftFirstPackLossy(int256 c, int256 e) external pure returns (Float, bool) {
         return LibDecimalFloatPackLossyLiftFirst.packLossy(c, e);

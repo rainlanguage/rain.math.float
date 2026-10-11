@@ -14,7 +14,10 @@ import {
 /// from `src/lib/implementation/LibDecimalFloatImplementation.sol` at main
 /// 2b19ed13b90420ffc74dcb528f9f67e9e71b315e, before `maximize` returned a
 /// shortfall. Every helper they call is unchanged since that commit, so it is
-/// called on the live library. Equivalence tests only.
+/// called on the live library. EQUIVALENCE BASELINE ONLY, NEVER A VALUE
+/// ORACLE: it copies the old steps, including the mixed-sign add rounding of
+/// #340, so agreeing with it says nothing about a value. Expected values come
+/// from `LibTestExactDecimal` over exact math.
 library LibDecimalFloatImplementationMain {
     function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, bool) {
         unchecked {

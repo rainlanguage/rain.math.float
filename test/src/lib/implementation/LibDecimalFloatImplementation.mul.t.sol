@@ -120,7 +120,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         assertTrue(LibTestExactDecimal.eq(resultCoeff, resultExp, signedCoefficient, exponent), "a * 1 should equal a");
     }
 
-    /// a * b and b * a are both the exact product's parts as `mulPartsWide`,
+    /// a * b and b * a are both the exact product's parts as `mulPayloadWide`,
     /// each reverting `ExponentOverflow` with its first operand where those
     /// overflow.
     function testMulCommutative(
@@ -137,7 +137,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         internal
     {
         (bool overflowed, int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.mulPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibTestExactDecimal.mulPayloadWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         if (overflowed) {
             checkMulExponentOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             return;
@@ -163,7 +163,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         assertEq(exponent - 2 * bound, 77);
     }
 
-    /// The exact product floored to 256 bits as `mulParts`, with the digits
+    /// The exact product floored to 256 bits as `mulPayload`, with the digits
     /// below `10^type(int256).min` truncated towards zero.
     function mulBelowFloorExpected(
         int256 signedCoefficientA,
@@ -172,7 +172,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         int256 exponentB
     ) internal pure returns (int256, int256) {
         (int256 signedCoefficient, int256 shed) =
-            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+            LibTestExactDecimal.mulPayload(signedCoefficientA, 0, signedCoefficientB, 0);
         return LibTestExactDecimal.atFloor(signedCoefficient, exponentA - type(int256).min + exponentB + shed);
     }
 
@@ -324,7 +324,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         int256 exponentB
     ) internal {
         (int256 expectedSignedCoefficient, int256 normalisedExponent) =
-            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+            LibTestExactDecimal.productInt256(signedCoefficientA, signedCoefficientB);
         // exponentA is non-negative and exponentB + normalisedExponent small,
         // so neither side wraps.
         if (exponentB + normalisedExponent > type(int256).max - exponentA) {
@@ -378,7 +378,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         exponentA = bound(exponentA, 0, type(int256).max);
         exponentB = bound(exponentB, 0, type(int256).max);
         (int256 expectedSignedCoefficient, int256 normalisedExponent) =
-            LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+            LibTestExactDecimal.productInt256(signedCoefficientA, signedCoefficientB);
         if (exponentB > type(int256).max - exponentA - normalisedExponent) {
             checkMulExponentOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         } else {
@@ -417,7 +417,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
     ) internal view {
         bool overflows = false;
         if (signedCoefficientA != 0 && signedCoefficientB != 0) {
-            (, int256 lift) = LibTestExactDecimal.mulParts(signedCoefficientA, 0, signedCoefficientB, 0);
+            (, int256 lift) = LibTestExactDecimal.productInt256(signedCoefficientA, signedCoefficientB);
             overflows = exceedsCeiling(exponentA, exponentB, lift);
         }
         try this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) {

@@ -1,7 +1,9 @@
 //! The `LibDecimalFloat`, `LibFormatDecimalFloat` and `LibParseDecimalFloat`
 //! functions `TestDecimalFloat` does not expose, called by their own names on
 //! `TestDecimalFloatHarness`, against the exact reference and the Python
-//! oracle as strictly as `exact.rs`: the same bytes, or the same single error.
+//! oracle as strictly as `exact.rs`: the same value, or the same single error.
+//! Bytes are compared only where NatSpec documents the representation: a pack
+//! of a non-zero coefficient that already fits, and `canonicalize`.
 
 use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
 use crate::exact::{self as x, Fail, Sol, check_float, config, error_matches, py_float, show};
@@ -10,7 +12,7 @@ use crate::reference::{self as r, Dec, I32_MAX, I32_MIN, RefError, pow10};
 use alloy::primitives::{I256, U256};
 use alloy::sol_types::SolCall;
 use num_bigint::BigInt;
-use num_traits::Signed;
+use num_traits::{Signed, Zero};
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde_json::{Value, json};
@@ -217,7 +219,37 @@ fn py_pack(c: &BigInt, e: &BigInt, op: &str) -> Option<Value> {
     in_python_range(e).then(|| ask(json!({"op": op, "a": py_pair(c, e)})))
 }
 
-/// `packLossy`: the bytes `pack` fits, the flag, or `ExponentOverflow`.
+/// Packing's NatSpec sheds digits "as many times as it takes" to fit, so a
+/// non-zero coefficient that already fits int224 at an int32 exponent packs
+/// to its own bytes. Any other representation is undocumented (#345).
+fn representation_documented(c: &BigInt, e: &BigInt) -> bool {
+    !c.is_zero() && r::fits_int224(c) && *e >= BigInt::from(I32_MIN) && *e <= BigInt::from(I32_MAX)
+}
+
+/// A packed result and its flag: the reference's value, and its bytes where
+/// `documented`, or the same single error.
+fn judge_pack<F: PartialEq + std::fmt::Debug>(
+    case: &str,
+    sol: Sol<(alloy::primitives::B256, F)>,
+    want: Result<(Dec, F), RefError>,
+    documented: bool,
+) -> Result<(), TestCaseError> {
+    match (sol, want) {
+        (Ok((s, sf)), Ok((w, wf))) => {
+            prop_assert_eq!(sf, wf, "{}: flag", case);
+            if documented {
+                prop_assert_eq!(s, w.to_bytes(), "{}: reference {:?}", case, w);
+            } else {
+                let s = Dec::from_bytes(s);
+                prop_assert!(s.eq_value(&w), "{case}: solidity {s:?}, reference {w:?}");
+            }
+            Ok(())
+        }
+        (s, w) => judge(case, s.map(|(s, _)| s), w.map(|(w, _)| w.to_bytes())),
+    }
+}
+
+/// `packLossy`: the value `pack` fits, the flag, or `ExponentOverflow`.
 fn check_pack_lossy(c: &BigInt, e: &BigInt) -> Result<(), TestCaseError> {
     let sol = harness(H::packLossyCall {
         signedCoefficient: i256(c),
@@ -245,21 +277,23 @@ fn check_pack_lossy_with(
         };
         judge_py(&case, py, &want.clone().map(|(w, l)| (norm(&w), l)))?;
     }
-    judge(
+    judge_pack(
         &case,
         sol.map(|s| (s._0, s._1)),
-        want.map(|(w, l)| (w.to_bytes(), l)),
+        want,
+        representation_documented(c, e),
     )
 }
 
-/// A packed result must be the reference's bytes, not only its value.
+/// A packed result: the reference's value, and its bytes where `documented`.
 fn check_packed(
     case: &str,
     sol: Sol<alloy::primitives::B256>,
     want: Result<Dec, RefError>,
     py: Option<Value>,
+    documented: bool,
 ) -> Result<(), TestCaseError> {
-    if let (Ok(s), Ok(w)) = (&sol, &want) {
+    if let (Ok(s), Ok(w), true) = (&sol, &want, documented) {
         prop_assert_eq!(*s, w.to_bytes(), "{}: reference {:?}", case, w);
     }
     let sol = sol.map(Dec::from_bytes);
@@ -285,6 +319,7 @@ fn check_pack_lossless(c: &BigInt, e: &BigInt) -> Result<(), TestCaseError> {
         }),
         r::pack_lossless(c, e),
         py_pack(c, e, "pack_lossless"),
+        representation_documented(c, e),
     )
 }
 
@@ -297,6 +332,7 @@ fn check_pack_arithmetic(c: &BigInt, e: &BigInt) -> Result<(), TestCaseError> {
         }),
         r::pack_arithmetic(c, e),
         py_pack(c, e, "pack_arithmetic"),
+        representation_documented(c, e),
     )
 }
 
@@ -567,7 +603,9 @@ fn check_parse_entry_points_with(
     match (whole, want) {
         (Ok(s), Ok(w)) => {
             prop_assert_eq!(s._0.0, [0u8; 4], "{}: error", case);
-            prop_assert_eq!(s._1, w.to_bytes(), "{}: reference {:?}", case, w);
+            // NatSpec documents the value, not its representation (#345).
+            let s = Dec::from_bytes(s._1);
+            prop_assert!(s.eq_value(&w), "{case}: solidity {s:?}, reference {w:?}");
         }
         (Ok(s), Err(w)) if !reverts => {
             prop_assert!(
@@ -736,7 +774,9 @@ fn library_pack_nearest_bound() {
         match want {
             Some((wc, we, wl)) => {
                 let (v, lossless) = got.unwrap();
-                assert_eq!((v.c, v.e, lossless), (wc, we, wl), "packLossy({c}, {e})");
+                let w = Dec::new(wc, we);
+                assert!(v.eq_value(&w), "packLossy({c}, {e}): {v:?}, want {w:?}");
+                assert_eq!(lossless, wl, "packLossy({c}, {e}) lossless");
             }
             None => assert_eq!(got.unwrap_err(), r::RefError::ExponentOverflow),
         }
@@ -1000,14 +1040,55 @@ mod checker {
             _1: true,
         });
         assert!(check_pack_lossy_with(&c, &e, underflow(), lossless).is_err());
+        // 10^70 does not fit int224, so its representation is undocumented:
+        // any bytes of its value are accepted, and no other value.
+        let (c, e) = (pow10(70), BigInt::from(0));
+        let py = || Some(json!({"ok": [["1", 70], true]}));
+        let packed = |v: Dec, l: bool| {
+            Ok(H::packLossyReturn {
+                _0: v.to_bytes(),
+                _1: l,
+            })
+        };
+        for v in [
+            Dec::new(pow10(66), 4),
+            Dec::new(pow10(67), 3),
+            Dec::new(1, 70),
+        ] {
+            assert!(check_pack_lossy_with(&c, &e, py(), packed(v, true)).is_ok());
+        }
+        assert!(check_pack_lossy_with(&c, &e, py(), packed(Dec::new(1, 70), false)).is_err());
+        assert!(check_pack_lossy_with(&c, &e, py(), packed(Dec::new(2, 70), true)).is_err());
     }
 
     #[test]
     fn packed_rejects_other_bytes() {
         let py = || Some(json!({"ok": ["1", 0]}));
-        assert!(check_packed("checker", Ok(one().to_bytes()), Ok(one()), py()).is_ok());
-        assert!(check_packed("checker", Ok(Dec::new(10, -1).to_bytes()), Ok(one()), py()).is_err());
-        assert!(check_packed("checker", Ok(two().to_bytes()), Ok(one()), None).is_err());
+        assert!(check_packed("checker", Ok(one().to_bytes()), Ok(one()), py(), true).is_ok());
+        assert!(
+            check_packed(
+                "checker",
+                Ok(Dec::new(10, -1).to_bytes()),
+                Ok(one()),
+                py(),
+                true
+            )
+            .is_err()
+        );
+        assert!(check_packed("checker", Ok(two().to_bytes()), Ok(one()), None, true).is_err());
+        // Undocumented: another representation of the value is accepted,
+        // another value is not.
+        assert!(
+            check_packed(
+                "checker",
+                Ok(Dec::new(10, -1).to_bytes()),
+                Ok(one()),
+                py(),
+                false
+            )
+            .is_ok()
+        );
+        assert!(check_packed("checker", Ok(two().to_bytes()), Ok(one()), py(), false).is_err());
     }
 
     fn canonicalize_accepts(py: Value, sol: Dec, again: Dec) -> bool {
@@ -1264,7 +1345,16 @@ mod checker {
             whole(none, v),
             concrete(none, v)
         ));
-        // The whole parse.
+        // The whole parse: another representation of the value is accepted,
+        // as NatSpec documents no representation.
+        let same = Dec::new(150, -2).to_bytes();
+        assert!(parse_accepts(
+            "",
+            py(),
+            inline(none, 5, 15, -1),
+            whole(none, same),
+            concrete(none, same)
+        ));
         let other = Dec::new(16, -1).to_bytes();
         assert!(!parse_accepts(
             "",

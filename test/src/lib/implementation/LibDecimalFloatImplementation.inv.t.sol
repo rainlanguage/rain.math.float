@@ -21,11 +21,11 @@ contract LibDecimalFloatImplementationInvTest is Test {
     /// |x|`, decided exactly in 512 bits, with the sign of `x`. The parts are
     /// also those `div` documents for `1e76e-76 / x`, which picks between
     /// `1e76` and `1e75` at one exponent apart when `1 / x` is a power of ten:
-    /// `divPartsWide`, so `ExponentOverflow` above `type(int256).max` and below
+    /// `divPayloadWide`, so `ExponentOverflow` above `type(int256).max` and below
     /// `10^type(int256).min` the digits truncated towards zero.
     function checkInv(int256 signedCoefficient, int256 exponent) internal {
         (bool overflowed, int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.divPartsWide(1e76, -76, signedCoefficient, exponent);
+            LibTestExactDecimal.divPayloadWide(1e76, -76, signedCoefficient, exponent);
         if (overflowed) {
             vm.expectPartialRevert(ExponentOverflow.selector);
             this.invExternal(signedCoefficient, exponent);
@@ -35,7 +35,7 @@ contract LibDecimalFloatImplementationInvTest is Test {
         assertEq(q, expectedCoefficient, "coefficient");
         assertEq(e, expectedExponent, "exponent");
 
-        (, int256 unfloored) = LibTestExactDecimal.divParts(1e76, 0, signedCoefficient, 0);
+        (, int256 unfloored) = LibTestExactDecimal.divPayload(1e76, 0, signedCoefficient, 0);
         (int256 cls,) = LibTestExactDecimal.wideExponent(-76, exponent, 0, unfloored);
         if (cls == -1) {
             return;
