@@ -26,7 +26,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
         return LibDecimalFloat.add(a, b);
     }
 
-    /// The documented rounding of the exact sum (#340).
+    /// The documented rounding of the exact sum (#350).
     function checkAddValue(Float a, Float b, Float result) internal pure {
         (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloat.unpack(a);
         (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloat.unpack(b);
@@ -40,7 +40,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
     }
 
     /// Reverts only where the exact sum is beyond the largest Float of its
-    /// sign, otherwise is the documented rounding of the exact sum (#340),
+    /// sign, otherwise is the documented rounding of the exact sum (#350),
     /// and agrees with the unpacked path.
     function testAddPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloat.unpack(a);
@@ -62,17 +62,17 @@ contract LibDecimalFloatDecimalAddTest is Test {
         assertEq(exponent, exponentUnpacked);
     }
 
-    /// #340: the oracle accepts the one Float the rule gives and not the
-    /// other adjacent one. `1e100 - 1` rounds away from zero at `1e100`'s unit
-    /// `1e24` to `1e100`, not `(10^67 - 1)e33`. `1e76 - 1000000001.5` rounds
-    /// away from zero at `1e0` to `1e76 - 1000000001`, which packing truncates
-    /// to `(10^67 - 2)e9`, below the exact sum, not `(10^67 - 1)e9` above it.
-    /// `1e100 + 1e-100` truncates to `1e100`, not `(10^67 + 1)e33`.
+    /// #350: the oracle accepts the one Float the rule gives and not the
+    /// other adjacent one. `1e100 - 1` truncates towards zero to
+    /// `(10^67 - 1)e33`, not `1e100`.
+    /// `1e76 - 1000000001.5` truncates to `(10^67 - 2)e9`, not
+    /// `(10^67 - 1)e9` above it. `1e100 + 1e-100` truncates to `1e100`, not
+    /// `(10^67 + 1)e33`.
     function testAddCancelRuleAcceptsOneFloat() external pure {
-        Float away = LibDecimalFloat.packLossless(1, 100).add(LibDecimalFloat.packLossless(-1, 0));
-        assertTrue(away.eq(LibDecimalFloat.packLossless(1, 100)), "away from zero");
-        assertTrue(LibTestExactDecimal.isSumResult(1, 100, -1, 0, 1, 100), "away accepted");
-        assertFalse(LibTestExactDecimal.isSumResult(1, 100, -1, 0, 1e67 - 1, 33), "away: towards rejected");
+        Float cancel = LibDecimalFloat.packLossless(1, 100).add(LibDecimalFloat.packLossless(-1, 0));
+        assertTrue(cancel.eq(LibDecimalFloat.packLossless(1e67 - 1, 33)), "towards zero");
+        assertTrue(LibTestExactDecimal.isSumResult(1, 100, -1, 0, 1e67 - 1, 33), "towards accepted");
+        assertFalse(LibTestExactDecimal.isSumResult(1, 100, -1, 0, 1, 100), "away rejected");
 
         Float toward = LibDecimalFloat.packLossless(1e66, 10).add(LibDecimalFloat.packLossless(-10000000015, -1));
         assertTrue(toward.eq(LibDecimalFloat.packLossless(1e67 - 2, 9)), "towards zero");
@@ -94,7 +94,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
         return LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    /// #340: the parts `add` hands to packing are the exact sum rounded as
+    /// #350: the parts `add` hands to packing are the exact sum rounded as
     /// its NatSpec states.
     function testAddPartsMatchRule(Float a, Float b) external view {
         (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloat.unpack(a);
@@ -102,7 +102,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
         checkAddPartsMatchRule(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    /// #340: as `testAddPartsMatchRule`, with the operands' digits
+    /// #350: as `testAddPartsMatchRule`, with the operands' digits
     /// overlapping or adjacent.
     function testAddPartsMatchRuleNearby(
         int224 signedCoefficientA,
@@ -115,7 +115,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
         checkAddPartsMatchRule(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    /// #340: as `testAddPartsMatchRule`, with `a` within two units of `-b`'s
+    /// #350: as `testAddPartsMatchRule`, with `a` within two units of `-b`'s
     /// leading digits, so that the sum cancels down to `b`'s trailing digits.
     function testAddPartsMatchRuleCancelling(int224 signedCoefficientB, int32 exponentB, uint256 gap, int256 delta)
         external
@@ -148,7 +148,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
         assertEq(exponent, expectedExponent, "exponent");
     }
 
-    /// #340: magnitudes add, so `1e100 + 1e-100` truncates towards zero.
+    /// Magnitudes add, so `1e100 + 1e-100` truncates towards zero.
     function testAddRoundingSameSign() external pure {
         Float sum = LibDecimalFloat.packLossless(1, 100).add(LibDecimalFloat.packLossless(1, -100));
         assertTrue(sum.eq(LibDecimalFloat.packLossless(1, 100)));
@@ -156,27 +156,23 @@ contract LibDecimalFloatDecimalAddTest is Test {
         assertTrue(sum.eq(LibDecimalFloat.packLossless(-1, 100)));
     }
 
-    /// #340: magnitudes cancel, so `1e100 - 1` rounds away from zero at
-    /// `1e100`'s unit `1e24`, to `1e100`. Truncating towards zero would give
+    /// #350: magnitudes cancel, and `1e100 - 1` truncates towards zero to
     /// `(1e67 - 1)e33`.
-    function testAddRoundingCancelAway() external pure {
+    function testAddRoundingCancelTowardsZero() external pure {
         Float sum = LibDecimalFloat.packLossless(1, 100).add(LibDecimalFloat.packLossless(-1, 0));
-        assertTrue(sum.eq(LibDecimalFloat.packLossless(1, 100)));
-        sum = LibDecimalFloat.packLossless(-1, 100).add(LibDecimalFloat.packLossless(1, 0));
-        assertTrue(sum.eq(LibDecimalFloat.packLossless(-1, 100)));
-    }
-
-    /// #340: `1e100 - (1e33 + 1)` rounds away from zero at `1e24` to
-    /// `1e100 - 1e33`, which packing keeps: one unit in the last place above
-    /// `1e100 - 2e33`, the sum truncated towards zero.
-    function testAddRoundingCancelPartialDigitAway() external pure {
-        Float sum = LibDecimalFloat.packLossless(1, 100).add(LibDecimalFloat.packLossless(-(1e33 + 1), 0));
         assertTrue(sum.eq(LibDecimalFloat.packLossless(1e67 - 1, 33)));
+        sum = LibDecimalFloat.packLossless(-1, 100).add(LibDecimalFloat.packLossless(1, 0));
+        assertTrue(sum.eq(LibDecimalFloat.packLossless(-(1e67 - 1), 33)));
     }
 
-    /// #340: `1e100 - 1.7e33` and `1e100 - (1.5e33 + 1)` both land at or above
-    /// `1e100 - 2e33` after rounding at `1e24`, so packing truncates both to
-    /// `1e100 - 2e33`: towards zero, though magnitudes cancel.
+    /// #350: `1e100 - (1e33 + 1)` truncates towards zero to `1e100 - 2e33`.
+    function testAddRoundingCancelPartialDigit() external pure {
+        Float sum = LibDecimalFloat.packLossless(1, 100).add(LibDecimalFloat.packLossless(-(1e33 + 1), 0));
+        assertTrue(sum.eq(LibDecimalFloat.packLossless(1e67 - 2, 33)));
+    }
+
+    /// `1e100 - 1.7e33` and `1e100 - (1.5e33 + 1)` both truncate towards zero
+    /// to `1e100 - 2e33`.
     function testAddRoundingCancelPartialDigitTowardsZero() external pure {
         Float sum = LibDecimalFloat.packLossless(1, 100).add(LibDecimalFloat.packLossless(-17, 32));
         assertTrue(sum.eq(LibDecimalFloat.packLossless(1e67 - 2, 33)));

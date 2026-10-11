@@ -5,10 +5,8 @@
 //! Every rounding below is the one the library documents: a result becomes
 //! the Float closest to it that does not exceed its magnitude (`packLossy`).
 //! A result no non-zero Float is within is `ExponentUnderflow`; a result
-//! larger in magnitude than every Float is `ExponentOverflow`. Addition first
-//! rounds the exact sum to a multiple of the larger operand's int256 unit,
-//! towards zero when the signs agree and away from zero when they differ, as
-//! `LibDecimalFloat.add` documents.
+//! larger in magnitude than every Float is `ExponentOverflow`. Addition is
+//! the exact sum rounded once so, as `LibDecimalFloat.add` documents.
 
 use alloy::primitives::{B256, U256};
 use core::cmp::Ordering;
@@ -412,8 +410,9 @@ fn int256_unit(x: &Dec) -> i64 {
 }
 
 /// `add`'s sum before packing, as its NatSpec states it: the exact sum
-/// rounded to a multiple of the larger operand's int256 unit, towards zero
-/// when the signs agree and away from zero when they differ.
+/// truncated towards zero to a multiple of the larger operand's int256 unit.
+/// Packing truncates again, which composes, so `add` is the exact sum
+/// rounded once towards zero.
 fn rounded_sum(a: &Dec, b: &Dec) -> Dec {
     if a.is_zero() {
         return b.clone();
@@ -429,9 +428,15 @@ fn rounded_sum(a: &Dec, b: &Dec) -> Dec {
     let unit = int256_unit(big);
     // Under one unit, `small` leaves the exact sum strictly within a unit of
     // `big`, a multiple of it: outwards when the signs agree, so towards zero
-    // is `big`, and inwards when they differ, so away from zero is `big`.
+    // is `big`, and inwards when they differ, so towards zero is one unit
+    // nearer zero than `big`.
     if small.e + (digits(&small.c) as i64) <= unit {
-        return big.clone();
+        if a.is_negative() == b.is_negative() {
+            return big.clone();
+        }
+        let units = &big.c * pow10((big.e - unit) as u64);
+        let step = if big.is_negative() { -1 } else { 1 };
+        return Dec::new(units - step, unit);
     }
     let exact = big
         .add_exact(small)
@@ -439,14 +444,8 @@ fn rounded_sum(a: &Dec, b: &Dec) -> Dec {
     if exact.e >= unit {
         return exact;
     }
-    let k = (unit - exact.e) as u64;
-    let mut c = shed(&exact.c, k);
-    if a.is_negative() != b.is_negative()
-        && Dec::new(c.clone(), unit).cmp_value(&exact) != Ordering::Equal
-    {
-        c += if exact.is_negative() { -1 } else { 1 };
-    }
-    Dec::new(c, unit)
+    // Truncating division, towards zero.
+    Dec::new(shed(&exact.c, (unit - exact.e) as u64), unit)
 }
 
 /// `add`: the rounded sum, packed.
@@ -932,22 +931,26 @@ mod tests {
         }
     }
 
-    /// `add`'s NatSpec examples, #340.
+    /// `add`'s NatSpec examples, #350: the exact sum rounded once towards
+    /// zero.
     #[test]
     fn add_rounding_examples() {
         let nines = |e| Dec::new(pow10(67) - 1u32, e);
         let cases = [
-            // Signs agree: towards zero.
+            // Signs agree.
             ((1, 100), (1, -100), Dec::new(1, 100)),
             ((-1, 100), (-1, -100), Dec::new(-1, 100)),
             ((1, 0), (1, -100), Dec::new(1, 0)),
-            // Signs differ: away from zero at the larger operand's unit, then
-            // packed.
-            ((1, 100), (-1, 0), Dec::new(1, 100)),
-            ((-1, 100), (1, 0), Dec::new(-1, 100)),
-            ((1, 0), (-1, -100), Dec::new(1, 0)),
+            // Signs differ.
+            ((1, 100), (-1, 0), nines(33)),
+            ((-1, 100), (1, 0), Dec::new(-(pow10(67) - 1u32), 33)),
+            ((1, 0), (-1, -100), nines(-67)),
             ((1, 100), (-17, 32), Dec::new(pow10(67) - 2u32, 33)),
-            ((1, 100), (-(10i128.pow(33) + 1), 0), nines(33)),
+            (
+                (1, 100),
+                (-(10i128.pow(33) + 1), 0),
+                Dec::new(pow10(67) - 2u32, 33),
+            ),
             (
                 (1, 100),
                 (-(15 * 10i128.pow(32) + 1), 0),

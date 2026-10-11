@@ -778,11 +778,13 @@ library LibDecimalFloatImplementation {
     /// when combined with other operations such as division that can result in
     /// infinite recursion such a 1/3.
     ///
-    /// Aligning truncates the smaller operand towards zero to the larger
-    /// operand's int256 unit, so the returned sum is the exact sum rounded to
-    /// that unit, or ten of them past int256: towards zero when the signs
-    /// agree, and away from zero when they differ. `1e100 + -1` returns
-    /// `1e100`. `LibDecimalFloat.add` states the rule with packing.
+    /// The returned sum is the exact sum truncated towards zero to a multiple
+    /// of the larger operand's int256 unit, or of ten of them past int256.
+    /// Aligning truncates the smaller operand towards zero when the signs
+    /// agree, and away from zero when they differ, which takes the cancelling
+    /// sum towards zero. `1e100 + -1` returns `(1e76 - 1)e24`. Packing
+    /// truncates again, which composes, so `LibDecimalFloat.add` is the exact
+    /// sum rounded once towards zero.
     ///
     /// https://speleotrove.com/decimal/daops.html#refaddsub
     /// > add and subtract both take two operands. If either operand is a special
@@ -872,9 +874,13 @@ library LibDecimalFloatImplementation {
         // After maximization the signed coefficients are the same OOM in
         // magnitude. However, what we need is for the exponents to be the same.
         // If the exponents are close enough we can divide coefficient B by
-        // some power of 10 to align their exponents without precision loss.
-        // If the exponents are too far apart, then all the information in B
-        // would be lost, so we can just ignore B and return A.
+        // some power of 10 to align their exponents. If the exponents are too
+        // far apart, then B is under one unit of A and only its sign matters.
+        // 1 when the signs differ, so the magnitudes cancel.
+        uint256 cancelling;
+        assembly ("memory-safe") {
+            cancelling := shr(0xff, xor(signedCoefficientA, signedCoefficientB))
+        }
         unchecked {
             // exponentA >= exponentB so exponentA - exponentB will fit in
             // uint256.
@@ -888,12 +894,32 @@ library LibDecimalFloatImplementation {
             // reachable with shortfallA == 0, as a nonzero shortfallA puts both
             // exponents at the floor.
             if (alignmentExponentDiff > ADD_MAX_EXPONENT_DIFF - shortfallDiff) {
+                // 0 < |B| < 1 unit of A. Cancelling, the exact sum is strictly
+                // between A and A one unit towards zero, which truncates to
+                // the latter. A has at least 76 digits, so keeps its sign.
+                assembly ("memory-safe") {
+                    if cancelling {
+                        signedCoefficientA := sub(signedCoefficientA, or(sar(255, signedCoefficientA), 1))
+                    }
+                }
                 return (signedCoefficientA, exponentA);
             }
             // alignmentExponentDiff + shortfallDiff can't be greater than 76 so
             // will pow without truncation.
             // forge-lint: disable-next-line(unsafe-typecast)
-            signedCoefficientB /= int256(10 ** (alignmentExponentDiff + shortfallDiff));
+            int256 scale = int256(10 ** (alignmentExponentDiff + shortfallDiff));
+            assembly ("memory-safe") {
+                let aligned := sdiv(signedCoefficientB, scale)
+                // Cancelling with digits of B shed: B's magnitude one unit
+                // up puts the sum one unit towards zero, the floor of the
+                // exact sum's magnitude in A's unit.
+                if cancelling {
+                    if smod(signedCoefficientB, scale) {
+                        aligned := add(aligned, or(sar(255, signedCoefficientB), 1))
+                    }
+                }
+                signedCoefficientB := aligned
+            }
         }
 
         // The actual addition step.
@@ -901,9 +927,8 @@ library LibDecimalFloatImplementation {
             int256 c = signedCoefficientA + signedCoefficientB;
             bool didOverflow;
             assembly ("memory-safe") {
-                let sameSignAB := iszero(shr(0xff, xor(signedCoefficientA, signedCoefficientB)))
-                let sameSignAC := iszero(shr(0xff, xor(signedCoefficientA, c)))
-                didOverflow := and(sameSignAB, iszero(sameSignAC))
+                // Only magnitudes that add carry, and then c flips sign.
+                didOverflow := gt(shr(0xff, xor(signedCoefficientA, c)), cancelling)
             }
             // Be careful to handle overflow.
             if (didOverflow) {

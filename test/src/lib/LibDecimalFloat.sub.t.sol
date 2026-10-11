@@ -46,7 +46,7 @@ contract LibDecimalFloatSubTest is Test {
 
     /// Reverts only where the exact difference is beyond the largest Float of
     /// its sign, and otherwise is the documented rounding of the exact sum of
-    /// `a` and `-b` (#340).
+    /// `a` and `-b` (#350).
     function testSubPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -70,24 +70,23 @@ contract LibDecimalFloatSubTest is Test {
         );
     }
 
-    /// #340: magnitudes cancel, so `1 - 1e-100` rounds away from zero at
-    /// `1`'s unit `1e-76`, to `1`. Truncating towards zero would give 67 nines
-    /// after the point.
-    function testSubRoundingCancelAway() external pure {
+    /// #350: magnitudes cancel, and `1 - 1e-100` truncates towards zero to 67
+    /// nines after the point.
+    function testSubRoundingCancelTowardsZero() external pure {
         Float difference = LibDecimalFloat.packLossless(1, 0).sub(LibDecimalFloat.packLossless(1, -100));
-        assertValue(difference, 1, 0, "difference");
+        assertValue(difference, 1e67 - 1, -67, "difference");
         difference = LibDecimalFloat.packLossless(-1, 0).sub(LibDecimalFloat.packLossless(-1, -100));
-        assertValue(difference, -1, 0, "difference");
+        assertValue(difference, -(1e67 - 1), -67, "difference");
     }
 
-    /// #340: `1 - 1.5e-76` rounds away from zero at `1e-76` to `1 - 1e-76`,
-    /// then packing truncates that towards zero to 67 nines after the point.
-    function testSubRoundingCancelAwayThenPack() external pure {
+    /// #350: `1 - 1.5e-76` truncates towards zero to 67 nines after the
+    /// point.
+    function testSubRoundingCancelPartialDigit() external pure {
         Float difference = LibDecimalFloat.packLossless(1, 0).sub(LibDecimalFloat.packLossless(15, -77));
         assertValue(difference, 1e67 - 1, -67, "difference");
     }
 
-    /// #340: magnitudes add, so `1 - (-1e-100)` truncates towards zero.
+    /// Magnitudes add, so `1 - (-1e-100)` truncates towards zero.
     function testSubRoundingSameSign() external pure {
         Float difference = LibDecimalFloat.packLossless(1, 0).sub(LibDecimalFloat.packLossless(-1, -100));
         assertValue(difference, 1, 0, "difference");

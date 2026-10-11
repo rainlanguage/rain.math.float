@@ -609,28 +609,13 @@ library LibDecimalFloat {
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
     ///
-    /// The result is the exact sum rounded twice:
-    /// 1. To a multiple of the larger operand's int256 unit, the place of its
-    ///    last digit when written with as many digits as an int256
-    ///    coefficient holds (77, or 76 when 77 would exceed int256). This
-    ///    rounds towards zero when the signs agree, so the magnitudes add,
-    ///    and away from zero when the signs differ, so the magnitudes cancel.
-    /// 2. Packed as every arithmetic result is, truncating towards zero to an
-    ///    int224 coefficient.
-    ///
-    /// So when the magnitudes add, the result is the exact sum truncated
-    /// towards zero. When they cancel it is neither always that nor always
-    /// the closest Float:
-    /// - `1e100 + 1e-100` is `1e100`. The magnitudes add.
-    /// - `1e100 + -1` is `1e100`. The unit of `1e100` is `1e24`, and
-    ///   `1e100 - 1` rounds away from zero to `1e100`. Truncating would give
-    ///   `(1e67 - 1)e33`.
-    /// - `1 + -1e-100` is `1`. The unit of `1` is `1e-76`.
-    /// - `1e100 + -(1e33 + 1)` is `1e100 - 1e33`, rounded away from zero at
-    ///   `1e24` and then kept by packing. Truncating would give
-    ///   `1e100 - 2e33`.
-    /// - `1e100 + -1.7e33` is `1e100 - 2e33`. It is exact at `1e24`, so only
-    ///   packing rounds it, towards zero.
+    /// The result is the exact sum rounded once towards zero: the closest
+    /// Float that does not exceed it in magnitude, as every arithmetic result
+    /// packs, whether the magnitudes add or cancel.
+    /// - `1e100 + 1e-100` is `1e100`.
+    /// - `1e100 + -1` is `(1e67 - 1)e33`.
+    /// - `1 + -1e-100` is `0.` then 67 nines.
+    /// - `1e100 + -(1e33 + 1)` is `1e100 - 2e33`.
     /// @param a The Float struct containing the signed coefficient and
     /// exponent of the first floating point number.
     /// @param b The Float struct containing the signed coefficient and
@@ -651,11 +636,8 @@ library LibDecimalFloat {
     ///
     /// This is effectively shorthand for adding the two floats with the second
     /// float negated. Therefore, the same caveats apply as for `add`, and it
-    /// rounds as `add(a, -b)`: towards zero when the signs of `a` and `b`
-    /// differ, so the magnitudes add, and away from zero at the larger
-    /// operand's int256 unit, then towards zero when packed, when the signs
-    /// agree, so the magnitudes cancel. `1 - 1e-100` is `1`, where truncating
-    /// would give 67 nines after the point, and `1 - (-1e-100)` is `1`.
+    /// rounds as `add(a, -b)`: the exact difference rounded once towards zero.
+    /// `1 - 1e-100` is `0.` then 67 nines, and `1 - (-1e-100)` is `1`.
     /// @param a The float to subtract from.
     /// @param b The float to subtract.
     /// @return The difference of the two floats (a - b).
@@ -1417,10 +1399,9 @@ library LibDecimalFloat {
     /// representable values should answer, not revert.
     ///
     /// THE COMPARISON IS EXACT ONLY TO REPRESENTABLE PRECISION. The spread is a
-    /// subtraction, and a subtraction aligns exponents by discarding the
-    /// smaller operand's low digits; past a gap of `ADD_MAX_EXPONENT_DIFF` the
-    /// smaller operand is dropped whole. When those discarded digits would have
-    /// carried the spread above the limit, and the spread as computed lands
+    /// subtraction, truncated towards zero to the larger operand's last
+    /// aligned digit. When the truncated digits would have carried the spread
+    /// above the limit, and the spread as computed lands
     /// exactly on the limit, this returns true where an exact comparison would
     /// return false. `agree(0, 1, -1e-100, 1)` is such a case: the real spread
     /// is `1 + 1e-100`, needing 101 significant digits against the

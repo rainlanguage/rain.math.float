@@ -206,7 +206,7 @@ library LibTestErrorBound {
     function monotoneAbsolute(Float low, Float high, Float lowError, Float highError) internal pure returns (bool) {
         (int256 ca, int256 ea) = low.unpack();
         (int256 cb, int256 eb) = high.unpack();
-        (, int256 spreadCoefficient, int256 spreadExponent) = LibTestExactDecimal.addPartsWide(ca, ea, -cb, eb);
+        (, int256 spreadCoefficient, int256 spreadExponent) = LibTestExactDecimal.addPartsWideUp(ca, ea, -cb, eb);
         (ca, ea) = lowError.unpack();
         (cb, eb) = highError.unpack();
         (, ca, ea) = LibTestExactDecimal.addPartsWide(ca, ea, cb, eb);
@@ -249,7 +249,7 @@ library LibTestErrorBound {
         (int256 lowCoefficient, int256 lowExponent) = low.unpack();
         (int256 highCoefficient, int256 highExponent) = high.unpack();
         (, signedCoefficient, exponent) =
-            LibTestExactDecimal.addPartsWide(lowCoefficient, lowExponent, -highCoefficient, highExponent);
+            LibTestExactDecimal.addPartsWideUp(lowCoefficient, lowExponent, -highCoefficient, highExponent);
         return LibTestExactDecimal.cmpParts(signedCoefficient, exponent, limitCoefficient, limitExponent) <= 0;
     }
 }
