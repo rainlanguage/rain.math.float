@@ -918,6 +918,27 @@
     }
   },
   {
+    "timestamp": "2026-10-11T11:18:05Z",
+    "commit": "369aee06683d248021fa836464efaf7fb262f9df",
+    "testsAfterCommit": "347bd3a8ca13f063d9c2487955ea9503f36e6b6d",
+    "publishedTag": "sol-v0.2.38",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #376: LibFormatDecimalFloat formats every Float. Before = main 369aee0 source and tests. After = 347bd3a, both UnformatableExponent guards deleted, only the ±1000 non-scientific cap left. Probe suite: forge test --mc \"LibFormatDecimalFloat|LibDecimalFloatFormatParse|LibDecimalFloatExoticFloat\". Shared mutants in both trees: S1 cap upper > to >=, S2 cap lower side dropped, S3 display exponent 75 to 76, S4 negative exponent magnitude off by one, S5 exponent marker e to E, S6 exponent digits start one byte low. Guard behaviour, mirrored: before, M1-M3 delete the scientific int32 guard, the exponent >= 68 guard and the int224 quotient guard; after, R1-R3 reintroduce each one. Before 8/9 killed: S1 survived because main expected (1, 1000) to revert, and the cap reverts it with the same data. After 9/9 killed: testFormatNonScientificCapBoundaries and testFormatEveryFloatNonScientificInsideCap kill S1. R1-R3 are also killed by the format suite alone (--mc LibFormatDecimalFloatToDecimalStringTest), by testFormatEveryFloatScientific, testFormatExtremeFloats, testFormatScientificExponentPastInt32, testFormatNonScientificIntegerPastInt224 and testFormatNonScientificCapBoundaries.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 9,
+      "killedBefore": 8,
+      "killedAfter": 9,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 873,
+      "testsAfter": 870,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-11T14:09:48Z",
     "commit": "cb58ddec613276de0220f32252fec96d96fe529e",
     "testsAfterCommit": "2daf6d7e3022a1b988a12f23e520b00a248f5036",

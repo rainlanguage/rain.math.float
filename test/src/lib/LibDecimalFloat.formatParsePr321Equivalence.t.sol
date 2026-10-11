@@ -8,10 +8,12 @@ import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {LibFormatDecimalFloatPr321} from "test/lib/LibFormatDecimalFloatPr321.sol";
 import {LibParseDecimalFloatPr321} from "test/lib/LibParseDecimalFloatPr321.sol";
+import {UnformatableExponent} from "src/error/ErrFormat.sol";
 
 /// Every input returns the same bytes, or reverts with the same bytes, as
 /// `toDecimalString`, `parseDecimalFloat` and `parseDecimalFloatInline` before
-/// #310's format and parse changes.
+/// #310's format and parse changes, except a Float formatted that only a guard
+/// #376 deleted refused.
 contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
     function baseFormat(Float f, bool scientific) external pure returns (string memory) {
         return LibFormatDecimalFloatPr321.toDecimalString(f, scientific);
@@ -51,10 +53,24 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         assertEq(prRet, baseRet, "bytes");
     }
 
+    /// Where the base refused a Float only by a guard #376 deleted, the
+    /// library formats it, as the format tests check against the oracle.
     function checkFormat(Float f) internal view {
+        (int256 c, int256 e) = LibDecimalFloat.unpack(f);
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
         for (uint256 i = 0; i < 2; i++) {
             bool scientific = i == 1;
-            same(abi.encodeCall(this.baseFormat, (f, scientific)), abi.encodeCall(this.prFormat, (f, scientific)));
+            bytes memory baseCall = abi.encodeCall(this.baseFormat, (f, scientific));
+            bytes memory prCall = abi.encodeCall(this.prFormat, (f, scientific));
+            (bool baseOk, bytes memory baseRet) = address(this).staticcall(baseCall);
+            bool pastCap = !scientific && c != 0 && (e > cap || e < -cap);
+            if (!baseOk && !pastCap) {
+                assertEq(baseRet, abi.encodeWithSelector(UnformatableExponent.selector, e), "base error");
+                (bool prOk,) = address(this).staticcall(prCall);
+                assertTrue(prOk, "guard deleted by #376");
+            } else {
+                same(baseCall, prCall);
+            }
         }
     }
 

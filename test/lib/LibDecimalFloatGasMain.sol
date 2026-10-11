@@ -6,13 +6,15 @@ import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementation,
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
-    MAXIMIZED_ZERO_EXPONENT
+    MAXIMIZED_ZERO_EXPONENT,
+    FIVE_INVERSE
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
-/// `mul`, `mulExponentBelowFloor`, `mulExponentNearCeiling` and `maximize`
-/// verbatim from main 8fd3980250fae214fc2b4273545654ee1921c0ad, before the
-/// gas changes of issue #310. The helpers they call are unchanged on main, so
-/// they are qualified to the live library. Equivalence tests only.
+/// `mul`, `mulExponentBelowFloor`, `mulExponentNearCeiling`, `maximize` and
+/// `mulDivPow10` verbatim from main 8fd3980250fae214fc2b4273545654ee1921c0ad,
+/// before the gas changes of issue #310. The other helpers they call are
+/// unchanged on main, so they are qualified to the live library. Equivalence
+/// tests only.
 library LibDecimalFloatGasMain {
     function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
@@ -93,7 +95,7 @@ library LibDecimalFloatGasMain {
             (signedCoefficient, exponent) = LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
                 signedCoefficientB,
-                LibDecimalFloatImplementation.mulDivPow10(signedCoefficientAAbs, signedCoefficientBAbs, adjustExponent),
+                mulDivPow10(signedCoefficientAAbs, signedCoefficientBAbs, adjustExponent),
                 exponent
             );
         }
@@ -189,6 +191,22 @@ library LibDecimalFloatGasMain {
                 return (signedCoefficient, type(int256).min, type(int256).max - maximizedExponent + 1);
             }
             return (signedCoefficient, maximizedExponent, 0);
+        }
+    }
+
+    function mulDivPow10(uint256 x, uint256 y, uint256 n) internal pure returns (uint256 result) {
+        (uint256 prod1, uint256 prod0) = LibDecimalFloatImplementation.mul512(x, y);
+        if (prod1 == 0) {
+            unchecked {
+                return prod0 / 10 ** n;
+            }
+        }
+        uint256 inverse = FIVE_INVERSE;
+        assembly ("memory-safe") {
+            let remainder := mulmod(x, y, exp(10, n))
+            prod1 := sub(prod1, gt(remainder, prod0))
+            prod0 := sub(prod0, remainder)
+            result := mul(or(shr(n, prod0), shl(sub(256, n), prod1)), exp(inverse, n))
         }
     }
 }
