@@ -48,7 +48,6 @@ library LibFormatDecimalFloat {
     /// `eN` part is omitted, so `1.5e0` formats as `1.5`.
     //slither-disable-next-line cyclomatic-complexity
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory out) {
-        int256 originalExponent = exponent;
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
 
         bool isNeg = signedCoefficient < 0;
@@ -59,16 +58,6 @@ library LibFormatDecimalFloat {
             absCoef = isNeg ? uint256(-signedCoefficient) : uint256(signedCoefficient);
         }
         int256 displayExponent = exponent + (absCoef >= 1e76 ? int256(76) : int256(75));
-        // The parser reconstructs this float by calling packLossless with the
-        // display exponent cast to int32. Guard here so the formatter reverts
-        // cleanly rather than silently producing a string whose exponent cannot
-        // be represented in int32. Both sides are checked: maximizeFull reduces
-        // the stored exponent by the digit-count delta (up to ~10 for an
-        // int224 coefficient), so displayExponent can be up to ~76 above the
-        // original exponent.
-        if (displayExponent > type(int32).max || displayExponent < type(int32).min) {
-            revert UnformatableExponent(originalExponent);
-        }
         (uint256 significand,) = stripTrailingZeros(absCoef);
 
         assembly ("memory-safe") {
@@ -144,24 +133,6 @@ library LibFormatDecimalFloat {
             // int224; negation always fits uint256.
             // forge-lint: disable-next-line(unsafe-typecast)
             absCoef = isNeg ? uint256(-signedCoefficient) : uint256(signedCoefficient);
-        }
-
-        // When exponent > 0 the formatted integer is absCoef × 10^exponent,
-        // which must fit in int224 for the parser to reconstruct the value
-        // losslessly. For exponent ≥ 68, 10^68 > int224.max (≈1.34e67) so
-        // even coefficient 1 overflows. Otherwise divide int224.max by
-        // 10^exponent and check that absCoef doesn't exceed the quotient.
-        if (exponent > 0) {
-            if (exponent >= 68) {
-                revert UnformatableExponent(exponent);
-            }
-            unchecked {
-                // exponent is in [1, 67], so 10^exponent fits uint256.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                if (absCoef > uint256(int256(type(int224).max)) / 10 ** uint256(exponent)) {
-                    revert UnformatableExponent(exponent);
-                }
-            }
         }
 
         // Strip trailing decimal zeros of the coefficient, raising the
