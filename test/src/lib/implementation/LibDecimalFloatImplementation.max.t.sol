@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestRegion} from "test/lib/LibTestRegion.sol";
 
 contract LibDecimalFloatImplementationMaxTest is Test {
     function max(int256 coefficientA, int256 exponentA, int256 coefficientB, int256 exponentB)
@@ -59,11 +60,29 @@ contract LibDecimalFloatImplementationMaxTest is Test {
         int256 coefficientB,
         int256 exponentB
     ) external pure {
-        coefficientA = bound(coefficientA, type(int224).min, type(int224).max);
-        coefficientB = bound(coefficientB, type(int224).min, type(int224).max);
-        exponentA = bound(exponentA, -50, 50);
-        exponentB = bound(exponentB, -50, 50);
+        checkMax(coefficientA, exponentA, coefficientB, exponentB);
+    }
 
+    /// The result is A, unchanged, when A is exactly above B, else B, with
+    /// coefficients of every digit count at exponents within 76 of each other,
+    /// where `max` rescales.
+    function testMaxIsOneOfTheInputsAndNotLessRescaled(
+        int256 coefficientA,
+        uint256 dropA,
+        int256 exponentA,
+        int256 coefficientB,
+        uint256 dropB,
+        int256 offset
+    ) external pure {
+        checkMax(
+            LibTestRegion.anyDigits(coefficientA, dropA),
+            exponentA,
+            LibTestRegion.anyDigits(coefficientB, dropB),
+            LibTestRegion.nearExponent(exponentA, offset)
+        );
+    }
+
+    function checkMax(int256 coefficientA, int256 exponentA, int256 coefficientB, int256 exponentB) internal pure {
         bool isA = LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB) > 0;
         assertMaxIs(
             coefficientA,
@@ -78,8 +97,7 @@ contract LibDecimalFloatImplementationMaxTest is Test {
     /// Selecting a larger value is exact — nothing is rescaled into the
     /// result, so the winner comes back byte for byte as it went in.
     function testMaxDoesNotRescaleTheWinner(int256 coefficient, int256 exponent) external pure {
-        coefficient = bound(coefficient, 1, type(int224).max);
-        exponent = bound(exponent, -50, 50);
+        coefficient = bound(coefficient, 1, type(int256).max);
         // Against a value that is unambiguously smaller.
         assertMaxIs(0, 0, coefficient, exponent, coefficient, exponent);
     }

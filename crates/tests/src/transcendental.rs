@@ -854,7 +854,8 @@ pub fn monotone_pow10(x: &Dec) -> Result<(), TestCaseError> {
 }
 
 /// a^b against a^b' for the next b' up: rising in b for a above one, falling
-/// below.
+/// below. a > 0 only: for a < 0 the sign of a^b flips with the parity of b,
+/// so neighbouring b are not ordered.
 pub fn monotone_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let Some(c) = next(b) else { return Ok(()) };
     let case = format!(
@@ -946,9 +947,9 @@ fn a_log10() -> BoxedStrategy<Dec> {
     .boxed()
 }
 
-/// A positive a with a coefficient of any digit count near 1e-70 to 1e77.
+/// A positive a with any coefficient and any exponent.
 fn moderate() -> BoxedStrategy<Dec> {
-    (crate::exact::coefficient(), -70i64..=10)
+    (crate::exact::coefficient(), crate::exact::exponent())
         .prop_filter("nonzero", |(c, _)| !c.is_zero())
         .prop_map(|(c, e)| Dec::new(c.abs().min(r::int224_max()), e))
         .boxed()
@@ -960,6 +961,7 @@ fn small_b() -> BoxedStrategy<Dec> {
         3 => (-1_000_000_000i64..=1_000_000_000, -9i64..=0).prop_map(|(c, e)| Dec::new(c, e)),
         1 => Just(Dec::new(5, -1)),
         1 => (crate::exact::coefficient(), -80i64..=20).prop_map(|(c, e)| Dec::new(c, e)),
+        1 => float(),
     ]
     .boxed()
 }
@@ -1092,7 +1094,7 @@ fn a_sqrt() -> BoxedStrategy<Dec> {
     prop_oneof![
         3 => float(),
         // Perfect squares of up to 33 digits, whose root is exact.
-        2 => (1u32..=33, -1_000_000_000i64..=1_000_000_000).prop_flat_map(|(n, e)| {
+        2 => (1u32..=33, I32_MIN / 2..=I32_MAX / 2).prop_flat_map(|(n, e)| {
             digits_below(n).prop_map(move |c| {
                 let c = if c.is_zero() { BigInt::from(1) } else { c };
                 Dec::new(&c * &c, 2 * e)

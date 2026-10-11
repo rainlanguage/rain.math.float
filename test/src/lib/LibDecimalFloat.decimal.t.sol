@@ -22,17 +22,50 @@ contract LibDecimalFloatDecimalTest is Test {
         return float.toFixedDecimalLossy(decimals);
     }
 
+    /// Unpacked, a value past int256.max sheds one digit, lossless iff it is
+    /// zero. Packed, every value is the largest Float not above
+    /// `value × 10^-decimals` (#332): `value` floored to the fewest digits shed
+    /// that fit int224, or int224.max one digit lower where that is larger.
+    /// It is lossless iff it is the value, and zero is `FLOAT_ZERO`.
     function testFromFixedDecimalLossyPacked(uint256 value, uint8 decimals) external pure {
-        // Above this bound the conversion will be lossy.
-        value = bound(value, 0, type(uint224).max / 10);
+        checkFromFixedDecimalLossyPacked(value, decimals);
+    }
+
+    /// The same for every uint224 value, which packs exactly up to int224.max
+    /// and sheds digits past it.
+    function testFromFixedDecimalLossyPackedUint224(uint224 value, uint8 decimals) external pure {
+        checkFromFixedDecimalLossyPacked(value, decimals);
+    }
+
+    function checkFromFixedDecimalLossyPacked(uint256 value, uint8 decimals) internal pure {
+        bool past = value > uint256(type(int256).max);
         (int256 signedCoefficient, int256 exponent, bool lossless) =
             LibDecimalFloat.fromFixedDecimalLossy(value, decimals);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(signedCoefficient, int256(past ? value / 10 : value), "signedCoefficient");
+        assertEq(exponent, (past ? int256(1) : int256(0)) - int256(uint256(decimals)), "exponent");
+        assertEq(lossless, !past || value % 10 == 0, "lossless");
 
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 int224Max = uint256(int256(type(int224).max));
+        uint256 coefficient = value;
+        exponent = -int256(uint256(decimals));
+        lossless = true;
+        while (coefficient > int224Max) {
+            lossless = lossless && coefficient % 10 == 0;
+            coefficient /= 10;
+            exponent++;
+        }
+        // Past int224, a digit lower holds int224.max, below the value there.
+        if (exponent > -int256(uint256(decimals)) && coefficient * 10 < int224Max) {
+            coefficient = int224Max;
+            exponent--;
+        }
         (Float float, bool floatLossless) = LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
-        (int256 signedCoefficientFloat, int256 exponentFloat) = LibDecimalFloat.unpack(float);
-        assertEq(signedCoefficientFloat, signedCoefficient, "signedCoefficient");
-        assertEq(exponentFloat, signedCoefficientFloat == 0 ? int256(0) : exponent, "exponent");
-        assertEq(floatLossless, lossless, "lossless");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        bytes32 expected = coefficient == 0 ? bytes32(0) : bytes32(uint256(exponent) << 224 | coefficient);
+        assertEq(Float.unwrap(float), expected, "float");
+        assertEq(floatLossless, lossless, "packed lossless");
     }
 
     /// Over the full uint256 range, the nearest Float towards zero to the exact
@@ -82,16 +115,56 @@ contract LibDecimalFloatDecimalTest is Test {
         assertEq(losslessOut, expectedLossless, "packed lossless");
     }
 
-    /// Round trip from/to decimal values without precision loss
-    function testFixedDecimalRoundTripLossless(uint256 value, uint8 decimals) external pure {
-        value = uint256(bound(value, 0, uint256(int256(type(int224).max))));
+    /// Every final exponent across both cutoffs, ±77, against the exact value,
+    /// for coefficients at the digit edges. `1 × 10^78` is the smallest value
+    /// past uint256 that the fuzz rarely draws.
+    function testToFixedDecimalLossyAcrossTheCutoffs() external {
+        int256[6] memory coefficients = [int256(1), 2, 9, 10, 1e18, type(int256).max];
+        uint8[3] memory decimalsList = [uint8(0), 77, 255];
+        for (uint256 i = 0; i < coefficients.length; i++) {
+            for (uint256 j = 0; j < decimalsList.length; j++) {
+                for (int256 finalExponent = -80; finalExponent <= 80; finalExponent++) {
+                    int256 exponent = finalExponent - int256(uint256(decimalsList[j]));
+                    checkToFixedDecimalExact(coefficients[i], exponent, decimalsList[j]);
+                }
+            }
+        }
+    }
 
+    function checkToFixedDecimalExact(int256 signedCoefficient, int256 exponent, uint8 decimals) internal {
+        (bytes memory expectedError, uint256 expectedValue, bool expectedLossless) =
+            LibTestExactDecimal.toFixedDecimal(signedCoefficient, exponent, decimals);
+        if (expectedError.length > 0) {
+            vm.expectRevert(expectedError);
+            this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
+            return;
+        }
+        (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
+        assertEq(value, expectedValue, "value");
+        assertEq(lossless, expectedLossless, "lossless");
+    }
+
+    /// Round trip from/to decimal values. Past int256.max the value sheds its
+    /// last digit on the way in, losslessly iff that digit is zero, and comes
+    /// back without it; any other value comes back exactly.
+    function testFixedDecimalRoundTripLossless(uint256 value, uint8 decimals) external pure {
+        checkFixedDecimalRoundTripLossless(value, decimals);
+    }
+
+    /// The same for every value up to int224.max, which comes back exactly.
+    function testFixedDecimalRoundTripLosslessInt224(uint256 value, uint8 decimals) external pure {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkFixedDecimalRoundTripLossless(bound(value, 0, uint256(int256(type(int224).max))), decimals);
+    }
+
+    function checkFixedDecimalRoundTripLossless(uint256 value, uint8 decimals) internal pure {
+        bool past = value > uint256(type(int256).max);
         (int256 signedCoefficient, int256 exponent, bool lossless0) =
             LibDecimalFloat.fromFixedDecimalLossy(value, decimals);
-        assertEq(lossless0, true, "lossless0");
+        assertEq(lossless0, !past || value % 10 == 0, "lossless0");
 
         (uint256 valueOut, bool lossless1) = LibDecimalFloat.toFixedDecimalLossy(signedCoefficient, exponent, decimals);
-        assertEq(value, valueOut, "value");
+        assertEq(valueOut, past ? value / 10 * 10 : value, "value");
         assertEq(lossless1, true, "lossless1");
     }
 

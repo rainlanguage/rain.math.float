@@ -165,16 +165,35 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         checkParse(str);
     }
 
-    /// Formatted floats parse the same.
-    function testParsePr321EquivalenceFormatted(uint256 kind, uint256 d, uint256 x, bool negative, int256 e, bool sci)
-        external
-        view
-    {
+    /// The string the library formats `c × 10^e` to parses the same. Past the
+    /// exponent cap, non-scientific mode reverts and the scientific string is
+    /// parsed instead.
+    function checkFormattedParse(uint256 kind, uint256 d, uint256 x, bool negative, int256 e, bool sci) internal {
         int256 c = kind % 2 == 0 ? ofDigits(d, x, negative) : withTrailingZeros(d, x, negative);
-        Float f = LibDecimalFloat.packLossless(c, bound(e, -100, 100));
-        try this.baseFormat(f, sci) returns (string memory str) {
-            checkParse(str);
-        } catch {}
+        Float f = LibDecimalFloat.packLossless(c, e);
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        if (!sci && (e > cap || e < -cap)) {
+            vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, e));
+            this.prFormat(f, false);
+            sci = true;
+        }
+        checkParse(LibFormatDecimalFloat.toDecimalString(f, sci));
+    }
+
+    /// Formatted floats parse the same, at every int32 exponent.
+    function testParsePr321EquivalenceFormatted(uint256 kind, uint256 d, uint256 x, bool negative, int32 e, bool sci)
+        external
+    {
+        checkFormattedParse(kind, d, x, negative, e, sci);
+    }
+
+    /// Non-scientific mode reverts past the exponent cap, which is most of
+    /// int32, so this samples the exponents it formats.
+    function testParsePr321EquivalenceFormattedInsideCap(uint256 kind, uint256 d, uint256 x, bool negative, int256 e)
+        external
+    {
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        checkFormattedParse(kind, d, x, negative, bound(e, -cap, cap), false);
     }
 
     function testParsePr321EquivalenceExamples() external view {

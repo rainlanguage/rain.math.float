@@ -208,9 +208,9 @@ library LibTestExactDecimal {
     }
 
     /// The exact `coefficient × 10^(exponent + decimals)` as a fixed point
-    /// uint256 from int224/int32 parts: a negative value is an error, a value
-    /// at or above 2^256 is an error, and anything else is that value
-    /// truncated, lossless iff nothing was truncated.
+    /// uint256 from int256 parts: a negative value is an error, a value at or
+    /// above 2^256 is an error, and anything else is that value truncated,
+    /// lossless iff nothing was truncated.
     function toFixedDecimal(int256 signedCoefficient, int256 exponent, uint8 decimals)
         internal
         pure
@@ -222,7 +222,9 @@ library LibTestExactDecimal {
         }
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 coefficient = uint256(signedCoefficient);
-        int256 finalExponent = exponent + int256(uint256(decimals));
+        // Past 77 the value is past 2^256 whatever the decimals, so 78 stands
+        // for any such sum without overflowing int256.
+        int256 finalExponent = exponent > 77 ? int256(78) : exponent + int256(uint256(decimals));
         if (finalExponent >= 0) {
             // 10^78 alone exceeds 2^256.
             bool tooLarge = coefficient != 0 && finalExponent > 77;
@@ -243,7 +245,7 @@ library LibTestExactDecimal {
             value = coefficient / scale;
             lossless = coefficient % scale == 0;
         } else {
-            // 10^78 alone exceeds any int224 coefficient.
+            // 10^78 alone exceeds any int256 coefficient.
             lossless = coefficient == 0;
         }
     }
@@ -391,6 +393,27 @@ library LibTestExactDecimal {
         }
         // |c| |b| 10^(e + eb) <= |a| 10^ea < (|c| + 1) |b| 10^(e + eb).
         return cmpWide(mul(abs(c), b), e, ea, eb, 0, a) <= 0 && cmpWide(mul(abs(c) + 1, b), e, ea, eb, 0, a) > 0;
+    }
+
+    /// `mulPayload` at any int256 exponents: `overflowed` where the exponent is
+    /// above `type(int256).max`, and below `10^type(int256).min` the digits
+    /// truncated towards zero as `atFloor`. Zero is `(0, 0)`.
+    function mulPayloadWide(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool, int256, int256) {
+        (int256 c, int256 k) = mulPayload(ca, 0, cb, 0);
+        if (c == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
+            return (false, 0, 0);
+        }
+        (int256 cls, int256 e) = wideExponent(ea, 0, eb, k);
+        if (cls == 1) {
+            // forge-lint: disable-next-line(boolean-cst)
+            return (true, 0, 0);
+        }
+        if (cls == -1) {
+            (c, e) = atFloor(c, -e);
+        }
+        // forge-lint: disable-next-line(boolean-cst)
+        return (false, c, e);
     }
 
     /// `signedCoefficient × 10^(type(int256).min + headroom)` held at the
@@ -603,14 +626,15 @@ library LibTestExactDecimal {
         return (units.lo, offset, inexact);
     }
 
-    /// Exact numeric order of two Floats' parts: -1, 0 or 1.
+    /// Exact numeric order of any two int256 coefficient and exponent pairs:
+    /// -1, 0 or 1.
     function cmpParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256) {
         int256 sa = ca < 0 ? int256(-1) : ca > 0 ? int256(1) : int256(0);
         int256 sb = cb < 0 ? int256(-1) : cb > 0 ? int256(1) : int256(0);
         if (sa != sb || sa == 0) {
             return sa < sb ? int256(-1) : sa > sb ? int256(1) : int256(0);
         }
-        return sa * cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb);
+        return sa * cmpWide(u512(abs(ca)), ea, eb, 0, 0, u512(abs(cb)));
     }
 
     /// `a / b` for a nonzero `b`, truncated towards zero once, so under 1e-74
@@ -662,13 +686,7 @@ library LibTestExactDecimal {
 
     /// Exact numeric equality of two Floats' parts.
     function eq(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
-        if (ca == 0 || cb == 0) {
-            return ca == cb;
-        }
-        if ((ca < 0) != (cb < 0)) {
-            return false;
-        }
-        return cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) == 0;
+        return cmpParts(ca, ea, cb, eb) == 0;
     }
 
     /// The largest coefficient magnitude a Float of the sign holds.

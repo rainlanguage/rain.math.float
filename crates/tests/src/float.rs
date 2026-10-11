@@ -3,14 +3,17 @@
 
 use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
 use crate::exact::show;
-use crate::reference::{Dec, int224_max};
+use crate::reference::{self as r, Dec, I32_MIN, RefError, int224_max};
 use T::TestDecimalFloatErrors as Errors;
 use alloy::primitives::I256;
 use alloy::primitives::aliases::I224;
 use alloy::primitives::{B256, Bytes, FixedBytes, U256, fixed_bytes};
 use alloy::sol_types::{SolCall, SolInterface};
+use core::cmp::Ordering;
+use core::fmt::Debug;
 use core::str::FromStr;
 use proptest::prelude::*;
+use proptest::test_runner::TestCaseError;
 
 /// How a call failed: a revert, which must decode as one of the concrete's
 /// errors, or the error selector `parse` returns.
@@ -26,8 +29,14 @@ fn call<C: SolCall>(c: C) -> R<C::Return> {
     evm::concrete(c).map_err(|out: Bytes| Fail::Revert(Errors::abi_decode(&out).unwrap()))
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy)]
 struct Float(B256);
+
+impl Debug for Float {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str(&show(&Dec::from_bytes(self.0)))
+    }
+}
 
 fn float<C: SolCall<Return = B256>>(c: C) -> R<Float> {
     call(c).map(Float)
@@ -188,28 +197,95 @@ fn test_zero() {
     assert!(zero.eq(parsed_zero).unwrap());
 }
 
-prop_compose! {
-    fn arb_float()(
-        coefficient in any::<I224>(),
-        exponent in any::<i32>(),
-    ) -> Float {
-        Float::pack_lossless(coefficient, exponent).unwrap()
+/// Every Float: any int224 coefficient and any int32 exponent, weighted
+/// towards their edges.
+fn arb_float() -> impl Strategy<Value = Float> {
+    crate::exact::float().prop_map(|d| Float(d.to_bytes()))
+}
+
+impl Float {
+    fn dec(self) -> Dec {
+        Dec::from_bytes(self.0)
     }
 }
 
-prop_compose! {
-    fn reasonable_float()(
-        int_part in -10i128.pow(18)..10i128.pow(18),
-        decimal_part in 0u128..10u128.pow(18u32)
-    ) -> Float {
-        let num_str = if decimal_part == 0 {
-            format!("{int_part}")
-        } else {
-            format!("{int_part}.{decimal_part}")
-        };
-
-        Float::parse(num_str).unwrap()
+fn fail_is(f: &Fail, e: RefError) -> bool {
+    match f {
+        Fail::Revert(x) => x.selector() == e.selector(),
+        Fail::Selector(s) => s.0 == e.selector(),
     }
+}
+
+/// The library's result is the reference's: the same value by `same`, or
+/// the same error.
+fn agrees<V: Debug, W: Debug>(
+    case: &str,
+    lib: &R<V>,
+    want: &Result<W, RefError>,
+    same: impl Fn(&V, &W) -> bool,
+) -> Result<(), TestCaseError> {
+    match (lib, want) {
+        (Ok(l), Ok(w)) => prop_assert!(same(l, w), "{case}: library {l:?}, reference {w:?}"),
+        (Err(l), Err(w)) => prop_assert!(fail_is(l, *w), "{case}: library {l:?}, reference {w:?}"),
+        (l, w) => prop_assert!(false, "{case}: library {l:?}, reference {w:?}"),
+    }
+    Ok(())
+}
+
+fn agrees_float(
+    case: &str,
+    lib: &R<Float>,
+    want: &Result<Dec, RefError>,
+) -> Result<(), TestCaseError> {
+    agrees(case, lib, want, |l, w| l.dec().eq_value(w))
+}
+
+/// One step of a chain: the library's step from the library's last value,
+/// the reference's from the reference's, which must agree before the next.
+fn step(
+    case: &str,
+    lib: R<Float>,
+    want: Result<Dec, RefError>,
+) -> Result<Option<(Float, Dec)>, TestCaseError> {
+    agrees_float(case, &lib, &want)?;
+    Ok(lib.ok().zip(want.ok()))
+}
+
+fn one() -> (Float, Dec) {
+    let d = Dec::new(1, 0);
+    (Float(d.to_bytes()), d)
+}
+
+/// a - 1, then + 1, then + 1 again, each step the reference's, and each
+/// result checked against a by `compare`. Where the steps are exact the
+/// results are below, equal to and above a.
+fn chain_against(
+    a: Float,
+    compare: impl Fn(Float, Float) -> Result<(), TestCaseError>,
+) -> Result<(), TestCaseError> {
+    let (one, one_d) = one();
+    let ad = a.dec();
+    let case = format!("{a:?} - 1 + 1 + 1");
+    let mut x = (a, ad.clone());
+    let mut exact = true;
+    for (i, rising) in [false, true, true].into_iter().enumerate() {
+        let (lib, want, ex) = if rising {
+            (x.0 + one, r::add(&x.1, &one_d), x.1.add_exact(&one_d))
+        } else {
+            (x.0 - one, r::sub(&x.1, &one_d), x.1.add_exact(&one_d.neg()))
+        };
+        let Some(next) = step(&case, lib, want)? else {
+            return Ok(());
+        };
+        exact &= ex.is_some_and(|e| e.eq_value(&next.1));
+        compare(next.0, a)?;
+        if exact {
+            let want = [Ordering::Less, Ordering::Equal, Ordering::Greater][i];
+            prop_assert_eq!(next.1.cmp_value(&ad), want, "{}: step {}", case, i);
+        }
+        x = next;
+    }
+    Ok(())
 }
 
 /// Parsing an empty string returns an error selector.
@@ -290,11 +366,25 @@ fn test_float_constants() {
 
 proptest! {
     #[test]
-    /// Formatting in either notation then parsing round-trips to an equal value.
-    fn test_format_parse(float in reasonable_float(), scientific in any::<bool>()) {
-        let formatted = float.format_with_scientific(scientific).unwrap();
-        let parsed = Float::parse(formatted.clone()).unwrap();
-        prop_assert!(float.eq(parsed).unwrap());
+    /// Formatting in either notation is the documented string, and parsing
+    /// it is the reference's parse, an equal value wherever it formats.
+    fn test_format_parse(float in arb_float(), scientific in any::<bool>()) {
+        let case = format!("format({float:?}, {scientific})");
+        let formatted = float.format_with_scientific(scientific);
+        let want = if scientific {
+            r::format_scientific(&float.dec())
+        } else {
+            r::format_plain(&float.dec())
+        };
+        agrees(&case, &formatted, &want, |l, w| l == w)?;
+        if let Ok(s) = formatted {
+            let want = r::parse(&s);
+            prop_assert!(
+                matches!(&want, Ok(w) if w.eq_value(&float.dec())),
+                "{case}: {s} parses to {want:?}"
+            );
+            agrees_float(&format!("parse({s})"), &Float::parse(s.clone()), &want)?;
+        }
     }
 }
 
@@ -329,33 +419,36 @@ fn test_sub_exponent_overflow_error() {
 
 proptest! {
     #[test]
-    /// Addition does not panic for reasonable inputs.
-    fn test_add(a in reasonable_float(), b in reasonable_float()) {
-        (a + b).unwrap();
+    /// Addition is the reference's.
+    fn test_add(a in arb_float(), b in arb_float()) {
+        agrees_float(&format!("{a:?} + {b:?}"), &(a + b), &r::add(&a.dec(), &b.dec()))?;
     }
 }
 
 proptest! {
     #[test]
-    /// Subtraction does not panic for reasonable inputs.
-    fn test_sub(a in reasonable_float(), b in reasonable_float()) {
-        (a - b).unwrap();
+    /// Subtraction is the reference's.
+    fn test_sub(a in arb_float(), b in arb_float()) {
+        agrees_float(&format!("{a:?} - {b:?}"), &(a - b), &r::sub(&a.dec(), &b.dec()))?;
     }
 }
 
 proptest! {
     #[test]
-    /// (a + b) - b == a: subtraction inverts addition.
-    fn test_add_sub(a in reasonable_float(), b in reasonable_float()) {
-        let sum = (a + b).unwrap();
-        let diff = (sum - b).unwrap();
-        prop_assert_eq!(
-            a.format_with_scientific(false).unwrap(),
-            diff.format_with_scientific(false).unwrap(),
-            "a: {}, b: {}",
-            a.format_with_scientific(false).unwrap(),
-            b.format_with_scientific(false).unwrap(),
-        );
+    /// (a + b) - b is the reference's chain, and a wherever both steps are
+    /// exact.
+    fn test_add_sub(a in arb_float(), b in arb_float()) {
+        let (ad, bd) = (a.dec(), b.dec());
+        let case = format!("({a:?} + {b:?}) - {b:?}");
+        let Some((sum, sum_d)) = step(&case, a + b, r::add(&ad, &bd))? else {
+            return Ok(());
+        };
+        let Some((diff, _)) = step(&case, sum - b, r::sub(&sum_d, &bd))? else {
+            return Ok(());
+        };
+        if ad.add_exact(&bd).is_some_and(|s| s.eq_value(&sum_d)) {
+            prop_assert!(diff.dec().eq_value(&ad), "{case}: exact steps, {diff:?}");
+        }
     }
 }
 
@@ -381,25 +474,17 @@ fn test_lt_eq_gt() {
 
 proptest! {
     #[test]
-    /// a == a, a-1 < a, a+1 > a for all reasonable floats.
-    fn test_lt_eq_gt_with_add(a in reasonable_float()) {
-        let b = a;
-        let eq = a.eq(b).unwrap();
-        prop_assert!(eq);
-
-        let one = Float::parse("1".to_string()).unwrap();
-
-        let a = (a - one).unwrap();
-        let lt = a.lt(b).unwrap();
-        prop_assert!(lt);
-
-        let a = (a + one).unwrap();
-        let eq = a.eq(b).unwrap();
-        prop_assert!(eq);
-
-        let a = (a + one).unwrap();
-        let gt = a.gt(b).unwrap();
-        prop_assert!(gt);
+    /// a == a; a - 1, then + 1, then + 1 again are the reference's chain,
+    /// and each compares with a as the reference values do.
+    fn test_lt_eq_gt_with_add(a in arb_float()) {
+        prop_assert!(a.eq(a).unwrap());
+        chain_against(a, |x, y| {
+            let o = x.dec().cmp_value(&y.dec());
+            prop_assert_eq!(x.lt(y).unwrap(), o == Ordering::Less);
+            prop_assert_eq!(x.eq(y).unwrap(), o == Ordering::Equal);
+            prop_assert_eq!(x.gt(y).unwrap(), o == Ordering::Greater);
+            Ok(())
+        })?;
     }
 
     #[test]
@@ -440,9 +525,9 @@ fn test_abs() {
 
 proptest! {
     #[test]
-    /// Multiplication does not panic for reasonable inputs.
-    fn test_mul(a in reasonable_float(), b in reasonable_float()) {
-        (a * b).unwrap();
+    /// Multiplication is the reference's.
+    fn test_mul(a in arb_float(), b in arb_float()) {
+        agrees_float(&format!("{a:?} * {b:?}"), &(a * b), &r::mul(&a.dec(), &b.dec()))?;
     }
 }
 
@@ -467,23 +552,36 @@ fn test_minus_format() {
 
 proptest! {
     #[test]
-    /// Double negation is identity: -(-a) == a.
+    /// -(-a) is the reference's chain, and a wherever -a is exact.
     fn test_minus_minus(float in arb_float()) {
-        let negated = float.neg().unwrap();
-        let renegated = negated.neg().unwrap();
-        prop_assert!(float.eq(renegated).unwrap());
+        let fd = float.dec();
+        let case = format!("-(-{float:?})");
+        let Some((negated, negated_d)) = step(&case, float.neg(), r::minus(&fd))? else {
+            return Ok(());
+        };
+        let Some((renegated, _)) = step(&case, negated.neg(), r::minus(&negated_d))? else {
+            return Ok(());
+        };
+        if negated_d.eq_value(&fd.neg()) {
+            prop_assert!(float.eq(renegated).unwrap(), "{case}: exact, {renegated:?}");
+        }
     }
 }
 
 proptest! {
     #[test]
-    /// a * inv(a) is in (1 - 2 / c_min, 1] for nonzero a.
-    fn test_inv_prod(float in reasonable_float()) {
-        let zero = Float::parse("0".to_string()).unwrap();
-        prop_assume!(!float.eq(zero).unwrap());
-
-        let inv = float.inv().unwrap();
-        let product = Dec::from_bytes((float * inv).unwrap().0);
+    /// inv(a) and a * inv(a) are the reference's chain, and the product is in
+    /// (1 - 2 / c_min, 1] wherever inv(a) packs above the exponent floor.
+    fn test_inv_prod(float in arb_float()) {
+        let fd = float.dec();
+        let case = format!("{float:?} * inv({float:?})");
+        let Some((inv, inv_d)) = step(&case, float.inv(), r::inv(&fd))? else {
+            return Ok(());
+        };
+        let Some((product, _)) = step(&case, float * inv, r::mul(&fd, &inv_d))? else {
+            return Ok(());
+        };
+        let product = product.dec();
 
         // inv and mul each give the Float closest to the exact result that
         // does not exceed its magnitude. That is the exact result, or has a
@@ -498,6 +596,11 @@ proptest! {
             inv.show_unpacked().unwrap(),
             show(&product),
         );
+        // At the exponent floor inv(a) keeps only the digits above it, so its
+        // relative error has no bound there.
+        if inv_d.e == I32_MIN {
+            return Ok(());
+        }
         let c_min = Dec::new(int224_max() / 10 + 1, 0);
         let shortfall = one.add_exact(&product.neg()).unwrap();
         prop_assert!(
@@ -556,11 +659,22 @@ fn test_inv_prod_exact() {
 
 proptest! {
     #[test]
-    /// abs() never produces a string starting with "-".
-    fn test_abs_no_minus_sign(float in reasonable_float()) {
-        let abs = float.abs().unwrap();
-        let formatted = abs.format_with_scientific(false).unwrap();
-        prop_assert!(!formatted.starts_with("-"));
+    /// abs and its string are the reference's, never starting with "-".
+    fn test_abs_no_minus_sign(float in arb_float(), scientific in any::<bool>()) {
+        let case = format!("abs({float:?})");
+        let Some((abs, abs_d)) = step(&case, float.abs(), r::abs(&float.dec()))? else {
+            return Ok(());
+        };
+        let formatted = abs.format_with_scientific(scientific);
+        let want = if scientific {
+            r::format_scientific(&abs_d)
+        } else {
+            r::format_plain(&abs_d)
+        };
+        agrees(&case, &formatted, &want, |l, w| l == w)?;
+        if let Ok(s) = formatted {
+            prop_assert!(!s.starts_with('-'), "{case}: {s}");
+        }
     }
 
     #[test]
@@ -574,38 +688,28 @@ proptest! {
 
 proptest! {
     #[test]
-    /// Division does not panic for nonzero divisor.
-    fn test_div(a in reasonable_float(), b in reasonable_float()) {
-        let zero = Float::parse("0".to_string()).unwrap();
-        prop_assume!(!b.eq(zero).unwrap());
-
-        (a / b).unwrap();
-    }
-}
-
-prop_compose! {
-    fn small_int_float()(int_part in -1_000_000_000_000i128..1_000_000_000_000i128) -> Float {
-        Float::parse(int_part.to_string()).unwrap()
+    /// Division is the reference's, a zero divisor included.
+    fn test_div(a in arb_float(), b in arb_float()) {
+        agrees_float(&format!("{a:?} / {b:?}"), &(a / b), &r::div(&a.dec(), &b.dec()))?;
     }
 }
 
 proptest! {
     #[test]
-    /// (a * b) / b == a: division inverts multiplication for small integers.
-    fn test_mul_div_int(a in small_int_float(), b in small_int_float()) {
-        let zero = Float::parse("0".to_string()).unwrap();
-        prop_assume!(!b.eq(zero).unwrap());
-
-        let product = (a * b).unwrap();
-        let quotient = (product / b).unwrap();
-
-        prop_assert!(
-            a.eq(quotient).unwrap(),
-            "a: {}, quotient: {}, b: {}",
-            a.show_unpacked().unwrap(),
-            quotient.show_unpacked().unwrap(),
-            b.show_unpacked().unwrap()
-        );
+    /// (a * b) / b is the reference's chain, and a wherever the product is
+    /// exact.
+    fn test_mul_div_int(a in arb_float(), b in arb_float()) {
+        let (ad, bd) = (a.dec(), b.dec());
+        let case = format!("({a:?} * {b:?}) / {b:?}");
+        let Some((product, product_d)) = step(&case, a * b, r::mul(&ad, &bd))? else {
+            return Ok(());
+        };
+        let Some((quotient, _)) = step(&case, product / b, r::div(&product_d, &bd))? else {
+            return Ok(());
+        };
+        if ad.mul_exact(&bd).eq_value(&product_d) {
+            prop_assert!(quotient.dec().eq_value(&ad), "{case}: exact product, {quotient:?}");
+        }
     }
 }
 
@@ -792,25 +896,19 @@ fn test_integer_whole_numbers() {
     assert!(neg.frac().unwrap().eq(zero).unwrap());
 }
 
-/// Every non-negative I224, a negative draw mapped to its complement -c - 1.
-fn non_negative_i224() -> impl Strategy<Value = I224> {
-    any::<I224>().prop_map(|c| if c.is_negative() { !c } else { c })
-}
-
 proptest! {
     #[test]
-    /// from_fixed_decimal then to_fixed_decimal round-trips for any non-negative I224.
-    fn test_from_to_fixed_decimal_valid_range(coeff in non_negative_i224(), decimals in 0u8..=66u8) {
-
-        let exponent = -(decimals as i32);
-        let value = U256::from(coeff);
-
-        let float = Float::from_fixed_decimal(value, decimals).unwrap();
-        let expected = Float::pack_lossless(coeff, exponent).unwrap();
-        prop_assert!(float.eq(expected).unwrap());
-
-        let fixed = float.to_fixed_decimal(decimals).unwrap();
-        assert_eq!(fixed, value);
+    /// from_fixed_decimal then to_fixed_decimal are the reference's, and
+    /// round-trip wherever the first is lossless.
+    fn test_from_to_fixed_decimal_valid_range(value in crate::exact::u256(), decimals in any::<u8>()) {
+        let case = format!("from_fixed_decimal({value}, {decimals})");
+        let want = r::from_fixed_decimal_lossless(value, decimals);
+        let Some((float, float_d)) = step(&case, Float::from_fixed_decimal(value, decimals), want)? else {
+            return Ok(());
+        };
+        let want = r::to_fixed_decimal_lossless(&float_d, decimals);
+        prop_assert!(matches!(want, Ok(v) if v == value), "{case}: back to {want:?}");
+        agrees(&case, &float.to_fixed_decimal(decimals), &want, |l, w| l == w)?;
     }
 }
 
@@ -904,9 +1002,14 @@ proptest! {
     #[test]
     /// min(a,b) <= both, max(a,b) >= both, each equals one operand,
     /// and min <= max.
-    fn test_min_max_properties(a in reasonable_float(), b in reasonable_float()) {
+    fn test_min_max_properties(a in arb_float(), b in arb_float()) {
         let min = a.min(b).unwrap();
         let max = a.max(b).unwrap();
+
+        let a_below = a.dec().cmp_value(&b.dec()) != Ordering::Greater;
+        let (lo, hi) = if a_below { (a, b) } else { (b, a) };
+        prop_assert!(min.dec().eq_value(&lo.dec()), "min({a:?}, {b:?}) = {min:?}");
+        prop_assert!(max.dec().eq_value(&hi.dec()), "max({a:?}, {b:?}) = {max:?}");
 
         prop_assert!(
             !min.gt(a).unwrap(),
@@ -981,24 +1084,17 @@ fn test_lte_gte() {
 
 proptest! {
     #[test]
-    /// a-1 lte a, a lte a and gte a, a+1 gte a.
-    fn test_lte_gte_fuzz(a in reasonable_float()) {
-        let b = a;
-        let one = Float::parse("1".to_string()).unwrap();
-
-        let a = (a - one).unwrap();
-        let lte = a.lte(b).unwrap();
-        prop_assert!(lte); // lt
-
-        let a = (a + one).unwrap();
-        let gte = a.gte(b).unwrap();
-        let lte = a.lte(b).unwrap();
-        prop_assert!(gte); // eq
-        prop_assert!(lte); // eq
-
-        let a = (a + one).unwrap();
-        let gte = a.gte(b).unwrap();
-        prop_assert!(gte); // gt
+    /// a lte a and gte a; a - 1, then + 1, then + 1 again are the
+    /// reference's chain, and each lte and gte a as the reference values do.
+    fn test_lte_gte_fuzz(a in arb_float()) {
+        prop_assert!(a.lte(a).unwrap());
+        prop_assert!(a.gte(a).unwrap());
+        chain_against(a, |x, y| {
+            let o = x.dec().cmp_value(&y.dec());
+            prop_assert_eq!(x.lte(y).unwrap(), o != Ordering::Greater);
+            prop_assert_eq!(x.gte(y).unwrap(), o != Ordering::Less);
+            Ok(())
+        })?;
     }
 }
 
@@ -1089,38 +1185,39 @@ fn test_to_fixed_decimal_lossy() {
 
 proptest! {
     #[test]
-    /// Lossy fixed-decimal round-trip: from(decimals+1) then to(decimals) is
-    /// lossy iff the last digit is nonzero.
-    fn test_from_to_fixed_decimal_lossy_valid_range(coeff in non_negative_i224(), decimals in 0u8..=66u8) {
+    /// Lossy fixed-decimal round-trip: from(d) then to(d'), for d' one below
+    /// d or any, are the reference's. Where from(d) is lossless and d' is
+    /// d - 1, to(d') is value / 10, lossy iff the last digit is nonzero.
+    fn test_from_to_fixed_decimal_lossy_valid_range(
+        value in crate::exact::u256(),
+        decimals in any::<u8>(),
+        other in any::<u8>(),
+        below in any::<bool>(),
+    ) {
+        let to = if below { decimals.wrapping_sub(1) } else { other };
+        let case = format!("from_fixed_decimal_lossy({value}, {decimals}), to {to}");
+        let (from_d, from_lossless) = r::from_fixed_decimal_lossy(value, decimals);
+        let (float, lossless) = Float::from_fixed_decimal_lossy(value, decimals).unwrap();
+        prop_assert!(float.dec().eq_value(&from_d), "{case}: library {float:?}, reference {from_d:?}");
+        prop_assert_eq!(lossless, from_lossless, "{}", case);
 
-        let exponent = -(decimals as i32 + 1);
-        let value = U256::from(coeff);
-
-        let (float, from_lossless) = Float::from_fixed_decimal_lossy(value, decimals + 1).unwrap();
-        let expected = Float::pack_lossless(coeff, exponent).unwrap();
-        prop_assert!(float.eq(expected).unwrap());
-
-        // from_fixed_decimal_lossy should be lossless for values that fit in Float's precision
-        prop_assert!(from_lossless, "from_fixed_decimal_lossy should be lossless for coeff={coeff}");
-
-        let (fixed, to_lossless) = float.to_fixed_decimal_lossy(decimals).unwrap();
-        assert_eq!(fixed, value / U256::from(10));
-
-        // Converting from decimals+1 to decimals should be lossy unless the value is zero or
-        // the last digit is zero (divisible by 10)
-        if value == U256::ZERO || value % U256::from(10) == U256::ZERO {
-            prop_assert!(to_lossless, "to_fixed_decimal_lossy should be lossless when last digit is 0: value={}", value);
-        } else {
-            prop_assert!(!to_lossless, "to_fixed_decimal_lossy should be lossy when losing precision: value={}", value);
+        let want = r::to_fixed_decimal_lossy(&from_d, to);
+        agrees(&case, &float.to_fixed_decimal_lossy(to), &want, |l, w| l == w)?;
+        if from_lossless && decimals > 0 && to == decimals - 1 {
+            let ten = U256::from(10);
+            prop_assert!(
+                matches!(want, Ok((v, l)) if v == value / ten && l == (value % ten).is_zero()),
+                "{case}: {want:?}"
+            );
         }
     }
 }
 
 proptest! {
     #[test]
-    /// All reasonable positive floats are bounded by min/max_positive_value,
-    /// all negative by min/max_negative_value.
-    fn test_constants_relationships(float in reasonable_float()) {
+    /// Every positive Float is bounded by min/max_positive_value,
+    /// every negative one by min/max_negative_value.
+    fn test_constants_relationships(float in arb_float()) {
         let max_pos = Float::max_positive_value().unwrap();
         let min_pos = Float::min_positive_value().unwrap();
         let max_neg = Float::max_negative_value().unwrap();
@@ -1128,13 +1225,13 @@ proptest! {
         let zero = Float::parse("0".to_string()).unwrap();
 
         // Test that constants are the extremes
-        // Any reasonable positive float should be <= max_positive and >= min_positive
+        // Any positive float should be <= max_positive and >= min_positive
         if float.gt(zero).unwrap() {
             prop_assert!(float.lte(max_pos).unwrap());
             prop_assert!(float.gte(min_pos).unwrap());
         }
 
-        // Any reasonable negative float should be <= max_negative and >= min_negative
+        // Any negative float should be <= max_negative and >= min_negative
         // (max_negative is closest to zero, min_negative is furthest from zero)
         if float.lt(zero).unwrap() {
             prop_assert!(float.lte(max_neg).unwrap());

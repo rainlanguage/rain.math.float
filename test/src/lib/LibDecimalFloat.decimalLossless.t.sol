@@ -39,21 +39,85 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
     /// here so the float library owns the invariant — callers (e.g. the
     /// Rainlang EVM opcodes for `block.number`, `block.timestamp`,
     /// `chainid`) can write the raw integer to the stack as a documented
-    /// optimization without re-discovering or re-asserting it.
-    function testFromFixedDecimalLosslessPackedZeroDecimalsIsIdentity(uint256 value) external pure {
-        value = bound(value, 0, uint256(int256(type(int224).max)));
-        Float result = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, 0);
-        assertEq(Float.unwrap(result), bytes32(value));
+    /// optimization without re-discovering or re-asserting it. Every other
+    /// value follows the packed rule.
+    function testFromFixedDecimalLosslessPackedZeroDecimalsIsIdentity(uint256 value) external {
+        checkZeroDecimalsIsIdentity(value);
     }
 
-    /// A value that fits int224 converts exactly, so neither path reverts.
-    function testFromFixedDecimalLosslessMem(uint256 value, uint8 decimals) external pure {
-        value = bound(value, 0, uint256(int256(type(int224).max)));
-        Float float = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, decimals);
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.fromFixedDecimalLossless(value, decimals);
+    /// The identity for every value up to int224.max.
+    function testFromFixedDecimalLosslessPackedZeroDecimalsIsIdentityInt224(uint256 value) external {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkZeroDecimalsIsIdentity(bound(value, 0, uint256(int256(type(int224).max))));
+    }
+
+    function checkZeroDecimalsIsIdentity(uint256 value) internal {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (value <= uint256(int256(type(int224).max))) {
+            Float result = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, 0);
+            assertEq(Float.unwrap(result), bytes32(value));
+        } else {
+            checkFromFixedDecimalLosslessPackedRule(value, 0);
+        }
+    }
+
+    /// Both paths give the exact value or revert with the same
+    /// `LossyConversionToFloat`. The unpacked path holds `value` at
+    /// `-decimals`, or past int256.max `value / 10` at `1 - decimals`, which
+    /// is lossy iff it drops a nonzero digit. The packed path is also lossy
+    /// where the value's significant digits are past int224.
+    function testFromFixedDecimalLosslessMem(uint256 value, uint8 decimals) external {
+        checkFromFixedDecimalLosslessMem(value, decimals);
+    }
+
+    /// The same for every uint224 value, exact up to int224.max and past it
+    /// exact iff the significant digits fit int224.
+    function testFromFixedDecimalLosslessMemUint224(uint224 value, uint8 decimals) external {
+        checkFromFixedDecimalLosslessMem(value, decimals);
+    }
+
+    function checkFromFixedDecimalLosslessMem(uint256 value, uint8 decimals) internal {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        bool past = value > uint256(type(int256).max);
+        // value / 10 < 2^253 past int256.max, and value fits int256 otherwise.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 partsCoefficient = past ? int256(value / 10) : int256(value);
+        int256 partsExponent = (past ? int256(1) : int256(0)) - int256(uint256(decimals));
+        bytes memory lossy = abi.encodeWithSelector(LossyConversionToFloat.selector, partsCoefficient, partsExponent);
+        if (past && value % 10 != 0) {
+            vm.expectRevert(lossy);
+            this.fromFixedDecimalLosslessExternal(value, decimals);
+            vm.expectRevert(lossy);
+            this.fromFixedDecimalLosslessPackedExternal(value, decimals);
+            return;
+        }
+        (int256 signedCoefficient, int256 exponent) = this.fromFixedDecimalLosslessExternal(value, decimals);
+        assertEq(signedCoefficient, partsCoefficient, "coefficient");
+        assertEq(exponent, partsExponent, "exponent");
+        assertTrue(
+            LibTestExactDecimal.cmpScaled(
+                LibTestExactDecimal.u512(value),
+                -int256(uint256(decimals)),
+                LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)),
+                exponent
+            ) == 0,
+            "unpacked value"
+        );
+        uint256 stripped = value;
+        while (stripped != 0 && stripped % 10 == 0) {
+            stripped /= 10;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (stripped > uint256(int256(type(int224).max))) {
+            vm.expectRevert(lossy);
+            this.fromFixedDecimalLosslessPackedExternal(value, decimals);
+            return;
+        }
+        Float float = this.fromFixedDecimalLosslessPackedExternal(value, decimals);
         (int256 signedCoefficientPacked, int256 exponentPacked) = float.unpack();
-        assertEq(signedCoefficient, signedCoefficientPacked);
-        assertEq(signedCoefficient == 0 ? int256(0) : exponent, exponentPacked);
+        assertTrue(
+            LibTestExactDecimal.eq(signedCoefficient, exponent, signedCoefficientPacked, exponentPacked), "packed value"
+        );
     }
 
     /// Both paths match the exact `coefficient × 10^(exponent + decimals)`,
@@ -76,15 +140,21 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
         assertEq(this.toFixedDecimalLosslessExternal(float, decimals), expectedValue, "packed");
     }
 
-    function testToFixedDecimalLosslessPass(int256 signedCoefficient, int256 exponent, uint8 decimals) external pure {
-        signedCoefficient = bound(signedCoefficient, 0, 1e18);
-        exponent = bound(exponent, 0, 30);
-        decimals = uint8(bound(decimals, 0, 18));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 expectedResult = uint256(signedCoefficient) * 10 ** (uint256(exponent) + decimals);
-
-        uint256 result = LibDecimalFloat.toFixedDecimalLossless(signedCoefficient, exponent, decimals);
-        assertEq(result, expectedResult, "Lossless conversion failed");
+    /// Every int256 coefficient and exponent matches the exact
+    /// `coefficient × 10^(exponent + decimals)`, with any truncation reverting
+    /// `LossyConversionFromFloat`.
+    function testToFixedDecimalLosslessPass(int256 signedCoefficient, int256 exponent, uint8 decimals) external {
+        (bytes memory expectedError, uint256 expectedValue, bool lossless) =
+            LibTestExactDecimal.toFixedDecimal(signedCoefficient, exponent, decimals);
+        if (expectedError.length == 0 && !lossless) {
+            expectedError = abi.encodeWithSelector(LossyConversionFromFloat.selector, signedCoefficient, exponent);
+        }
+        if (expectedError.length > 0) {
+            vm.expectRevert(expectedError);
+            this.toFixedDecimalLosslessExternal(signedCoefficient, exponent, decimals);
+            return;
+        }
+        assertEq(this.toFixedDecimalLosslessExternal(signedCoefficient, exponent, decimals), expectedValue, "value");
     }
 
     function testToFixedDecimalLosslessFail() external {
