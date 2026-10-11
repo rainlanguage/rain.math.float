@@ -10,7 +10,7 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "test/lib/LibTestPowRange.sol";
 import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 contract LibDecimalFloatPowTest is Test {
@@ -475,6 +475,79 @@ contract LibDecimalFloatPowTest is Test {
             536165957,
             false
         );
+    }
+
+    /// pow(a, b) where the integer leg's rules put the unrounded product at
+    /// exactly `magnitude × 10^exponent`, a 41 digit tie: its digits past the
+    /// 41st are a 5 then zeros. Rounding half away from zero takes the larger
+    /// neighbour, and one unit fewer anywhere in the product the smaller.
+    function checkPowAtTie(Float a, Float b, uint256 magnitude, int256 exponent) internal view {
+        int256 shed = LibTestExactDecimal.digits(LibTestExactDecimal.u512(magnitude)) - 41;
+        assertTrue(shed > 0, "past 41 digits");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 unit = 10 ** uint256(shed);
+        assertEq(magnitude % unit, unit / 2, "tie");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float expected = LibDecimalFloat.packLossless(int256(magnitude / unit + 1), exponent + shed);
+        assertTrue(this.powExternal(a, b).eq(expected), "tie rounds away from zero");
+    }
+
+    /// a = 1 + 5e-p, or 1 - 5e-p when `below`, to the power N, or -N for a
+    /// negative b. For -N the inverse truncates toward zero, dropping only
+    /// (5e-p)^2 and below, so it is 1 -+ 5e-p, on the other side of one. Every
+    /// operand of a squaring or result multiply is then 1 + s k 5e-p for one
+    /// sign s and some k up to N, so the exact product of two is the sum of
+    /// their offsets plus the product of them, under (5N 1e-p)^2. Below 1e-76,
+    /// under every grid, that is all a squaring's floor or a multiply's
+    /// truncation toward zero drops, so the unrounded power is exactly
+    /// 1 + s 5N 1e-p.
+    function checkPowNearOneAtTie(uint256 p, bool below, uint256 n, int256 signedCoefficientB, int256 exponentB)
+        internal
+        view
+    {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponent = -int256(p);
+        assertEq(
+            LibTestExactDecimal.cmpScaled(
+                LibTestExactDecimal.mul(5 * n, 5 * n), 2 * exponent, LibTestExactDecimal.u512(1), -76
+            ),
+            -1,
+            "offset products below the grid"
+        );
+        bool resultBelow = below != (signedCoefficientB < 0);
+        uint256 magnitude = resultBelow ? 10 ** p - 5 * n : 10 ** p + 5 * n;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficientA = int256(below ? 10 ** p - 5 : 10 ** p + 5);
+        checkPowAtTie(
+            LibDecimalFloat.packLossless(signedCoefficientA, exponent),
+            LibDecimalFloat.packLossless(signedCoefficientB, exponentB),
+            magnitude,
+            exponent
+        );
+    }
+
+    /// The result multiply truncates toward zero and a squared partial is the
+    /// floor of its exact square. Here each is exact or drops only digits
+    /// below the grid, so the unrounded power is known exactly and sits on a
+    /// rounding tie, where one unit more dropped by any step shows.
+    function testPowIntegerLegAtRoundingTie() external view {
+        // 5e13 + 5 cubed: 1 times a, a squared and a times a^2 are all exact,
+        // and a^3 has 42 digits, the last a 5.
+        uint256 m = 5e13 + 5;
+        U512 memory cube = LibTestExactDecimal.mulSmall(LibTestExactDecimal.mul(m, m), m);
+        assertEq(cube.hi, 0, "cube in a word");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkPowAtTie(LibDecimalFloat.packLossless(int256(m), 0), LibDecimalFloat.packLossless(3, 0), cube.lo, 0);
+
+        // Near one with |b| at 3e25 and 3e26, each result multiply sheds
+        // nonzero digits below the grid.
+        // (1 + 5e-66)^3e25: 1 + 1.5e-40.
+        checkPowNearOneAtTie(66, false, 3e25, 3, 25);
+        // (1 - 5e-67)^3e25: 1 - 1.5e-41, the tie in its 42nd digit.
+        checkPowNearOneAtTie(67, true, 3e25, 3, 25);
+        // (1 - 5e-67)^-3e26: the inverse, truncated toward zero, is
+        // 1 + 5e-67 as it drops only 2.5e-133 and below, then 1 + 1.5e-40.
+        checkPowNearOneAtTie(67, true, 3e26, -3, 26);
     }
 
     /// a^0 = 1 for all a including 0^0.
