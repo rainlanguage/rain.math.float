@@ -3,6 +3,7 @@
 pragma solidity ^0.8.25;
 
 import {
+    DivisionByZero,
     ExponentOverflow,
     ExponentUnderflow,
     FixedDecimalOverflow,
@@ -753,36 +754,56 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Same as `div`, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
-    /// @param a The Float struct containing the signed coefficient and
-    /// exponent of the first floating point number.
-    /// @param b The Float struct containing the signed coefficient and
-    /// exponent of the second floating point number.
+    /// Divides `a` by `b`. The result is the Float closest to the exact
+    /// quotient that does not exceed its magnitude. A zero `b` reverts
+    /// `DivisionByZero`. A quotient past every Float reverts
+    /// `ExponentOverflow`, and one below every non-zero Float
+    /// `ExponentUnderflow`. Every range error reports `a`, unpacked.
+    /// @param a The dividend.
+    /// @param b The divisor.
     /// @return The quotient of the two floats (a / b).
     function div(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        // Division is often lossy because it is very easy to end up with
-        // infinite decimal representations.
-        Float c = packArithmeticResult(signedCoefficient, exponent);
+        // packArithmeticResult with range errors reporting `a`. The quotient
+        // has at most 77 digits and packLossy sheds at most ten, so an
+        // exponent ten below int32.max cannot overflow. A checked subtraction
+        // is computed at run time.
+        int256 ceilingLessTen;
+        unchecked {
+            ceilingLessTen = int256(type(int32).max) - 10;
+        }
+        if (exponent > ceilingLessTen) {
+            revertIfPastLargestFloat(signedCoefficient, exponent, a);
+        }
+        (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
+        if (!lossless && Float.unwrap(c) == bytes32(0)) {
+            revertPast(false, a);
+        }
         return c;
     }
 
-    /// Same as inv, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
-    /// @param float The Float struct containing the signed coefficient and
-    /// exponent of the floating point number.
+    /// The multiplicative inverse, `1 / float`, as `div` of one by `float`.
+    /// No inverse is past every Float: the least magnitude, 1e-2147483648,
+    /// inverts to 10 10^int32.max, so packing never overflows.
+    /// A zero `float` reverts `DivisionByZero`. Both errors report `float`,
+    /// unpacked.
+    /// @param float The float to invert.
     /// @return The multiplicative inverse (1 / float).
     function inv(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
+        if (signedCoefficient == 0) {
+            revert DivisionByZero(signedCoefficient, exponent);
+        }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
-        Float result = packArithmeticResult(signedCoefficient, exponent);
-        return result;
+        (Float c,) = packLossy(signedCoefficient, exponent);
+        // No inverse is zero, so a zero Float is one that underflowed.
+        if (Float.unwrap(c) == bytes32(0)) {
+            revertPast(false, float);
+        }
+        return c;
     }
 
     /// Same as eq, but accepts a Float struct instead of separate values.
@@ -1268,8 +1289,8 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// The range error of a pow or pow10 result past every Float, reporting
-    /// the call's input.
+    /// The range error of a result past every Float, reporting the call's
+    /// input.
     function revertPast(bool over, Float input) private pure {
         (int256 signedCoefficient, int256 exponent) = input.unpack();
         if (over) {
@@ -1281,8 +1302,8 @@ library LibDecimalFloat {
     /// `packLossy` reverts `ExponentOverflow` exactly when the value is at
     /// least (int224.max / 10 + 1) 10^(int32.max + 1) in magnitude: there the
     /// closest Float not above it is past int224.max 10^int32.max. The
-    /// comparison is on the magnitude, so both signs share it. A pow or pow10
-    /// result is never int256.min, whose checked negation would panic.
+    /// comparison is on the magnitude, so both signs share it. A pow, pow10 or
+    /// div result is never int256.min, whose checked negation would panic.
     function revertIfPastLargestFloat(int256 signedCoefficient, int256 exponent, Float input) private pure {
         if (signedCoefficient < 0) {
             signedCoefficient = -signedCoefficient;
