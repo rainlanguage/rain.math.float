@@ -191,7 +191,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         return (log, logExponent);
     }
 
-    /// log10 a within half a unit plus `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, plus
+    /// log10 a within half a unit plus `LOG10_RAW_ERROR_E54` units of 1e-54, plus
     /// the oracle's 1e-67.
     function assertLog10Reference(Float a, string memory what) internal view {
         (int256 signedCoefficient, int256 exponent) = a.unpack();

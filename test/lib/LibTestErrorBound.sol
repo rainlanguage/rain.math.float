@@ -6,16 +6,34 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibTranscendentalOracle, ORACLE_ONE} from "test/lib/LibTranscendentalOracle.sol";
 
-/// @dev log10's raw error in units of 1e-50: the README's 2e-50.
-uint256 constant DOCUMENTED_LOG10_RAW_ERROR = 2;
+/// @dev log10Unrounded's error, in units of 1e-54, from its steps:
+/// `log10Reduce` leaves R within 16.7 units of C / 10^S, 1.67e-74 relative,
+/// which moves the log by under 1e-74; `log10Ratio` is within 1.0043e-50
+/// below and 1.3e-51 relative above a log under 1. So under 1.0044e-50.
+uint256 constant LOG10_RAW_ERROR_E54 = 10044;
 
-/// @dev pow10's raw error in units of 1e-50: the README's 3.28e-8 of a unit
-/// of `DOCUMENTED_POW_GUARD`.
-uint256 constant DOCUMENTED_POW10_RAW_ERROR = 328;
+/// @dev pow10Unrounded's error, in units of 1e-52 of a power in [1e50, 1e51)
+/// units of 1e-50, from its steps: `exp10Fixed` floors its 16 constants and
+/// multiplies, its series and its last multiply, so it is under 30.471e-50
+/// relative below 10^m; truncating x's fraction to 1e-50 moves 10^x by
+/// under ln 10 1e-50, 2.3026e-50 relative. Over a power below 10, that is
+/// under 304.71 + 23.03 = 327.74 units of 1e-50.
+uint256 constant POW10_RAW_ERROR_E52 = 32774;
 
-/// @dev Units of 1e-50 in a unit of the 41st digit of a power of 1e50 to 1e51
-/// units.
-uint256 constant DOCUMENTED_POW_GUARD = 1e10;
+/// @dev Half a unit in the 41st digit of a power in [1e50, 1e51) units of
+/// 1e-50, which has 51 digits, in units of 1e-52: 5e9 units of 1e-50.
+uint256 constant POW10_HALF_UNIT_E52 = 5e11;
+
+/// @dev pow's error before its integer part, relative, in units of 1e-52:
+/// rounding at 41 digits, 5e-41 of the product, plus the leg's 10^(f L)
+/// for a fraction f below 1, within pow10's 3.2774e-48 relative plus
+/// ln 10 f times log10Unrounded's 1.0044e-50, under 2.3128e-50. That is
+/// 5.0000003300528e-41, rounded up to 5.00000033006e-41. The integer part's
+/// truncations are under 2N 1e-75 and its product with the leg 1e-75 more,
+/// within the 3N 1e-75 `LibTestErrorBound.pow` adds from N 1. At N 0 that
+/// 1e-75, and the half-power root's (2N + 1.6) 1e-75 below N 2, are within
+/// the rounding up.
+uint256 constant POW_RELATIVE_ERROR_E52 = 500000033006;
 
 /// The proven error bound E of each transcendental function, and the
 /// monotonicity it implies: for x < y, the results r have r(x) <= r(y) + 2E.
@@ -36,7 +54,7 @@ library LibTestErrorBound {
     }
 
     /// log10 of a positive input: half a unit of the true log plus
-    /// `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, absolute. The unit is the
+    /// `LOG10_RAW_ERROR_E54` units of 1e-54, absolute. The unit is the
     /// oracle's less its 1e-67, the smaller one where that straddles a power
     /// of ten, as a raw log past the power rounds to it or is far inside the
     /// raw error of it.
@@ -69,7 +87,7 @@ library LibTestErrorBound {
         (int256 unitCoefficient, int256 unitExponent) =
             (whole > 0 ? halfUnit(whole, 0) : halfUnit(fraction, -70)).unpack();
         // forge-lint: disable-next-line(unsafe-typecast)
-        return sum(unitCoefficient, unitExponent, int256(DOCUMENTED_LOG10_RAW_ERROR), -50);
+        return sum(unitCoefficient, unitExponent, int256(LOG10_RAW_ERROR_E54), -54);
     }
 
     /// Two bound terms summed by `addPartsWide` and packed, both truncating
@@ -102,16 +120,15 @@ library LibTestErrorBound {
         return log10(signedCoefficient, exponent);
     }
 
-    /// pow10, relative: half of `DOCUMENTED_POW_GUARD` plus
-    /// `DOCUMENTED_POW10_RAW_ERROR`, over a power of at least 1e50 units.
+    /// pow10, relative: `POW10_HALF_UNIT_E52` plus `POW10_RAW_ERROR_E52`, over
+    /// a true power of at least 1e50 units.
     function pow10() internal pure returns (Float) {
         // forge-lint: disable-next-line(unsafe-typecast)
-        return LibDecimalFloat.packLossless(int256(DOCUMENTED_POW_GUARD / 2 + DOCUMENTED_POW10_RAW_ERROR), -50);
+        return LibDecimalFloat.packLossless(int256(POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52), -52);
     }
 
-    /// pow, relative, for the integer part N of |b|: 5.0000004e-41, pow10's
-    /// bound plus log10Unrounded's 2e-50 times a fraction below 1 and
-    /// ln 10, plus the packing, and 3 N 1e-75. Every multiply and the inverse
+    /// pow, relative, for the integer part N of |b|: `POW_RELATIVE_ERROR_E52`
+    /// units of 1e-52 and 3 N 1e-75. Every multiply and the inverse
     /// truncate toward zero by under 1e-75, and squaring to the Nth power
     /// weights them by at most 2N in all, so the integer part is within
     /// 1 - (1 - 1e-75)^(2N), under 2N 1e-75; its product with the leg is
@@ -125,7 +142,8 @@ library LibTestErrorBound {
             (n, exponent) = (LibTestExactDecimal.atExponent(n, exponent, 0), 0);
         }
         (n, exponent) = LibTestExactDecimal.mulPayload(n, exponent, 3, -75);
-        return sum(50000004, -48, n, exponent);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return sum(int256(POW_RELATIVE_ERROR_E52), -52, n, exponent);
     }
 
     /// sqrt, relative: correctly rounded, so half a unit in the 41st digit of

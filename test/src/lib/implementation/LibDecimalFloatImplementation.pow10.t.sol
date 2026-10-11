@@ -8,8 +8,12 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibTranscendentalOracle, ORACLE_ONE} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibTestErrorBound, DOCUMENTED_POW_GUARD, DOCUMENTED_POW10_RAW_ERROR} from "../../../lib/LibTestErrorBound.sol";
+import {LibTestErrorBound, POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "../../../lib/LibTestErrorBound.sol";
 import {LibTestExactDecimal} from "../../../lib/LibTestExactDecimal.sol";
+
+/// @dev 10^x for x = 999989412444502470160818040289325468267883913374439598768578152671e-66
+/// in units of 1e-70, from `bc -l` at scale 130, truncated.
+int256 constant POW10_TIE_REFERENCE = 99997562154969938969642568687755561930737500000010799999999999999837309;
 
 contract LibDecimalFloatImplementationPow10Test is Test {
     using LibDecimalFloat for Float;
@@ -36,12 +40,12 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         checkPow10(-20, -1, 1, -2);
     }
 
-    /// The result is within half a unit of the true power's 41st digit plus
-    /// `DOCUMENTED_POW10_RAW_ERROR` over `DOCUMENTED_POW_GUARD` of that unit,
-    /// and the 70 digit reference is within 1e-29 of it, inside 1e-11.
+    /// The result is within `POW10_HALF_UNIT_E52` plus `POW10_RAW_ERROR_E52`
+    /// units of 1e-12 of a unit in the true power's 41st digit, and the 70
+    /// digit reference is within 1e-29 of it, inside 1e-13.
     function testPow10Accuracy() external pure {
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 boundUnits = int256((DOCUMENTED_POW_GUARD / 2 + DOCUMENTED_POW10_RAW_ERROR) * 10 + 1);
+        int256 boundUnits = int256((POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52) * 10 + 1);
         int256[4][] memory references = pow10References();
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
@@ -54,7 +58,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
             (coefficients[1], exponents[1]) = (-references[i][2], references[i][3]);
             int256[] memory boundCoefficients = new int256[](1);
             int256[] memory boundExponents = new int256[](1);
-            (boundCoefficients[0], boundExponents[0]) = (boundUnits, unitExponent - 11);
+            (boundCoefficients[0], boundExponents[0]) = (boundUnits, unitExponent - 13);
             assertTrue(
                 LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), "pow10 error"
             );
@@ -376,11 +380,12 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         return (x, exponent);
     }
 
-    /// Whether a pow10 result is within the README's bound of a power P 10^e
+    /// Whether a pow10 result is within its proven bound of a power P 10^e
     /// that is itself within `referenceError` units of 10^e of the true
     /// power T. In units of 10^e, T is below 10^n for n the digits of
     /// P + referenceError, so a unit in T's 41st digit is at most 10^(n - 41),
-    /// and the bound is half of it plus 3.28e-8 of it.
+    /// and the bound is `POW10_HALF_UNIT_E52` plus `POW10_RAW_ERROR_E52` units
+    /// of 10^(n - 53).
     function pow10WithinPower(
         uint256 power,
         int256 powerExponent,
@@ -399,7 +404,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         for (uint256 rest = power + referenceError; rest > 0; rest /= 10) {
             n++;
         }
-        uint256 bound = 5 * 10 ** (n - 42) + 328 * 10 ** (n - 51) + referenceError;
+        uint256 bound = (POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52) * 10 ** (n - 53) + referenceError;
         return (actual > power ? actual - power : power - actual) <= bound;
     }
 
@@ -565,5 +570,37 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         );
         assertTrue(pow10WithinOracle(x, -70, lowCoefficient, lowExponent), "low pow10 oracle");
         assertTrue(pow10WithinOracle(x + gap, -70, highCoefficient, highExponent), "high pow10 oracle");
+    }
+
+    /// 10^x for x = 0.99998941..., from `bc -l` at scale 130 truncated to 70
+    /// places, is 1.09e-48 above the fixed point power and 1.0799e-48 above
+    /// the rounding tie T between the 41 digit neighbours, so it rounds down,
+    /// to the far neighbour. Both are within `POW10_RAW_ERROR_E52`, so it
+    /// cannot be below 1.079e-48, but they reach only a third of its 3.2774e-48:
+    /// it sums each floor's worst case, which no input found meets at once.
+    function testPow10RawErrorReached() external pure {
+        int256 x = 999989412444502470160818040289325468267883913374439598768578152671;
+        int256 power = POW10_TIE_REFERENCE;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 bound = int256(POW10_RAW_ERROR_E52) * 1e18;
+        (int256 raw, int256 rawExponent) = LibDecimalFloatImplementation.pow10Unrounded(x, -66);
+        assertEq(rawExponent, -50, "raw exponent");
+        int256 error = power - raw * 1e20;
+        assertGe(error, 0, "raw below");
+        assertLe(error, bound, "raw within the bound");
+        assertGe(error, 108e20, "raw error reached");
+
+        int256 unit = 1e30;
+        int256 below = power / unit * unit;
+        int256 tie = below + unit / 2;
+        (int256 resultCoefficient, int256 resultExponent) = LibDecimalFloatImplementation.pow10(x, -66);
+        assertEq(resultExponent, -40, "exponent");
+        int256 result = resultCoefficient * unit;
+        int256 nearest = power < tie ? below : below + unit;
+        int256 distance = power < tie ? tie - power : power - tie;
+        assertTrue(result == below || result == below + unit, "a neighbour");
+        assertTrue(result == nearest || distance <= bound + 1, "far neighbour outside the window");
+        assertEq(result, below, "rounds to the far neighbour");
+        assertGe(distance, 1079e19, "window reached");
     }
 }
