@@ -731,7 +731,9 @@ fn ten_to(y: &D) -> D {
     let n = y.floor();
     let f = rounded(Context::<Zero>::new(120).sub(y.repr(), n.repr()).unwrap());
     let n = isize::try_from(n.to_int().value()).unwrap();
-    let p = if f == D::ZERO {
+    // 10^f - 1 is under 2.31 f, so below 1e-101 the 100-digit truncation
+    // of 10^f is 1, and dashu is not asked to reach f's exponent.
+    let p = if f < D::from_parts(IBig::ONE, -101) {
         D::ONE
     } else {
         let ten = D::from_parts(IBig::ONE, 1);
@@ -920,6 +922,21 @@ fn exact_power(a: &D, b: &D, t: &D) -> Option<D> {
     holds.then_some(g)
 }
 
+/// pow's d = max(|a|, 1/|a|) - 1, rounded toward zero, so the bound it
+/// enters is never over the stated one. 1/|a| - 1 is taken as
+/// (1 - |a|) / |a|: each step rounds relative to its own result, so a d
+/// near 1e-66 keeps its digits.
+fn distance_from_one(ax: &D) -> D {
+    let one = D::ONE;
+    let ctx = Context::<Zero>::new(60);
+    if *ax > one {
+        rounded(ctx.sub(ax.repr(), one.repr()).unwrap())
+    } else {
+        let gap = rounded(ctx.sub(one.repr(), ax.repr()).unwrap());
+        rounded(ctx.div(gap.repr(), ax.repr()).unwrap())
+    }
+}
+
 /// pow (NatSpec, README): b = 0 is 1, a = 0 is 0 for b > 0 and reverts
 /// `ZeroNegativePower(b)` for b < 0, a negative a needs a whole b and takes
 /// its sign when b is odd, else `PowNegativeBase(a)`; |a| = 1 is exact.
@@ -960,13 +977,7 @@ fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
         return check(&case, sol, Ok(sign(D::ONE)), None);
     }
     let z = rounded(Context::<Zero>::new(120).mul(y.repr(), log10_of(&ax, 130).repr()).unwrap());
-    let one = D::ONE;
-    let dd = if ax > one {
-        rounded(Context::<Zero>::new(60).sub(ax.repr(), one.repr()).unwrap())
-    } else {
-        let inv = rounded(Context::<Zero>::new(60).div(one.repr(), ax.repr()).unwrap());
-        rounded(Context::<Zero>::new(60).sub(inv.repr(), one.repr()).unwrap())
-    };
+    let dd = distance_from_one(&ax);
     let (k1, k2) = if y > D::ZERO {
         (D::from_parts(IBig::from(17273), -80), D::from_parts(IBig::from(15), -39))
     } else {
@@ -1219,15 +1230,42 @@ mod oracle {
         assert!(exact_power(&a, &b, &t(&a, &b)).is_none());
     }
 
+    /// d for a within 1e-66 of one either side: 1e-66 above, and
+    /// 1/(1 - 1e-66) - 1 = 1e-66 / (1 - 1e-66) below, just over 1e-66.
+    #[test]
+    fn distance_near_one() {
+        let below = distance_from_one(&D::from_parts(nines(66), -66));
+        // 1e-66 + 1e-132 + ..., truncated at 60 digits.
+        assert!(same(&below, &dec("1e-66")));
+        assert!(same(&distance_from_one(&D::from_parts(IBig::from(10).pow(66) + IBig::ONE, -66)), &dec("1e-66")));
+        assert!(same(&distance_from_one(&dec("0.5")), &D::ONE));
+    }
+
+    fn extremes() -> [D; 3] {
+        [largest_float(false), D::from_parts(IBig::ONE, I32_MIN), D::from_parts(int224_max(), I32_MIN)]
+    }
+
     /// Inputs at both exponent ends stay cheap for the transcendental oracle.
     #[test]
-    fn transcendental_extremes_are_cheap() {
-        for a in [largest_float(false), D::from_parts(IBig::ONE, I32_MIN), D::from_parts(int224_max(), I32_MIN)] {
+    fn sqrt_extremes_are_cheap() {
+        for a in extremes() {
             let _ = Context::<HalfAway>::new(41).sqrt(a.repr()).unwrap();
+        }
+    }
+
+    #[test]
+    fn log10_extremes_are_cheap() {
+        for a in extremes() {
             let _ = log10_of(&a, 130);
         }
+    }
+
+    #[test]
+    fn ten_to_extremes_are_cheap() {
         let _ = ten_to(&huge());
         let _ = ten_to(&-huge());
         let _ = ten_to(&D::from_parts(IBig::from(7), I32_MIN));
+        let _ = ten_to(&-D::from_parts(IBig::from(7), I32_MIN));
+        let _ = ten_to(&D::from_parts(int224_max(), I32_MIN + 60));
     }
 }
