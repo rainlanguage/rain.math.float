@@ -78,29 +78,29 @@ contract LibTestErrorBoundTest is Test {
         assertTrue(LibTestErrorBound.monotoneAbsolute(high, LibDecimalFloat.packLossless(5, 0), error, error), "below");
     }
 
-    /// 5.00000033006e-41 plus 3e-75 per unit of the integer part of |b|.
+    /// 5.00000011343e-41 plus 3e-75 per unit of the integer part of |b|.
     function testPowValues() external pure {
         assertTrue(
             LibTestErrorBound.pow(LibDecimalFloat.packLossless(25, -1))
-                .eq(LibDecimalFloat.packLossless(50000003300600000000000000000000006, -75)),
+                .eq(LibDecimalFloat.packLossless(50000001134300000000000000000000006, -75)),
             "2.5"
         );
         assertTrue(
             LibTestErrorBound.pow(LibDecimalFloat.packLossless(-1239, -1))
-                .eq(LibDecimalFloat.packLossless(50000003300600000000000000000000369, -75)),
+                .eq(LibDecimalFloat.packLossless(50000001134300000000000000000000369, -75)),
             "-123.9"
         );
         assertTrue(
             LibTestErrorBound.pow(LibDecimalFloat.packLossless(5, -1))
-                .eq(LibDecimalFloat.packLossless(500000033006, -52)),
+                .eq(LibDecimalFloat.packLossless(500000011343, -52)),
             "0.5"
         );
     }
 
     /// log10 2 = 0.30103..., so half a unit of its 41st digit is 5e-42, plus
-    /// 1.0044e-50.
+    /// 1.0037e-50.
     function testLog10Value() external pure {
-        assertTrue(LibTestErrorBound.log10(2, 0).eq(LibDecimalFloat.packLossless(5000000010044, -54)), "log10 2");
+        assertTrue(LibTestErrorBound.log10(2, 0).eq(LibDecimalFloat.packLossless(5000000010037, -54)), "log10 2");
     }
 
     /// plus sums and times multiplies.

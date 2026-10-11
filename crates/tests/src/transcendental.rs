@@ -9,9 +9,9 @@
 //! raw error of the tie between them; sqrt never.
 //!
 //! The bounds, as proven in `test/lib/LibTestErrorBound.sol`:
-//! - pow10: half a unit in the 41st digit plus 3.2774e-8 of a unit.
-//! - log10: half a unit in the 41st digit plus 1.0044e-50 absolute.
-//! - pow: 5.00000033006e-41 + 3N 1e-75 relative, N the integer part of |b|.
+//! - pow10: half a unit in the 41st digit plus 1.1111e-8 of a unit.
+//! - log10: half a unit in the 41st digit plus 1.0037e-50 absolute.
+//! - pow: 5.00000011343e-41 + 3N 1e-75 relative, N the integer part of |b|.
 //! - sqrt: correctly rounded, half a unit in the 41st digit.
 //! - pow10 and pow: a result below 1e-2147483608 adds 1e-2147483648.
 
@@ -88,18 +88,18 @@ fn sol_sqrt(a: &Dec) -> Sol {
 // ------------------------------------------------------------ the contract
 
 /// log10Unrounded's error, absolute, in units of 1e-54: `LOG10_RAW_ERROR_E54`.
-const LOG10_RAW_E54: i64 = 10_044;
+const LOG10_RAW_E54: i64 = 10_037;
 
 /// pow10Unrounded's error in units of 1e-52 of 10^k, k the integer part of
 /// x: `POW10_RAW_ERROR_E52`.
-const POW10_RAW_E52: i64 = 32_774;
+const POW10_RAW_E52: i64 = 11_111;
 
 /// Half a unit in the 41st digit of a power below 10, in units of 1e-52.
 const POW10_HALF_UNIT_E52: i64 = 500_000_000_000;
 
 /// pow's error before its integer part, relative, in units of 1e-52:
 /// `POW_RELATIVE_ERROR_E52`.
-const POW_RELATIVE_E52: i64 = 500_000_033_006;
+const POW_RELATIVE_E52: i64 = 500_000_011_343;
 
 fn log10_raw() -> Dec {
     Dec::new(LOG10_RAW_E54, -54)
@@ -1038,7 +1038,7 @@ mod checker {
 
     #[test]
     fn log10_bound() {
-        // Half a unit in the 41st digit of 2, plus 1.0044e-50.
+        // Half a unit in the 41st digit of 2, plus 1.0037e-50.
         let within = sum(&Dec::new(5, -41), &log10_raw());
         edge(&Dec::new(2, 0), &Bound::Log10, &within, &Dec::new(1, -310));
         // A true value that may be just below one takes the 41st digit there.
@@ -1068,7 +1068,7 @@ mod checker {
 
     #[test]
     fn pow10_bound() {
-        // 3.5 has integer part 0: half a unit plus 3.2774e-8 of one, 1e-40.
+        // 3.5 has integer part 0: half a unit plus 1.1111e-8 of one, 1e-40.
         let within = pow10_within(0);
         edge(
             &Dec::new(35, -1),
@@ -1080,7 +1080,7 @@ mod checker {
 
     #[test]
     fn pow_bound() {
-        // N = 7: 5.00000033006e-41 + 21e-75 relative to the true value.
+        // N = 7: 5.00000011343e-41 + 21e-75 relative to the true value.
         let v = Dec::new(2, 0);
         let relative = pow_relative(&BigInt::from(7));
         let within = relative.mul_exact(&sum(&v, &Dec::new(-1, -300)));
@@ -1642,7 +1642,7 @@ mod anchors {
     /// - 1.002^(2e12 + 1e-7) is
     ///   2.84331506279111009690174079886358388810420809 10^1735443062, the
     ///   same at scales 150 and 250. Its log10 is past 1e9, so b times log10's
-    ///   1.0044e-50 absolute error would leave the bound: the integer part has to
+    ///   1.0037e-50 absolute error would leave the bound: the integer part has to
     ///   be taken by squaring.
     #[test]
     fn pow_integer_part_past_six_decimals() {

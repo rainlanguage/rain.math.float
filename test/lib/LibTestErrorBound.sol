@@ -8,17 +8,21 @@ import {LibTranscendentalOracle, ORACLE_ONE} from "test/lib/LibTranscendentalOra
 
 /// @dev log10Unrounded's error, in units of 1e-54, from its steps:
 /// `log10Reduce` leaves R within 16.7 units of C / 10^S, 1.67e-74 relative,
-/// which moves the log by under 1e-74; `log10Ratio` is within 1.0043e-50
-/// below and 1.3e-51 relative above a log under 1. So under 1.0044e-50.
-uint256 constant LOG10_RAW_ERROR_E54 = 10044;
+/// which moves the log by under 1e-74; `log10Ratio` is within
+/// 1 + 0.8686 8.0226 z units of 1e-50 below, for z at most 5.1e-4, under
+/// 1.0036e-50, and 1.3e-51 relative above a log under 1. So under
+/// 1.0037e-50.
+uint256 constant LOG10_RAW_ERROR_E54 = 10037;
 
 /// @dev pow10Unrounded's error, in units of 1e-52 of a power in [1e50, 1e51)
-/// units of 1e-50, from its steps: `exp10Fixed` floors its 16 constants and
-/// multiplies, its series and its last multiply, so it is under 30.471e-50
-/// relative below 10^m; truncating x's fraction to 1e-50 moves 10^x by
-/// under ln 10 1e-50, 2.3026e-50 relative. Over a power below 10, that is
-/// under 304.71 + 23.03 = 327.74 units of 1e-50.
-uint256 constant POW10_RAW_ERROR_E52 = 32774;
+/// units of 1e-50, from its steps. For m = k 2^-16 + r, r below 2^-16,
+/// `exp10Fixed`'s steps give P, E_k = 10^(k 2^-16) 1e50 - P below the power
+/// at r = 0; its floored series is under 1.07902 units below 10^r 1e50 and
+/// its last multiply under a unit, so it is under E_k 10^r + 1.07902 P / 1e50
+/// + 1 below 10^m 1e50. Truncating x's fraction to 1e-50 moves 10^x by under
+/// ln 10 10^m units. Over every k (crates/tests `fixed.rs` enumerates them)
+/// that is at most 111.1006 units of 1e-50, at k = 2^16 - 1.
+uint256 constant POW10_RAW_ERROR_E52 = 11111;
 
 /// @dev Half a unit in the 41st digit of a power in [1e50, 1e51) units of
 /// 1e-50, which has 51 digits, in units of 1e-52: 5e9 units of 1e-50.
@@ -26,14 +30,14 @@ uint256 constant POW10_HALF_UNIT_E52 = 5e11;
 
 /// @dev pow's error before its integer part, relative, in units of 1e-52:
 /// rounding at 41 digits, 5e-41 of the product, plus the leg's 10^(f L)
-/// for a fraction f below 1, within pow10's 3.2774e-48 relative plus
-/// ln 10 f times log10Unrounded's 1.0044e-50, under 2.3128e-50. That is
-/// 5.0000003300528e-41, rounded up to 5.00000033006e-41. The integer part's
+/// for a fraction f below 1, within pow10's 1.1111e-48 relative plus
+/// ln 10 f times log10Unrounded's 1.0037e-50, under 2.3112e-50. That is
+/// 5.0000001134222e-41, rounded up to 5.00000011343e-41. The integer part's
 /// truncations are under 2N 1e-75 and its product with the leg 1e-75 more,
 /// within the 3N 1e-75 `LibTestErrorBound.pow` adds from N 1. At N 0 that
 /// 1e-75, and the half-power root's (2N + 1.6) 1e-75 below N 2, are within
 /// the rounding up.
-uint256 constant POW_RELATIVE_ERROR_E52 = 500000033006;
+uint256 constant POW_RELATIVE_ERROR_E52 = 500000011343;
 
 /// The proven error bound E of each transcendental function, and the
 /// monotonicity it implies: for x < y, the results r have r(x) <= r(y) + 2E.

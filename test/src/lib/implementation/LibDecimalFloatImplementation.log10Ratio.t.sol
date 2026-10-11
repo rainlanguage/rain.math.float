@@ -11,8 +11,8 @@ import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 
 /// Bounds from the `log10Ratio` NatSpec, for z = |a - b| / (a + b) at most
 /// 5.1e-4: the magnitude is at most 1.3e-51 relative above the true log, and
-/// below it by under 1.0043 units of 1e-50 for a coefficient at that scale,
-/// or by C 9.6e-50 plus a unit of its exponent when `relative`.
+/// below it by under 1.0036 units of 1e-50 for a coefficient at that scale,
+/// or by C 8.03e-50 plus a unit of its exponent when `relative`.
 contract LibDecimalFloatImplementationLog10RatioTest is Test {
     function abs(int256 value) internal pure returns (int256) {
         return value < 0 ? -value : value;
@@ -38,8 +38,8 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         int256[] memory exponents = new int256[](2);
         (coefficients[0], exponents[0]) = (c, exponent);
         (coefficients[1], exponents[1]) = (-abs(expectedCoefficient), expectedExponent);
-        int256[] memory boundCoefficients = new int256[](3);
-        int256[] memory boundExponents = new int256[](3);
+        int256[] memory boundCoefficients = new int256[](5);
+        int256[] memory boundExponents = new int256[](5);
         (boundCoefficients[0], boundExponents[0], boundCoefficients[1], boundExponents[1]) =
             multiple(c, 13, exponent - 52);
         (boundCoefficients[2], boundExponents[2]) = (1, expectedExponent);
@@ -48,11 +48,14 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         );
         (coefficients[0], coefficients[1]) = (-coefficients[0], -coefficients[1]);
         if (relative) {
+            // C 8.03e-50 as C 8e-50 + C 3e-52, and a unit.
             (boundCoefficients[0], boundExponents[0], boundCoefficients[1], boundExponents[1]) =
-                multiple(c, 96, exponent - 51);
-            (boundCoefficients[2], boundExponents[2]) = (1, exponent);
+                multiple(c, 8, exponent - 50);
+            (boundCoefficients[2], boundExponents[2], boundCoefficients[3], boundExponents[3]) =
+                multiple(c, 3, exponent - 52);
+            (boundCoefficients[4], boundExponents[4]) = (1, exponent);
         } else {
-            (boundCoefficients[0], boundExponents[0]) = (10043, -54);
+            (boundCoefficients[0], boundExponents[0]) = (10036, -54);
             (boundCoefficients[1], boundCoefficients[2]) = (0, 0);
         }
         assertTrue(
@@ -190,6 +193,19 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         this.ratio(a, b, true);
     }
 
+    /// The largest relative shortfall found, 7.556e-50 of C against the
+    /// bound's 8.03e-50, so a series a few units low leaves the bound.
+    /// Reference from `bc -l` at scale 200.
+    function testLog10RatioRelativeNearWorst() external pure {
+        checkAgainstBc(
+            233589395330683330993119953099800888842671881715980,
+            233376197779936277454916859050523443841026703458223,
+            true,
+            3965625204261743005014801431648182388098283587976277313518805519142685,
+            -73
+        );
+    }
+
     function testLog10RatioMidDomain() external pure {
         checkBothModes(
             3141592653589793238462643383279502884197169399375105820974944592307816e6,
@@ -224,7 +240,7 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         int256 actual = abs(signedCoefficient) * 1e20;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 expected = int256(Math.mulDiv(d, oracleRatio(d, b, below), b));
-        assertLe(abs(actual - expected), 1.005e20 + 2, "fixed point error");
+        assertLe(abs(actual - expected), 1.0036e20 + 2, "fixed point error");
     }
 
     /// Relative: d is maximized to D = d 10^k in [1e75, 1e77) and the log is
@@ -248,7 +264,7 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         uint256 expected = Math.mulDiv(maximized, oracleRatio(d, b, below), b);
         uint256 error = actual > expected ? actual - expected : expected - actual;
         // forge-lint: disable-next-line(unsafe-typecast)
-        assertLe(error, uint256(abs(signedCoefficient)) / 1e29 + 1 + 2e20 + 2401, "relative error");
+        assertLe(error, Math.mulDiv(actual, 803, 1e52, Math.Rounding.Ceil) + 1e20 + 2401, "relative error");
     }
 
     /// |C 10^g - D / b times the ratio at 10^-g| against the bound, where g
@@ -261,11 +277,15 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         uint256 actual = c * 10 ** g;
         uint256 expected = Math.mulDiv(maximized, oracleRatio(d, b, below), denominator);
         uint256 error = actual > expected ? actual - expected : expected - actual;
-        assertLe(error, actual / 1e49 + 2 * 10 ** g + Math.mulDiv(maximized, 24, denominator) + 1, "relative error");
+        assertLe(
+            error,
+            Math.mulDiv(actual, 803, 1e52, Math.Rounding.Ceil) + 10 ** g + Math.mulDiv(maximized, 24, denominator) + 1,
+            "relative error"
+        );
     }
 
     /// Relative at every scale with a + b of at least 1e50: never reverts,
-    /// keeps 48 digits and is within C / 1e49 + 2 units of its exponent. C
+    /// keeps 48 digits and is within C 8.03e-50 + 1 units of its exponent. C
     /// reaches 5.8e76 near a + b = 1e50.
     function testLog10RatioRelativeOracleAnyScale(uint256 seedB, uint256 seedD, uint256 seedP, bool below)
         external

@@ -1384,7 +1384,7 @@ library LibDecimalFloatImplementation {
     /// The fraction m of x, truncated to 1e-50, goes through `exp10Fixed`.
     /// Truncation moves 10^m by under 2.3026e-50 relative either way, and with
     /// exp10Fixed's bounds the true 10^x 1e50 is within 24 units below and
-    /// 111.10 units above the fixed point power: exp10Fixed's
+    /// 111.11 units above the fixed point power: exp10Fixed's
     /// E_k 10^r + 1.07902 P / 1e50 + 1 plus 2.3026 10^(k 2^-16 + r), at most
     /// 111.101 over every k, at k = 2^16 - 1. A unit of the result is
     /// `POW_GUARD` of those, so the result is within half a unit plus 1.12e-8
