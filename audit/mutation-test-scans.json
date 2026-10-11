@@ -937,5 +937,26 @@
       "testsAfter": 870,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-11T16:10:59Z",
+    "commit": "3990c5e18165188ef99dbd9dc788a82d1e61d206",
+    "testsAfterCommit": "4b181ebb14c3ec9daa91b030475914b17a3263f1",
+    "publishedTag": "sol-v0.2.41",
+    "commitsAheadOfTag": 1,
+    "scope": "Issue #359: LibDecimalFloatImplementation.sqrt seeds Newton at a + E / b per exponent parity ((26e36, 12e37) for E in [1e75, 1e76), (82e35, 38e36) for E in [1e74, 1e75)) and runs four steps over E instead of the 2^125 shift step plus six. Before = the source commit with main's tests (plus the sqrt variants mirroring the new seed); probe suite: forge test --mc \"Sqrt|Pow\". After = the tests commit; probe suite: only the three new tests (testImplementationSqrtMainFuzz, testImplementationSqrtMainPackedFuzz, testImplementationSqrtMainSeedExtremes), which compare against the pre-#359 sqrt and the exact LibTestExactDecimal rule. Mutants: M01 three steps; M02/M03 parity constants swapped; M04-M07 a or E / b dropped per parity; M08 odd seed reads C; M09 odd seed unset; M10 even b a decade low; M11 even a 22e36 (d0 -0.144 at E = a b, past the -0.095 four steps tolerate); M12 odd b 30e36 (d0 0.31 at E = 1e75). Before 12/12 killed by existing tests (testSqrtReference, testSqrtMidpointEnds, testImplementationSqrtLowWordBorrow, testSqrtExact, testPowHalfReference among others); after 12/12 killed by the new tests alone (the probe named testImplementationSqrtMainSeedExtremes; its fail pattern does not capture fuzz counterexample lines). No adversarial findings: outputs equal the pre-#359 sqrt and the exact rule across the full int256 coefficient/exponent domain the implementation takes.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 12,
+      "killedBefore": 12,
+      "killedAfter": 12,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 97,
+      "testsAfter": 3,
+      "filed": []
+    }
   }
 ]
