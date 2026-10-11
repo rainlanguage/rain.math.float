@@ -11,7 +11,8 @@
 //! The bounds, as proven in `test/lib/LibTestErrorBound.sol`:
 //! - pow10: half a unit in the 41st digit plus 3.2774e-8 of a unit.
 //! - log10: half a unit in the 41st digit plus 1.0044e-50 absolute.
-//! - pow: 5.00000033006e-41 + 3N 1e-75 relative, N the integer part of |b|.
+//! - pow: 5.00000033006e-41 + N min(K1, K2 d) relative, N the integer part
+//!   of |b| and d = max(|a|, 1/|a|) - 1: `PowTerm`.
 //! - sqrt: correctly rounded, half a unit in the 41st digit.
 //! - pow10 and pow: a result below 1e-2147483608 adds 1e-2147483648.
 
@@ -109,8 +110,20 @@ fn pow10_within(k: i64) -> Dec {
     Dec::new(POW10_HALF_UNIT_E52 + POW10_RAW_E52, k - 52)
 }
 
-fn pow_relative(n: &BigInt) -> Dec {
-    Dec::new(BigInt::from(POW_RELATIVE_E52) * pow10(23) + n * 3, -75)
+/// pow's K1 for b > 0, in units of 1e-80: `POW_K1_E80`.
+const POW_K1_E80: i64 = 17_273;
+
+/// pow's K1 for b < 0, in units of 1e-80: `POW_INVERSE_K1_E80`.
+const POW_INVERSE_K1_E80: i64 = 117_280;
+
+/// pow's K2 for b > 0, in units of 1e-42: `POW_K2_E42`.
+const POW_K2_E42: i64 = 15_000;
+
+/// pow's K2 for b < 0, in units of 1e-42: `POW_INVERSE_K2_E42`.
+const POW_INVERSE_K2_E42: i64 = 34_786;
+
+fn pow_base() -> Dec {
+    Dec::new(POW_RELATIVE_E52, -52)
 }
 
 /// What the documented contract says of one call: the true value (within the
@@ -291,6 +304,22 @@ fn exact_power(a: &Dec, b: &Dec) -> Option<Dec> {
     (r::digits(&m) <= 41).then(|| Dec::new(m, t))
 }
 
+/// The error of a positive exact g with |log10 g| past RANGE, as every other
+/// branch and the Python oracle decide it. With g = m 10^t, m free of
+/// trailing zeros, floor(log10 g) is t + digits(m) - 1, and log10 g equals
+/// it only for m = 1.
+fn past_range(g: &Dec) -> Option<RefError> {
+    let n = g.normalized();
+    let top = n.e + r::digits(&n.c) as i64 - 1;
+    if top > RANGE || (top == RANGE && n.c != BigInt::from(1)) {
+        Some(past(true))
+    } else if top < -RANGE {
+        Some(past(false))
+    } else {
+        None
+    }
+}
+
 /// a^b as `LibDecimalFloat.pow` documents it.
 pub fn truth_pow(a: &Dec, b: &Dec) -> Truth {
     if b.is_zero() {
@@ -343,7 +372,10 @@ pub fn truth_pow(a: &Dec, b: &Dec) -> Truth {
         });
     }
     if let Some(g) = exact_power(&base, b) {
-        return Truth::exact(sign(g));
+        return match past_range(&g) {
+            Some(e) => Truth::err(e),
+            None => Truth::exact(sign(g)),
+        };
     }
     match precise::pow_true(&base, b) {
         Err(rising) => Truth::err(past(rising)),
@@ -387,14 +419,89 @@ pub enum Bound {
     Log10,
     /// pow10 of x with integer part `k`.
     Pow10(i64),
-    /// pow with N the integer part of |b|.
-    Pow(BigInt),
+    Pow(PowTerm),
     Sqrt,
+}
+
+/// pow's N term, N min(K1, K2 d) relative for N the integer part of |b| and
+/// d = max(|a|, 1/|a|) - 1, exactly as `num / den`: below one, where K2 d is
+/// the lesser, d is (1 - |a|) / |a| and `den` is |a|; otherwise `den` is 1.
+#[derive(Debug, Clone)]
+pub struct PowTerm {
+    num: Dec,
+    den: Dec,
+}
+
+impl PowTerm {
+    pub fn new(a: &Dec, b: &Dec, n: BigInt) -> Self {
+        let one = Dec::new(1, 0);
+        let none = Self {
+            num: Dec::zero(),
+            den: one.clone(),
+        };
+        if n.is_zero() || a.is_zero() {
+            return none;
+        }
+        let n = Dec::new(n, 0);
+        let (k1, k2) = if b.is_negative() {
+            (POW_INVERSE_K1_E80, POW_INVERSE_K2_E42)
+        } else {
+            (POW_K1_E80, POW_K2_E42)
+        };
+        let (k1, k2) = (Dec::new(k1, -80), Dec::new(k2, -42));
+        let m = a.abs();
+        // Past 1e-100 of one either way K2 d is past K1.
+        if order(&m) >= 100 || order(&m) <= -100 {
+            return Self {
+                num: k1.mul_exact(&n),
+                den: one,
+            };
+        }
+        if !m.cmp_value(&one).is_lt() {
+            let k2d = k2.mul_exact(&sum(&m, &one.neg()));
+            let per = if k2d.cmp_value(&k1).is_lt() { k2d } else { k1 };
+            return Self {
+                num: per.mul_exact(&n),
+                den: one,
+            };
+        }
+        // K2 (1 - |a|) / |a| < K1 iff K2 (1 - |a|) < K1 |a|.
+        let k2d = k2.mul_exact(&sum(&one, &m.neg()));
+        if k2d.cmp_value(&k1.mul_exact(&m)).is_lt() {
+            Self {
+                num: k2d.mul_exact(&n),
+                den: m,
+            }
+        } else {
+            Self {
+                num: k1.mul_exact(&n),
+                den: one,
+            }
+        }
+    }
+
+    /// `base` plus the N term, relative, times `den`.
+    fn relative(&self, base: Dec) -> Dec {
+        sum(&base.mul_exact(&self.den), &self.num)
+    }
 }
 
 fn sum(a: &Dec, b: &Dec) -> Dec {
     a.add_exact(b)
         .expect("terms within 400 digits of each other")
+}
+
+/// x / y for positive x and y, rounded down and up at 10^e.
+fn bracket(x: &Dec, y: &Dec, e: i64) -> (Dec, Dec) {
+    let shift = x.e - y.e - e;
+    let (num, den) = if shift >= 0 {
+        (&x.c * pow10(shift as u64), y.c.clone())
+    } else {
+        (x.c.clone(), &y.c * pow10((-shift) as u64))
+    };
+    let (q, rem) = num.div_rem(&den);
+    let up = if rem.is_zero() { q.clone() } else { &q + 1 };
+    (Dec::new(q, e), Dec::new(up, e))
 }
 
 fn largest(negative: bool) -> Dec {
@@ -406,9 +513,13 @@ fn largest(negative: bool) -> Dec {
     Dec::new(c, I32_MAX)
 }
 
-/// The exponent floor's carve-out applies below 1e-2147483608.
-fn floor_carve(lowest: &Dec) -> Dec {
-    if lowest.cmp_value(&Dec::new(1, I32_MIN + 40)).is_lt() {
+/// The exponent floor's carve-out applies below 1e-2147483608, for `lowest`
+/// times `scale`.
+fn floor_carve(lowest: &Dec, scale: &Dec) -> Dec {
+    if lowest
+        .cmp_value(&Dec::new(1, I32_MIN + 40).mul_exact(scale))
+        .is_lt()
+    {
         Dec::new(1, I32_MIN)
     } else {
         Dec::zero()
@@ -463,54 +574,56 @@ fn check_sol(
     // The unit of the true value's 41st digit, the smaller one if the
     // reference's error straddles a power of ten.
     let half_unit = Dec::new(5, order(&sum(&magnitude, &err.neg())) - 41);
-    let (within, carve) = match bound {
-        Bound::Log10 => (sum(&half_unit, &log10_raw()), Dec::zero()),
-        Bound::Sqrt => (half_unit, Dec::zero()),
-        Bound::Pow10(k) => (pow10_within(*k), Dec::new(1, I32_MIN)),
-        Bound::Pow(n) => {
-            let relative = pow_relative(n);
-            (
-                relative.mul_exact(&sum(&magnitude, &err.neg())),
-                Dec::new(1, I32_MIN),
-            )
-        }
+    // `within` is the bound times `scale`, so every side below is scaled.
+    let (within, carve, scale) = match bound {
+        Bound::Log10 => (sum(&half_unit, &log10_raw()), Dec::zero(), Dec::new(1, 0)),
+        Bound::Sqrt => (half_unit, Dec::zero(), Dec::new(1, 0)),
+        Bound::Pow10(k) => (pow10_within(*k), Dec::new(1, I32_MIN), Dec::new(1, 0)),
+        Bound::Pow(term) => (
+            term.relative(pow_base())
+                .mul_exact(&sum(&magnitude, &err.neg())),
+            Dec::new(1, I32_MIN),
+            term.den.clone(),
+        ),
     };
-    let lowest = sum(&sum(&magnitude, &err.neg()), &within.neg());
-    let highest = sum(&sum(&magnitude, &err), &within);
+    let scaled = |x: &Dec| x.mul_exact(&scale);
+    let lowest = sum(&scaled(&sum(&magnitude, &err.neg())), &within.neg());
+    let highest = sum(&scaled(&sum(&magnitude, &err)), &within);
     let carve = if carve.is_zero() {
         carve
     } else {
-        floor_carve(&lowest)
+        floor_carve(&lowest, &scale)
     };
     // Only pow10 and pow reach past every Float.
     let ranged = matches!(bound, Bound::Pow10(_) | Bound::Pow(_));
-    let below = ranged && lowest.cmp_value(&Dec::new(1, I32_MIN)).is_lt();
-    let above = ranged && highest.cmp_value(&largest(t.value.is_negative())).is_gt();
-    let under = ranged && highest.cmp_value(&Dec::new(1, I32_MIN)).is_lt();
-    let over = ranged && lowest.cmp_value(&largest(t.value.is_negative())).is_gt();
+    let least = scaled(&Dec::new(1, I32_MIN));
+    let most = scaled(&largest(t.value.is_negative()));
+    let below = ranged && lowest.cmp_value(&least).is_lt();
+    let above = ranged && highest.cmp_value(&most).is_gt();
+    let under = ranged && highest.cmp_value(&least).is_lt();
+    let over = ranged && lowest.cmp_value(&most).is_gt();
     match &sol {
         Ok(s) => {
             prop_assert!(
                 !under && !over,
                 "{case}: solidity {s:?}, true {t:?} is past every Float"
             );
-            // |s - v| + err <= within + carve, exactly: past N ~ 3e74 the
-            // relative bound is past one, and within's exponent and the
-            // carve-out's are billions apart.
+            // (|s - v| + err) scale <= within + carve scale, exactly: within's
+            // exponent and the carve-out's are billions apart.
             let side = match Dec::sign_of_sum(&[s.clone(), t.value.neg()]) {
                 std::cmp::Ordering::Less => Dec::new(-1, 0),
                 _ => Dec::new(1, 0),
             };
             let excess = Dec::sign_of_sum(&[
-                s.mul_exact(&side),
-                t.value.neg().mul_exact(&side),
-                err.clone(),
+                scaled(&s.mul_exact(&side)),
+                scaled(&t.value.neg().mul_exact(&side)),
+                scaled(&err),
                 within.neg(),
-                carve.neg(),
+                scaled(&carve).neg(),
             ]);
             prop_assert!(
                 !excess.is_gt(),
-                "{case}: solidity {s:?}, true {t:?}, error past {within:?} + {carve:?}"
+                "{case}: solidity {s:?}, true {t:?}, error past {within:?} + {carve:?}, over {scale:?}"
             );
         }
         Err(_) if below && reverted(RefError::ExponentUnderflow) => {}
@@ -574,17 +687,23 @@ fn integer_part(b: &Dec) -> BigInt {
     &t.c * pow10(t.e.max(0) as u64)
 }
 
-pub fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
-    let case = format!("pow({}, {})", show(a), show(b));
-    let truth = truth_pow(a, b);
-    let py = ask(json!({"op": "pow", "a": float_json(a), "b": float_json(b)}));
-    check_python(&case, &truth, &py)?;
+/// pow's bound, with no N term where the contract is an error.
+fn pow_bound(a: &Dec, b: &Dec, truth: &Truth) -> Bound {
     let n = if truth.value.is_ok() {
         integer_part(b)
     } else {
         BigInt::zero()
     };
-    check_sol(&case, sol_pow(a, b), &truth, &Bound::Pow(n), |e| {
+    Bound::Pow(PowTerm::new(a, b, n))
+}
+
+pub fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
+    let case = format!("pow({}, {})", show(a), show(b));
+    let truth = truth_pow(a, b);
+    let py = ask(json!({"op": "pow", "a": float_json(a), "b": float_json(b)}));
+    check_python(&case, &truth, &py)?;
+    let bound = pow_bound(a, b, &truth);
+    check_sol(&case, sol_pow(a, b), &truth, &bound, |e| {
         revert_data(e, a, Some(b))
     })
 }
@@ -603,18 +722,20 @@ pub fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
 // ------------------------------------------------------------ monotonicity
 
 /// The raw error before rounding, as proven: the distance from a rounding
-/// tie within which two results can come out in the wrong order.
-fn raw(bound: &Bound, t: &Approx) -> Dec {
+/// tie within which two results can come out in the wrong order, times the
+/// scale it returns with.
+fn raw(bound: &Bound, t: &Approx) -> (Dec, Dec) {
+    let one = Dec::new(1, 0);
     match bound {
-        Bound::Log10 => log10_raw(),
-        Bound::Pow10(k) => Dec::new(POW10_RAW_E52, k - 52),
-        Bound::Pow(n) => Dec::new(
-            BigInt::from(POW_RELATIVE_E52 - POW10_HALF_UNIT_E52) * pow10(23) + n * 3,
-            -75,
-        )
-        .mul_exact(&t.value.abs()),
+        Bound::Log10 => (log10_raw(), one),
+        Bound::Pow10(k) => (Dec::new(POW10_RAW_E52, k - 52), one),
+        Bound::Pow(term) => (
+            term.relative(Dec::new(POW_RELATIVE_E52 - POW10_HALF_UNIT_E52, -52))
+                .mul_exact(&t.value.abs()),
+            term.den.clone(),
+        ),
         // Correctly rounded: never out of order, which check_monotone asserts.
-        Bound::Sqrt => Dec::zero(),
+        Bound::Sqrt => (Dec::zero(), one),
     }
 }
 
@@ -656,12 +777,16 @@ fn check_monotone(case: &str, lower: Point, upper: Point) -> Result<(), TestCase
         "{case}: {a:?} > {b:?} by more than {ulp:?}"
     );
     let tie = sum(a, b).mul_exact(&Dec::new(5, -1));
-    let (ra, rb) = (raw(&lower.bound, ta), raw(&upper.bound, tb));
-    let most = if ra.cmp_value(&rb).is_gt() { ra } else { rb };
+    let raws = [raw(&lower.bound, ta), raw(&upper.bound, tb)];
+    // Within the larger of the two: within either.
+    let within = |off: &Dec| {
+        raws.iter()
+            .any(|(r, scale)| !off.mul_exact(scale).cmp_value(r).is_gt())
+    };
     for t in [ta, tb] {
         let off = sum(&sum(&t.value, &tie.neg()).abs(), &t.err_dec().neg());
         prop_assert!(
-            !off.cmp_value(&most).is_gt(),
+            within(&off),
             "{case}: {a:?} > {b:?}, true {t:?} is {off:?} from the tie {tie:?}"
         );
     }
@@ -692,15 +817,10 @@ fn point_pow10(x: &Dec) -> Point {
 
 fn point_pow(a: &Dec, b: &Dec) -> Point {
     let truth = truth_pow(a, b);
-    let n = if truth.value.is_ok() {
-        integer_part(b)
-    } else {
-        BigInt::zero()
-    };
     Point {
         sol: sol_pow(a, b),
+        bound: pow_bound(a, b, &truth),
         truth,
-        bound: Bound::Pow(n),
     }
 }
 
@@ -941,6 +1061,33 @@ fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
     .boxed()
 }
 
+/// a within 1e-66 to 1.9e-19 of one, either side, and b of either sign with
+/// |b| d near 10^s for d = |a - 1| and s in [-4, 10]: |b| reaches past
+/// 1e75, where pow's N term is K2 N d, and the power runs from near one to
+/// past every Float.
+fn near_one() -> BoxedStrategy<(Dec, Dec)> {
+    (
+        38u64..=66,
+        any::<u64>(),
+        any::<bool>(),
+        1u64..=67,
+        any::<[u8; 32]>(),
+        -4i64..=10,
+        any::<bool>(),
+    )
+        .prop_map(|(j, k, below, n, bytes, s, negative)| {
+            let k = BigInt::from(k.max(1));
+            let c = if below { pow10(j) - &k } else { pow10(j) + &k };
+            let a = Dec::new(c, -(j as i64));
+            let lo = pow10(n - 1);
+            let c = &lo + BigInt::from_bytes_be(num_bigint::Sign::Plus, &bytes) % (pow10(n) - &lo);
+            // d is k 10^-j, so |b| d is near 10^s.
+            let e = s + j as i64 - (r::digits(&k) as i64 - 1) - (n as i64 - 1);
+            (a, Dec::new(if negative { -c } else { c }, e))
+        })
+        .boxed()
+}
+
 fn a_sqrt() -> BoxedStrategy<Dec> {
     prop_oneof![
         3 => float(),
@@ -984,6 +1131,12 @@ proptest! {
 
     #[test]
     fn monotone_sqrt_neighbours(a in a_sqrt()) { monotone_sqrt(&a)?; }
+
+    #[test]
+    fn exact_pow_near_one((a, b) in near_one()) { check_pow(&a, &b)?; }
+
+    #[test]
+    fn monotone_pow_near_one((a, b) in near_one()) { monotone_pow(&a, &b)?; }
 }
 
 /// The checks themselves, on made-up results: each accepts a result at
@@ -1018,18 +1171,23 @@ mod checker {
     /// `v + within - err` is the furthest result the bound admits, and a
     /// step of `step` further is past it.
     fn edge(v: &Dec, bound: &Bound, within: &Dec, step: &Dec) {
+        edge_between(v, bound, within, within, step);
+    }
+
+    /// `edge` for a bound in [down, up], each side apart.
+    fn edge_between(v: &Dec, bound: &Bound, down: &Dec, up: &Dec, step: &Dec) {
         let truth = near(v.clone());
         let err = Dec::new(1, order(v) - 300);
-        let at = sum(&sum(v, within), &err.neg());
+        let at = sum(&sum(v, down), &err.neg());
         assert!(accepts(&truth, bound, Ok(at.clone())), "{at:?} for {v:?}");
-        let past = sum(&at, step);
+        let past = sum(&sum(&sum(v, up), &err.neg()), step);
         assert!(
             !accepts(&truth, bound, Ok(past.clone())),
             "{past:?} for {v:?}"
         );
-        let low = sum(&sum(v, &within.neg()), &err);
+        let low = sum(&sum(v, &down.neg()), &err);
         assert!(accepts(&truth, bound, Ok(low.clone())), "{low:?} for {v:?}");
-        let below = sum(&low, &step.neg());
+        let below = sum(&sum(&sum(v, &up.neg()), &err), &step.neg());
         assert!(
             !accepts(&truth, bound, Ok(below.clone())),
             "{below:?} for {v:?}"
@@ -1078,30 +1236,102 @@ mod checker {
         );
     }
 
+    /// pow's bound with no N term.
+    fn pow_zero() -> Bound {
+        Bound::Pow(PowTerm::new(
+            &Dec::new(2, 0),
+            &Dec::new(1, 0),
+            BigInt::zero(),
+        ))
+    }
+
+    /// pow's bound for N `n`, the integer part of |b|.
+    fn pow_n(a: &Dec, b: &Dec, n: impl Into<BigInt>) -> Bound {
+        Bound::Pow(PowTerm::new(a, b, n.into()))
+    }
+
     #[test]
     fn pow_bound() {
-        // N = 7: 5.00000033006e-41 + 21e-75 relative to the true value.
         let v = Dec::new(2, 0);
-        let relative = pow_relative(&BigInt::from(7));
-        let within = relative.mul_exact(&sum(&v, &Dec::new(-1, -300)));
-        edge(
+        let one = Dec::new(1, 0);
+        for (a, b, n, term) in [
+            // N 7 with d 1: K1, 7 1.7273e-76 for b > 0 and 7 1.1728e-75 for
+            // b < 0.
+            (Dec::new(2, 0), one.clone(), 7, Dec::new(7 * 17273, -80)),
+            (Dec::new(2, 0), one.neg(), 7, Dec::new(7 * 11728, -79)),
+            // 1/a has the same d.
+            (Dec::new(5, -1), one.neg(), 7, Dec::new(7 * 11728, -79)),
+            // d 1e-66: K2 d, 7 1.5e-104 and 7 3.4786e-104.
+            (
+                Dec::new(pow10(66) + 1, -66),
+                one.clone(),
+                7,
+                Dec::new(105, -105),
+            ),
+            (
+                Dec::new(pow10(66) + 1, -66),
+                one.neg(),
+                7,
+                Dec::new(7 * 34786, -108),
+            ),
+            // Either side of K1 = K2 d for b > 0, at d 1.15153e-38.
+            (
+                Dec::new(pow10(43) + 115153, -43),
+                one.clone(),
+                7,
+                Dec::new(7 * 1727295, -82),
+            ),
+            (
+                Dec::new(pow10(43) + 115154, -43),
+                one.clone(),
+                7,
+                Dec::new(7 * 17273, -80),
+            ),
+        ] {
+            let relative = sum(&pow_base(), &term);
+            let within = relative.mul_exact(&sum(&v, &Dec::new(-1, -300)));
+            // Past 400 digits apart the checker's sums do not align, so the
+            // bound is taken to 1e-350, far inside the step.
+            let (down, up) = bracket(&within, &one, -350);
+            edge_between(&v, &pow_n(&a, &b, n), &down, &up, &Dec::new(1, -310));
+        }
+    }
+
+    /// Below one d is (1 - |a|) / |a|, which no decimal holds: the bound
+    /// admits a result at it rounded down at 1e-350, and none a step past it
+    /// rounded up.
+    #[test]
+    fn pow_bound_below_one() {
+        let v = Dec::new(2, 0);
+        let a = Dec::new(pow10(50) - 1, -50);
+        let b = Dec::new(pow10(40), 0);
+        // (5.00000033006e-41 a + 1.5e-38 1e40 1e-50) (v - err) / a.
+        let x = sum(&pow_base().mul_exact(&a), &Dec::new(15, -49))
+            .mul_exact(&sum(&v, &Dec::new(-1, -300)));
+        let (down, up) = bracket(&x, &a, -350);
+        edge_between(
             &v,
-            &Bound::Pow(BigInt::from(7)),
-            &within,
+            &pow_n(&a, &b, pow10(40)),
+            &down,
+            &up,
             &Dec::new(1, -310),
         );
     }
 
-    /// N past 3e74 puts the relative bound past one, so it reaches
-    /// below every Float and takes the carve-out, 1e-2147483648, billions of
-    /// digits below the bound itself.
+    /// N 3.3e74 for b < 0 and d past K1 / K2 puts the relative bound past one,
+    /// so it reaches below every Float and takes the carve-out,
+    /// 1e-2147483648, billions of digits below the bound itself.
     #[test]
     fn pow_bound_past_one() {
         let v = Dec::new(31, 145_000_000);
         let n = BigInt::from(33333347515073147437056u128) * pow10(52);
-        let relative = pow_relative(&n);
+        let relative = Dec::new(
+            BigInt::from(POW_RELATIVE_E52) * pow10(28) + &n * POW_INVERSE_K1_E80,
+            -80,
+        );
         let within = relative.mul_exact(&sum(&v, &Dec::new(-1, order(&v) - 300)));
-        edge(&v, &Bound::Pow(n), &within, &Dec::new(1, order(&v) - 310));
+        let bound = pow_n(&Dec::new(10, 0), &Dec::new(-1, 0), n);
+        edge(&v, &bound, &within, &Dec::new(1, order(&v) - 310));
     }
 
     /// At or above 1e-2147483608 the bound has no carve-out; below it, it adds
@@ -1123,8 +1353,8 @@ mod checker {
         let under = || -> Sol { reverting(RefError::ExponentUnderflow) };
         let over = || -> Sol { reverting(RefError::ExponentOverflow) };
         let ordinary = near(Dec::new(5, -100));
-        assert!(!accepts(&ordinary, &Bound::Pow(BigInt::zero()), under()));
-        assert!(!accepts(&ordinary, &Bound::Pow(BigInt::zero()), over()));
+        assert!(!accepts(&ordinary, &pow_zero(), under()));
+        assert!(!accepts(&ordinary, &pow_zero(), over()));
         // 5e-2147483648 is a Float: no underflow for it.
         let lowest = near(Dec::new(5, I32_MIN));
         assert!(!accepts(&lowest, &Bound::Pow10(I32_MIN), under()));
@@ -1187,7 +1417,7 @@ mod checker {
                 r::literal_value(b),
                 r::literal_value(want),
             );
-            let bound = Bound::Pow(integer_part(&b));
+            let bound = pow_n(&a, &b, integer_part(&b));
             let ulp = Dec::new(1, order(&want) - 40);
             let off = sum(&want, &ulp.neg());
             assert!(
@@ -1340,12 +1570,8 @@ mod checker {
             let hi = Dec::new(BigInt::from(1) * pow10(40) + 1, -40);
             check_monotone(
                 "m",
-                point(hi, tie.clone(), Bound::Pow(BigInt::zero())),
-                point(
-                    Dec::new(1, 0),
-                    sum(&tie, &d.neg()),
-                    Bound::Pow(BigInt::zero()),
-                ),
+                point(hi, tie.clone(), pow_zero()),
+                point(Dec::new(1, 0), sum(&tie, &d.neg()), pow_zero()),
             )
         };
         let at = sum(&raw.mul_exact(&tie), &fuzz);
@@ -1583,6 +1809,9 @@ mod anchors {
             ("10", "2147483715", RefError::ExponentOverflow),
             ("10", "1e10", RefError::ExponentOverflow),
             ("0.1", "1e10", RefError::ExponentUnderflow),
+            // Exact powers past RANGE.
+            ("-9e-750000001", "4", RefError::ExponentUnderflow),
+            ("9e750000001", "4", RefError::ExponentOverflow),
         ] {
             assert_eq!(contract_error(&truth_pow(&d(a), &d(b))), Some(e), "{a}^{b}");
             run(check_pow(&d(a), &d(b)));
@@ -1670,13 +1899,74 @@ mod anchors {
         }
     }
 
-    /// (1 + 1e-66)^~3.3e74 is about 10^1.45e8, and N past 3.3e74 makes
-    /// pow's relative bound past one, so the bound reaches down to the
-    /// exponent floor.
+    /// (1 + 1e-66)^~3.3e74 is about 10^1.45e8: N d is 3.3e8, so the N term
+    /// is K2 N d, 5e-30.
     #[test]
-    fn pow_bound_past_one() {
+    fn pow_near_one_past_1e74() {
         let a = Dec::new(pow10(66) + 1, -66);
         let b = Dec::new("33333347515073147437056".parse::<BigInt>().unwrap(), 52);
         run(check_pow(&a, &b));
+    }
+
+    /// pow(a, b)'s error over its N term, after `check_pow` holds it to the
+    /// bound.
+    fn n_term_ratio(a: &Dec, b: &Dec) -> f64 {
+        run(check_pow(a, b));
+        let t = truth_pow(a, b).value.unwrap();
+        let s = sol_pow(a, b).unwrap();
+        eprintln!("pow({}, {}): {s:?} against {t:?}", show(a), show(b));
+        let PowTerm { num, den } = PowTerm::new(a, b, integer_part(b));
+        let x = sum(&s, &t.value.neg()).abs().mul_exact(&den);
+        let y = num.mul_exact(&t.value.abs());
+        let (q, _) = bracket(&x, &y, -20);
+        format!("{}e-20", q.c).parse().unwrap()
+    }
+
+    /// The error is at least 0.9 of the N term, net of the reference's own:
+    /// (|s - t| - err) den >= 0.9 num |t|.
+    fn assert_tight(a: &Dec, b: &Dec) {
+        let t = truth_pow(a, b).value.unwrap();
+        let s = sol_pow(a, b).unwrap();
+        let PowTerm { num, den } = PowTerm::new(a, b, integer_part(b));
+        let error = sum(&sum(&s, &t.value.neg()).abs(), &t.err_dec().neg());
+        let least = Dec::new(9, -1).mul_exact(&num).mul_exact(&t.value.abs());
+        assert!(
+            !Dec::sign_of_sum(&[error.mul_exact(&den), least.neg()]).is_lt(),
+            "pow({}, {}): {s:?} against {t:?}",
+            show(a),
+            show(b)
+        );
+    }
+
+    /// The issue's case, (1 + 1e-66)^1e67: N d is 10 and the N term K2 N d,
+    /// 1.5e-37, and the error 1.373e-37. For b = -1e67 the N term is
+    /// 3.4786e-37.
+    #[test]
+    fn pow_near_one_issue() {
+        let a = Dec::new(pow10(66) + 1, -66);
+        let b = Dec::new(1, 67);
+        eprintln!("issue b > 0: {}", n_term_ratio(&a, &b));
+        assert_tight(&a, &b);
+        eprintln!("issue b < 0: {}", n_term_ratio(&a, &b.neg()));
+    }
+
+    /// The model's worst case for b < 0: d 3.15e-38, near sqrt(1e-75), where
+    /// the squarings and the inverse together drop the most per N d.
+    #[test]
+    fn pow_near_one_worst() {
+        let a = r::literal_value("999999999999999999999999999999999999968486793427e-48");
+        let b = r::literal_value("-2077793387360115167471691320350296608394");
+        eprintln!("worst: {}", n_term_ratio(&a, &b));
+        assert_tight(&a, &b);
+    }
+
+    /// b < 0 where K1 is the lesser, d 1.23e-31: the inverse of a drops 0.84
+    /// of a unit at 1e-75, which a^-N weighs N.
+    #[test]
+    fn pow_near_one_inverse_k1() {
+        let a =
+            r::literal_value("9999999999999999999999999999998765432109876543210987654321099e-61");
+        let b = Dec::new(-1, 40);
+        eprintln!("inverse k1: {}", n_term_ratio(&a, &b));
     }
 }

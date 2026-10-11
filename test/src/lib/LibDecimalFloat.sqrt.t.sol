@@ -18,9 +18,10 @@ contract LibDecimalFloatSqrtTest is Test {
     /// The root is within E of sqrt a and its square, rounded, within E2 of
     /// the root squared, so a over the square is within 2E + E2 of 1, plus
     /// higher orders under 1e-79 and the quotient's truncation under 1e-74.
-    function diffLimit() internal pure returns (int256, int256) {
+    function diffLimit(Float root) internal pure returns (int256, int256) {
         (int256 errorCoefficient, int256 errorExponent) = LibTestErrorBound.sqrt().unpack();
-        (int256 limitCoefficient, int256 limitExponent) = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_TWO).unpack();
+        (int256 limitCoefficient, int256 limitExponent) =
+            LibTestErrorBound.pow(root, LibDecimalFloat.FLOAT_TWO).unpack();
         (, limitCoefficient, limitExponent) =
             LibTestExactDecimal.addPartsWide(limitCoefficient, limitExponent, 2 * errorCoefficient, errorExponent);
         (, limitCoefficient, limitExponent) =
@@ -69,7 +70,7 @@ contract LibDecimalFloatSqrtTest is Test {
         (int256 diffCoefficient, int256 diffExponent) =
             LibTestExactDecimal.quotient(signedCoefficient, exponent, roundTripCoefficient, roundTripExponent);
         (, diffCoefficient, diffExponent) = LibTestExactDecimal.addPartsWide(diffCoefficient, diffExponent, -1, 0);
-        (int256 limitCoefficient, int256 limitExponent) = diffLimit();
+        (int256 limitCoefficient, int256 limitExponent) = diffLimit(LibDecimalFloat.packLossless(c, e));
         assertTrue(
             LibTestExactDecimal.cmpScaled(
                 LibTestExactDecimal.u512(LibTestExactDecimal.abs(diffCoefficient)),
