@@ -344,6 +344,28 @@
     }
   },
   {
+    "timestamp": "2026-10-07T21:26:43Z",
+    "commit": "2889ea87444d6b960a3dc086a47313f5183c0530",
+    "testsAfterCommit": "90655a15019f154e388d2a7986c8f1bf98724b1e",
+    "publishedTag": "sol-v0.2.22",
+    "commitsAheadOfTag": 1,
+    "scope": "issue #306 inline-series change: LibDecimalFloatImplementation.log10Ratio (7 fixed atanh terms, mulDivFixed written out for the first three, native multiplies after) and exp10Fixed (26 mulDivFixed calls written out). 86 mutants. Probe suite: forge test --mc 'Log10|Pow|Sqrt|Exp10|Precision|Transcend', plus SeriesMain for the after numbers; test counts are that suite. All 86 were probed against the pre-existing suite at commit (79 killed); the 7 survivors were re-probed with the new tests. Equivalent: E56 (step 1 multiplies 1e50 or 10^0.5 1e50, and neither product borrows), E52 (exhaustive modular search over all 65536 step results and every series value finds no carry in the final multiply), E115 (the series at x = 2^-16 floors to exactly the last step's constant, checked for all 32768 prefixes). Survived: R41 (the z^2 carry needs z^2 mod 2^256 within floor(z^2 / 2^256) < 2^55 of 2^256 for z < 5.1e46; heuristically about 3e-15 such z exist in the domain, but this was not exhaustively proven and no input was constructed).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 86,
+      "killedBefore": 79,
+      "killedAfter": 3,
+      "equivalent": 3,
+      "survived": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 136,
+      "testsAfter": 146,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-07T22:03:31Z",
     "commit": "a5561f85600ab9aaeaf7b077c862c5a8a5a417f7",
     "testsAfterCommit": "2194fbe9c6cdc7c17cda6401e041515b9c6d6815",
@@ -487,6 +509,28 @@
       "confirmed": 0,
       "testsBefore": 747,
       "testsAfter": 763,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-07T23:40:00Z",
+    "commit": "69c8afb9a5f7ecbe8f2e624cfd0d2a0853913a9d",
+    "testsAfterCommit": "d22ea5d10bda8aae53706b23cb88a57ed62e4caa",
+    "publishedTag": "sol-v0.2.23",
+    "commitsAheadOfTag": 5,
+    "scope": "issue #306 follow-up: the z^2 step of LibDecimalFloatImplementation.log10Ratio, now u^2 + floor((2 u v 1e25 + v^2) / 1e50) for z = u 1e25 + v, replacing the 512-bit multiply whose carry was the R41 survivor of the previous entry (R40 and R41 no longer exist). 7 mutants. Probe suite: forge test --mc 'Log10|Pow|Sqrt|Exp10|Precision|Transcend|SeriesMain' at commit, all 7 killed by pre-existing tests; testsAfter is the SeriesMainEquivalence suite alone, which also kills all 7. A +1 on v^2 was not probed: it changes the floor only when z^2 = -1 mod 1e50, impossible as -1 is not a square mod 4.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 7,
+      "killedBefore": 7,
+      "killedAfter": 7,
+      "equivalent": 0,
+      "survived": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 145,
+      "testsAfter": 10,
       "filed": []
     }
   },
@@ -960,6 +1004,27 @@
     }
   },
   {
+    "timestamp": "2026-10-11T12:24:30Z",
+    "commit": "4ecd21232b7a94ce357032e4dbc8956f738e5975",
+    "testsAfterCommit": "a9f6f9372d063112a032f30bd21c860b50fd6d05",
+    "publishedTag": "sol-v0.2.38",
+    "commitsAheadOfTag": 20,
+    "scope": "Issue #424: pow large |b| near a = 1, the integer leg (squaring, result multiply, inverse) and the past-int256 b guard. Before = forge test --mc \"LibDecimalFloatPowTest|LibDecimalFloatPrecisionTest\" at main 4ecd212 (bound 5.0000004e-41 + 3N 1e-75, |b| <= 1e6 in powInputs). After = the same suites at a9f6f93: bound 5.0000004e-41 + N min(K1, K2 d), powInputs near one with |b| past 1e75, testPowNearOneLargeExponent against Rust truth_pow, and testPowIntegerLegAtRoundingTie. Mutants of src/lib/LibDecimalFloat.sol: M1 squaring drops one more unit of an inexact full-width square, M2 result multiply drops one more unit of an inexact product, M3 inverse drops one more unit when its last digit is nonzero, M3b inverse drops one more unit when a times it is not one, M4 squaring keeps only 70 digits, M5 past-int256 b reverts on the wrong side, M6 integer b scales one decade short. Before: M5, M6 killed; M1-M4, M3b survive. After: all killed. M2 survived the bound tests, as it moves the result under 256 units of 1e-75, and is killed by testPowIntegerLegAtRoundingTie: inputs where each step by its own rule (squared partial the floor of the exact square, result multiply truncated toward zero) leaves the unrounded power exactly on a 41 digit tie, (1 + 5e-66)^3e25, (1 - 5e-67)^3e25, (1 - 5e-67)^-3e26 and (5e13 + 5)^3, so one unit more dropped rounds to the other neighbour. Two other result-multiply forms were already killed by the suite before that test: one more unit dropped whenever the multiply sheds digits (testPows) and whenever its last digit is nonzero (testPowFloor, testPowFractionExact, testPowFractionPrecision, testPowHalfPastTheRange, testPowHalfReference). M3 first survived the PR too, as near one the inverse lands on the grid with trailing zeros; the K1 case (d 1.23e-31, b = -1e40, error 0.752 of K1 N) was added and kills it. testsAfter 910 is the full forge suite at a9f6f93.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 7,
+      "killedBefore": 2,
+      "killedAfter": 7,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 898,
+      "testsAfter": 910,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-11T13:34:24Z",
     "commit": "4ecd21232b7a94ce357032e4dbc8956f738e5975",
     "testsAfterCommit": "076d58570eae03831c7dca3ee98bb6274cc05a2b",
@@ -998,6 +1063,27 @@
       "confirmed": 0,
       "testsBefore": 908,
       "testsAfter": 910,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-11T16:10:59Z",
+    "commit": "3990c5e18165188ef99dbd9dc788a82d1e61d206",
+    "testsAfterCommit": "4b181ebb14c3ec9daa91b030475914b17a3263f1",
+    "publishedTag": "sol-v0.2.41",
+    "commitsAheadOfTag": 1,
+    "scope": "Issue #359: LibDecimalFloatImplementation.sqrt seeds Newton at a + E / b per exponent parity ((26e36, 12e37) for E in [1e75, 1e76), (82e35, 38e36) for E in [1e74, 1e75)) and runs four steps over E instead of the 2^125 shift step plus six. Before = the source commit with main's tests (plus the sqrt variants mirroring the new seed); probe suite: forge test --mc \"Sqrt|Pow\". After = the tests commit; probe suite: only the three new tests (testImplementationSqrtMainFuzz, testImplementationSqrtMainPackedFuzz, testImplementationSqrtMainSeedExtremes), which compare against the pre-#359 sqrt and the exact LibTestExactDecimal rule. Mutants: M01 three steps; M02/M03 parity constants swapped; M04-M07 a or E / b dropped per parity; M08 odd seed reads C; M09 odd seed unset; M10 even b a decade low; M11 even a 22e36 (d0 -0.144 at E = a b, past the -0.095 four steps tolerate); M12 odd b 30e36 (d0 0.31 at E = 1e75). Before 12/12 killed by existing tests (testSqrtReference, testSqrtMidpointEnds, testImplementationSqrtLowWordBorrow, testSqrtExact, testPowHalfReference among others); after 12/12 killed by the new tests alone (the probe named testImplementationSqrtMainSeedExtremes; its fail pattern does not capture fuzz counterexample lines). No adversarial findings: outputs equal the pre-#359 sqrt and the exact rule across the full int256 coefficient/exponent domain the implementation takes.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 12,
+      "killedBefore": 12,
+      "killedAfter": 12,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 97,
+      "testsAfter": 3,
       "filed": []
     }
   }

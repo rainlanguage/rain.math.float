@@ -9,29 +9,30 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {PowNegativeBase, ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
+import {LibDecimalFloatSqrtVariants} from "test/lib/LibDecimalFloatSqrtVariants.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 contract LibDecimalFloatSqrtTest is Test {
     using LibDecimalFloat for Float;
 
     /// The root is within E of sqrt a and its square, rounded, within E2 of
-    /// the root squared, so a over the square is within 2E + E2 of 1, plus
-    /// higher orders under 1e-79 and the quotient's truncation under 1e-74.
-    function diffLimit() internal pure returns (int256, int256) {
+    /// the root squared, so a over the square is within L = 2E + E2 of 1,
+    /// plus higher orders under 1e-79 and the quotient's truncation under
+    /// 1e-74. For a square `t` that pow is within E2 t + u of, with u the
+    /// floor's 1e-2147483648, a - t is within L (t + u) + u, so a / t - 1 is
+    /// within L (1 + F) + F for F = u / t.
+    function diffLimit(Float root, int256 roundTripCoefficient, int256 roundTripExponent)
+        internal
+        pure
+        returns (int256, int256)
+    {
         (int256 errorCoefficient, int256 errorExponent) = LibTestErrorBound.sqrt().unpack();
-        (int256 limitCoefficient, int256 limitExponent) = LibTestErrorBound.pow(LibDecimalFloat.FLOAT_TWO).unpack();
+        (int256 limitCoefficient, int256 limitExponent) =
+            LibTestErrorBound.pow(root, LibDecimalFloat.FLOAT_TWO).unpack();
         (, limitCoefficient, limitExponent) =
             LibTestExactDecimal.addPartsWide(limitCoefficient, limitExponent, 2 * errorCoefficient, errorExponent);
         (, limitCoefficient, limitExponent) =
             LibTestExactDecimal.addPartsWide(limitCoefficient, limitExponent, 100001, -79);
-        return (limitCoefficient, limitExponent);
-    }
-
-    /// `diffLimit` L for a square `t` that pow is within E2 t + u of, with u
-    /// the floor's 1e-2147483648: a - t is within L (t + u) + u, so a / t - 1
-    /// is within L (1 + F) + F for F = u / t.
-    function diffLimit(int256 roundTripCoefficient, int256 roundTripExponent) internal pure returns (int256, int256) {
-        (int256 limitCoefficient, int256 limitExponent) = diffLimit();
         (int256 floorCoefficient, int256 floorExponent) =
             LibTestErrorBound.floor(roundTripCoefficient, roundTripExponent).unpack();
         if (floorCoefficient == 0) {
@@ -99,7 +100,8 @@ contract LibDecimalFloatSqrtTest is Test {
         (int256 diffCoefficient, int256 diffExponent) =
             LibTestExactDecimal.quotient(signedCoefficient, exponent, roundTripCoefficient, roundTripExponent);
         (, diffCoefficient, diffExponent) = LibTestExactDecimal.addPartsWide(diffCoefficient, diffExponent, -1, 0);
-        (int256 limitCoefficient, int256 limitExponent) = diffLimit(roundTripCoefficient, roundTripExponent);
+        (int256 limitCoefficient, int256 limitExponent) =
+            diffLimit(LibDecimalFloat.packLossless(c, e), roundTripCoefficient, roundTripExponent);
         assertTrue(
             LibTestExactDecimal.cmpScaled(
                 LibTestExactDecimal.u512(LibTestExactDecimal.abs(diffCoefficient)),
@@ -276,6 +278,43 @@ contract LibDecimalFloatSqrtTest is Test {
         int256 signedCoefficient = int256(coefficient);
         (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
         checkReference(rootCoefficient, rootExponent, coefficient, exponent);
+    }
+
+    /// The root before #359's seed, and the exact one.
+    function checkMain(uint256 coefficient, int256 exponent) internal pure {
+        // coefficient is below 1e76, so it fits int256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = int256(coefficient);
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
+        (int256 mainCoefficient, int256 mainExponent) =
+            LibDecimalFloatSqrtVariants.sqrtMain(signedCoefficient, exponent);
+        assertEq(rootCoefficient, mainCoefficient, "main coefficient");
+        assertEq(rootExponent, mainExponent, "main exponent");
+        checkReference(rootCoefficient, rootExponent, coefficient, exponent);
+    }
+
+    function testImplementationSqrtMainFuzz(uint256 coefficient, int256 exponent) external pure {
+        checkMain(bound(coefficient, 1, 1e76 - 1), bound(exponent, type(int256).min + 81, type(int256).max));
+    }
+
+    function testImplementationSqrtMainPackedFuzz(int224 signedCoefficient, int32 exponent) external pure {
+        vm.assume(signedCoefficient > 0);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkMain(uint256(int256(signedCoefficient)), exponent);
+    }
+
+    /// The seed is furthest from the root at the ends of E's decade and at
+    /// E = a b: 312e73 for an even exponent, where E is the coefficient, and
+    /// 3116e71 for an odd one, where it is the coefficient over 10.
+    function testImplementationSqrtMainSeedExtremes() external pure {
+        uint256[3] memory even = [uint256(1e75), 312e73 - 10, 1e76 - 21];
+        uint256[3] memory odd = [uint256(1e75), 3116e72 - 10, 1e76 - 21];
+        for (uint256 i = 0; i < 3; i++) {
+            for (uint256 k = 0; k < 21; k++) {
+                checkMain(even[i] + k, 0);
+                checkMain(odd[i] + k, 1);
+            }
+        }
     }
 
     /// A 10^s is 2^256 - 2^(s + 5) mod 2^256 for A 10^s with s 5 and 6, so

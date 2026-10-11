@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibTranscendentalOracle, ORACLE_LN10, ORACLE_ONE} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
-import {POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52, POW_RELATIVE_ERROR_E52} from "test/lib/LibTestErrorBound.sol";
+import {LibTestErrorBound, POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "test/lib/LibTestErrorBound.sol";
 import {Float} from "src/lib/LibDecimalFloat.sol";
 import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 
@@ -235,19 +235,22 @@ library LibTestPowRange {
     }
 
     /// Where pow(a, b) lands, for a nonzero a other than +-1 and a nonzero b.
-    /// E is `POW_RELATIVE_ERROR_E52` + 3N 1e-75, with |b| for N. Past |b|
-    /// 3e71, E may exceed 1e-3 and R has no lower bound.
+    /// E is `LibTestErrorBound.pow(a, b)`. That truncates toward zero, each
+    /// step under 1e-66 relative, and is exact or has a coefficient past 1e66,
+    /// so its coefficient plus 1e-60 of it rounds E up. Past E 1e-3, R has no
+    /// lower bound.
     function powRange(Float a, Float b) internal pure returns (PowRange) {
         (int256 low, int256 high) = powLog(a, b);
-        (int256 signedCoefficientB, int256 exponentB) = unpack(b);
-        uint256 magnitudeB = LibTestExactDecimal.abs(signedCoefficientB);
-        uint256 up = units(LOG10_UP_PER_E, POW_RELATIVE_ERROR_E52, -56, true)
-            + units(LOG10_UP_PER_E * 3, magnitudeB, exponentB - 79, true);
+        (int256 errorCoefficient, int256 errorExponent) = unpack(LibTestErrorBound.pow(a, b));
+        // E is positive, so its coefficient is.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 error = uint256(errorCoefficient);
+        error += error / 1e60;
+        uint256 up = units(LOG10_UP_PER_E, error, errorExponent - 4, true);
         uint256 down = LibTestExactDecimal.cmpScaled(
-                LibTestExactDecimal.u512(magnitudeB), exponentB, LibTestExactDecimal.u512(3), 71
+                LibTestExactDecimal.u512(error), errorExponent, LibTestExactDecimal.u512(1), -3
             ) <= 0
-            ? units(LOG10_DOWN_PER_E, POW_RELATIVE_ERROR_E52, -56, true)
-                + units(LOG10_DOWN_PER_E * 3, magnitudeB, exponentB - 79, true)
+            ? units(LOG10_DOWN_PER_E, error, errorExponent - 4, true)
             : CAP;
         // forge-lint: disable-next-line(unsafe-typecast)
         return classify(low - int256(down), high + int256(up));
