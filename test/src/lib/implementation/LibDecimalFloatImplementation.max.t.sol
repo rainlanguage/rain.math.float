@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMaxTest is Test {
     function max(int256 coefficientA, int256 exponentA, int256 coefficientB, int256 exponentB)
@@ -51,8 +52,7 @@ contract LibDecimalFloatImplementationMaxTest is Test {
         assertMaxIs(1, 2, 100, 0, 100, 0);
     }
 
-    /// The result is always one of the two inputs, and is never less than
-    /// either of them.
+    /// The result is A, unchanged, when A is exactly above B, else B.
     function testMaxIsOneOfTheInputsAndNotLess(
         int256 coefficientA,
         int256 exponentA,
@@ -64,14 +64,15 @@ contract LibDecimalFloatImplementationMaxTest is Test {
         exponentA = bound(exponentA, -50, 50);
         exponentB = bound(exponentB, -50, 50);
 
-        (int256 coefficient, int256 exponent) = max(coefficientA, exponentA, coefficientB, exponentB);
-
-        bool isA = coefficient == coefficientA && exponent == exponentA;
-        bool isB = coefficient == coefficientB && exponent == exponentB;
-        assertTrue(isA || isB);
-
-        assertTrue(LibDecimalFloatImplementation.lte(coefficientA, exponentA, coefficient, exponent));
-        assertTrue(LibDecimalFloatImplementation.lte(coefficientB, exponentB, coefficient, exponent));
+        bool isA = LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB) > 0;
+        assertMaxIs(
+            coefficientA,
+            exponentA,
+            coefficientB,
+            exponentB,
+            isA ? coefficientA : coefficientB,
+            isA ? exponentA : exponentB
+        );
     }
 
     /// Selecting a larger value is exact — nothing is rescaled into the

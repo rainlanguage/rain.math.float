@@ -77,14 +77,12 @@ contract LibDecimalFloatImplementationExp10FixedTest is Test {
         }
     }
 
-    /// At x = 1 - 2^-16 every step is taken and the series is exactly one, so
-    /// the result is the floored product of the steps. 10^(1 - 2^-16) from
-    /// `bc -l` at scale 120 is 999964865956982493168325998248471709590758801441386.28,
-    /// 76.28 units above it. sqrt's `roundRoot` needs this over 23.03.
+    /// At x = 1 - 2^-16 every step is taken. The reference is 10^x truncated
+    /// to 50 places from `bc -l` at scale 200.
     function testExp10FixedAllSteps() external pure {
-        assertEq(
+        assertProvenBound(
             LibDecimalFloatImplementation.exp10Fixed(POW_FIXED_ONE - 1.52587890625e45),
-            999964865956982493168325998248471709590758801441310
+            999964865956982493168325998248471709590758801441386
         );
     }
 }
