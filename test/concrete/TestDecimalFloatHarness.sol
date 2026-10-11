@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 /// The library functions `TestDecimalFloat` does not expose, each by its own
 /// name.
@@ -63,6 +64,14 @@ contract TestDecimalFloatHarness {
 
     function toDecimalString(Float float, bool scientific) external pure returns (string memory) {
         return LibFormatDecimalFloat.toDecimalString(float, scientific);
+    }
+
+    function exp10Fixed(uint256 x) external pure returns (uint256) {
+        return LibDecimalFloatImplementation.exp10Fixed(x);
+    }
+
+    function log10Ratio(uint256 a, uint256 b, bool relative) external pure returns (int256, int256) {
+        return LibDecimalFloatImplementation.log10Ratio(a, b, relative);
     }
 
     function parseDecimalFloat(string memory str) external pure returns (bytes4, Float) {

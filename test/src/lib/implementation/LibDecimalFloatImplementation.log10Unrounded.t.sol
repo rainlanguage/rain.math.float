@@ -68,7 +68,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
     }
 
     /// Within a factor 1.001 of 1 the log is all correction and the error is
-    /// under 3.27e-49 of it.
+    /// under 3.11e-49 of it.
     function checkRelative(int256 signedCoefficient, int256 exponent) internal pure {
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
@@ -76,7 +76,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         int256 expected = characteristic * 1e70 + int256(fraction);
         int256[] memory boundCoefficients = new int256[](2);
         int256[] memory boundExponents = new int256[](2);
-        (boundCoefficients[0], boundExponents[0]) = (abs(expected) * 327, -121);
+        (boundCoefficients[0], boundExponents[0]) = (abs(expected) * 311, -121);
         (boundCoefficients[1], boundExponents[1]) = (1, -67);
         assertTrue(
             withinOracle(signedCoefficient, exponent, boundCoefficients, boundExponents),

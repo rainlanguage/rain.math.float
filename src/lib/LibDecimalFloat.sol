@@ -926,8 +926,8 @@ library LibDecimalFloat {
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
     /// @return The result of 10^float, rounded to nearest at 41 significant
-    /// digits, within half a unit in the 41st digit plus 3.28e-8 of a unit,
-    /// under 5.0000004e-41 relative. A result below 1e-2147483608 sheds digits
+    /// digits, within half a unit in the 41st digit plus 1.12e-8 of a unit,
+    /// under 5.00000012e-41 relative. A result below 1e-2147483608 sheds digits
     /// to lift its exponent to the int32 floor, so its bound adds
     /// 1e-2147483648 absolute, and below 1e-2147483648 it reverts
     /// `ExponentUnderflow`. Monotone within rounding error: for
@@ -978,7 +978,7 @@ library LibDecimalFloat {
     /// ergonomic for the caller.
     /// @param a The float to log10.
     /// @return The base-10 logarithm of a, rounded to nearest at 41
-    /// significant digits, within half a unit in the 41st digit plus 2e-50
+    /// significant digits, within half a unit in the 41st digit plus 1.0037e-50
     /// absolute. Monotone within rounding error: for x < y the results can be
     /// out of order by exactly one unit in the last place, only when both
     /// true values lie within the raw error of the same rounding tie, and
@@ -1000,12 +1000,12 @@ library LibDecimalFloat {
     /// The final product, including a^1, is rounded to nearest at 41
     /// significant digits, half away from zero. For N the integer part of
     /// |b| and d = max(|a|, 1/|a|) - 1, the result is within
-    /// 5.0000004e-41 + N min(K1, K2 d) relative of the true value, with K1
+    /// 5.00000012e-41 + N min(K1, K2 d) relative of the true value, with K1
     /// 1.7273e-76 and K2 1.5e-38 for b > 0, and K1 1.1728e-75 and K2
     /// 3.4786e-38 for b < 0:
-    /// - The leg keeps pow10's guard digits. Their 3.28e-48 relative, plus
-    ///   log10Unrounded's 2e-50 times a fraction below 1 and ln 10, puts
-    ///   it within 3.33e-48 relative of 10^(frac(b) log10(a)).
+    /// - The leg keeps pow10's guard digits. Their 1.1111e-48 relative, plus
+    ///   log10Unrounded's 1.0037e-50 times a fraction below 1 and ln 10, puts
+    ///   it within 1.1343e-48 relative of 10^(frac(b) log10(a)).
     /// - A multiply truncates toward zero to a coefficient of at least
     ///   2^255 / 10, so it drops under u = 1.7273e-76 relative. Its operands P
     ///   and Q are powers of a on one side of 1. With P, Q and PQ in
@@ -1028,8 +1028,8 @@ library LibDecimalFloat {
     /// - The rest: the 1/2 per bit, the leg's product, the inverse's weight in
     ///   the leg, and where K2 d is the lesser, d < 1e-37 so N d < 4.95e9 for
     ///   a result that returns, the (1 + 5e-38) and the grids past 1e-76 on
-    ///   the N d terms. All come to under 1e-63, inside the 4e-48 that
-    ///   5.0000004e-41 leaves past the leg and the rounding.
+    ///   the N d terms. All come to under 1e-63, inside the 6.5e-50 that
+    ///   5.00000012e-41 leaves past the leg and the rounding.
     /// - Rounding adds half a unit in the 41st digit, at most 5e-41 of the
     ///   product. A product that rounding would carry above the largest
     ///   Float is instead truncated to int224, under 1e-67 relative.
@@ -1045,7 +1045,7 @@ library LibDecimalFloat {
     /// that is inside the bound.
     /// Monotone within rounding error: for b < c, a^b and a^c can be out of
     /// order by exactly one unit in the last place, only when both true
-    /// values lie within the larger raw error, 3.33e-48 + N min(K1, K2 d)
+    /// values lie within the larger raw error, 1.1343e-48 + N min(K1, K2 d)
     /// relative, of the same rounding tie, and never by more. Callers must
     /// not rely on strict ordering at one-ulp resolution.
     /// Exact results stay exact: a power with at most 41 significant digits,
