@@ -73,8 +73,11 @@ For example
 
 `add` and `sub` return the exact sum rounded once towards zero, to the closest
 Float that does not exceed it in magnitude, as every arithmetic result packs.
-`sub(a, b)` rounds as `add(a, -b)`. This holds whether the magnitudes add or
-cancel:
+`sub(a, b)` negates `b` exactly, before anything packs, so it is not
+`add(a, minus(b))`: `minus` packs the negation of int224.min as int224.max, and
+`sub(-int224.max, int224.min)` is `1` where
+`add(-int224.max, minus(int224.min))` is `0`. The rounding holds whether the
+magnitudes add or cancel:
 
 | Sum                  | Result             |
 | -------------------- | ------------------ |

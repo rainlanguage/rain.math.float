@@ -634,9 +634,11 @@ library LibDecimalFloat {
 
     /// Subtract float b from float a.
     ///
-    /// This is effectively shorthand for adding the two floats with the second
-    /// float negated. Therefore, the same caveats apply as for `add`, and it
-    /// rounds as `add(a, -b)`: the exact difference rounded once towards zero.
+    /// `b` is negated exactly, before anything packs, then summed as `add`
+    /// sums, so the same caveats apply: the exact difference rounded once
+    /// towards zero. This is not `add(a, minus(b))`, as `minus` packs the
+    /// negation of int224.min as int224.max: `-int224.max - int224.min` is
+    /// `1`, where `-int224.max + minus(int224.min)` is `0`.
     /// `1 - 1e-100` is `0.` then 67 nines, and `1 - (-1e-100)` is `1`.
     /// @param a The float to subtract from.
     /// @param b The float to subtract.

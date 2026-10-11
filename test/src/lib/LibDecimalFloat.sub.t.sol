@@ -100,4 +100,13 @@ contract LibDecimalFloatSubTest is Test {
         assertEq(Float.unwrap(difference), Float.unwrap(LibDecimalFloat.packLossless(type(int224).max, 0)));
         assertEq(Float.unwrap(difference), Float.unwrap(min.minus()));
     }
+
+    /// `b` negates exactly: -(2^223 - 1) - (-2^223) = 1. `minus` packs -b as
+    /// 2^223 - 1, so adding it gives -(2^223 - 1) + (2^223 - 1) = 0.
+    function testSubInt224MinNegatesExactly() external pure {
+        Float a = LibDecimalFloat.packLossless(-type(int224).max, 0);
+        Float b = LibDecimalFloat.packLossless(type(int224).min, 0);
+        assertValue(a.sub(b), 1, 0, "sub");
+        assertValue(a.add(b.minus()), 0, 0, "add minus");
+    }
 }
