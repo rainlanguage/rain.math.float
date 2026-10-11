@@ -1261,8 +1261,8 @@ library LibDecimalFloatImplementation {
     /// (82e35, 38e36) for E in [1e74, 1e75). With r = sqrt E the seed is
     /// r (a / r + r / b), least, 2 sqrt(a / b) r, at r = sqrt(a b) and
     /// greatest at an end of the decade, so it is r (1 + d) with d in
-    /// [-0.071, 0.094]. A step takes d to d^2 / (2 (1 + d)) or less: 4.0e-3,
-    /// 7.9e-6, 3.2e-11, 4.9e-22, under the 3.1e-21 the step over N needs.
+    /// [-0.071, 0.0934]. A step takes d to d^2 / (2 (1 + d)) or less: 3.99e-3,
+    /// 7.93e-6, 3.15e-11, 4.97e-22, under the 3.1e-21 the step over N needs.
     /// @param signedCoefficient The coefficient.
     /// @param exponent The exponent.
     /// @return signedCoefficient The root's coefficient, in [1e40, 1e41].
@@ -1315,10 +1315,10 @@ library LibDecimalFloatImplementation {
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))
             }
-            // Times 1e3, root is within 4.9e-22 relative of sqrt N, so within
-            // 4.9e19 as sqrt N is below 1e41 (the floors take off at most 1e3
+            // Times 1e3, root is within 4.97e-22 relative of sqrt N, so within
+            // 4.97e19 as sqrt N is below 1e41 (the floors take off at most 1e3
             // more). One step over N itself, its quotient across 512 bits,
-            // leaves it at most (4.9e19)^2 / (2 1e40), under 0.13, above
+            // leaves it at most (4.97e19)^2 / (2 1e40), under 0.13, above
             // sqrt N, and at least its floor: on the floor or one above.
             root *= 1e3;
             root = (root + mulDiv(coefficient, scale, root)) >> 1;
