@@ -979,5 +979,26 @@
       "testsAfter": 910,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-11T13:34:24Z",
+    "commit": "4ecd21232b7a94ce357032e4dbc8956f738e5975",
+    "testsAfterCommit": "076d58570eae03831c7dca3ee98bb6274cc05a2b",
+    "publishedTag": "sol-v0.2.40",
+    "commitsAheadOfTag": 4,
+    "scope": "Issue #422: the range guards in LibDecimalFloatImplementation (mulDivFixed, log10Ratio, log10Unrounded, sqrt, exp10Fixed, log10Reduce, absCoefficient, scaleUp). Each probe ran the PR source at 076d585. Before = the test tree of main 4ecd212 against that source, with forge test --nmc LibDecimalFloatImplementationLog10RatioPr336EquivalenceTest, because main's #336 equivalence test asserts the unguarded out-of-range values and is red against the guards (894 tests). After = the full forge test at 076d585 (927 tests). Mutants M01-M29 cover each guard's comparison (off by one at each edge) and its removal, plus LOG10_RATIO_Z_MAX + 1, the relative overflow check moved after RelativeSumTooSmall, and the sqrt exponent check moved before s is taken off. Main's tests kill M22 (log10Reduce lower edge, through the in-range log10Reduce tests) and M28 (scaleUp exponent > to >=, through the sqrt variants that call scaleUp). The PR's tests kill all 29. One candidate, not filed and surfaced on the PR: log10Unrounded reverts by characteristic, not by the value of the log. So (9.999e75, int256.max - 75) reverts, while (9.998e75, int256.max - 75) returns a log just under int256.max + 1, as the ruling to reuse ExponentOverflow intends.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 29,
+      "killedBefore": 2,
+      "killedAfter": 27,
+      "equivalent": 0,
+      "candidates": 1,
+      "confirmed": 0,
+      "testsBefore": 894,
+      "testsAfter": 927,
+      "filed": []
+    }
   }
 ]
