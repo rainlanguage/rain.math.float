@@ -9,11 +9,12 @@ import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {LibFormatDecimalFloatPr321} from "test/lib/LibFormatDecimalFloatPr321.sol";
 import {LibParseDecimalFloatPr321} from "test/lib/LibParseDecimalFloatPr321.sol";
 import {UnformatableExponent} from "src/error/ErrFormat.sol";
+import {LibTestDecimalLiteral, Literal} from "test/lib/LibTestDecimalLiteral.sol";
 
 /// Every input returns the same bytes, or reverts with the same bytes, as
 /// `toDecimalString`, `parseDecimalFloat` and `parseDecimalFloatInline` before
 /// #310's format and parse changes, except a Float formatted that only a guard
-/// #376 deleted refused.
+/// #376 deleted refused and a well formed literal that is no Float.
 contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
     function baseFormat(Float f, bool scientific) external pure returns (string memory) {
         return LibFormatDecimalFloatPr321.toDecimalString(f, scientific);
@@ -74,7 +75,13 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         }
     }
 
+    /// #375 chose the errors of literals that are no Float by value, which
+    /// the parse tests check against the rule, so only those are skipped.
     function checkParse(string memory str) internal view {
+        Literal memory lit = LibTestDecimalLiteral.read(bytes(str));
+        if (lit.malformed == 0 && !LibTestDecimalLiteral.isFloat(lit)) {
+            return;
+        }
         same(abi.encodeCall(this.baseParse, (str)), abi.encodeCall(this.prParse, (str)));
     }
 

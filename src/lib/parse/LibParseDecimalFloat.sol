@@ -64,13 +64,15 @@ library LibParseDecimalFloat {
                     return (ParseEmptyDecimalString.selector, cursor, 0, 0);
                 }
 
-                (bytes4 signedCoefficientErrorSelector, int256 signedCoefficientTmp) =
-                    LibParseDecimal.unsafeDecimalStringToSignedInt(start, cursor);
-                if (signedCoefficientErrorSelector != 0) {
-                    // A nonempty digit run fails only past int256.
+                (bytes4 intErrorSelector, uint256 intValue) = LibParseDecimal.unsafeDecimalStringToInt(intStart, cursor);
+                // A nonempty digit run fails only past uint256. int256 holds
+                // up to 2^255 - 1, and 2^255 when negative.
+                if (intErrorSelector != 0 || intValue > uint256(type(int256).max) + (isNegative ? 1 : 0)) {
                     return parseDecimalFloatPastInt256(start, end);
                 }
-                signedCoefficient = signedCoefficientTmp;
+                // 2^255 casts to int256.min, which negates to itself.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                signedCoefficient = isNegative ? -int256(intValue) : int256(intValue);
             }
 
             int256 fracValue = int256(LibParseChar.isMask(cursor, end, CMASK_DECIMAL_POINT));
@@ -93,19 +95,14 @@ library LibParseDecimalFloat {
 
                 // An all-zero fraction is the same literal as no fraction.
                 if (nonZeroCursor != fracStart) {
-                    bytes4 fracErrorSelector;
-                    (fracErrorSelector, fracValue) =
-                        LibParseDecimal.unsafeDecimalStringToSignedInt(fracStart, nonZeroCursor);
-                    if (fracErrorSelector != 0) {
+                    (bytes4 fracErrorSelector, uint256 fracDigits) =
+                        LibParseDecimal.unsafeDecimalStringToInt(fracStart, nonZeroCursor);
+                    if (fracErrorSelector != 0 || fracDigits > uint256(type(int256).max)) {
                         return parseDecimalFloatPastInt256(start, end);
                     }
                     // Frac value inherits its sign from the coefficient.
-                    if (fracValue < 0) {
-                        return (MalformedDecimalPoint.selector, cursor, 0, 0);
-                    }
-                    if (isNegative) {
-                        fracValue = -fracValue;
-                    }
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    fracValue = isNegative ? -int256(fracDigits) : int256(fracDigits);
 
                     // We want to _decrease_ the exponent by the number of digits in the
                     // fractional part.
@@ -426,42 +423,37 @@ library LibParseDecimalFloat {
         }
         (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
             parseDecimalFloatInline(start, end);
-        if (errorSelector == 0) {
-            if (cursor == end) {
-                // If we consumed the whole string, we can return the parsed value.
-                // packLossy handles the two exponent-overflow directions differently:
-                // - Positive exponent overflow is first met by lifting the
-                //   coefficient to lower the exponent to int32.max (e.g.
-                //   1e2147483648 is 10e2147483647). Only when the coefficient
-                //   has no headroom left does packLossy revert with
-                //   ExponentOverflow, as there is no meaningful approximation.
-                // - Negative exponent overflow is first met by shedding trailing
-                //   digits of the coefficient to lift the exponent to int32.min
-                //   (e.g. 10e-2147483649 is 1e-2147483648, which packs
-                //   losslessly). Only a number that genuinely rounds to zero
-                //   (e.g. 1e-2147483649) makes packLossy return
-                //   (FLOAT_ZERO, false), and we report ParseDecimalPrecisionLoss.
-                (Float result, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-                if (!lossless) {
-                    return (ParseDecimalPrecisionLoss.selector, Float.wrap(0));
-                } else {
-                    return (0, result);
-                }
-            } else {
-                // If we didn't consume the whole string, it is malformed.
-                return (ParseDecimalFloatExcessCharacters.selector, Float.wrap(0));
-            }
-        } else {
-            // A value error stops after the literal, which may not be the
-            // whole string.
+        if (cursor != end) {
+            // A malformed literal keeps its error. A well formed one, value
+            // errors included as they stop after the literal, has more
+            // characters after it.
             if (
-                cursor != end
-                    && (errorSelector == ParseDecimalPrecisionLoss.selector
-                        || errorSelector == ExponentOverflow.selector)
+                errorSelector == 0 || errorSelector == ParseDecimalPrecisionLoss.selector
+                    || errorSelector == ExponentOverflow.selector
             ) {
                 return (ParseDecimalFloatExcessCharacters.selector, Float.wrap(0));
             }
             return (errorSelector, Float.wrap(0));
         }
+        if (errorSelector != 0) {
+            return (errorSelector, Float.wrap(0));
+        }
+        // packLossy handles the two exponent-overflow directions differently:
+        // - Positive exponent overflow is first met by lifting the
+        //   coefficient to lower the exponent to int32.max (e.g.
+        //   1e2147483648 is 10e2147483647). Only when the coefficient
+        //   has no headroom left does packLossy revert with
+        //   ExponentOverflow, as there is no meaningful approximation.
+        // - Negative exponent overflow is first met by shedding trailing
+        //   digits of the coefficient to lift the exponent to int32.min
+        //   (e.g. 10e-2147483649 is 1e-2147483648, which packs
+        //   losslessly). Only a number that genuinely rounds to zero
+        //   (e.g. 1e-2147483649) makes packLossy return
+        //   (FLOAT_ZERO, false), and we report ParseDecimalPrecisionLoss.
+        (Float result, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+        if (!lossless) {
+            return (ParseDecimalPrecisionLoss.selector, Float.wrap(0));
+        }
+        return (0, result);
     }
 }
