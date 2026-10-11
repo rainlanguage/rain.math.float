@@ -492,37 +492,51 @@ library LibTestExactDecimal {
 
     /// The parts `add` of any two int256 coefficients hands to packing, or
     /// `overflowed` where its exponent is above `type(int256).max`, as its
-    /// NatSpec states them: the exact sum in units of the larger
-    /// operand's int256 unit, or ten of them past int256, rounded towards zero
-    /// when the signs agree and away from zero when they differ. The int256
-    /// unit is the last digit's place when written with as many digits as an
-    /// int256 coefficient of its sign holds, so `type(int256).min` holds 77.
-    /// Below `type(int256).min` the sum then truncates towards zero to that
-    /// exponent.
+    /// NatSpec states them: the exact sum truncated towards zero to a multiple
+    /// of the larger operand's int256 unit, or of ten of them past int256.
+    /// The int256 unit is the last digit's place when written with as many
+    /// digits as an int256 coefficient of its sign holds, so
+    /// `type(int256).min` holds 77. Below `type(int256).min` the sum then
+    /// truncates towards zero to that exponent.
     function addPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
         returns (bool overflowed, int256 c, int256 e)
     {
+        (overflowed, c, e,) = addPartsInexact(ca, ea, cb, eb);
+    }
+
+    /// `addPartsWide`, and whether the truncation shed anything, so the exact
+    /// sum is strictly between `c × 10^e` and one unit of `10^e` further from
+    /// zero.
+    function addPartsInexact(int256 ca, int256 ea, int256 cb, int256 eb)
+        internal
+        pure
+        returns (bool overflowed, int256 c, int256 e, bool inexact)
+    {
         if (ca == 0) {
             // forge-lint: disable-next-line(boolean-cst)
-            return (false, cb, eb);
+            return (false, cb, eb, false);
         }
         if (cb == 0) {
             // forge-lint: disable-next-line(boolean-cst)
-            return (false, ca, ea);
+            return (false, ca, ea, false);
         }
         if (cmpWide(u512(abs(ca)), ea, eb, 0, 0, u512(abs(cb))) < 0) {
             (ca, ea, cb, eb) = (cb, eb, ca, ea);
         }
-        (uint256 magnitude, int256 offset) = addUnits(ca, ea, cb, eb);
+        uint256 magnitude;
+        int256 offset;
+        (magnitude, offset, inexact) = addUnits(ca, ea, cb, eb);
         int256 cls;
         (cls, e) = wideExponent(ea, 0, 0, offset);
         if (cls == 1) {
             // forge-lint: disable-next-line(boolean-cst)
-            return (true, 0, 0);
+            return (true, 0, 0, inexact);
         }
         if (cls == -1) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            inexact = inexact || (e >= 78 ? magnitude != 0 : magnitude % 10 ** uint256(e) != 0);
             magnitude = shed(magnitude, e);
             e = type(int256).min;
         }
@@ -530,39 +544,47 @@ library LibTestExactDecimal {
     }
 
     /// `addPartsWide`'s magnitude in units of `10^(ea + offset)`, for
-    /// non-zero operands with `|a| >= |b|`.
+    /// non-zero operands with `|a| >= |b|`, and whether it is inexact.
     function addUnits(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
-        returns (uint256 magnitude, int256 offset)
+        returns (uint256 magnitude, int256 offset, bool inexact)
     {
         uint256 limit = ca < 0 ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
         int256 unitShift = int256UnitShift(ca);
         // forge-lint: disable-next-line(unsafe-typecast)
         U512 memory units = u512(abs(ca) * 10 ** uint256(unitShift));
         U512 memory smallUnits;
+        // Whether b has digits below the unit: all of them unless aligned.
+        inexact = true;
         // eb - unit, where unit is ea - unitShift.
         (int256 cls, int256 gap) = wideExponent(eb, ea, 0, unitShift);
         if (cls == 0 && gap >= 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
             smallUnits = mulPow10(u512(abs(cb)), uint256(gap));
+            inexact = false;
         } else if (cls == 0 && gap > -78) {
             // forge-lint: disable-next-line(unsafe-typecast)
             smallUnits = u512(abs(cb) / 10 ** uint256(-gap));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            inexact = abs(cb) % 10 ** uint256(-gap) != 0;
         }
         if ((ca < 0) == (cb < 0)) {
+            // floor(|a| + |b|) = |a| + floor(|b|) for a whole |a|.
             units = add(units, smallUnits);
         } else {
-            // |b| <= |a|. Away from zero rounds a fraction of a unit of the
-            // exact difference up to the whole units the floors leave.
-            units = U512(0, units.lo - smallUnits.lo);
+            // |b| <= |a|. floor(|a| - |b|) = |a| - ceil(|b|) for a whole |a|,
+            // and ceil(|b|) is floor(|b|) plus one where |b| is not whole.
+            units = U512(0, units.lo - smallUnits.lo - (inexact ? 1 : 0));
         }
         offset = -unitShift;
         if (cmp(units, u512(limit)) > 0) {
+            // units mod 10, as 2^256 is 6 mod 10.
+            inexact = inexact || (units.hi * 6 + units.lo % 10) % 10 != 0;
             // At most 2^256, so 6 hi + lo does not overflow.
-            return (units.hi * (type(uint256).max / 10) + (units.hi * 6 + units.lo) / 10, offset + 1);
+            return (units.hi * (type(uint256).max / 10) + (units.hi * 6 + units.lo) / 10, offset + 1, inexact);
         }
-        return (units.lo, offset);
+        return (units.lo, offset, inexact);
     }
 
     /// Exact numeric order of two Floats' parts: -1, 0 or 1.
@@ -654,10 +676,21 @@ library LibTestExactDecimal {
         if (rc == 0 || (rc < 0) != negative) {
             return false;
         }
-        uint256 r = abs(rc);
-        if (cmpScaled(u512(r), re, magnitude, exponent) > 0) {
+        if (cmpScaled(u512(abs(rc)), re, magnitude, exponent) > 0) {
             return false;
         }
+        (bool none, uint256 next, int256 nextExponent) = nextFloat(negative, rc, re);
+        return none || cmpScaled(magnitude, exponent, u512(next), nextExponent) < 0;
+    }
+
+    /// The magnitude of the Float of the sign one step further from zero than
+    /// the non-zero `(rc, re)`, or `none` past the largest.
+    function nextFloat(bool negative, int256 rc, int256 re)
+        internal
+        pure
+        returns (bool none, uint256 next, int256 nextExponent)
+    {
+        uint256 r = abs(rc);
         uint256 limit = coefficientLimit(negative);
         // At its lowest exponent, the next larger Float is one unit up, or the
         // smallest past the limit one exponent higher.
@@ -666,25 +699,100 @@ library LibTestExactDecimal {
             --re;
         }
         if (r < limit) {
-            return cmpScaled(magnitude, exponent, u512(r + 1), re) < 0;
+            // forge-lint: disable-next-line(boolean-cst)
+            return (false, r + 1, re);
         }
         if (re == type(int32).max) {
-            return true;
+            // forge-lint: disable-next-line(boolean-cst)
+            return (true, 0, 0);
         }
-        return cmpScaled(magnitude, exponent, u512(limit / 10 + 1), re + 1) < 0;
+        // forge-lint: disable-next-line(boolean-cst)
+        return (false, limit / 10 + 1, re + 1);
     }
 
     /// Whether the Float `(rc, re)` is what `add` documents for
-    /// `ca × 10^ea + cb × 10^eb`: `addPartsWide`, then packing, the closest
-    /// Float not exceeding that in magnitude. Exactly one Float is accepted.
-    /// The caller rules out sums that `addOverflows`.
+    /// `ca × 10^ea + cb × 10^eb`: the exact sum rounded once towards zero, the
+    /// closest Float not exceeding it in magnitude. `addPartsInexact` puts the
+    /// exact sum at `c × 10^e`, or strictly between that and one unit of
+    /// `10^e` further from zero. In the latter case the Float is the floor of
+    /// the exact sum when it is that of `c × 10^e` and the next Float is at
+    /// least a whole unit further. At most one Float is accepted. The caller
+    /// rules out sums that `addOverflows`.
     function isSumResult(int256 ca, int256 ea, int256 cb, int256 eb, int256 rc, int256 re)
         internal
         pure
         returns (bool)
     {
-        (, int256 c, int256 e) = addPartsWide(ca, ea, cb, eb);
-        return isNearestTowardZero(c < 0, u512(abs(c)), e, rc, re);
+        (, int256 c, int256 e, bool inexact) = addPartsInexact(ca, ea, cb, eb);
+        if (!isNearestTowardZero(c < 0, u512(abs(c)), e, rc, re)) {
+            return false;
+        }
+        if (!inexact) {
+            return true;
+        }
+        if (rc == 0) {
+            return false;
+        }
+        (bool none, uint256 next, int256 nextExponent) = nextFloat(c < 0, rc, re);
+        return none || cmpScaled(u512(abs(c) + 1), e, u512(next), nextExponent) <= 0;
+    }
+
+    /// `a - b` for `a >= b`.
+    function sub(U512 memory a, U512 memory b) internal pure returns (U512 memory) {
+        require(cmp(a, b) >= 0, "negative difference");
+        unchecked {
+            return U512(a.hi - b.hi - (a.lo < b.lo ? 1 : 0), a.lo - b.lo);
+        }
+    }
+
+    /// The exact `ca × 10^ea + cb × 10^eb` of two Floats' parts, as a sign, a
+    /// magnitude below 10^150 and an exponent, independent of any int256
+    /// unit. A Float with 68 digits at most puts the Floats beside the other
+    /// operand at least 10^-70 of its leading place apart, and the other
+    /// operand is one of them. So a non-zero operand whose leading digit is
+    /// over 82 places below the other's moves the sum strictly between the
+    /// same two Floats as any other value of its sign that far down: it
+    /// becomes one unit 100 places below the other's leading digit.
+    function exactSum(int256 ca, int256 ea, int256 cb, int256 eb)
+        internal
+        pure
+        returns (bool negative, U512 memory magnitude, int256 exponent)
+    {
+        if (ca == 0 || cb == 0) {
+            (int256 c, int256 e) = ca == 0 ? (cb, eb) : (ca, ea);
+            return (c < 0, u512(abs(c)), e);
+        }
+        int256 ta = ea + digits(u512(abs(ca)));
+        int256 tb = eb + digits(u512(abs(cb)));
+        if (ta - tb > 82) {
+            (cb, eb) = (cb < 0 ? int256(-1) : int256(1), ta - 100);
+        } else if (tb - ta > 82) {
+            (ca, ea) = (ca < 0 ? int256(-1) : int256(1), tb - 100);
+        }
+        exponent = ea < eb ? ea : eb;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory ma = mulPow10(u512(abs(ca)), uint256(ea - exponent));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory mb = mulPow10(u512(abs(cb)), uint256(eb - exponent));
+        if ((ca < 0) == (cb < 0)) {
+            return (ca < 0, add(ma, mb), exponent);
+        }
+        if (cmp(ma, mb) >= 0) {
+            return (ca < 0, sub(ma, mb), exponent);
+        }
+        return (cb < 0, sub(mb, ma), exponent);
+    }
+
+    /// Whether `(rc, re)` is the exact sum of two Floats rounded once towards
+    /// zero to a Float, from `exactSum` rather than `addPartsInexact`. The
+    /// caller rules out sums that `addOverflows`.
+    function isNearestSum(int256 ca, int256 ea, int256 cb, int256 eb, int256 rc, int256 re)
+        internal
+        pure
+        returns (bool)
+    {
+        (bool negative, U512 memory magnitude, int256 exponent) = exactSum(ca, ea, cb, eb);
+        return isNearestTowardZero(negative, magnitude, exponent, rc, re);
     }
 
     /// `ca × cb` with the fewest digits shed, truncating towards zero, that
