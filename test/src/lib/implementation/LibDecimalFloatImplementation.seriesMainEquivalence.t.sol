@@ -2,37 +2,87 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    LOG10_RATIO_Z_MAX
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Exp10FixedOutOfRange, Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementationSeriesMain} from "test/lib/LibDecimalFloatImplementationSeriesMain.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-/// `log10Ratio` and `exp10Fixed` return exactly what they returned before
-/// their multiplies were written out in place, over the domain each documents.
+/// `log10Ratio` and `exp10Fixed` return exactly what main's copies return,
+/// from before their multiplies were written out in place, over the domain
+/// each guards. Outside it both revert the named range error with the input.
 contract LibDecimalFloatImplementationSeriesMainEquivalenceTest is Test {
-    function checkRatio(uint256 a, uint256 b) internal pure {
+    function liveRatio(uint256 a, uint256 b, bool relative) external pure returns (int256, int256) {
+        return LibDecimalFloatImplementation.log10Ratio(a, b, relative);
+    }
+
+    function mainRatio(uint256 a, uint256 b, bool relative) external pure returns (int256, int256) {
+        return LibDecimalFloatImplementationSeriesMain.log10Ratio(a, b, relative);
+    }
+
+    function liveExp10(uint256 x) external pure returns (uint256) {
+        return LibDecimalFloatImplementation.exp10Fixed(x);
+    }
+
+    function mainExp10(uint256 x) external pure returns (uint256) {
+        return LibDecimalFloatImplementationSeriesMain.exp10Fixed(x);
+    }
+
+    /// z = |a - b| / (a + b) floored at 1e-50 past `LOG10_RATIO_Z_MAX`, for
+    /// a + b at least 1e50 and below 2^256.
+    function outOfRange(uint256 a, uint256 b) internal pure returns (bool) {
+        uint256 difference = a < b ? b - a : a - b;
+        return LibDecimalFloatImplementation.mulDiv(difference, 1e50, a + b) > LOG10_RATIO_Z_MAX;
+    }
+
+    function checkRatio(uint256 a, uint256 b) internal view {
+        bool expectRevert = outOfRange(a, b);
         for (uint256 i = 0; i < 2; i++) {
-            (int256 liveCoefficient, int256 liveExponent) = LibDecimalFloatImplementation.log10Ratio(a, b, i == 0);
-            (int256 mainCoefficient, int256 mainExponent) =
-                LibDecimalFloatImplementationSeriesMain.log10Ratio(a, b, i == 0);
-            assertEq(liveCoefficient, mainCoefficient, "coefficient");
-            assertEq(liveExponent, mainExponent, "exponent");
+            (bool okLive, bytes memory live) = address(this).staticcall(abi.encodeCall(this.liveRatio, (a, b, i == 0)));
+            (bool okMain, bytes memory main) = address(this).staticcall(abi.encodeCall(this.mainRatio, (a, b, i == 0)));
+            if (expectRevert) {
+                assertFalse(okLive, "live out of range");
+                assertEq(live, abi.encodeWithSelector(Log10RatioOutOfRange.selector, a, b), "live out of range bytes");
+                assertFalse(okMain, "main out of range");
+            } else {
+                assertTrue(okLive, "live in range");
+            }
+            assertEq(okLive, okMain, "success");
+            assertEq(live, main, "bytes");
         }
     }
 
-    /// z = |a - b| / (a + b) up to 5.1e-4, a and b in [1e75 / 1.002, 1e76].
-    function testLog10RatioSeriesMainEquivalence(uint256 b, uint256 d, bool below) external pure {
+    function checkExp10(uint256 x) internal view {
+        (bool okLive, bytes memory live) = address(this).staticcall(abi.encodeCall(this.liveExp10, (x)));
+        (bool okMain, bytes memory main) = address(this).staticcall(abi.encodeCall(this.mainExp10, (x)));
+        if (x >= 1e50) {
+            assertFalse(okLive, "live out of range");
+            assertEq(live, abi.encodeWithSelector(Exp10FixedOutOfRange.selector, x), "live out of range bytes");
+            assertFalse(okMain, "main out of range");
+        } else {
+            assertTrue(okLive, "live in range");
+        }
+        assertEq(okLive, okMain, "success");
+        assertEq(live, main, "bytes");
+    }
+
+    /// z = |a - b| / (a + b) up to just past `LOG10_RATIO_Z_MAX`, a and b in
+    /// [1e75 / 1.002, 1e76].
+    function testLog10RatioSeriesMainEquivalence(uint256 b, uint256 d, bool below) external view {
         b = bound(b, 1e75, 9.9e75);
-        d = bound(d, 0, b / 1e6 * (below ? 1019 : 1020));
+        d = bound(d, 0, b / 1e6 * 1510);
         checkRatio(below ? b - d : b + d, b);
     }
 
     /// The reduced gap `log10Reduce` leaves, a within 10^(2^-16) of 1e75.
-    function testLog10RatioSeriesMainEquivalenceReduced(uint256 a) external pure {
+    function testLog10RatioSeriesMainEquivalenceReduced(uint256 a) external view {
         a = bound(a, 1e75 - 2, 1000035135277461856608582335861556633189962147970549360011398536055919590052);
         checkRatio(a, 1e75);
     }
 
-    function testLog10RatioSeriesMainEquivalenceExamples() external pure {
+    function testLog10RatioSeriesMainEquivalenceExamples() external view {
         // z = 5.1e-4 exactly, either side.
         checkRatio(500255e70, 499745e70);
         checkRatio(499745e70, 500255e70);
@@ -41,11 +91,19 @@ contract LibDecimalFloatImplementationSeriesMainEquivalenceTest is Test {
         checkRatio(9999e72, 1e76);
         checkRatio(1e75 + 1, 1e75);
         checkRatio(1e75, 1e75);
+        // z at the guard and one past it, either side.
+        checkZ(LOG10_RATIO_Z_MAX, true);
+        checkZ(LOG10_RATIO_Z_MAX, false);
+        checkZ(LOG10_RATIO_Z_MAX + 1, true);
+        checkZ(LOG10_RATIO_Z_MAX + 1, false);
     }
 
-    function testExp10FixedSeriesMainEquivalence(uint256 x) external pure {
-        x = bound(x, 0, 1e50 - 1);
-        assertEq(LibDecimalFloatImplementation.exp10Fixed(x), LibDecimalFloatImplementationSeriesMain.exp10Fixed(x));
+    function testExp10FixedSeriesMainEquivalence(uint256 x) external view {
+        checkExp10(bound(x, 0, 1e50 - 1));
+    }
+
+    function testExp10FixedSeriesMainEquivalenceOutOfRange(uint256 x) external view {
+        checkExp10(bound(x, 1e50, type(uint256).max));
     }
 
     /// Every binary digit set, every one clear, and each alone, with the
@@ -107,15 +165,15 @@ contract LibDecimalFloatImplementationSeriesMainEquivalenceTest is Test {
 
     /// z = u 1e25 + v at each end of v, across the whole domain of u, and z a
     /// multiple of 2^128, whose square is a multiple of 2^256.
-    function testLog10RatioSeriesMainEquivalenceZSquaredSplit(uint256 u, uint256 k, bool below) external pure {
-        u = bound(u, 0, 4.99e21);
+    function testLog10RatioSeriesMainEquivalenceZSquaredSplit(uint256 u, uint256 k, bool below) external view {
+        u = bound(u, 0, LOG10_RATIO_Z_MAX / 1e25 - 1);
         checkZ(u * 1e25, below);
         checkZ(u * 1e25 + 1e25 - 1, below);
-        checkZ(bound(k, 1, 146000000) << 128, below);
+        checkZ(bound(k, 1, LOG10_RATIO_Z_MAX >> 128) << 128, below);
     }
 
     /// The input pair 1e75 ± d with exactly this z.
-    function checkZ(uint256 z, bool below) internal pure {
+    function checkZ(uint256 z, bool below) internal view {
         uint256 d = LibDecimalFloatImplementation.mulDiv(2e75, z, below ? 1e50 + z : 1e50 - z);
         while (LibDecimalFloatImplementation.mulDiv(d, 1e50, below ? 2e75 - d : 2e75 + d) < z) {
             d++;

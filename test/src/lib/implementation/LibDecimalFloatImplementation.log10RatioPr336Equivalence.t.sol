@@ -2,14 +2,20 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    LOG10_RATIO_Z_MAX
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
+import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibDecimalFloatImplementationLog10RatioPr336} from "test/lib/LibDecimalFloatImplementationLog10RatioPr336.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 /// `log10Ratio` returns and reverts the same bytes as the #336 head's
 /// `maximizeFull` scaling it was restructured from, wherever a - b fits in
-/// int256, which #336 cast it to. a and b are kept within a factor 100 of each
-/// other.
+/// int256, which #336 cast it to, and the input is in the range #422 named.
+/// Outside it the live one reverts `Log10RatioOutOfRange` with the input.
+/// a and b are kept within a factor 100 of each other.
 contract LibDecimalFloatImplementationLog10RatioPr336EquivalenceTest is Test {
     function pr336Ratio(uint256 a, uint256 b, bool relative) external pure returns (int256, int256) {
         return LibDecimalFloatImplementationLog10RatioPr336.log10Ratio(a, b, relative);
@@ -19,9 +25,33 @@ contract LibDecimalFloatImplementationLog10RatioPr336EquivalenceTest is Test {
         return LibDecimalFloatImplementation.log10Ratio(a, b, relative);
     }
 
+    /// a + b past 2^256, b of zero when not relative, or, past the relative
+    /// sum check, z = |a - b| / (a + b) floored at 1e-50 past
+    /// `LOG10_RATIO_Z_MAX`.
+    function outOfRange(uint256 a, uint256 b, bool relative) internal pure returns (bool) {
+        if (a > type(uint256).max - b) {
+            return true;
+        }
+        uint256 sum = a + b;
+        if (relative) {
+            if (sum < 1e50) {
+                return false;
+            }
+        } else if (b == 0) {
+            return true;
+        }
+        uint256 difference = a < b ? b - a : a - b;
+        return Math.mulDiv(difference, 1e50, sum) > LOG10_RATIO_Z_MAX;
+    }
+
     function checkSame(uint256 a, uint256 b, bool relative) internal view {
-        (bool okPr336, bytes memory pr336) = address(this).staticcall(abi.encodeCall(this.pr336Ratio, (a, b, relative)));
         (bool okLive, bytes memory live) = address(this).staticcall(abi.encodeCall(this.liveRatio, (a, b, relative)));
+        if (outOfRange(a, b, relative)) {
+            assertFalse(okLive, "out of range");
+            assertEq(live, abi.encodeWithSelector(Log10RatioOutOfRange.selector, a, b), "out of range bytes");
+            return;
+        }
+        (bool okPr336, bytes memory pr336) = address(this).staticcall(abi.encodeCall(this.pr336Ratio, (a, b, relative)));
         assertEq(okLive, okPr336, "success");
         assertEq(live, pr336, "bytes");
     }
@@ -77,6 +107,13 @@ contract LibDecimalFloatImplementationLog10RatioPr336EquivalenceTest is Test {
                 }
                 if (d <= 5e75) {
                     checkSame(1e76 - d, 1e76, true);
+                }
+                // Near 2^255 the sum is still below 2^256, and z is within
+                // range for d up to 7.5e73.
+                checkSame(5e76 + d, 5e76, true);
+                checkSame(5e76, 5e76 + d, true);
+                if (d <= 5e76) {
+                    checkSame(5e76 - d, 5e76, true);
                 }
             }
         }

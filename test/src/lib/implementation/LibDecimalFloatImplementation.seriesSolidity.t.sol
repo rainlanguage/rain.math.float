@@ -3,7 +3,11 @@
 pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    LOG10_RATIO_Z_MAX
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementationSeriesSolidity} from "test/lib/LibDecimalFloatImplementationSeriesSolidity.sol";
 import {LibDecimalFloatImplementationSeriesMain} from "test/lib/LibDecimalFloatImplementationSeriesMain.sol";
 
@@ -60,12 +64,35 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
         gas -= gasleft();
     }
 
+    /// a + b past 2^256, b of zero when not relative, or, past the relative
+    /// sum check, z = |a - b| / (a + b) floored at 1e-50 past
+    /// `LOG10_RATIO_Z_MAX`.
+    function outOfRange(uint256 a, uint256 b, bool relative) internal pure returns (bool) {
+        if (a > type(uint256).max - b) {
+            return true;
+        }
+        uint256 sum = a + b;
+        if (relative) {
+            if (sum < 1e50) {
+                return false;
+            }
+        } else if (b == 0) {
+            return true;
+        }
+        uint256 difference = a < b ? b - a : a - b;
+        return LibDecimalFloatImplementation.mulDiv(difference, 1e50, sum) > LOG10_RATIO_Z_MAX;
+    }
+
     function checkRatio(uint256 a, uint256 b, bool relative) internal view {
         try this.log10RatioAsm(a, b, relative) returns (uint256, int256 asmCoefficient, int256 asmExponent) {
+            assertFalse(outOfRange(a, b, relative), "out of range");
             (, int256 solCoefficient, int256 solExponent) = this.log10RatioSol(a, b, relative);
             assertEq(solCoefficient, asmCoefficient, "coefficient");
             assertEq(solExponent, asmExponent, "exponent");
         } catch (bytes memory err) {
+            if (outOfRange(a, b, relative)) {
+                assertEq(err, abi.encodeWithSelector(Log10RatioOutOfRange.selector, a, b), "out of range bytes");
+            }
             try this.log10RatioSol(a, b, relative) {
                 revert("solidity copy did not revert");
             } catch (bytes memory solErr) {
@@ -93,10 +120,11 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
         checkRatio(a, b, relative);
     }
 
-    /// z = |a - b| / (a + b) up to 5.1e-4, a and b in [1e75 / 1.002, 1e76].
+    /// z = |a - b| / (a + b) up to just past `LOG10_RATIO_Z_MAX`, a and b in
+    /// [1e75 / 1.002, 1e76].
     function testLog10RatioSolidityEquivalenceSeriesDomain(uint256 b, uint256 d, bool below) external view {
         b = bound(b, 1e75, 9.9e75);
-        d = bound(d, 0, b / 1e6 * (below ? 1019 : 1020));
+        d = bound(d, 0, b / 1e6 * 1510);
         checkRatio(below ? b - d : b + d, b);
     }
 
@@ -108,7 +136,7 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
 
     /// z = u 1e25 + v at each end of v.
     function testLog10RatioSolidityEquivalenceZSquaredSplit(uint256 u) external view {
-        u = bound(u, 0, 4.99e21);
+        u = bound(u, 0, LOG10_RATIO_Z_MAX / 1e25 - 1);
         checkRatio(1e75 + u * 1e25, 1e75);
         checkRatio(1e75 + u * 1e25 + 1e25 - 1, 1e75);
     }

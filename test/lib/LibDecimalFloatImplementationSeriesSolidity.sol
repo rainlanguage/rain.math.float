@@ -48,9 +48,10 @@ import {
     EXP10_HORNER_5,
     EXP10_HORNER_4,
     EXP10_HORNER_3,
-    EXP10_HORNER_2
+    EXP10_HORNER_2,
+    LOG10_RATIO_Z_MAX
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
+import {Exp10FixedOutOfRange, Log10RatioOutOfRange, Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 
 /// `log10Ratio` and `exp10Fixed` with the library's unrolled algorithm (seven
 /// atanh terms, the 1e25 split of z^2, every `mulDivFixed` written out in place,
@@ -61,14 +62,23 @@ library LibDecimalFloatImplementationSeriesSolidity {
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
-        uint256 sum = a + b;
+        uint256 sum;
+        unchecked {
+            sum = a + b;
+        }
         uint256 z;
         int256 exponent = -50;
         if (relative) {
+            if (sum < a) {
+                revert Log10RatioOutOfRange(a, b);
+            }
             if (sum < POW_FIXED_ONE) {
                 revert Log10RatioRelativeSumTooSmall(a, b);
             }
             z = LibDecimalFloatImplementation.mulDiv(difference, POW_FIXED_ONE, sum);
+            if (z > LOG10_RATIO_Z_MAX) {
+                revert Log10RatioOutOfRange(a, b);
+            }
             // Scale the difference by the largest power of ten that keeps it
             // within int256.max, as maximizeFull does.
             unchecked {
@@ -104,7 +114,13 @@ library LibDecimalFloatImplementationSeriesSolidity {
                 }
             }
         } else {
+            if (sum <= a) {
+                revert Log10RatioOutOfRange(a, b);
+            }
             z = LibDecimalFloatImplementation.mulDiv(difference, POW_FIXED_ONE, sum);
+            if (z > LOG10_RATIO_Z_MAX) {
+                revert Log10RatioOutOfRange(a, b);
+            }
         }
         uint256 series;
         uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
@@ -155,6 +171,9 @@ library LibDecimalFloatImplementationSeriesSolidity {
 
     //slither-disable-next-line cyclomatic-complexity
     function exp10Fixed(uint256 x) internal pure returns (uint256 result) {
+        if (x >= POW_FIXED_ONE) {
+            revert Exp10FixedOutOfRange(x);
+        }
         uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
         // As in log10Ratio, and x only loses a threshold it is at least.
         unchecked {

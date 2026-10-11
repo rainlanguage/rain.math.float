@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation, POW_FIXED_ONE} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
+import {Exp10FixedOutOfRange} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationExp10FixedTest is Test {
     /// The true power is in [truncated, truncated + 1), and exp10Fixed is
@@ -84,5 +85,25 @@ contract LibDecimalFloatImplementationExp10FixedTest is Test {
             LibDecimalFloatImplementation.exp10Fixed(POW_FIXED_ONE - 1.52587890625e45),
             999964865956982493168325998248471709590758801441386
         );
+    }
+
+    function exp10FixedExternal(uint256 x) external pure returns (uint256) {
+        return LibDecimalFloatImplementation.exp10Fixed(x);
+    }
+
+    /// #422: exp10Fixed(2e50) was 9.9985e51 for 1e52. One is the first x
+    /// past [0, 1), whose last value, 1 - 1e-50, `testExp10Fixed` checks.
+    function testExp10FixedOutOfRange() external {
+        uint256[3] memory xs = [uint256(POW_FIXED_ONE), 2e50, type(uint256).max];
+        for (uint256 i = 0; i < xs.length; i++) {
+            vm.expectRevert(abi.encodeWithSelector(Exp10FixedOutOfRange.selector, xs[i]));
+            this.exp10FixedExternal(xs[i]);
+        }
+    }
+
+    function testExp10FixedOutOfRangeFuzz(uint256 x) external {
+        x = bound(x, POW_FIXED_ONE, type(uint256).max);
+        vm.expectRevert(abi.encodeWithSelector(Exp10FixedOutOfRange.selector, x));
+        this.exp10FixedExternal(x);
     }
 }

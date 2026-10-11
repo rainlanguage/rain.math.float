@@ -3,11 +3,14 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    LOG10_RATIO_Z_MAX
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
-import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
+import {Log10RatioRelativeSumTooSmall, Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
 
 /// Bounds from the `log10Ratio` NatSpec, for z = |a - b| / (a + b) at most
 /// 5.1e-4: the magnitude is at most 1.3e-51 relative above the true log, and
@@ -31,6 +34,19 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         internal
         pure
     {
+        checkAgainstBcWithin(a, b, relative, expectedCoefficient, expectedExponent, 10043);
+    }
+
+    /// As `checkAgainstBc`, with the fixed point bound below the log at
+    /// `fixedBelow` units of 1e-54.
+    function checkAgainstBcWithin(
+        uint256 a,
+        uint256 b,
+        bool relative,
+        int256 expectedCoefficient,
+        int256 expectedExponent,
+        int256 fixedBelow
+    ) internal pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, relative);
         assertTrue(expectedCoefficient < 0 ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
         int256 c = abs(signedCoefficient);
@@ -52,7 +68,7 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
                 multiple(c, 96, exponent - 51);
             (boundCoefficients[2], boundExponents[2]) = (1, exponent);
         } else {
-            (boundCoefficients[0], boundExponents[0]) = (10043, -54);
+            (boundCoefficients[0], boundExponents[0]) = (fixedBelow, -54);
             (boundCoefficients[1], boundCoefficients[2]) = (0, 0);
         }
         assertTrue(
@@ -288,5 +304,78 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         assertGe(maximized, 1e75, "maximized low");
         assertLt(maximized, 1e77, "maximized high");
         checkRelativeError(c, maximized, d, b, below);
+    }
+
+    /// #422: a + b = 2e50 and a - b = 2 LOG10_RATIO_Z_MAX make z exactly the
+    /// largest proven, where the eighth power of z^2 is under a unit and the
+    /// fixed point log is within 1 + 8.3 z, under 1.0063 units. One more
+    /// unit of z reverts in both modes.
+    function testLog10RatioZMaxBoundary() external {
+        uint256 a = 1e50 + LOG10_RATIO_Z_MAX;
+        uint256 b = 1e50 - LOG10_RATIO_Z_MAX;
+        int256 expected = 6513499563422593298128000933088432572485617893851531354484903266260892;
+        checkAgainstBcWithin(a, b, false, expected, -73, 10063);
+        checkAgainstBcWithin(a, b, true, expected, -73, 10063);
+        checkAgainstBcWithin(b, a, false, -expected, -73, 10063);
+        checkAgainstBcWithin(b, a, true, -expected, -73, 10063);
+        for (uint256 i = 0; i < 2; i++) {
+            vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, a + 1, b - 1));
+            this.ratio(a + 1, b - 1, i == 0);
+            vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, b - 1, a + 1));
+            this.ratio(b - 1, a + 1, i == 0);
+        }
+    }
+
+    /// #422: a / b = 9 had z = 0.8 and a log 83 units below, and (1e76, 1)
+    /// ran out of gas. Both revert with their inputs, as does a zero b.
+    function testLog10RatioOutOfRange() external {
+        uint256[2][4] memory cases = [[uint256(9e75), 1e75], [uint256(1e76), 1], [uint256(1e75), 0], [uint256(0), 1e75]];
+        for (uint256 i = 0; i < cases.length; i++) {
+            for (uint256 j = 0; j < 2; j++) {
+                vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, cases[i][0], cases[i][1]));
+                this.ratio(cases[i][0], cases[i][1], j == 0);
+            }
+        }
+    }
+
+    /// #422: a + b = 0 not relative reverts with its inputs rather than
+    /// dividing by zero.
+    function testLog10RatioFixedPointZeroSum() external {
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, 0, 0));
+        this.ratio(0, 0, false);
+    }
+
+    /// #422: a + b = uint256.max is the largest sum, and one more wraps past
+    /// 2^256 and reverts with its inputs where it panicked before.
+    function testLog10RatioSumBoundary() external {
+        uint256 half = 2 ** 255;
+        int256 expected = 7501280696527793531715342934058121490318235872468032620580942125833437;
+        checkBothModes(half, half - 1, expected, -147);
+        checkBothModes(half - 1, half, -expected, -147);
+        for (uint256 i = 0; i < 2; i++) {
+            vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, half, half));
+            this.ratio(half, half, i == 0);
+            vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, type(uint256).max, 1));
+            this.ratio(type(uint256).max, 1, i == 0);
+        }
+    }
+
+    /// Every a + b past 2^256 reverts with its inputs.
+    function testLog10RatioSumOverflowFuzz(uint256 a, uint256 b, bool relative) external {
+        a = bound(a, 1, type(uint256).max);
+        b = bound(b, type(uint256).max - a + 1, type(uint256).max);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, a, b));
+        this.ratio(a, b, relative);
+    }
+
+    /// Every z past LOG10_RATIO_Z_MAX at 1e-50, floored, reverts with its
+    /// inputs.
+    function testLog10RatioZOutOfRangeFuzz(uint256 a, uint256 b, bool relative) external {
+        b = bound(b, 1e50, type(uint256).max / 2);
+        a = bound(a, 0, type(uint256).max - b);
+        uint256 difference = a < b ? b - a : a - b;
+        vm.assume(Math.mulDiv(difference, 1e50, a + b) > LOG10_RATIO_Z_MAX);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, a, b));
+        this.ratio(a, b, relative);
     }
 }
