@@ -7,6 +7,7 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {LibDecimalFloatSqrtVariants} from "test/lib/LibDecimalFloatSqrtVariants.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {SqrtOutOfRange} from "src/error/ErrDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationSqrtTest is Test {
     /// x 10^d > m^2 in 512 bits.
@@ -269,10 +270,8 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         signedCoefficient = bound(signedCoefficient, 1, 1e76 - 1);
         room = bound(room, 0, 200);
         int256 exponent = type(int256).min + room;
-        int256 t = 0;
-        for (int256 scaled = signedCoefficient; scaled < 1e75; scaled *= 10) {
-            t++;
-        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 t = 76 - LibTestExactDecimal.digits(LibTestExactDecimal.u512(uint256(signedCoefficient)));
         // e - t - s is even, so s is 5 when e - t is odd.
         int256 s = (room + t) % 2 == 1 ? int256(5) : int256(6);
         if (room >= t + s) {

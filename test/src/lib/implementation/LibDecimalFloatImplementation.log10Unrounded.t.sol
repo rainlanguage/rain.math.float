@@ -200,12 +200,10 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         room = bound(room, 0, 160);
         int256 exponent = type(int256).max - room;
-        int256 digits = 0;
-        int256 power = 1;
-        while (signedCoefficient / power >= 10) {
-            power *= 10;
-            digits++;
-        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 digits = LibTestExactDecimal.digits(LibTestExactDecimal.u512(uint256(signedCoefficient))) - 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 power = int256(10 ** uint256(digits));
         // Below 1000, c is at most 10^(d + 1) - 1, under 9.999 10^d.
         bool roundsUp = power >= 1000 && signedCoefficient / (power / 1000) >= 9999;
         int256 characteristicRoom = room - digits - (roundsUp ? int256(1) : int256(0));
