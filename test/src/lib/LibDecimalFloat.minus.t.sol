@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
@@ -91,9 +91,9 @@ contract LibDecimalFloatMinusTest is Test {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         (int256 signedCoefficientMinus, int256 exponentMinus) = float.minus().unpack();
         assertTrue(
-            LibTestExactDecimal.isNearestTowardZero(
+            LibExactFloat.isNearestTowardZero(
                 signedCoefficient > 0,
-                LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)),
+                LibExactFloat.u512(LibExactFloat.abs(signedCoefficient)),
                 exponent,
                 signedCoefficientMinus,
                 exponentMinus

@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
 
 /// Adversarial coverage for `packLossy`'s underflow and coefficient-truncation
 /// paths. The tests here derive an INDEPENDENT oracle for the normalisation
@@ -122,28 +122,27 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
     /// below the smallest positive Float is `FLOAT_ZERO`, and anything else is
     /// the nearest Float towards zero. Lossless iff the result is the value.
     function checkPackLossyValue(int256 signedCoefficient, int256 exponent) internal {
-        U512 memory magnitude = LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient));
-        if (LibTestExactDecimal.overflows(magnitude, exponent)) {
+        U512 memory magnitude = LibExactFloat.u512(LibExactFloat.abs(signedCoefficient));
+        if (LibExactFloat.overflows(magnitude, exponent)) {
             vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
             this.packLossyExternal(signedCoefficient, exponent);
             return;
         }
         (Float float, bool lossless) = this.packLossyExternal(signedCoefficient, exponent);
-        if (LibTestExactDecimal.underflows(magnitude, exponent)) {
+        if (LibExactFloat.underflows(magnitude, exponent)) {
             assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "underflow zero");
             assertFalse(lossless, "underflow lossless");
             return;
         }
         (int256 outCoeff, int256 outExponent) = LibDecimalFloat.unpack(float);
         assertTrue(
-            LibTestExactDecimal.isNearestTowardZero(signedCoefficient < 0, magnitude, exponent, outCoeff, outExponent),
+            LibExactFloat.isNearestTowardZero(signedCoefficient < 0, magnitude, exponent, outCoeff, outExponent),
             "nearest Float towards zero"
         );
         assertEq(
             lossless,
-            LibTestExactDecimal.cmpScaled(
-                magnitude, exponent, LibTestExactDecimal.u512(LibTestExactDecimal.abs(outCoeff)), outExponent
-            ) == 0,
+            LibExactFloat.cmpScaled(magnitude, exponent, LibExactFloat.u512(LibExactFloat.abs(outCoeff)), outExponent)
+                == 0,
             "lossless iff exact"
         );
     }

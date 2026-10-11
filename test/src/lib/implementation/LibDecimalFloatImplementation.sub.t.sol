@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationSubTest is Test {
@@ -34,11 +34,10 @@ contract LibDecimalFloatImplementationSubTest is Test {
             }
             return;
         }
-        (int256 negatedCoefficientB, int256 negatedExponentB) = LibTestExactDecimal.signedParts(
-            signedCoefficientB > 0, LibTestExactDecimal.abs(signedCoefficientB), exponentB
-        );
+        (int256 negatedCoefficientB, int256 negatedExponentB) =
+            LibExactFloat.signedParts(signedCoefficientB > 0, LibExactFloat.abs(signedCoefficientB), exponentB);
         (bool overflows, int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, negatedCoefficientB, negatedExponentB);
+            LibExactFloat.addPartsWide(signedCoefficientA, exponentA, negatedCoefficientB, negatedExponentB);
         try this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
             int256 signedCoefficient, int256 exponent
         ) {
@@ -166,11 +165,10 @@ contract LibDecimalFloatImplementationSubTest is Test {
         int256 exponentA = type(int256).min + int256(bound(headroomA, 0, 80));
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = type(int256).min + int256(bound(headroomB, 0, 80));
-        (int256 negatedCoefficientB, int256 negatedExponentB) = LibTestExactDecimal.signedParts(
-            signedCoefficientB > 0, LibTestExactDecimal.abs(signedCoefficientB), exponentB
-        );
+        (int256 negatedCoefficientB, int256 negatedExponentB) =
+            LibExactFloat.signedParts(signedCoefficientB > 0, LibExactFloat.abs(signedCoefficientB), exponentB);
         (bool overflowed, int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, negatedCoefficientB, negatedExponentB);
+            LibExactFloat.addPartsWide(signedCoefficientA, exponentA, negatedCoefficientB, negatedExponentB);
         assertFalse(overflowed, "exact difference overflows");
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);

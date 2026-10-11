@@ -3,8 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
-import {LibTranscendentalOracle, ORACLE_ONE} from "test/lib/LibTranscendentalOracle.sol";
+import {LibExactFloat, ORACLE_ONE} from "test/lib/LibExactFloat.sol";
 
 /// @dev log10Unrounded's error, in units of 1e-54, from its steps:
 /// `log10Reduce` leaves R within 16.7 units of C / 10^S, 1.67e-74 relative,
@@ -85,7 +84,7 @@ library LibTestErrorBound {
     function log10(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
         // The input is positive.
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        (int256 characteristic, uint256 fraction) = LibExactFloat.log10(uint256(signedCoefficient), exponent);
         // |log10| as whole + fraction / ORACLE_ONE.
         uint256 whole;
         if (characteristic >= 0) {
@@ -117,7 +116,7 @@ library LibTestErrorBound {
     /// Two bound terms summed by `addPartsWide` and packed, both truncating
     /// towards zero, so a positive bound is never looser.
     function sum(int256 ca, int256 ea, int256 cb, int256 eb) private pure returns (Float) {
-        (, ca, ea) = LibTestExactDecimal.addPartsWide(ca, ea, cb, eb);
+        (, ca, ea) = LibExactFloat.addPartsWide(ca, ea, cb, eb);
         (Float bound,) = LibDecimalFloat.packLossy(ca, ea);
         return bound;
     }
@@ -133,7 +132,7 @@ library LibTestErrorBound {
     function times(Float a, Float b) internal pure returns (Float) {
         (int256 ca, int256 ea) = a.unpack();
         (int256 cb, int256 eb) = b.unpack();
-        (ca, ea) = LibTestExactDecimal.mulPayload(ca, ea, cb, eb);
+        (ca, ea) = LibExactFloat.mulPayload(ca, ea, cb, eb);
         (Float bound,) = LibDecimalFloat.packLossy(ca, ea);
         return bound;
     }
@@ -163,9 +162,9 @@ library LibTestErrorBound {
         (int256 signedCoefficient, int256 exponent) = b.unpack();
         // A Float coefficient is int224, so its magnitude fits int256.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 n = int256(LibTestExactDecimal.abs(signedCoefficient));
+        int256 n = int256(LibExactFloat.abs(signedCoefficient));
         if (exponent < 0) {
-            (n, exponent) = (LibTestExactDecimal.atExponent(n, exponent, 0), 0);
+            (n, exponent) = (LibExactFloat.atExponent(n, exponent, 0), 0);
         }
         (uint256 k1, uint256 k2) =
             signedCoefficient < 0 ? (POW_INVERSE_K1_E80, POW_INVERSE_K2_E42) : (POW_K1_E80, POW_K2_E42);
@@ -175,19 +174,19 @@ library LibTestErrorBound {
         if (magnitude != 0) {
             int256 d;
             int256 dExponent;
-            if (LibTestExactDecimal.cmpParts(magnitude, magnitudeExponent, 1, 0) < 0) {
-                (, d, dExponent) = LibTestExactDecimal.addPartsWide(1, 0, -magnitude, magnitudeExponent);
-                (d, dExponent) = LibTestExactDecimal.quotient(d, dExponent, magnitude, magnitudeExponent);
+            if (LibExactFloat.cmpParts(magnitude, magnitudeExponent, 1, 0) < 0) {
+                (, d, dExponent) = LibExactFloat.addPartsWide(1, 0, -magnitude, magnitudeExponent);
+                (d, dExponent) = LibExactFloat.quotient(d, dExponent, magnitude, magnitudeExponent);
             } else {
-                (, d, dExponent) = LibTestExactDecimal.addPartsWide(magnitude, magnitudeExponent, -1, 0);
+                (, d, dExponent) = LibExactFloat.addPartsWide(magnitude, magnitudeExponent, -1, 0);
             }
             // forge-lint: disable-next-line(unsafe-typecast)
-            (d, dExponent) = LibTestExactDecimal.mulPayload(int256(k2), -42, d, dExponent);
-            if (LibTestExactDecimal.cmpParts(d, dExponent, perUnit, perUnitExponent) < 0) {
+            (d, dExponent) = LibExactFloat.mulPayload(int256(k2), -42, d, dExponent);
+            if (LibExactFloat.cmpParts(d, dExponent, perUnit, perUnitExponent) < 0) {
                 (perUnit, perUnitExponent) = (d, dExponent);
             }
         }
-        (n, exponent) = LibTestExactDecimal.mulPayload(perUnit, perUnitExponent, n, exponent);
+        (n, exponent) = LibExactFloat.mulPayload(perUnit, perUnitExponent, n, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
         return sum(int256(POW_RELATIVE_ERROR_E52), -52, n, exponent);
     }
@@ -202,11 +201,11 @@ library LibTestErrorBound {
     function monotoneAbsolute(Float low, Float high, Float lowError, Float highError) internal pure returns (bool) {
         (int256 ca, int256 ea) = low.unpack();
         (int256 cb, int256 eb) = high.unpack();
-        (, int256 spreadCoefficient, int256 spreadExponent) = LibTestExactDecimal.addPartsWideUp(ca, ea, -cb, eb);
+        (, int256 spreadCoefficient, int256 spreadExponent) = LibExactFloat.addPartsWideUp(ca, ea, -cb, eb);
         (ca, ea) = lowError.unpack();
         (cb, eb) = highError.unpack();
-        (, ca, ea) = LibTestExactDecimal.addPartsWide(ca, ea, cb, eb);
-        return LibTestExactDecimal.cmpParts(spreadCoefficient, spreadExponent, ca, ea) <= 0;
+        (, ca, ea) = LibExactFloat.addPartsWide(ca, ea, cb, eb);
+        return LibExactFloat.cmpParts(spreadCoefficient, spreadExponent, ca, ea) <= 0;
     }
 
     /// The int32 exponent floor's 1e-2147483648, which a relative bound adds
@@ -214,7 +213,7 @@ library LibTestErrorBound {
     /// exponent to the floor. Relative to t = signedCoefficient 10^exponent,
     /// that is 1e-2147483648 / |t|, zero where it is below the smallest Float.
     function floor(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
-        (signedCoefficient, exponent) = LibTestExactDecimal.quotient(1, type(int32).min, signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibExactFloat.quotient(1, type(int32).min, signedCoefficient, exponent);
         (Float relative,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         return relative.abs();
     }
@@ -229,7 +228,7 @@ library LibTestErrorBound {
     function scaled(Float error, Float x) private pure returns (int256, int256) {
         (int256 errorCoefficient, int256 errorExponent) = error.unpack();
         (int256 signedCoefficient, int256 exponent) = x.abs().unpack();
-        return LibTestExactDecimal.mulPayload(errorCoefficient, errorExponent, signedCoefficient, exponent);
+        return LibExactFloat.mulPayload(errorCoefficient, errorExponent, signedCoefficient, exponent);
     }
 
     /// For x < y and results r within E f + u of the true f, r(x) - u over
@@ -239,13 +238,13 @@ library LibTestErrorBound {
         (int256 limitCoefficient, int256 limitExponent) = scaled(highError, low);
         (int256 signedCoefficient, int256 exponent) = scaled(lowError, high);
         (, limitCoefficient, limitExponent) =
-            LibTestExactDecimal.addPartsWide(limitCoefficient, limitExponent, signedCoefficient, exponent);
+            LibExactFloat.addPartsWide(limitCoefficient, limitExponent, signedCoefficient, exponent);
         (, limitCoefficient, limitExponent) =
-            LibTestExactDecimal.addPartsWide(limitCoefficient, limitExponent, 3, type(int32).min);
+            LibExactFloat.addPartsWide(limitCoefficient, limitExponent, 3, type(int32).min);
         (int256 lowCoefficient, int256 lowExponent) = low.unpack();
         (int256 highCoefficient, int256 highExponent) = high.unpack();
         (, signedCoefficient, exponent) =
-            LibTestExactDecimal.addPartsWideUp(lowCoefficient, lowExponent, -highCoefficient, highExponent);
-        return LibTestExactDecimal.cmpParts(signedCoefficient, exponent, limitCoefficient, limitExponent) <= 0;
+            LibExactFloat.addPartsWideUp(lowCoefficient, lowExponent, -highCoefficient, highExponent);
+        return LibExactFloat.cmpParts(signedCoefficient, exponent, limitCoefficient, limitExponent) <= 0;
     }
 }

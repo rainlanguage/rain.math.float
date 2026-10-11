@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
@@ -18,7 +18,7 @@ contract LibDecimalFloatLteTest is Test {
         Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
         Float b = LibDecimalFloat.packLossless(signedCoefficientB, exponentB);
         bool actual = a.lte(b);
-        bool expected = LibTestExactDecimal.cmpParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB) <= 0;
+        bool expected = LibExactFloat.cmpParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB) <= 0;
 
         assertEq(actual, expected);
     }

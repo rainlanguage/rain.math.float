@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {Test, stdError} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationMulDivTest is Test {
     function mulDivExternal(uint256 x, uint256 y, uint256 denominator) external pure returns (uint256) {
@@ -16,7 +16,7 @@ contract LibDecimalFloatImplementationMulDivTest is Test {
     /// (x y mod denominator) is x y, by schoolbook products.
     function assertFloorQuotient(uint256 x, uint256 y, uint256 denominator, uint256 result) internal pure {
         uint256 remainder = mulmod(x, y, denominator);
-        U512 memory product = LibTestExactDecimal.mul(result, denominator);
+        U512 memory product = LibExactFloat.mul(result, denominator);
         (uint256 high, uint256 low) = (product.hi, product.lo);
         uint256 lowWithRemainder;
         unchecked {
@@ -25,7 +25,7 @@ contract LibDecimalFloatImplementationMulDivTest is Test {
         if (lowWithRemainder < low) {
             high += 1;
         }
-        U512 memory expected = LibTestExactDecimal.mul(x, y);
+        U512 memory expected = LibExactFloat.mul(x, y);
         (uint256 expectedHigh, uint256 expectedLow) = (expected.hi, expected.lo);
         assertEq(high, expectedHigh, "high");
         assertEq(lowWithRemainder, expectedLow, "low");
@@ -87,13 +87,13 @@ contract LibDecimalFloatImplementationMulDivTest is Test {
     }
 
     function testMulDivSchoolbook(uint256 x, uint256 y, uint256 denominator) external pure {
-        uint256 high = LibTestExactDecimal.mul(x, y).hi;
+        uint256 high = LibExactFloat.mul(x, y).hi;
         denominator = bound(denominator, high == 0 ? 1 : high + 1, type(uint256).max);
         assertFloorQuotient(x, y, denominator, LibDecimalFloatImplementation.mulDiv(x, y, denominator));
     }
 
     function testMulDivOverflow(uint256 x, uint256 y, uint256 denominator) external {
-        uint256 high = LibTestExactDecimal.mul(x, y).hi;
+        uint256 high = LibExactFloat.mul(x, y).hi;
         vm.assume(high > 0);
         denominator = bound(denominator, 0, high);
         vm.expectRevert(abi.encodeWithSelector(MulDivOverflow.selector, x, y, denominator));

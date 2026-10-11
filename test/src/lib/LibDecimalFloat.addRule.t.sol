@@ -3,13 +3,13 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 /// `add`'s documented rounding (#350), worked by hand: the exact sum rounded
 /// once towards zero, the closest Float not exceeding it in magnitude. Each
-/// case pins the library's result and that `LibTestExactDecimal.isSumResult`
+/// case pins the library's result and that `LibExactFloat.isSumResult`
 /// accepts it and rejects the Float on its other side.
 contract LibDecimalFloatAddRuleTest is Test {
     using LibDecimalFloat for Float;
@@ -20,8 +20,8 @@ contract LibDecimalFloatAddRuleTest is Test {
     {
         Float sum = LibDecimalFloat.packLossless(ca, ea).add(LibDecimalFloat.packLossless(cb, eb));
         assertTrue(sum.eq(LibDecimalFloat.packLossless(rc, re)), "library");
-        assertTrue(LibTestExactDecimal.isSumResult(ca, ea, cb, eb, rc, re), "accepted");
-        assertFalse(LibTestExactDecimal.isSumResult(ca, ea, cb, eb, otherC, otherE), "other rejected");
+        assertTrue(LibExactFloat.isSumResult(ca, ea, cb, eb, rc, re), "accepted");
+        assertFalse(LibExactFloat.isSumResult(ca, ea, cb, eb, otherC, otherE), "other rejected");
     }
 
     /// `1e100 - 1`: towards zero to `(1e67 - 1)e33`.
@@ -105,10 +105,10 @@ contract LibDecimalFloatAddRuleTest is Test {
 
     /// A zero operand leaves the other's parts as they are.
     function testAddRuleZeroOperand() external pure {
-        assertTrue(LibTestExactDecimal.isSumResult(0, 5, 3, 2, 3, 2), "zero a");
-        assertFalse(LibTestExactDecimal.isSumResult(0, 5, 3, 2, 3, 5), "zero a, a's exponent");
-        assertTrue(LibTestExactDecimal.isSumResult(3, 2, 0, 5, 3, 2), "zero b");
-        assertFalse(LibTestExactDecimal.isSumResult(3, 2, 0, 5, 3, 5), "zero b, b's exponent");
+        assertTrue(LibExactFloat.isSumResult(0, 5, 3, 2, 3, 2), "zero a");
+        assertFalse(LibExactFloat.isSumResult(0, 5, 3, 2, 3, 5), "zero a, a's exponent");
+        assertTrue(LibExactFloat.isSumResult(3, 2, 0, 5, 3, 2), "zero b");
+        assertFalse(LibExactFloat.isSumResult(3, 2, 0, 5, 3, 5), "zero b, b's exponent");
     }
 
     /// `a` with under 67 digits, and `b` reaching `s` digits below `a`'s int256
@@ -131,7 +131,7 @@ contract LibDecimalFloatAddRuleTest is Test {
         }
         r = bound(r, 1, 10 ** s - 1);
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 eb = LibTestExactDecimal.int256Unit(ca, ea) - int256(s);
+        int256 eb = LibExactFloat.int256Unit(ca, ea) - int256(s);
         vm.assume(eb >= type(int32).min);
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 magnitude = int256(q * 10 ** s + r);
@@ -154,7 +154,7 @@ contract LibDecimalFloatAddRuleTest is Test {
         ca = boundA(ca);
         (Float a, int256 cb, int256 eb) = roundingOperands(ca, ea, sameSign, q, s, r);
         (int256 rc, int256 re) = a.add(LibDecimalFloat.packLossless(cb, eb)).unpack();
-        assertTrue(LibTestExactDecimal.isSumResult(ca, ea, cb, eb, rc, re), "add");
+        assertTrue(LibExactFloat.isSumResult(ca, ea, cb, eb, rc, re), "add");
     }
 
     /// As `testAddRuleFractionOfUnit`, through `sub` of the negated operand.
@@ -165,7 +165,7 @@ contract LibDecimalFloatAddRuleTest is Test {
         ca = boundA(ca);
         (Float a, int256 cb, int256 eb) = roundingOperands(ca, ea, sameSign, q, s, r);
         (int256 rc, int256 re) = a.sub(LibDecimalFloat.packLossless(-cb, eb)).unpack();
-        assertTrue(LibTestExactDecimal.isSumResult(ca, ea, cb, eb, rc, re), "sub");
+        assertTrue(LibExactFloat.isSumResult(ca, ea, cb, eb, rc, re), "sub");
     }
 
     /// As `testAddRuleFractionOfUnit` with the magnitudes adding past int256:
@@ -182,6 +182,6 @@ contract LibDecimalFloatAddRuleTest is Test {
         }
         (Float a, int256 cb, int256 eb) = roundingOperands(ca, ea, true, q, s, r);
         (int256 rc, int256 re) = a.add(LibDecimalFloat.packLossless(cb, eb)).unpack();
-        assertTrue(LibTestExactDecimal.isSumResult(ca, ea, cb, eb, rc, re), "add");
+        assertTrue(LibExactFloat.isSumResult(ca, ea, cb, eb, rc, re), "add");
     }
 }

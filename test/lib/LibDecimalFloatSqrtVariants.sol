@@ -6,6 +6,8 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 
 /// Variants of `LibDecimalFloatImplementation.sqrt`, for equivalence and gas
 /// comparison only.
+/// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
+/// nothing about a value. Expected values come from `LibExactFloat`.
 library LibDecimalFloatSqrtVariants {
     /// The integer sqrt verbatim from 0a8065d and 7459101 on #309's branch, its
     /// residual compared in 512 bits.

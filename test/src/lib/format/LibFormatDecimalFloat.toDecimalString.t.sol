@@ -8,7 +8,7 @@ import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {UnformatableExponent} from "src/error/ErrFormat.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 /// @title LibFormatDecimalFloatToDecimalStringTest
 /// @notice Test contract for verifying the functionality of LibFormatDecimalFloat
@@ -38,9 +38,8 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         pure
         returns (string memory)
     {
-        return expectedFormatMagnitude(
-            signedCoefficient < 0, LibTestExactDecimal.abs(signedCoefficient), exponent, scientific
-        );
+        return
+            expectedFormatMagnitude(signedCoefficient < 0, LibExactFloat.abs(signedCoefficient), exponent, scientific);
     }
 
     /// `expectedFormat` for `±absCoef × 10^exponent`, any uint256 magnitude.
@@ -188,16 +187,14 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         (Float float, bool lossless) = LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
         (int256 c, int256 e) = LibDecimalFloat.unpack(float);
         assertTrue(
-            LibTestExactDecimal.isNearestTowardZero(
-                false, LibTestExactDecimal.u512(value), -int256(uint256(decimals)), c, e
-            ),
+            LibExactFloat.isNearestTowardZero(false, LibExactFloat.u512(value), -int256(uint256(decimals)), c, e),
             "nearest toward zero"
         );
         if (negative) {
             // The negative is the positive Float negated, which is exact.
             float = float.minus();
             (int256 nc, int256 ne) = LibDecimalFloat.unpack(float);
-            assertTrue(LibTestExactDecimal.eq(nc, ne, -c, e), "negated");
+            assertTrue(LibExactFloat.eq(nc, ne, -c, e), "negated");
             (c, e) = (nc, ne);
         }
         string memory formatted = LibFormatDecimalFloat.toDecimalString(float, scientific);
@@ -212,7 +209,7 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         (bytes4 errorCode, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(formatted);
         assertEq(errorCode, 0, "Parse error");
         (int256 pc, int256 pe) = LibDecimalFloat.unpack(parsed);
-        assertTrue(LibTestExactDecimal.eq(c, e, pc, pe), "Round trip failed");
+        assertTrue(LibExactFloat.eq(c, e, pc, pe), "Round trip failed");
         assertEq(LibFormatDecimalFloat.toDecimalString(parsed, scientific), formatted, "Formatting not canonical");
     }
 
@@ -380,7 +377,7 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         (bytes4 err, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(formatted);
         assertEq(err, bytes4(0), string.concat("Parse error on: ", formatted));
         (int256 pc, int256 pe) = LibDecimalFloat.unpack(parsed);
-        assertEq(LibTestExactDecimal.cmpParts(c, e, pc, pe), 0, string.concat("Round trip mismatch on: ", formatted));
+        assertEq(LibExactFloat.cmpParts(c, e, pc, pe), 0, string.concat("Round trip mismatch on: ", formatted));
     }
 
     /// Fuzz: every Float formats in scientific mode.

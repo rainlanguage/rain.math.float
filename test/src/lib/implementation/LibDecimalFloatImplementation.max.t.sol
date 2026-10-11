@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {LibTestRegion} from "test/lib/LibTestRegion.sol";
 
 contract LibDecimalFloatImplementationMaxTest is Test {
@@ -83,7 +83,7 @@ contract LibDecimalFloatImplementationMaxTest is Test {
     }
 
     function checkMax(int256 coefficientA, int256 exponentA, int256 coefficientB, int256 exponentB) internal pure {
-        bool isA = LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB) > 0;
+        bool isA = LibExactFloat.cmpParts(coefficientA, exponentA, coefficientB, exponentB) > 0;
         assertMaxIs(
             coefficientA,
             exponentA,

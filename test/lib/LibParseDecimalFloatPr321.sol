@@ -25,6 +25,8 @@ import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 /// `LibParseDecimalFloat` verbatim from
 /// `src/lib/parse/LibParseDecimalFloat.sol` at ff6d70c (main), before #310's
 /// parse change. Equivalence tests only.
+/// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
+/// nothing about a value. Expected values come from `LibExactFloat`.
 library LibParseDecimalFloatPr321 {
     /// @notice Parses a decimal float from a substring defined by [start, end).
     /// A literal whose exponent is below int256.min has a non-zero coefficient

@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
@@ -19,9 +19,7 @@ contract LibDecimalFloatCeilTest is Test {
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloat.ceil(LibDecimalFloat.packLossless(signedCoefficient, exponent)).unpack();
 
-        if (!LibTestExactDecimal.eq(
-                actualSignedCoefficient, actualExponent, expectedSignedCoefficient, expectedExponent
-            )) {
+        if (!LibExactFloat.eq(actualSignedCoefficient, actualExponent, expectedSignedCoefficient, expectedExponent)) {
             console2.log("signedCoefficient", signedCoefficient);
             console2.log("exponent", exponent);
             console2.log("expectedSignedCoefficient", expectedSignedCoefficient);
@@ -128,9 +126,9 @@ contract LibDecimalFloatCeilTest is Test {
         Float packZero = LibDecimalFloat.packLossless(0, exponent);
         (int256 c, int256 e) = wrapZero.ceil().unpack();
         (int256 cz, int256 ez) = packZero.unpack();
-        assertTrue(LibTestExactDecimal.eq(c, e, cz, ez));
+        assertTrue(LibExactFloat.eq(c, e, cz, ez));
         (cz, ez) = packZeroBasic.unpack();
-        assertTrue(LibTestExactDecimal.eq(c, e, cz, ez));
+        assertTrue(LibExactFloat.eq(c, e, cz, ez));
         assertEq(Float.unwrap(wrapZero.ceil()), Float.unwrap(packZeroBasic));
     }
 
@@ -147,7 +145,7 @@ contract LibDecimalFloatCeilTest is Test {
 
     function checkCeilExact(int224 c, int32 e) internal pure {
         (int256 rc, int256 re) = LibDecimalFloat.packLossless(c, e).ceil().unpack();
-        (int256 xc, int256 xe) = LibTestExactDecimal.ceilParts(c, e);
-        assertEq(LibTestExactDecimal.cmpParts(rc, re, xc, xe), 0, "exact ceil");
+        (int256 xc, int256 xe) = LibExactFloat.ceilParts(c, e);
+        assertEq(LibExactFloat.cmpParts(rc, re, xc, xe), 0, "exact ceil");
     }
 }

@@ -4,7 +4,7 @@ pragma solidity ^0.8.25;
 
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {MalformedExponentDigits, MalformedDecimalPoint} from "src/error/ErrParse.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 /// A signed integer below 2^256 in magnitude, or `huge` past it with its sign.
 struct Wide {
@@ -44,7 +44,7 @@ library LibTestDecimalLiteral {
     }
 
     function fromInt(int256 x) internal pure returns (Wide memory) {
-        return Wide(x < 0, LibTestExactDecimal.abs(x), false);
+        return Wide(x < 0, LibExactFloat.abs(x), false);
     }
 
     /// `x + d`.
@@ -52,7 +52,7 @@ library LibTestDecimalLiteral {
         if (x.huge || d == 0) {
             return x;
         }
-        uint256 m = LibTestExactDecimal.abs(d);
+        uint256 m = LibExactFloat.abs(d);
         if (x.negative == (d < 0) || x.magnitude == 0) {
             unchecked {
                 uint256 sum = x.magnitude + m;
@@ -211,7 +211,7 @@ library LibTestDecimalLiteral {
             return false;
         }
         // forge-lint: disable-next-line(unsafe-typecast)
-        return lit.kept <= LibTestExactDecimal.coefficientLimit(lit.negative) / 10 ** uint256(lift);
+        return lit.kept <= LibExactFloat.coefficientLimit(lit.negative) / 10 ** uint256(lift);
     }
 
     /// Past every Float: packing has no Float to round it to.
@@ -226,7 +226,7 @@ library LibTestDecimalLiteral {
         // Dropped digits past the 77 kept add less than 10^e, and the
         // threshold is a multiple of 10^e wherever 77 digits reach it, so the
         // kept digits decide.
-        return LibTestExactDecimal.overflows(LibTestExactDecimal.u512(lit.kept), e);
+        return LibExactFloat.overflows(LibExactFloat.u512(lit.kept), e);
     }
 
     /// Whether `c × 10^e` is exactly the literal's value.
@@ -237,7 +237,7 @@ library LibTestDecimalLiteral {
         if ((c < 0) != lit.negative || lit.count > 77) {
             return false;
         }
-        uint256 m = LibTestExactDecimal.abs(c);
+        uint256 m = LibExactFloat.abs(c);
         int256 zeros = 0;
         while (m % 10 == 0) {
             m /= 10;

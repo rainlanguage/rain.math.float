@@ -10,7 +10,7 @@ import {
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {MaximizeOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationMaximizeTest is Test {
     /// External wrapper so `vm.expectRevert` has a call boundary to catch the
@@ -42,7 +42,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     /// exact parts.
     function maximizedOrReverts(int256 signedCoefficient, int256 exponent) internal returns (bool, int256, int256) {
         (int256 expectedCoefficient, int256 expectedExponent, int256 shortfall) =
-            LibTestExactDecimal.maximize(signedCoefficient, exponent);
+            LibExactFloat.maximize(signedCoefficient, exponent);
         bool fits = shortfall == 0;
         if (!fits) {
             vm.expectRevert(abi.encodeWithSelector(MaximizeOverflow.selector, signedCoefficient, exponent));
@@ -192,7 +192,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         (int256 actualCoefficient, int256 actualExponent, int256 actualShortfall) =
             LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
         (int256 expectedCoefficient, int256 expectedExponent, int256 expectedShortfall) =
-            LibTestExactDecimal.maximize(signedCoefficient, exponent);
+            LibExactFloat.maximize(signedCoefficient, exponent);
         assertEq(actualCoefficient, expectedCoefficient, "oracle coefficient");
         assertEq(actualExponent, expectedExponent, "oracle exponent");
         assertEq(actualShortfall, expectedShortfall, "oracle shortfall");
@@ -301,8 +301,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         int256 c = cs[cSel % 6];
         int256 e = es[eSel % 6];
 
-        (int256 expectedCoefficient, int256 expectedExponent, int256 expectedShortfall) =
-            LibTestExactDecimal.maximize(c, e);
+        (int256 expectedCoefficient, int256 expectedExponent, int256 expectedShortfall) = LibExactFloat.maximize(c, e);
 
         if (expectedShortfall == 0) {
             (int256 actualCoefficient, int256 actualExponent) = this.maximizeFullExternal(c, e);

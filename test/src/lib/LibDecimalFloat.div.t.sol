@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
@@ -71,7 +71,7 @@ contract LibDecimalFloatDivTest is Test {
     /// The Float closest to the exact `a / b` that does not exceed its
     /// magnitude: the exact quotient to 75 or 76 digits, packed.
     function expectedQuotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (Float) {
-        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.quotient(ca, ea, cb, eb);
+        (int256 signedCoefficient, int256 exponent) = LibExactFloat.quotient(ca, ea, cb, eb);
         (Float expected,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         return expected;
     }
@@ -89,9 +89,8 @@ contract LibDecimalFloatDivTest is Test {
             this.divExternal(a, b);
             return;
         }
-        bool overflows = LibTestExactDecimal.divOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        bool underflows =
-            LibTestExactDecimal.divUnderflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        bool overflows = LibExactFloat.divOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        bool underflows = LibExactFloat.divUnderflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         if (overflows || underflows) {
             vm.expectRevert(
                 abi.encodeWithSelector(
@@ -133,11 +132,11 @@ contract LibDecimalFloatDivTest is Test {
         (int256 signedCoefficient, int256 exponent) =
             this.divPartsExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.divParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibExactFloat.divParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertEq(signedCoefficient, expectedSignedCoefficient, "coefficient");
         assertEq(exponent, expectedExponent, "exponent");
         assertTrue(
-            LibTestExactDecimal.isTruncatedQuotient(
+            LibExactFloat.isTruncatedQuotient(
                 signedCoefficientA, exponentA, signedCoefficientB, exponentB, signedCoefficient, exponent
             ),
             "truncated quotient"
@@ -148,12 +147,12 @@ contract LibDecimalFloatDivTest is Test {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 q, int256 exponent) =
-            LibTestExactDecimal.quotient(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibExactFloat.quotient(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (int256 signedCoefficient, int256 exponentResult) = result.unpack();
         assertTrue(
-            LibTestExactDecimal.isNearestTowardZero(
+            LibExactFloat.isNearestTowardZero(
                 (signedCoefficientA < 0) != (signedCoefficientB < 0),
-                LibTestExactDecimal.u512(LibTestExactDecimal.abs(q)),
+                LibExactFloat.u512(LibExactFloat.abs(q)),
                 exponent,
                 signedCoefficient,
                 exponentResult

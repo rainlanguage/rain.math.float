@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {ScaleUpOutOfRange} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationScaleUpTest is Test {
     function scaleUpExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
@@ -71,7 +71,7 @@ contract LibDecimalFloatImplementationScaleUpTest is Test {
     /// int256.min; otherwise the input is reverted with.
     function checkRule(int256 signedCoefficient, int256 exponent) internal {
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 t = 76 - LibTestExactDecimal.digits(LibTestExactDecimal.u512(uint256(signedCoefficient)));
+        int256 t = 76 - LibExactFloat.digits(LibExactFloat.u512(uint256(signedCoefficient)));
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 scaled = signedCoefficient * int256(10 ** uint256(t));
         if (exponent >= type(int256).min + t) {

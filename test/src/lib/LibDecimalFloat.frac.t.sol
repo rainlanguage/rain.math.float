@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatFracTest is Test {
@@ -115,8 +115,8 @@ contract LibDecimalFloatFracTest is Test {
 
     function checkFracExact(int224 c, int32 e) internal pure {
         (int256 rc, int256 re) = LibDecimalFloat.packLossless(c, e).frac().unpack();
-        (, int256 xc) = LibTestExactDecimal.wholeAndFraction(c, e);
+        (, int256 xc) = LibExactFloat.wholeAndFraction(c, e);
         int256 xe = e;
-        assertEq(LibTestExactDecimal.cmpParts(rc, re, xc, xe), 0, "exact frac");
+        assertEq(LibExactFloat.cmpParts(rc, re, xc, xe), 0, "exact frac");
     }
 }

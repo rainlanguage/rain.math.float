@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatMinTest is Test {
     using LibDecimalFloat for Float;
@@ -37,7 +37,7 @@ contract LibDecimalFloatMinTest is Test {
     function checkMinExact(Float a, Float b) internal pure {
         (int256 ca, int256 ea) = a.unpack();
         (int256 cb, int256 eb) = b.unpack();
-        Float expected = LibTestExactDecimal.cmpParts(ca, ea, cb, eb) < 0 ? a : b;
+        Float expected = LibExactFloat.cmpParts(ca, ea, cb, eb) < 0 ? a : b;
         assertEq(Float.unwrap(a.min(b)), Float.unwrap(expected));
     }
 

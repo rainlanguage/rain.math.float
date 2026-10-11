@@ -4,8 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
-import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 import {LibTestPowRange, PowRange, Log10} from "test/lib/LibTestPowRange.sol";
 
@@ -37,10 +36,10 @@ contract LibDecimalFloatPrecisionTest is Test {
     {
         (int256 boundCoefficient, int256 boundExponent) = bound.unpack();
         assertTrue(
-            LibTestExactDecimal.cmpScaled(
-                LibTestExactDecimal.u512(LibTestExactDecimal.abs(errorCoefficient)),
+            LibExactFloat.cmpScaled(
+                LibExactFloat.u512(LibExactFloat.abs(errorCoefficient)),
                 errorExponent,
-                LibTestExactDecimal.u512(LibTestExactDecimal.abs(boundCoefficient)),
+                LibExactFloat.u512(LibExactFloat.abs(boundCoefficient)),
                 boundExponent
             ) <= 0,
             what
@@ -55,20 +54,20 @@ contract LibDecimalFloatPrecisionTest is Test {
         int256[] memory boundCoefficients = new int256[](1);
         int256[] memory boundExponents = new int256[](1);
         (boundCoefficients[0], boundExponents[0]) = bound.unpack();
-        assertTrue(LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), what);
+        assertTrue(LibExactFloat.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), what);
     }
 
     function cmp(Float a, Float b) internal pure returns (int256) {
         (int256 ca, int256 ea) = a.unpack();
         (int256 cb, int256 eb) = b.unpack();
-        return LibTestExactDecimal.cmpParts(ca, ea, cb, eb);
+        return LibExactFloat.cmpParts(ca, ea, cb, eb);
     }
 
     /// actual / expected - 1, unpacked.
     function relativeError(int256 ca, int256 ea, Float expected) internal pure returns (int256, int256) {
         (int256 cb, int256 eb) = expected.unpack();
-        (ca, ea) = LibTestExactDecimal.quotient(ca, ea, cb, eb);
-        (, ca, ea) = LibTestExactDecimal.addPartsWide(ca, ea, -1, 0);
+        (ca, ea) = LibExactFloat.quotient(ca, ea, cb, eb);
+        (, ca, ea) = LibExactFloat.addPartsWide(ca, ea, -1, 0);
         return (ca, ea);
     }
 
@@ -83,9 +82,8 @@ contract LibDecimalFloatPrecisionTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedPower = int256(power);
         (signedCoefficient, actualExponent) =
-            LibTestExactDecimal.quotient(signedCoefficient, actualExponent, signedPower, exponent);
-        (, signedCoefficient, actualExponent) =
-            LibTestExactDecimal.addPartsWide(signedCoefficient, actualExponent, -1, 0);
+            LibExactFloat.quotient(signedCoefficient, actualExponent, signedPower, exponent);
+        (, signedCoefficient, actualExponent) = LibExactFloat.addPartsWide(signedCoefficient, actualExponent, -1, 0);
         return (signedCoefficient, actualExponent);
     }
 
@@ -173,7 +171,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         // a is positive.
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        (int256 characteristic, uint256 fraction) = LibExactFloat.log10(uint256(signedCoefficient), exponent);
         int256[] memory coefficients = new int256[](3);
         int256[] memory exponents = new int256[](3);
         (coefficients[0], exponents[0]) = this.log10External(a).unpack();
@@ -190,7 +188,7 @@ contract LibDecimalFloatPrecisionTest is Test {
 
     function assertPow10Reference(Float x, Float actual, string memory what) internal pure {
         (int256 signedCoefficient, int256 exponent) = x.unpack();
-        (uint256 power, int256 powerExponent) = LibTranscendentalOracle.exp10(signedCoefficient, exponent);
+        (uint256 power, int256 powerExponent) = LibExactFloat.exp10(signedCoefficient, exponent);
         (int256 errorCoefficient, int256 errorExponent) = relativeError(actual, power, powerExponent);
         assertWithin(
             errorCoefficient,
@@ -210,13 +208,13 @@ contract LibDecimalFloatPrecisionTest is Test {
     /// that, and the oracle's power and the quotient add 1e-67 each.
     function oraclePow(Float a, Float b) internal pure returns (uint256 power, int256 powerExponent, Float slack) {
         if (cmp(a, LibDecimalFloat.FLOAT_ONE) == 0) {
-            (power, powerExponent) = LibTranscendentalOracle.exp10(0, 0);
+            (power, powerExponent) = LibExactFloat.exp10(0, 0);
             return (power, powerExponent, LibDecimalFloat.packLossless(2, -65));
         }
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         Log10 memory log = LibTestPowRange.log10Abs(signedCoefficient, exponent);
         // whole is below 3e9 and the fraction below 1e76.
-        (, int256 logCoefficient, int256 logExponent) = LibTestExactDecimal.addPartsWide(
+        (, int256 logCoefficient, int256 logExponent) = LibExactFloat.addPartsWide(
             // forge-lint: disable-next-line(unsafe-typecast)
             int256(log.whole),
             0,
@@ -229,22 +227,22 @@ contract LibDecimalFloatPrecisionTest is Test {
         }
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (signedCoefficient, exponent) =
-            LibTestExactDecimal.mulPayload(signedCoefficientB, exponentB, logCoefficient, logExponent);
-        (power, powerExponent) = LibTranscendentalOracle.exp10(signedCoefficient, exponent);
+            LibExactFloat.mulPayload(signedCoefficientB, exponentB, logCoefficient, logExponent);
+        (power, powerExponent) = LibExactFloat.exp10(signedCoefficient, exponent);
         int256 slackCoefficient;
         int256 slackExponent;
         if (log.nearOne) {
-            (slackCoefficient, slackExponent) = LibTestExactDecimal.mulPayload(
+            (slackCoefficient, slackExponent) = LibExactFloat.mulPayload(
                 // forge-lint: disable-next-line(unsafe-typecast)
-                int256(LibTestExactDecimal.abs(signedCoefficient)),
+                int256(LibExactFloat.abs(signedCoefficient)),
                 exponent,
                 14,
                 -69
             );
         } else {
-            (slackCoefficient, slackExponent) = LibTestExactDecimal.mulPayload(
+            (slackCoefficient, slackExponent) = LibExactFloat.mulPayload(
                 // forge-lint: disable-next-line(unsafe-typecast)
-                int256(LibTestExactDecimal.abs(signedCoefficientB)),
+                int256(LibExactFloat.abs(signedCoefficientB)),
                 exponentB,
                 3,
                 -67
@@ -306,7 +304,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         Float sum = b.add(c);
         (int256 powerB, int256 exponentB) = this.powExternal(a, b).unpack();
         (int256 powerC, int256 exponentC) = this.powExternal(a, c).unpack();
-        (powerB, exponentB) = LibTestExactDecimal.mulPayload(powerB, exponentB, powerC, exponentC);
+        (powerB, exponentB) = LibExactFloat.mulPayload(powerB, exponentB, powerC, exponentC);
         (int256 errorCoefficient, int256 errorExponent) = relativeError(powerB, exponentB, this.powExternal(a, sum));
         Float bound = LibTestErrorBound.plus(LibTestErrorBound.pow(a, b), LibTestErrorBound.pow(a, c));
         bound = LibTestErrorBound.plus(bound, LibTestErrorBound.pow(a, sum));
@@ -321,7 +319,7 @@ contract LibDecimalFloatPrecisionTest is Test {
     /// sqrt(a)^2 / a - 1, within twice the root's bound plus its square.
     function assertSqrtSquare(Float a) internal view {
         (int256 root, int256 rootExponent) = this.sqrtExternal(a).unpack();
-        (root, rootExponent) = LibTestExactDecimal.mulPayload(root, rootExponent, root, rootExponent);
+        (root, rootExponent) = LibExactFloat.mulPayload(root, rootExponent, root, rootExponent);
         (int256 errorCoefficient, int256 errorExponent) = relativeError(root, rootExponent, a);
         Float error = LibTestErrorBound.sqrt();
         Float bound =
@@ -371,7 +369,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         }
         (int256 signedCoefficient, int256 aExponent) = a.unpack();
         Log10 memory log = LibTestPowRange.log10Abs(signedCoefficient, aExponent);
-        (, int256 logCoefficient, int256 logExponent) = LibTestExactDecimal.addPartsWide(
+        (, int256 logCoefficient, int256 logExponent) = LibExactFloat.addPartsWide(
             // forge-lint: disable-next-line(unsafe-typecast)
             int256(log.whole),
             0,
@@ -379,8 +377,7 @@ contract LibDecimalFloatPrecisionTest is Test {
             int256(log.highFraction),
             log.fractionExponent
         );
-        (int256 limit, int256 limitExponent) =
-            LibTestExactDecimal.quotient(1, 9 - exponent, logCoefficient, logExponent);
+        (int256 limit, int256 limitExponent) = LibExactFloat.quotient(1, 9 - exponent, logCoefficient, logExponent);
         if (limitExponent >= 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
             if (limitExponent > 66 || limit > type(int224).max / int256(10 ** uint256(limitExponent))) {
@@ -617,9 +614,9 @@ contract LibDecimalFloatPrecisionTest is Test {
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 signedPower = int256(power);
             assertTrue(
-                LibTestExactDecimal.cmpParts(
-                    signedPower, powerExponent, 100000000000000000000000000000000000000001, -2147483688
-                ) < 0,
+                LibExactFloat.cmpParts(
+                        signedPower, powerExponent, 100000000000000000000000000000000000000001, -2147483688
+                    ) < 0,
                 "underflow below the floor"
             );
         }

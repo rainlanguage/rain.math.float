@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatImplementationEqTest is Test {
@@ -155,7 +155,7 @@ contract LibDecimalFloatImplementationEqTest is Test {
         pure
     {
         bool actual = LibDecimalFloatImplementation.eq(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        bool expected = LibTestExactDecimal.cmpParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB) == 0;
+        bool expected = LibExactFloat.cmpParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB) == 0;
 
         assertEq(actual, expected);
     }

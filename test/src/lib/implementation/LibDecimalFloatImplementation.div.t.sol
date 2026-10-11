@@ -9,7 +9,7 @@ import {
     ExponentOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationDivTest is Test {
     function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -103,7 +103,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         int256 one = negative ? int256(-1) : int256(1);
         // The quotient is ±m * 10^(exponent - shift - type(int256).min). At
         // exponent 0 the shift never reaches the floor, so it is -mExponent.
-        (int256 m, int256 mExponent,) = LibTestExactDecimal.maximize(signedCoefficient, 0);
+        (int256 m, int256 mExponent,) = LibExactFloat.maximize(signedCoefficient, 0);
         int256 shift = -mExponent;
         if (exponent >= shift) {
             vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, m, exponent - shift));
@@ -274,14 +274,13 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
         (int256 resultCoeff, int256 resultExp) =
             LibDecimalFloatImplementation.div(signedCoefficient, exponent, signedCoefficient, exponent);
-        assertTrue(LibTestExactDecimal.eq(resultCoeff, resultExp, 1, 0), "a / a should equal 1");
+        assertTrue(LibExactFloat.eq(resultCoeff, resultExp, 1, 0), "a / a should equal 1");
     }
 
     /// Should be possible to divide every number by 1.
     function testDivBy1(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, type(int256).min + 76, type(int256).max);
-        (int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.maximizeFloat(signedCoefficient, exponent);
+        (int256 expectedCoefficient, int256 expectedExponent) = LibExactFloat.maximizeFloat(signedCoefficient, exponent);
 
         int256 one = 1;
         for (int256 oneExponent = 0; oneExponent >= -76; --oneExponent) {
@@ -295,9 +294,9 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     function testDivByNegativeOneFloat(int256 signedCoefficient, int256 exponent) external pure {
         exponent = bound(exponent, type(int256).min + 76, type(int256).max - 1);
-        (int256 maximized, int256 maximizedExponent) = LibTestExactDecimal.maximizeFloat(signedCoefficient, exponent);
+        (int256 maximized, int256 maximizedExponent) = LibExactFloat.maximizeFloat(signedCoefficient, exponent);
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.signedParts(maximized > 0, LibTestExactDecimal.abs(maximized), maximizedExponent);
+            LibExactFloat.signedParts(maximized > 0, LibExactFloat.abs(maximized), maximizedExponent);
 
         int256 negativeOne = -1;
         for (int256 oneExponent = 0; oneExponent >= -76; --oneExponent) {
@@ -313,7 +312,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// above `type(int256).max`, and below `10^type(int256).min` its digits
     /// truncated towards zero.
     function checkThrees(int256 i, int256 exponentA, int256 d, int256 exponentB, int256 j) internal {
-        (int256 cls, int256 e) = LibTestExactDecimal.wideExponent(exponentA, exponentB, 0, j);
+        (int256 cls, int256 e) = LibExactFloat.wideExponent(exponentA, exponentB, 0, j);
         if (cls == 1) {
             // The caller loops thousands of times, so each revert's memory is
             // released for the next.
@@ -330,7 +329,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         }
         int256 c = THREES;
         if (cls == -1) {
-            (c, e) = LibTestExactDecimal.atFloor(c, -e);
+            (c, e) = LibExactFloat.atFloor(c, -e);
         }
         checkDiv(i, exponentA, d, exponentB, c, e);
     }
@@ -374,7 +373,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         (int256 q, int256 qe) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertTrue(
-            LibTestExactDecimal.productEq(q, qe, signedCoefficientB, exponentB, signedCoefficientA, exponentA),
+            LibExactFloat.productEq(q, qe, signedCoefficientB, exponentB, signedCoefficientA, exponentA),
             "(a / b) * b == a"
         );
     }
@@ -394,7 +393,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
             assertEq(q, 3e75, "quotient mantissa");
             // The exponent is enormous (close to -type(int256).min) so it is
             // pinned by the round trip rather than a literal here.
-            assertTrue(LibTestExactDecimal.productEq(q, qe, divisors[i], min, numerator, 0), "round trip");
+            assertTrue(LibExactFloat.productEq(q, qe, divisors[i], min, numerator, 0), "round trip");
         }
     }
 
@@ -414,7 +413,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         int256 min = type(int256).min;
         (int256 q, int256 qe) = LibDecimalFloatImplementation.div(18e75, 0, 6e75, min);
         assertEq(q, 3e75, "full divisor quotient mantissa");
-        assertTrue(LibTestExactDecimal.productEq(q, qe, 6e75, min, 18e75, 0), "full divisor round trip");
+        assertTrue(LibExactFloat.productEq(q, qe, 6e75, min, 18e75, 0), "full divisor round trip");
     }
 
     /// A maximized divisor at or above 1e76 keeps the starting
@@ -468,7 +467,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         vm.assume(signedCoefficientB != 0);
         shift = bound(shift, 76, type(int128).max);
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.divParts(signedCoefficientA, 0, signedCoefficientB, shift);
+            LibExactFloat.divParts(signedCoefficientA, 0, signedCoefficientB, shift);
         checkDiv(
             signedCoefficientA,
             type(int256).min,
@@ -494,7 +493,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = int256(bound(headroomB, 0, 80));
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.divParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibExactFloat.divParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         checkDiv(
             signedCoefficientA,
             type(int256).min + exponentA,
@@ -540,7 +539,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
             checkDiv(-numerator, min, 3, min, -THREES, -77 + digits);
             checkDiv(numerator, min, 3, min + 76, THREES, -153 + digits);
             (int256 quotient, int256 quotientExponent) = LibDecimalFloatImplementation.div(numerator * 7, min, 7, min);
-            assertTrue(LibTestExactDecimal.eq(quotient, quotientExponent, 1, digits - 1), "7n / 7 == n");
+            assertTrue(LibExactFloat.eq(quotient, quotientExponent, 1, digits - 1), "7n / 7 == n");
             numerator *= 10;
         }
     }
@@ -564,14 +563,14 @@ contract LibDecimalFloatImplementationDivTest is Test {
         (int256 q, int256 qe) =
             LibDecimalFloatImplementation.div(numerator, type(int256).min, divisor, type(int256).min + shift);
         // Both sides divided by 10^type(int256).min.
-        assertTrue(LibTestExactDecimal.productEq(q, qe, divisor, shift, numerator, 0), "(a / b) * b == a");
+        assertTrue(LibExactFloat.productEq(q, qe, divisor, shift, numerator, 0), "(a / b) * b == a");
     }
 
     /// The quotient against the parts the NatSpec states and the exact
     /// quotient they truncate, or `ExponentOverflow` where those parts'
     /// exponent is above `type(int256).max`.
     function checkDivExact(int256 a, int256 ea, int256 b, int256 eb) internal {
-        (bool overflows, int256 c, int256 e) = LibTestExactDecimal.divPartsWide(a, ea, b, eb);
+        (bool overflows, int256 c, int256 e) = LibExactFloat.divPartsWide(a, ea, b, eb);
         if (overflows) {
             vm.expectPartialRevert(ExponentOverflow.selector);
             this.divExternal(a, ea, b, eb);
@@ -580,7 +579,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         (int256 signedCoefficient, int256 exponent) = this.divExternal(a, ea, b, eb);
         assertEq(signedCoefficient, c, "coefficient");
         assertEq(exponent, e, "exponent");
-        assertTrue(LibTestExactDecimal.isTruncatedQuotient(a, ea, b, eb, c, e), "truncated quotient");
+        assertTrue(LibExactFloat.isTruncatedQuotient(a, ea, b, eb, c, e), "truncated quotient");
     }
 
     /// Spreads coefficients over every digit count.

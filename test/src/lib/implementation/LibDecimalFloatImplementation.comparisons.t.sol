@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {LibTestRegion} from "test/lib/LibTestRegion.sol";
 
 /// `lt`, `gt`, `gte` and `min` on unpacked values. `lte` and `max` have their
@@ -93,7 +93,7 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
     }
 
     function checkExactOrder(int256 cA, int256 eA, int256 cB, int256 eB) internal pure {
-        int256 order = LibTestExactDecimal.cmpParts(cA, eA, cB, eB);
+        int256 order = LibExactFloat.cmpParts(cA, eA, cB, eB);
         assertEq(lt(cA, eA, cB, eB), order < 0, "lt");
         assertEq(lte(cA, eA, cB, eB), order <= 0, "lte");
         assertEq(gt(cA, eA, cB, eB), order > 0, "gt");
@@ -138,7 +138,7 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
     /// `min` returns A, unchanged, when A is exactly below B, else B.
     function testMin(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
         (int256 c, int256 e) = LibDecimalFloatImplementation.min(cA, eA, cB, eB);
-        bool isA = LibTestExactDecimal.cmpParts(cA, eA, cB, eB) < 0;
+        bool isA = LibExactFloat.cmpParts(cA, eA, cB, eB) < 0;
         assertEq(c, isA ? cA : cB, "coefficient");
         assertEq(e, isA ? eA : eB, "exponent");
     }
@@ -149,7 +149,7 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
         (int256 lowC, int256 lowE) = LibDecimalFloatImplementation.min(cA, eA, cB, eB);
         (int256 highC, int256 highE) = LibDecimalFloatImplementation.max(cA, eA, cB, eB);
 
-        int256 order = LibTestExactDecimal.cmpParts(cA, eA, cB, eB);
+        int256 order = LibExactFloat.cmpParts(cA, eA, cB, eB);
         assertEq(lowC, order < 0 ? cA : cB, "min coefficient");
         assertEq(lowE, order < 0 ? eA : eB, "min exponent");
         assertEq(highC, order > 0 ? cA : cB, "max coefficient");

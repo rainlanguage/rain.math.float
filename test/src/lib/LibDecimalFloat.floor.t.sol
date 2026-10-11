@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatFloorTest is Test {
@@ -19,7 +19,7 @@ contract LibDecimalFloatFloorTest is Test {
     function checkFloorEq(int256 x, int256 exponent, int256 expectedFrac, int256 expectedFracExponent) internal pure {
         Float a = LibDecimalFloat.packLossless(x, exponent);
         (x, exponent) = a.floor().unpack();
-        assertTrue(LibTestExactDecimal.eq(x, exponent, expectedFrac, expectedFracExponent));
+        assertTrue(LibExactFloat.eq(x, exponent, expectedFrac, expectedFracExponent));
     }
 
     /// Every non negative exponent is identity for floor.
@@ -150,7 +150,7 @@ contract LibDecimalFloatFloorTest is Test {
 
     function checkFloorExact(int224 c, int32 e) internal pure {
         (int256 rc, int256 re) = LibDecimalFloat.packLossless(c, e).floor().unpack();
-        (int256 xc, int256 xe) = LibTestExactDecimal.floorParts(c, e);
-        assertEq(LibTestExactDecimal.cmpParts(rc, re, xc, xe), 0, "exact floor");
+        (int256 xc, int256 xe) = LibExactFloat.floorParts(c, e);
+        assertEq(LibExactFloat.cmpParts(rc, re, xc, xe), 0, "exact floor");
     }
 }

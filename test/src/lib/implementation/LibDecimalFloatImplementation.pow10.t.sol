@@ -6,10 +6,10 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTranscendentalOracle, ORACLE_ONE} from "../../../lib/LibTranscendentalOracle.sol";
+import {LibExactFloat, ORACLE_ONE} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibTestErrorBound, POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "../../../lib/LibTestErrorBound.sol";
-import {LibTestExactDecimal} from "../../../lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 /// @dev 10^x for x = 999989412444502470160818040289325468267883913374439598768578152671e-66
 /// in units of 1e-70, from `bc -l` at scale 130, truncated.
@@ -50,8 +50,8 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.pow10(references[i][0], references[i][1]);
-            int256 unitExponent = references[i][3]
-                + LibTestExactDecimal.digits(LibTestExactDecimal.u512(LibTestExactDecimal.abs(references[i][2]))) - 41;
+            int256 unitExponent =
+                references[i][3] + LibExactFloat.digits(LibExactFloat.u512(LibExactFloat.abs(references[i][2]))) - 41;
             int256[] memory coefficients = new int256[](2);
             int256[] memory exponents = new int256[](2);
             (coefficients[0], exponents[0]) = (signedCoefficient, exponent);
@@ -60,7 +60,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
             int256[] memory boundExponents = new int256[](1);
             (boundCoefficients[0], boundExponents[0]) = (boundUnits, unitExponent - 13);
             assertTrue(
-                LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), "pow10 error"
+                LibExactFloat.absSumLte(coefficients, exponents, boundCoefficients, boundExponents), "pow10 error"
             );
         }
     }
@@ -415,7 +415,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         int256 resultCoefficient,
         int256 resultExponent
     ) internal pure returns (bool) {
-        (uint256 power, int256 powerExponent) = LibTranscendentalOracle.exp10(signedCoefficient, exponent);
+        (uint256 power, int256 powerExponent) = LibExactFloat.exp10(signedCoefficient, exponent);
         return pow10WithinPower(power, powerExponent, power / 1e67 + 1, resultCoefficient, resultExponent);
     }
 
@@ -489,13 +489,13 @@ contract LibDecimalFloatImplementationPow10Test is Test {
     /// 1e30 and so has fewer than the 41 digits pow10 keeps.
     function testPow10PrimePowersExact(uint256 primeSeed, uint256 j, int256 n) external pure {
         uint256 base = prime(primeSeed);
-        j = bound(j, 0, LibTranscendentalOracle.maxPower(base));
+        j = bound(j, 0, LibExactFloat.maxPower(base));
         n = bound(n, -1e6, 1e6);
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 x = int256(j * LibTranscendentalOracle.log10Prime(base)) + n * int256(ORACLE_ONE);
+        int256 x = int256(j * LibExactFloat.log10Prime(base)) + n * int256(ORACLE_ONE);
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(x, -70);
         // forge-lint: disable-next-line(unsafe-typecast)
-        assertTrue(LibTestExactDecimal.eq(signedCoefficient, exponent, int256(base ** j), n), "exact");
+        assertTrue(LibExactFloat.eq(signedCoefficient, exponent, int256(base ** j), n), "exact");
     }
 
     /// |pow10(x) - oracle| in billionths of a unit in the result's last place,
@@ -503,17 +503,17 @@ contract LibDecimalFloatImplementationPow10Test is Test {
     /// fraction over [0, 1).
     function pow10OracleError(uint256 primeSeed, uint256 j, int256 d, int256 n) internal pure returns (uint256) {
         uint256 base = prime(primeSeed);
-        j = bound(j, 0, LibTranscendentalOracle.maxPower(base));
+        j = bound(j, 0, LibExactFloat.maxPower(base));
         d = bound(d, -1e67, 1e67);
         n = bound(n, -1e6, 1e6);
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 x = int256(j * LibTranscendentalOracle.log10Prime(base)) + d + n * int256(ORACLE_ONE);
+        int256 x = int256(j * LibExactFloat.log10Prime(base)) + d + n * int256(ORACLE_ONE);
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(x, -70);
         // The true value is base^j 10^d 10^n, and 10^(n - exponent + 9) scales
         // it to billionths of the unit, below 1e51.
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 scaled = base ** j * 10 ** uint256(n - exponent + 9);
-        uint256 expected = Math.mulDiv(scaled, LibTranscendentalOracle.exp10Small(d), ORACLE_ONE);
+        uint256 expected = Math.mulDiv(scaled, LibExactFloat.exp10Small(d), ORACLE_ONE);
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 actual = uint256(signedCoefficient) * 1e9;
         return actual > expected ? actual - expected : expected - actual;

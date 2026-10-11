@@ -15,6 +15,8 @@ import {
 /// before the gas changes of issue #310. The other helpers they call are
 /// unchanged on main, so they are qualified to the live library. Equivalence
 /// tests only.
+/// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
+/// nothing about a value. Expected values come from `LibExactFloat`.
 library LibDecimalFloatGasMain {
     function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
