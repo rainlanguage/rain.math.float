@@ -1415,6 +1415,14 @@ library LibDecimalFloatImplementation {
     /// A coefficient outside (0, 1e76), or an exponent that scaling the
     /// coefficient into [1e75, 1e76) and evening would take past
     /// `type(int256).min`, reverts `SqrtOutOfRange`.
+    ///
+    /// Four Newton steps over E = N / 1e6 floored suffice from the seed
+    /// a + E / b, (a, b) being (26e36, 12e37) for E in [1e75, 1e76) and
+    /// (82e35, 38e36) for E in [1e74, 1e75). With r = sqrt E the seed is
+    /// r (a / r + r / b), least, 2 sqrt(a / b) r, at r = sqrt(a b) and
+    /// greatest at an end of the decade, so it is r (1 + d) with d in
+    /// [-0.071, 0.0934]. A step takes d to d^2 / (2 (1 + d)) or less: 3.99e-3,
+    /// 7.93e-6, 3.15e-11, 4.97e-22, under the 3.1e-21 the step over N needs.
     /// @param signedCoefficient The coefficient.
     /// @param exponent The exponent.
     /// @return signedCoefficient The root's coefficient, in [1e40, 1e41].
@@ -1442,9 +1450,16 @@ library LibDecimalFloatImplementation {
             // or C / 10, and multiply it by 1e3. E is in [1e74, 1e76), so its
             // root is in [1e37, 1e38), which is [2^122.9, 2^126.3).
             uint256 estimate = coefficient;
+            // A Newton step replaces a guess x of sqrt E by the average of x
+            // and E / x. One is above the root and the other below it, so the
+            // average is closer: x = r (1 + d) becomes r (1 + d^2 / (2 (1 + d))).
+            // From the first step on x is above the root, and, rounded down, at
+            // least its floor.
+            uint256 root = coefficient / 12e37 + 26e36;
             if (exponent & 1 == 1) {
                 scale = 1e5;
                 estimate = coefficient / 10;
+                root = estimate / 38e36 + 82e35;
             }
             // forge-lint: disable-next-line(unsafe-typecast)
             exponent -= scale == 1e5 ? int256(5) : int256(6);
@@ -1454,33 +1469,20 @@ library LibDecimalFloatImplementation {
                 revert SqrtOutOfRange(inputCoefficient, inputExponent);
             }
             exponent /= 2;
-            uint256 root;
-            // A Newton step replaces a guess x of sqrt E by the average of x
-            // and E / x. One is above the root and the other below it, so the
-            // average is closer: x = r (1 + d) becomes r (1 + d^2 / (2 (1 + d))).
-            // From the first step on x is above the root, and, rounded down, at
-            // least its floor. Once d is small each step about squares it.
-            // The first line is the step from 2^125, (2^125 + E / 2^125) / 2, as
-            // shifts. 2^125 is at most 4.25 times the root, so d starts at most
-            // 3.25 (-0.57 from the other end gives less), and seven steps take
-            // it to 1.24, 0.34, 0.044, 9.4e-4, 4.4e-7, 9.6e-14, 4.6e-27.
             assembly ("memory-safe") {
-                root := add(shr(126, estimate), shl(124, 1))
-                root := shr(1, add(root, div(estimate, root)))
-                root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))
             }
-            // Times 1e3, root is within 4.6e-27 relative of sqrt N, so within
-            // 4.7e14 as sqrt N is below 1e41 (the floors take off at most 1e3
+            // Times 1e3, root is within 4.97e-22 relative of sqrt N, so within
+            // 4.97e19 as sqrt N is below 1e41 (the floors take off at most 1e3
             // more). One step over N itself, its quotient across 512 bits,
-            // leaves it at most (4.7e14)^2 / (2 1e40), under 1.2e-11, above
+            // leaves it at most (4.97e19)^2 / (2 1e40), under 0.13, above
             // sqrt N, and at least its floor: on the floor or one above.
             root *= 1e3;
             root = (root + mulDiv(coefficient, scale, root)) >> 1;
-            // One above the floor, root is within 1.2e-11 of sqrt N and so
+            // One above the floor, root is within 0.13 of sqrt N and so
             // already nearest. On the floor r, sqrt N is past r + 1/2 exactly
             // when N - r^2 > r. N - r^2 is in [-(2r + 1), 2r], tiny next to
             // 2^255, so subtracting the low words of N and r^2 gives it exactly
