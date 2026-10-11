@@ -46,7 +46,7 @@ contract LibDecimalFloatImplementationInvTest is Test {
         );
 
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.invParts(signedCoefficient, exponent);
+            LibTestExactDecimal.invPayload(signedCoefficient, exponent);
         assertEq(q, expectedCoefficient, "coefficient");
         assertEq(e, expectedExponent, "exponent");
     }
