@@ -917,7 +917,7 @@ fn a_sqrt() -> BoxedStrategy<Dec> {
     prop_oneof![
         3 => float(),
         // Perfect squares of up to 33 digits, whose root is exact.
-        2 => (1u32..=33, -1_000_000_000i64..=1_000_000_000).prop_flat_map(|(n, e)| {
+        2 => (1u32..=33, I32_MIN / 2..=I32_MAX / 2).prop_flat_map(|(n, e)| {
             digits_below(n).prop_map(move |c| {
                 let c = if c.is_zero() { BigInt::from(1) } else { c };
                 Dec::new(&c * &c, 2 * e)

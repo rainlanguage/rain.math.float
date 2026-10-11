@@ -59,12 +59,8 @@ contract LibDecimalFloatImplementationMaxTest is Test {
         int256 coefficientB,
         int256 exponentB
     ) external pure {
-        coefficientA = bound(coefficientA, type(int224).min, type(int224).max);
-        coefficientB = bound(coefficientB, type(int224).min, type(int224).max);
-        exponentA = bound(exponentA, -50, 50);
-        exponentB = bound(exponentB, -50, 50);
-
-        bool isA = LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB) > 0;
+        bool isA =
+            LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB) > 0;
         assertMaxIs(
             coefficientA,
             exponentA,
@@ -78,8 +74,7 @@ contract LibDecimalFloatImplementationMaxTest is Test {
     /// Selecting a larger value is exact — nothing is rescaled into the
     /// result, so the winner comes back byte for byte as it went in.
     function testMaxDoesNotRescaleTheWinner(int256 coefficient, int256 exponent) external pure {
-        coefficient = bound(coefficient, 1, type(int224).max);
-        exponent = bound(exponent, -50, 50);
+        coefficient = bound(coefficient, 1, type(int256).max);
         // Against a value that is unambiguously smaller.
         assertMaxIs(0, 0, coefficient, exponent, coefficient, exponent);
     }

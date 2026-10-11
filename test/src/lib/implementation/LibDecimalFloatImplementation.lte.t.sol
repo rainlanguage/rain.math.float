@@ -46,8 +46,6 @@ contract LibDecimalFloatImplementationLteTest is Test {
 
     /// Every value is <= itself.
     function testLteReflexive(int256 signedCoefficient, int256 exponent) external pure {
-        signedCoefficient = bound(signedCoefficient, type(int224).min, type(int224).max);
-        exponent = bound(exponent, -50, 50);
         assertTrue(lte(signedCoefficient, exponent, signedCoefficient, exponent));
     }
 
@@ -57,11 +55,6 @@ contract LibDecimalFloatImplementationLteTest is Test {
         external
         pure
     {
-        coefficientA = bound(coefficientA, type(int224).min, type(int224).max);
-        coefficientB = bound(coefficientB, type(int224).min, type(int224).max);
-        exponentA = bound(exponentA, -50, 50);
-        exponentB = bound(exponentB, -50, 50);
-
         int256 order = LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB);
         assertEq(lte(coefficientA, exponentA, coefficientB, exponentB), order <= 0, "forward");
         assertEq(lte(coefficientB, exponentB, coefficientA, exponentA), order >= 0, "backward");

@@ -111,7 +111,6 @@ contract LibDecimalFloatSqrtTest is Test {
 
     function testRoundTripFuzzSqrt(int224 signedCoefficient, int32 exponent) external pure {
         signedCoefficient = int224(bound(signedCoefficient, 1, type(int224).max));
-        exponent = int32(bound(exponent, -1e9, 1e9));
         checkRoundTrip(signedCoefficient, exponent);
     }
 
@@ -119,7 +118,7 @@ contract LibDecimalFloatSqrtTest is Test {
     /// fewer than the 41 digits pow keeps.
     function testSqrtExactSquares(uint256 n, int256 k) external pure {
         n = bound(n, 1, 1e20 - 1);
-        k = bound(k, -1e9, 1e9);
+        k = bound(k, type(int32).min / 2, type(int32).max / 2);
         // forge-lint: disable-next-line(unsafe-typecast)
         Float root = LibDecimalFloat.packLossless(int256(n * n), 2 * k).sqrt();
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -132,11 +131,11 @@ contract LibDecimalFloatSqrtTest is Test {
     function testSqrtDecadeShift(int256 signedCoefficient, int256 exponent, int256 shift, bool small) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int224).max);
         if (small) {
-            exponent = bound(exponent, -1e9, -100);
-            shift = bound(shift, -5e8, 0);
+            exponent = bound(exponent, type(int32).min, -100);
+            shift = bound(shift, (type(int32).min - exponent) / 2, 0);
         } else {
-            exponent = bound(exponent, 1, 1e9);
-            shift = bound(shift, 0, 5e8);
+            exponent = bound(exponent, 1, type(int32).max);
+            shift = bound(shift, 0, (type(int32).max - exponent) / 2);
         }
         (int256 rootCoefficient, int256 rootExponent) =
             LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt().unpack();
@@ -192,7 +191,7 @@ contract LibDecimalFloatSqrtTest is Test {
 
     function testSqrtReferenceFuzz(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int224).max);
-        exponent = bound(exponent, -1e9, 1e9);
+        exponent = bound(exponent, type(int32).min, type(int32).max);
         (int256 rootCoefficient, int256 rootExponent) =
             LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt().unpack();
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -202,7 +201,7 @@ contract LibDecimalFloatSqrtTest is Test {
     /// The implementation takes any coefficient below 1e76, as pow hands it.
     function testImplementationSqrtReferenceFuzz(uint256 coefficient, int256 exponent) external pure {
         coefficient = bound(coefficient, 1, 1e76 - 1);
-        exponent = bound(exponent, -1e9, 1e9);
+        exponent = bound(exponent, type(int256).min + 81, type(int256).max);
         // coefficient is below 1e76, so it fits int256.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedCoefficient = int256(coefficient);
@@ -234,7 +233,7 @@ contract LibDecimalFloatSqrtTest is Test {
     function testSqrtMonotone(int256 signedCoefficient, int256 gap, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int224).max - 1e3);
         gap = bound(gap, 1, 1e3);
-        exponent = bound(exponent, -1e9, 1e9);
+        exponent = bound(exponent, type(int32).min, type(int32).max);
         Float low = LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt();
         Float high = LibDecimalFloat.packLossless(signedCoefficient + gap, exponent).sqrt();
         assertTrue(low.lte(high), "monotone");
@@ -285,7 +284,7 @@ contract LibDecimalFloatSqrtTest is Test {
 
     function testSqrtCorrectlyRoundedFuzz(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int224).max);
-        exponent = bound(exponent, -1e9, 1e9);
+        exponent = bound(exponent, type(int32).min, type(int32).max);
         Float root = LibDecimalFloat.packLossless(signedCoefficient, exponent).sqrt();
         assertCorrectlyRounded(signedCoefficient, exponent, root);
     }
@@ -343,7 +342,7 @@ contract LibDecimalFloatSqrtTest is Test {
 
     function testSqrtMidpointFuzz(uint256 c, int256 k) external pure {
         c = bound(c, 1e40, 1e41 - 1);
-        k = bound(k, -5e8, 5e8);
+        k = bound(k, type(int32).min / 2, type(int32).max / 2);
         checkMidpoint(c, k);
     }
 }

@@ -5,10 +5,20 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation, POW_FIXED_ONE} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMulDivFixedTest is Test {
+    /// The result q is the floor of x y / 1e50: q 1e50 <= x y < (q + 1) 1e50.
     function check(uint256 x, uint256 y) internal pure {
-        assertEq(LibDecimalFloatImplementation.mulDivFixed(x, y), Math.mulDiv(x, y, POW_FIXED_ONE));
+        uint256 q = LibDecimalFloatImplementation.mulDivFixed(x, y);
+        U512 memory product = LibTestExactDecimal.mul(x, y);
+        U512 memory low = LibTestExactDecimal.mul(q, POW_FIXED_ONE);
+        assertLe(LibTestExactDecimal.cmp(low, product), 0, "q 1e50 <= x y");
+        assertGt(
+            LibTestExactDecimal.cmp(LibTestExactDecimal.add(low, LibTestExactDecimal.u512(POW_FIXED_ONE)), product),
+            0,
+            "x y < (q + 1) 1e50"
+        );
     }
 
     /// A low product word below x y mod 1e50 borrows from the high word.
@@ -21,9 +31,13 @@ contract LibDecimalFloatImplementationMulDivFixedTest is Test {
         assertEq(LibDecimalFloatImplementation.mulDivFixed(2 ** 128, 2 ** 128), type(uint256).max / POW_FIXED_ONE);
     }
 
-    function testMulDivFixedMatchesMulDiv(uint256 x, uint256 y) external pure {
-        x = bound(x, 0, 2 ** 170);
-        y = bound(y, 0, 2 ** 170);
+    /// Every x with every y whose quotient is below 2^256. Past 1e50, y is
+    /// bounded to floor((2^256 - 1) 1e50 / x), at most one below the largest
+    /// such y.
+    function testMulDivFixedIsTheFlooredQuotient(uint256 x, uint256 y) external pure {
+        if (x > POW_FIXED_ONE) {
+            y = bound(y, 0, Math.mulDiv(type(uint256).max, POW_FIXED_ONE, x));
+        }
         check(x, y);
     }
 }

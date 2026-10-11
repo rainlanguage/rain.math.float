@@ -66,8 +66,6 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
 
     /// Nothing is less than or greater than itself; every value is >= itself.
     function testIrreflexive(int256 signedCoefficient, int256 exponent) external pure {
-        signedCoefficient = bound(signedCoefficient, type(int224).min, type(int224).max);
-        exponent = bound(exponent, -50, 50);
         assertFalse(lt(signedCoefficient, exponent, signedCoefficient, exponent));
         assertFalse(gt(signedCoefficient, exponent, signedCoefficient, exponent));
         assertTrue(gte(signedCoefficient, exponent, signedCoefficient, exponent));
@@ -75,11 +73,6 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
 
     /// Every comparison is the exact order of the pair.
     function testAgainstExactOrder(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
-        cA = bound(cA, type(int224).min, type(int224).max);
-        cB = bound(cB, type(int224).min, type(int224).max);
-        eA = bound(eA, -50, 50);
-        eB = bound(eB, -50, 50);
-
         int256 order = LibTestExactDecimal.cmpParts(cA, eA, cB, eB);
         assertEq(lt(cA, eA, cB, eB), order < 0, "lt");
         assertEq(lte(cA, eA, cB, eB), order <= 0, "lte");
@@ -89,23 +82,14 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
     }
 
     /// `lt` is transitive across rescaling.
-    function testLtTransitive(int256 cA, int256 cB, int256 cC) external pure {
-        cA = bound(cA, -1e30, 1e30);
-        cB = bound(cB, -1e30, 1e30);
-        cC = bound(cC, -1e30, 1e30);
-        // Deliberately different exponents so rescaling is exercised.
-        if (lt(cA, 3, cB, 0) && lt(cB, 0, cC, -3)) {
-            assertTrue(lt(cA, 3, cC, -3));
+    function testLtTransitive(int256 cA, int256 eA, int256 cB, int256 eB, int256 cC, int256 eC) external pure {
+        if (lt(cA, eA, cB, eB) && lt(cB, eB, cC, eC)) {
+            assertTrue(lt(cA, eA, cC, eC));
         }
     }
 
     /// `min` returns A, unchanged, when A is exactly below B, else B.
     function testMin(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
-        cA = bound(cA, type(int224).min, type(int224).max);
-        cB = bound(cB, type(int224).min, type(int224).max);
-        eA = bound(eA, -50, 50);
-        eB = bound(eB, -50, 50);
-
         (int256 c, int256 e) = LibDecimalFloatImplementation.min(cA, eA, cB, eB);
         bool isA = LibTestExactDecimal.cmpParts(cA, eA, cB, eB) < 0;
         assertEq(c, isA ? cA : cB, "coefficient");
@@ -115,11 +99,6 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
     /// `min` and `max` pick opposite ends of the same pair, both taking B on
     /// a tie.
     function testMinMaxPartitionThePair(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
-        cA = bound(cA, type(int224).min, type(int224).max);
-        cB = bound(cB, type(int224).min, type(int224).max);
-        eA = bound(eA, -50, 50);
-        eB = bound(eB, -50, 50);
-
         (int256 lowC, int256 lowE) = LibDecimalFloatImplementation.min(cA, eA, cB, eB);
         (int256 highC, int256 highE) = LibDecimalFloatImplementation.max(cA, eA, cB, eB);
 
