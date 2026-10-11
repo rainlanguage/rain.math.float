@@ -576,8 +576,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
     /// places, is 1.09e-48 above the fixed point power and 1.0799e-48 above
     /// the rounding tie T between the 41 digit neighbours, so it rounds down,
     /// to the far neighbour. Both are within `POW10_RAW_ERROR_E52`, so it
-    /// cannot be below 1.079e-48, but they reach only a third of its 3.2774e-48:
-    /// it sums each floor's worst case, which no input found meets at once.
+    /// cannot be below 1.079e-48, and 1.09e-48 is 98% of its 1.1111e-48.
     function testPow10RawErrorReached() external pure {
         int256 x = 999989412444502470160818040289325468267883913374439598768578152671;
         int256 power = POW10_TIE_REFERENCE;

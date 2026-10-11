@@ -81,15 +81,15 @@ contract LibDecimalFloatImplementationLog10Test is Test {
 
     /// Within a factor 1.001 of a power of ten the seed is exact, so the error
     /// is relative to the log, which can be arbitrarily close to zero:
-    /// `log10Ratio`'s 9.6e-50 relative plus a unit of its quotient, which is at
-    /// least 1e75 (2 / ln 10) / 2e76, 4.34e48, so 3.27e-49 relative.
+    /// `log10Ratio`'s 8.03e-50 relative plus a unit of its quotient, which is at
+    /// least 1e75 (2 / ln 10) / 2e76, 4.34e48, so 3.11e-49 relative.
     function testLog10AccuracyNearPowersOfTen() external pure {
         int256[4][] memory references = log10NearPowerOfTenReferences();
         for (uint256 i = 0; i < references.length; i++) {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.log10Unrounded(references[i][0], references[i][1]);
             (int256 boundCoefficient, int256 boundExponent) =
-                LibExactFloat.mulPayload(references[i][2], references[i][3], 327, -51);
+                LibExactFloat.mulPayload(references[i][2], references[i][3], 311, -51);
             assertErrorWithin(
                 signedCoefficient, exponent, references[i], boundCoefficient, boundExponent, type(int256).min
             );
@@ -632,11 +632,11 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         return (errorCoefficient < 0 ? -errorCoefficient : errorCoefficient, errorExponent);
     }
 
-    /// 3.27e-49 relative, as `testLog10AccuracyNearPowersOfTen`. The oracle is
+    /// 3.11e-49 relative, as `testLog10AccuracyNearPowersOfTen`. The oracle is
     /// within 5e-69 relative.
     function testLog10UnroundedNearOneOracleFuzz(uint256 p, uint256 d, bool negative) external pure {
         (int256 errorCoefficient, int256 errorExponent) = log10NearOneRelativeError(p, d, negative);
-        assertTrue(LibExactFloat.cmpParts(errorCoefficient, errorExponent, 327, -51) <= 0, "log10 relative error");
+        assertTrue(LibExactFloat.cmpParts(errorCoefficient, errorExponent, 311, -51) <= 0, "log10 relative error");
     }
 
     /// |log10(x) - oracle| for x near 1, in billionths of a unit in the
@@ -649,11 +649,11 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         return ulpBillionths(actualCoefficient, actualExponent, expectedCoefficient, expectedExponent);
     }
 
-    /// Half a unit plus 3.27e-49 relative, which is 32.7 billionths of a last
+    /// Half a unit plus 3.11e-49 relative, which is 31.1 billionths of a last
     /// place at least 1e-41 relative. The oracle's 5e-69 relative is under
     /// 1e-18 billionths, and the billionths are floored.
     function testLog10NearOneOracleFuzz(uint256 p, uint256 d, bool negative) external pure {
-        assertLe(log10NearOneUlpError(p, d, negative), 500000032, "log10 error");
+        assertLe(log10NearOneUlpError(p, d, negative), 500000031, "log10 error");
     }
 
     /// |a - b| for magnitudes with signs.
