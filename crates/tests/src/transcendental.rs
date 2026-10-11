@@ -9,9 +9,9 @@
 //! raw error of the tie between them; sqrt never.
 //!
 //! The bounds, as proven in `test/lib/LibTestErrorBound.sol`:
-//! - pow10: half a unit in the 41st digit plus 3.2774e-8 of a unit.
-//! - log10: half a unit in the 41st digit plus 1.0044e-50 absolute.
-//! - pow: 5.00000033006e-41 + N min(K1, K2 d) relative, N the integer part
+//! - pow10: half a unit in the 41st digit plus 1.1111e-8 of a unit.
+//! - log10: half a unit in the 41st digit plus 1.0037e-50 absolute.
+//! - pow: 5.00000011343e-41 + N min(K1, K2 d) relative, N the integer part
 //!   of |b| and d = max(|a|, 1/|a|) - 1: `PowTerm`.
 //! - sqrt: correctly rounded, half a unit in the 41st digit.
 //! - pow10 and pow: a result below 1e-2147483608 adds 1e-2147483648.
@@ -89,18 +89,18 @@ fn sol_sqrt(a: &Dec) -> Sol {
 // ------------------------------------------------------------ the contract
 
 /// log10Unrounded's error, absolute, in units of 1e-54: `LOG10_RAW_ERROR_E54`.
-const LOG10_RAW_E54: i64 = 10_044;
+const LOG10_RAW_E54: i64 = 10_037;
 
 /// pow10Unrounded's error in units of 1e-52 of 10^k, k the integer part of
 /// x: `POW10_RAW_ERROR_E52`.
-const POW10_RAW_E52: i64 = 32_774;
+const POW10_RAW_E52: i64 = 11_111;
 
 /// Half a unit in the 41st digit of a power below 10, in units of 1e-52.
 const POW10_HALF_UNIT_E52: i64 = 500_000_000_000;
 
 /// pow's error before its integer part, relative, in units of 1e-52:
 /// `POW_RELATIVE_ERROR_E52`.
-const POW_RELATIVE_E52: i64 = 500_000_033_006;
+const POW_RELATIVE_E52: i64 = 500_000_011_343;
 
 fn log10_raw() -> Dec {
     Dec::new(LOG10_RAW_E54, -54)
@@ -854,7 +854,8 @@ pub fn monotone_pow10(x: &Dec) -> Result<(), TestCaseError> {
 }
 
 /// a^b against a^b' for the next b' up: rising in b for a above one, falling
-/// below.
+/// below. a > 0 only: for a < 0 the sign of a^b flips with the parity of b,
+/// so neighbouring b are not ordered.
 pub fn monotone_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let Some(c) = next(b) else { return Ok(()) };
     let case = format!(
@@ -946,9 +947,9 @@ fn a_log10() -> BoxedStrategy<Dec> {
     .boxed()
 }
 
-/// A positive a with a coefficient of any digit count near 1e-70 to 1e77.
+/// A positive a with any coefficient and any exponent.
 fn moderate() -> BoxedStrategy<Dec> {
-    (crate::exact::coefficient(), -70i64..=10)
+    (crate::exact::coefficient(), crate::exact::exponent())
         .prop_filter("nonzero", |(c, _)| !c.is_zero())
         .prop_map(|(c, e)| Dec::new(c.abs().min(r::int224_max()), e))
         .boxed()
@@ -960,6 +961,7 @@ fn small_b() -> BoxedStrategy<Dec> {
         3 => (-1_000_000_000i64..=1_000_000_000, -9i64..=0).prop_map(|(c, e)| Dec::new(c, e)),
         1 => Just(Dec::new(5, -1)),
         1 => (crate::exact::coefficient(), -80i64..=20).prop_map(|(c, e)| Dec::new(c, e)),
+        1 => float(),
     ]
     .boxed()
 }
@@ -1092,7 +1094,7 @@ fn a_sqrt() -> BoxedStrategy<Dec> {
     prop_oneof![
         3 => float(),
         // Perfect squares of up to 33 digits, whose root is exact.
-        2 => (1u32..=33, -1_000_000_000i64..=1_000_000_000).prop_flat_map(|(n, e)| {
+        2 => (1u32..=33, I32_MIN / 2..=I32_MAX / 2).prop_flat_map(|(n, e)| {
             digits_below(n).prop_map(move |c| {
                 let c = if c.is_zero() { BigInt::from(1) } else { c };
                 Dec::new(&c * &c, 2 * e)
@@ -1196,7 +1198,7 @@ mod checker {
 
     #[test]
     fn log10_bound() {
-        // Half a unit in the 41st digit of 2, plus 1.0044e-50.
+        // Half a unit in the 41st digit of 2, plus 1.0037e-50.
         let within = sum(&Dec::new(5, -41), &log10_raw());
         edge(&Dec::new(2, 0), &Bound::Log10, &within, &Dec::new(1, -310));
         // A true value that may be just below one takes the 41st digit there.
@@ -1226,7 +1228,7 @@ mod checker {
 
     #[test]
     fn pow10_bound() {
-        // 3.5 has integer part 0: half a unit plus 3.2774e-8 of one, 1e-40.
+        // 3.5 has integer part 0: half a unit plus 1.1111e-8 of one, 1e-40.
         let within = pow10_within(0);
         edge(
             &Dec::new(35, -1),
@@ -1305,7 +1307,7 @@ mod checker {
         let v = Dec::new(2, 0);
         let a = Dec::new(pow10(50) - 1, -50);
         let b = Dec::new(pow10(40), 0);
-        // (5.00000033006e-41 a + 1.5e-38 1e40 1e-50) (v - err) / a.
+        // (5.00000011343e-41 a + 1.5e-38 1e40 1e-50) (v - err) / a.
         let x = sum(&pow_base().mul_exact(&a), &Dec::new(15, -49))
             .mul_exact(&sum(&v, &Dec::new(-1, -300)));
         let (down, up) = bracket(&x, &a, -350);
@@ -1871,7 +1873,7 @@ mod anchors {
     /// - 1.002^(2e12 + 1e-7) is
     ///   2.84331506279111009690174079886358388810420809 10^1735443062, the
     ///   same at scales 150 and 250. Its log10 is past 1e9, so b times log10's
-    ///   1.0044e-50 absolute error would leave the bound: the integer part has to
+    ///   1.0037e-50 absolute error would leave the bound: the integer part has to
     ///   be taken by squaring.
     #[test]
     fn pow_integer_part_past_six_decimals() {

@@ -2,7 +2,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {EXPONENT_MIN, EXPONENT_MAX} from "test/lib/LibTestExponentBounds.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {
     LibDecimalFloatImplementation,
@@ -48,58 +47,53 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// floor. Below 10^int256.min the quotient truncates to zero.
     function testDivMaxPositiveValueDenominatorTruncatesTheExactQuotient(int256 signedCoefficient, int256 exponent)
         external
-        pure
     {
-        checkDivByMaxTruncatesTheExactQuotient(signedCoefficient, exponent);
+        checkDivExact(signedCoefficient, exponent, type(int256).max, type(int32).max);
     }
 
     /// Independent exponents almost never put the quotient's unit within 76
     /// digits of the int256 floor, where the quotient sheds the digits below
     /// it, so this fuzzes that window and either side of it.
-    function testDivMaxPositiveValueDenominatorNearTheFloor(int256 signedCoefficient, int256 gap) external pure {
+    function testDivMaxPositiveValueDenominatorNearTheFloor(int256 signedCoefficient, int256 gap) external {
         int256 exponent = type(int256).min + type(int32).max + bound(gap, -10, 160);
-        checkDivByMaxTruncatesTheExactQuotient(signedCoefficient, exponent);
+        checkDivExact(signedCoefficient, exponent, type(int256).max, type(int32).max);
     }
 
     /// `max × 10^(int256.min + int32.max)` over `max × 10^int32.max` is exactly
     /// `10^int256.min`, the one unit at the floor that a 76 digit shed keeps.
-    function testDivMaxPositiveValueDenominatorOneUnitAtTheFloor() external pure {
+    function testDivMaxPositiveValueDenominatorOneUnitAtTheFloor() external {
         int256 exponent = type(int256).min + type(int32).max;
         (int256 q, int256 qExponent) =
             LibDecimalFloatImplementation.div(type(int256).max, exponent, type(int256).max, type(int32).max);
         assertEq(q, 1, "coefficient");
         assertEq(qExponent, type(int256).min, "exponent");
-        checkDivByMaxTruncatesTheExactQuotient(type(int256).min, exponent);
+        checkDivExact(type(int256).min, exponent, type(int256).max, type(int32).max);
     }
 
-    /// The exact quotient floored as `divParts` at a zero exponent
-    /// difference, moved by `exponent - int32.max`, with the digits below
-    /// `10^type(int256).min` truncated towards zero as `atFloor`.
-    function checkDivByMaxTruncatesTheExactQuotient(int256 signedCoefficient, int256 exponent) internal pure {
-        (int256 q, int256 qExponent) =
-            LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
-        (int256 expectedQ, int256 expectedExponent) =
-            LibTestExactDecimal.divParts(signedCoefficient, 0, type(int256).max, 0);
-        // exponent - int256.min, which is in [0, 2^256).
-        uint256 aboveFloor;
-        unchecked {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            aboveFloor = uint256(exponent) - uint256(type(int256).min);
-        }
-        // A zero dividend divides to (0, 0). Otherwise expectedExponent is in
-        // [-152, -75], so past int32.max + 200 above the floor the quotient's
-        // unit stays clear of it.
-        if (expectedQ != 0) {
-            if (aboveFloor > uint256(int256(type(int32).max)) + 200) {
-                expectedExponent += exponent - type(int32).max;
-            } else {
-                // forge-lint: disable-next-line(unsafe-typecast)
-                int256 headroom = expectedExponent + int256(aboveFloor) - type(int32).max;
-                (expectedQ, expectedExponent) = LibTestExactDecimal.atFloor(expectedQ, headroom);
-            }
-        }
-        assertEq(q, expectedQ, "coefficient");
-        assertEq(qExponent, expectedExponent, "exponent");
+    /// Independent exponents rarely put the quotient's unit within 76 digits
+    /// of either int256 bound, so these fuzz both windows and either side.
+    function testDivExactQuotientNearTheFloor(
+        int256 signedCoefficientA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        int256 gap
+    ) external {
+        vm.assume(signedCoefficientB != 0);
+        exponentB = bound(exponentB, 80, type(int256).max);
+        int256 exponentA = type(int256).min + exponentB + bound(gap, -80, 240);
+        checkDivExact(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
+
+    function testDivExactQuotientNearTheCeiling(
+        int256 signedCoefficientA,
+        int256 signedCoefficientB,
+        int256 exponentB,
+        int256 gap
+    ) external {
+        vm.assume(signedCoefficientB != 0);
+        exponentB = bound(exponentB, type(int256).min, -160);
+        int256 exponentA = type(int256).max + exponentB + bound(gap, -80, 160);
+        checkDivExact(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     /// A ±1 divisor at the floor divides exactly when the quotient exponent
@@ -315,11 +309,34 @@ contract LibDecimalFloatImplementationDivTest is Test {
         }
     }
 
-    /// forge-config: default.fuzz.runs = 100
-    function testUnnormalizedThreesDiv0(int256 exponentA, int256 exponentB) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 2, EXPONENT_MAX / 2);
-        exponentB = bound(exponentB, EXPONENT_MIN / 2, EXPONENT_MAX / 2);
+    /// `i / d` is `THREES × 10^(exponentA - exponentB + j)`: `ExponentOverflow`
+    /// above `type(int256).max`, and below `10^type(int256).min` its digits
+    /// truncated towards zero.
+    function checkThrees(int256 i, int256 exponentA, int256 d, int256 exponentB, int256 j) internal {
+        (int256 cls, int256 e) = LibTestExactDecimal.wideExponent(exponentA, exponentB, 0, j);
+        if (cls == 1) {
+            // The caller loops thousands of times, so each revert's memory is
+            // released for the next.
+            uint256 freeMemoryPointer;
+            assembly ("memory-safe") {
+                freeMemoryPointer := mload(0x40)
+            }
+            vm.expectPartialRevert(ExponentOverflow.selector);
+            this.divExternal(i, exponentA, d, exponentB);
+            assembly ("memory-safe") {
+                mstore(0x40, freeMemoryPointer)
+            }
+            return;
+        }
+        int256 c = THREES;
+        if (cls == -1) {
+            (c, e) = LibTestExactDecimal.atFloor(c, -e);
+        }
+        checkDiv(i, exponentA, d, exponentB, c, e);
+    }
 
+    /// forge-config: default.fuzz.runs = 100
+    function testUnnormalizedThreesDiv0(int256 exponentA, int256 exponentB) external {
         int256 d = 3;
         int256 di = 0;
         while (true) {
@@ -328,7 +345,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
             while (true) {
                 // want to see full precision on the THREES regardless of the
                 // scale of the numerator and denominator.
-                checkDiv(i, exponentA, d, exponentB, THREES, exponentA - exponentB + j);
+                checkThrees(i, exponentA, d, exponentB, j);
 
                 if (i == 1e76) {
                     break;

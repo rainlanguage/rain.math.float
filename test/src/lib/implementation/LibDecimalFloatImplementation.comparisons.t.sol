@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestRegion} from "test/lib/LibTestRegion.sol";
 
 /// `lt`, `gt`, `gte` and `min` on unpacked values. `lte` and `max` have their
 /// own files; these are the rest of the set, so the unpacked surface carries
@@ -66,8 +67,6 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
 
     /// Nothing is less than or greater than itself; every value is >= itself.
     function testIrreflexive(int256 signedCoefficient, int256 exponent) external pure {
-        signedCoefficient = bound(signedCoefficient, type(int224).min, type(int224).max);
-        exponent = bound(exponent, -50, 50);
         assertFalse(lt(signedCoefficient, exponent, signedCoefficient, exponent));
         assertFalse(gt(signedCoefficient, exponent, signedCoefficient, exponent));
         assertTrue(gte(signedCoefficient, exponent, signedCoefficient, exponent));
@@ -75,11 +74,25 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
 
     /// Every comparison is the exact order of the pair.
     function testAgainstExactOrder(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
-        cA = bound(cA, type(int224).min, type(int224).max);
-        cB = bound(cB, type(int224).min, type(int224).max);
-        eA = bound(eA, -50, 50);
-        eB = bound(eB, -50, 50);
+        checkExactOrder(cA, eA, cB, eB);
+    }
 
+    /// Every comparison is the exact order of the pair, with coefficients of
+    /// every digit count at exponents within 76 of each other, where the
+    /// comparison rescales.
+    function testAgainstExactOrderRescaled(int256 cA, uint256 dropA, int256 eA, int256 cB, uint256 dropB, int256 offset)
+        external
+        pure
+    {
+        checkExactOrder(
+            LibTestRegion.anyDigits(cA, dropA),
+            eA,
+            LibTestRegion.anyDigits(cB, dropB),
+            LibTestRegion.nearExponent(eA, offset)
+        );
+    }
+
+    function checkExactOrder(int256 cA, int256 eA, int256 cB, int256 eB) internal pure {
         int256 order = LibTestExactDecimal.cmpParts(cA, eA, cB, eB);
         assertEq(lt(cA, eA, cB, eB), order < 0, "lt");
         assertEq(lte(cA, eA, cB, eB), order <= 0, "lte");
@@ -89,23 +102,41 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
     }
 
     /// `lt` is transitive across rescaling.
-    function testLtTransitive(int256 cA, int256 cB, int256 cC) external pure {
-        cA = bound(cA, -1e30, 1e30);
-        cB = bound(cB, -1e30, 1e30);
-        cC = bound(cC, -1e30, 1e30);
-        // Deliberately different exponents so rescaling is exercised.
-        if (lt(cA, 3, cB, 0) && lt(cB, 0, cC, -3)) {
-            assertTrue(lt(cA, 3, cC, -3));
+    function testLtTransitive(int256 cA, int256 eA, int256 cB, int256 eB, int256 cC, int256 eC) external pure {
+        checkLtTransitive(cA, eA, cB, eB, cC, eC);
+    }
+
+    /// `lt` is transitive with coefficients of every digit count at exponents
+    /// within 76 of each other, where every comparison rescales.
+    function testLtTransitiveRescaled(
+        int256 cA,
+        int256 cB,
+        int256 cC,
+        uint256 drops,
+        int256 eB,
+        int256 offsetA,
+        int256 offsetC
+    ) external pure {
+        int256 eA = LibTestRegion.nearExponent(eB, offsetA % 39);
+        int256 eC = LibTestRegion.nearExponent(eB, offsetC % 39);
+        checkLtTransitive(
+            LibTestRegion.anyDigits(cA, drops),
+            eA,
+            LibTestRegion.anyDigits(cB, drops / 77),
+            eB,
+            LibTestRegion.anyDigits(cC, drops / 77 / 77),
+            eC
+        );
+    }
+
+    function checkLtTransitive(int256 cA, int256 eA, int256 cB, int256 eB, int256 cC, int256 eC) internal pure {
+        if (lt(cA, eA, cB, eB) && lt(cB, eB, cC, eC)) {
+            assertTrue(lt(cA, eA, cC, eC));
         }
     }
 
     /// `min` returns A, unchanged, when A is exactly below B, else B.
     function testMin(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
-        cA = bound(cA, type(int224).min, type(int224).max);
-        cB = bound(cB, type(int224).min, type(int224).max);
-        eA = bound(eA, -50, 50);
-        eB = bound(eB, -50, 50);
-
         (int256 c, int256 e) = LibDecimalFloatImplementation.min(cA, eA, cB, eB);
         bool isA = LibTestExactDecimal.cmpParts(cA, eA, cB, eB) < 0;
         assertEq(c, isA ? cA : cB, "coefficient");
@@ -115,11 +146,6 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
     /// `min` and `max` pick opposite ends of the same pair, both taking B on
     /// a tie.
     function testMinMaxPartitionThePair(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
-        cA = bound(cA, type(int224).min, type(int224).max);
-        cB = bound(cB, type(int224).min, type(int224).max);
-        eA = bound(eA, -50, 50);
-        eB = bound(eB, -50, 50);
-
         (int256 lowC, int256 lowE) = LibDecimalFloatImplementation.min(cA, eA, cB, eB);
         (int256 highC, int256 highE) = LibDecimalFloatImplementation.max(cA, eA, cB, eB);
 

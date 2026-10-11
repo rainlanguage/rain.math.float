@@ -1046,6 +1046,27 @@
     }
   },
   {
+    "timestamp": "2026-10-11T14:09:48Z",
+    "commit": "cb58ddec613276de0220f32252fec96d96fe529e",
+    "testsAfterCommit": "2daf6d7e3022a1b988a12f23e520b00a248f5036",
+    "publishedTag": "sol-v0.2.38",
+    "commitsAheadOfTag": 33,
+    "scope": "Issue #425: fuzz tests widened to the full typed domain. Before = the whole forge suite at main cb58dde. After = the whole forge suite at 67183c4 (the widened tests merged with cb58dde) for all 32 mutants, plus forge test --mt testToFixedDecimalLossyAcrossTheCutoffs at 2daf6d7 for T04 and T05. Mutants of src/lib/implementation/LibDecimalFloatImplementation.sol and src/lib/LibDecimalFloat.sol: M01-M07 mul exponent floor and ceiling guards, D01-D07 div floor, underflow and overflow guards, X01-X03 maximize, C01-C03 compare, A01-A04 add, N01 minus, F01-F02 mulDivFixed, T01-T05 toFixedDecimalLossy and fromFixedDecimalLossy. Main kills 30/32 and the widened suite kills the same 30. T04 (overflow cutoff 77 to 78) survived both: 1 x 10^78 returns the wrapped 10^78. testToFixedDecimalLossyAcrossTheCutoffs, an exact-oracle grid over final exponents -80..80, kills it. T05 (zero cutoff -77 to -78) is equivalent: the wrapped 10^78 is about 7.37e76, above int256.max, so every int256 coefficient still floors to (0, false).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 32,
+      "killedBefore": 30,
+      "killedAfter": 31,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 908,
+      "testsAfter": 910,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-11T16:10:59Z",
     "commit": "3990c5e18165188ef99dbd9dc788a82d1e61d206",
     "testsAfterCommit": "4b181ebb14c3ec9daa91b030475914b17a3263f1",

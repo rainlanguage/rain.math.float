@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestRegion} from "test/lib/LibTestRegion.sol";
 
 contract LibDecimalFloatImplementationLteTest is Test {
     function lte(int256 coefficientA, int256 exponentA, int256 coefficientB, int256 exponentB)
@@ -46,8 +47,6 @@ contract LibDecimalFloatImplementationLteTest is Test {
 
     /// Every value is <= itself.
     function testLteReflexive(int256 signedCoefficient, int256 exponent) external pure {
-        signedCoefficient = bound(signedCoefficient, type(int224).min, type(int224).max);
-        exponent = bound(exponent, -50, 50);
         assertTrue(lte(signedCoefficient, exponent, signedCoefficient, exponent));
     }
 
@@ -57,11 +56,32 @@ contract LibDecimalFloatImplementationLteTest is Test {
         external
         pure
     {
-        coefficientA = bound(coefficientA, type(int224).min, type(int224).max);
-        coefficientB = bound(coefficientB, type(int224).min, type(int224).max);
-        exponentA = bound(exponentA, -50, 50);
-        exponentB = bound(exponentB, -50, 50);
+        checkTotalOrder(coefficientA, exponentA, coefficientB, exponentB);
+    }
 
+    /// Both directions are the exact order of the pair, with coefficients of
+    /// every digit count at exponents within 76 of each other, where `lte`
+    /// rescales.
+    function testLteTotalOrderRescaled(
+        int256 coefficientA,
+        uint256 dropA,
+        int256 exponentA,
+        int256 coefficientB,
+        uint256 dropB,
+        int256 offset
+    ) external pure {
+        checkTotalOrder(
+            LibTestRegion.anyDigits(coefficientA, dropA),
+            exponentA,
+            LibTestRegion.anyDigits(coefficientB, dropB),
+            LibTestRegion.nearExponent(exponentA, offset)
+        );
+    }
+
+    function checkTotalOrder(int256 coefficientA, int256 exponentA, int256 coefficientB, int256 exponentB)
+        internal
+        pure
+    {
         int256 order = LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB);
         assertEq(lte(coefficientA, exponentA, coefficientB, exponentB), order <= 0, "forward");
         assertEq(lte(coefficientB, exponentB, coefficientA, exponentA), order >= 0, "backward");

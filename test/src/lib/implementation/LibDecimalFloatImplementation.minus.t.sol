@@ -3,7 +3,6 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {EXPONENT_MIN, EXPONENT_MAX} from "test/lib/LibTestExponentBounds.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
@@ -33,10 +32,9 @@ contract LibDecimalFloatImplementationMinusTest is Test {
         assertEq(exponentMinus, exponent + 1);
     }
 
-    /// a + (-a) == 0 for all in-range inputs.
+    /// a + (-a) == 0 for every int256 exponent.
     /// type(int256).min cannot be negated so it is excluded.
     function testAdditiveInverse(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         vm.assume(signedCoefficient != type(int256).min);
 
         (int256 negCoeff, int256 negExp) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
@@ -44,10 +42,9 @@ contract LibDecimalFloatImplementationMinusTest is Test {
         assertEq(sumCoeff, 0, "a + (-a) should be zero");
     }
 
-    /// --a == a for all in-range inputs.
+    /// --a == a for every int256 exponent.
     /// type(int256).min cannot be negated so it is excluded.
     function testDoubleNegation(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         vm.assume(signedCoefficient != type(int256).min);
 
         (int256 negCoeff, int256 negExp) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
