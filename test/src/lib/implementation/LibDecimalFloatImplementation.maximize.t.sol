@@ -6,8 +6,6 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 import {
     LibDecimalFloatImplementation,
-    EXPONENT_MIN,
-    EXPONENT_MAX,
     MAXIMIZED_ZERO_EXPONENT,
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
@@ -40,9 +38,26 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         return true;
     }
 
-    /// Every normalized number is maximized.
-    function testMaximizedEverything(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
+    /// `maximizeFull` reverts `MaximizeOverflow` where the exact maximize
+    /// leaves a shortfall at the int256 floor, and otherwise fits with the
+    /// exact parts.
+    function maximizedOrReverts(int256 signedCoefficient, int256 exponent) internal returns (bool, int256, int256) {
+        (int256 expectedCoefficient, int256 expectedExponent, int256 shortfall) =
+            LibTestExactDecimal.maximize(signedCoefficient, exponent);
+        bool fits = shortfall == 0;
+        if (!fits) {
+            vm.expectRevert(abi.encodeWithSelector(MaximizeOverflow.selector, signedCoefficient, exponent));
+            this.maximizeFullExternal(signedCoefficient, exponent);
+        }
+        return (fits, expectedCoefficient, expectedExponent);
+    }
+
+    /// Every number is maximized, or reverts `MaximizeOverflow` at the floor.
+    function testMaximizedEverything(int256 signedCoefficient, int256 exponent) external {
+        (bool fits,,) = maximizedOrReverts(signedCoefficient, exponent);
+        if (!fits) {
+            return;
+        }
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
         assertTrue(isMaximized(actualSignedCoefficient, actualExponent));
@@ -84,8 +99,11 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     }
 
     /// Maximization should be idempotent.
-    function testMaximizedIdempotent(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
+    function testMaximizedIdempotent(int256 signedCoefficient, int256 exponent) external {
+        (bool fits,,) = maximizedOrReverts(signedCoefficient, exponent);
+        if (!fits) {
+            return;
+        }
         (int256 maximizedSignedCoefficient, int256 maximizedExponent) =
             LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
         (int256 actualSignedCoefficient, int256 actualExponent) =
@@ -94,15 +112,21 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         assertEq(actualExponent, maximizedExponent);
     }
 
-    /// Maximization against reference.
-    function testMaximizedReference(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
+    /// Maximization against the exact maximize and the slow reference.
+    function testMaximizedReference(int256 signedCoefficient, int256 exponent) external {
+        (bool fits, int256 expectedSignedCoefficient, int256 expectedExponent) =
+            maximizedOrReverts(signedCoefficient, exponent);
+        if (!fits) {
+            return;
+        }
         (int256 actualSignedCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatSlow.maximizeSlow(signedCoefficient, exponent);
         assertEq(actualSignedCoefficient, expectedSignedCoefficient);
         assertEq(actualExponent, expectedExponent);
+        (int256 slowSignedCoefficient, int256 slowExponent) =
+            LibDecimalFloatSlow.maximizeSlow(signedCoefficient, exponent);
+        assertEq(actualSignedCoefficient, slowSignedCoefficient);
+        assertEq(actualExponent, slowExponent);
     }
 
     /// Near the floor the coefficient is still fully maximized, and the shift

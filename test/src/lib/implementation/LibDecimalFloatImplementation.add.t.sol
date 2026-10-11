@@ -5,8 +5,6 @@ pragma solidity =0.8.25;
 import {
     ExponentOverflow,
     LibDecimalFloatImplementation,
-    EXPONENT_MIN,
-    EXPONENT_MAX,
     ADD_MAX_EXPONENT_DIFF
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
@@ -217,8 +215,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
 
     /// 0 add 0 any exponent
     /// 0 + 0 = 0
-    function testAddZeroAnyExponent(int128 inputExponent) external pure {
-        inputExponent = int128(bound(inputExponent, EXPONENT_MIN, EXPONENT_MAX));
+    function testAddZeroAnyExponent(int256 inputExponent) external pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.add(0, inputExponent, 0, 0);
         assertEq(signedCoefficient, 0);
         assertEq(exponent, 0);
@@ -283,16 +280,14 @@ contract LibDecimalFloatImplementationAddTest is Test {
         this.addExternal(type(int256).max, type(int256).max, 1, type(int256).max);
     }
 
-    /// For in-range exponents and every int256 coefficient, `add` returns
-    /// the exact parts `addPartsWide` states.
+    /// For every int256 coefficient and exponent, `add` returns the exact
+    /// parts `addPartsWide` states, or reverts `ExponentOverflow` past them.
     function testAddRoundsTheExactSum(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
     ) external view {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         checkAddExact(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
@@ -304,33 +299,32 @@ contract LibDecimalFloatImplementationAddTest is Test {
         int256 signedCoefficientB,
         int256 gap
     ) external view {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10 - 80);
+        exponentA = bound(exponentA, type(int256).min + 80, type(int256).max - 80);
         int256 exponentB = exponentA + bound(gap, -80, 80);
         checkAddExact(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
+    /// Where B maximized sits more than `ADD_MAX_EXPONENT_DIFF` digits above A
+    /// maximized, the sum is B maximized. B must maximize clear of the floor to
+    /// be that sum.
     function testAddingSmallToLargeReturnsLargeFuzz(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
     ) public pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         vm.assume(signedCoefficientA != 0);
         vm.assume(signedCoefficientB != 0);
 
-        (int256 normalizedSignedCoefficientA, int256 normalizedExponentA) =
-            LibDecimalFloatImplementation.maximizeFull(signedCoefficientA, exponentA);
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementation.maximizeFull(signedCoefficientB, exponentB);
+        (, int256 normalizedExponentA,) = LibTestExactDecimal.maximize(signedCoefficientA, exponentA);
+        (int256 expectedSignedCoefficient, int256 expectedExponent, int256 shortfallB) =
+            LibTestExactDecimal.maximize(signedCoefficientB, exponentB);
+        vm.assume(shortfallB == 0);
 
-        vm.assume(normalizedSignedCoefficientA != 0);
-        vm.assume(expectedSignedCoefficient != 0);
-
+        (int256 cls, int256 gap) = LibTestExactDecimal.wideExponent(expectedExponent, normalizedExponentA, 0, 0);
         // ADD_MAX_EXPONENT_DIFF = 76
         // forge-lint: disable-next-line(unsafe-typecast)
-        vm.assume((expectedExponent - normalizedExponentA) > int256(ADD_MAX_EXPONENT_DIFF));
+        vm.assume(cls == 1 || (cls == 0 && gap > int256(ADD_MAX_EXPONENT_DIFF)));
 
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
@@ -446,33 +440,46 @@ contract LibDecimalFloatImplementationAddTest is Test {
     }
 
     /// a + b and b + a are both the exact sum rounded by the documented rule,
-    /// compared by value since zero can have different exponents.
+    /// compared by value since zero can have different exponents, and both
+    /// revert `ExponentOverflow` where that sum overflows.
     function testAddCommutative(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
-    ) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+    ) external view {
+        (bool overflowed, int256 expectedCoeff, int256 expectedExp) = LibTestExactDecimal.addPartsWide(
+            signedCoefficientA, exponentA, signedCoefficientB, exponentB
+        );
+        checkAddByValue(
+            signedCoefficientA, exponentA, signedCoefficientB, exponentB, overflowed, expectedCoeff, expectedExp
+        );
+        checkAddByValue(
+            signedCoefficientB, exponentB, signedCoefficientA, exponentA, overflowed, expectedCoeff, expectedExp
+        );
+    }
 
-        (int256 coeffAB, int256 expAB) =
-            LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (int256 coeffBA, int256 expBA) =
-            LibDecimalFloatImplementation.add(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
-
-        (bool overflowed, int256 expectedCoeff, int256 expectedExp) =
-            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        assertFalse(overflowed, "overflowed");
-        assertTrue(LibTestExactDecimal.eq(coeffAB, expAB, expectedCoeff, expectedExp), "a + b");
-        assertTrue(LibTestExactDecimal.eq(coeffBA, expBA, expectedCoeff, expectedExp), "b + a");
+    function checkAddByValue(
+        int256 a,
+        int256 ea,
+        int256 b,
+        int256 eb,
+        bool overflowed,
+        int256 expectedCoeff,
+        int256 expectedExp
+    ) internal view {
+        try this.addExternal(a, ea, b, eb) returns (int256 c, int256 e) {
+            assertFalse(overflowed, "exact sum overflows");
+            assertTrue(LibTestExactDecimal.eq(c, e, expectedCoeff, expectedExp), "value");
+        } catch (bytes memory err) {
+            assertTrue(overflowed, "exact sum returns");
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertEq(bytes4(err), ExponentOverflow.selector, "ExponentOverflow");
+        }
     }
 
     /// Adding any zero to any value returns the non-zero value.
     function testAddZeroToAnyNonZero(int256 exponentZero, int256 signedCoefficient, int256 exponent) external pure {
-        exponentZero = bound(exponentZero, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-        exponent = bound(exponent, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
-
         vm.assume(signedCoefficient != 0);
 
         (int256 expectedSignedCoefficient, int256 expectedExponent) = (signedCoefficient, exponent);

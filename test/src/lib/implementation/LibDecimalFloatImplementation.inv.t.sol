@@ -6,9 +6,8 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {
     LibDecimalFloatImplementation,
-    EXPONENT_MIN,
-    EXPONENT_MAX,
-    DivisionByZero
+    DivisionByZero,
+    ExponentOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationInvTest is Test {
@@ -21,9 +20,26 @@ contract LibDecimalFloatImplementationInvTest is Test {
     /// coefficient in `[1e75, 1e76]`: `q × 10^E × |x| <= 1 < (q + 1) × 10^E ×
     /// |x|`, decided exactly in 512 bits, with the sign of `x`. The parts are
     /// also those `div` documents for `1e76e-76 / x`, which picks between
-    /// `1e76` and `1e75` at one exponent apart when `1 / x` is a power of ten.
-    function checkInv(int256 signedCoefficient, int256 exponent) internal pure {
-        (int256 q, int256 e) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
+    /// `1e76` and `1e75` at one exponent apart when `1 / x` is a power of ten:
+    /// `divPartsWide`, so `ExponentOverflow` above `type(int256).max` and below
+    /// `10^type(int256).min` the digits truncated towards zero.
+    function checkInv(int256 signedCoefficient, int256 exponent) internal {
+        (bool overflowed, int256 expectedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.divPartsWide(1e76, -76, signedCoefficient, exponent);
+        if (overflowed) {
+            vm.expectPartialRevert(ExponentOverflow.selector);
+            this.invExternal(signedCoefficient, exponent);
+            return;
+        }
+        (int256 q, int256 e) = this.invExternal(signedCoefficient, exponent);
+        assertEq(q, expectedCoefficient, "coefficient");
+        assertEq(e, expectedExponent, "exponent");
+
+        (, int256 unfloored) = LibTestExactDecimal.divParts(1e76, 0, signedCoefficient, 0);
+        (int256 cls,) = LibTestExactDecimal.wideExponent(-76, exponent, 0, unfloored);
+        if (cls == -1) {
+            return;
+        }
 
         assertEq(q < 0, signedCoefficient < 0, "sign");
         uint256 magnitude = LibTestExactDecimal.abs(q);
@@ -44,29 +60,22 @@ contract LibDecimalFloatImplementationInvTest is Test {
             0,
             "not floor"
         );
-
-        (int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.invParts(signedCoefficient, exponent);
-        assertEq(q, expectedCoefficient, "coefficient");
-        assertEq(e, expectedExponent, "exponent");
     }
 
-    function testInvExact(int256 signedCoefficient, int256 exponent) external pure {
+    function testInvExact(int256 signedCoefficient, int256 exponent) external {
         vm.assume(signedCoefficient != 0);
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         checkInv(signedCoefficient, exponent);
     }
 
     /// Small coefficients, where `1 / x` is often exact.
-    function testInvExactSmall(int256 signedCoefficient, int256 exponent) external pure {
+    function testInvExactSmall(int256 signedCoefficient, int256 exponent) external {
         signedCoefficient = bound(signedCoefficient, -1000, 1000);
         vm.assume(signedCoefficient != 0);
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         checkInv(signedCoefficient, exponent);
     }
 
     /// Powers of ten, where `1 / x` is exact and a power of ten.
-    function testInvExactPowerOfTen(uint256 digits, bool negative, int256 exponent) external pure {
+    function testInvExactPowerOfTen(uint256 digits, bool negative, int256 exponent) external {
         digits = bound(digits, 0, 76);
         // 10^76 < 2^255.
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -74,17 +83,16 @@ contract LibDecimalFloatImplementationInvTest is Test {
         if (negative) {
             signedCoefficient = -signedCoefficient;
         }
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX);
         checkInv(signedCoefficient, exponent);
     }
 
-    function testInvExactExtremes() external pure {
+    function testInvExactExtremes() external {
         checkInv(type(int256).max, 0);
         checkInv(type(int256).min, 0);
-        checkInv(type(int256).min, EXPONENT_MIN);
-        checkInv(type(int256).max, EXPONENT_MAX);
-        checkInv(1, EXPONENT_MIN);
-        checkInv(-1, EXPONENT_MAX);
+        checkInv(type(int256).min, type(int256).min);
+        checkInv(type(int256).max, type(int256).max);
+        checkInv(1, type(int256).min);
+        checkInv(-1, type(int256).max);
         checkInv(3, 0);
         checkInv(7, -5);
     }

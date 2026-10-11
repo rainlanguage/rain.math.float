@@ -345,6 +345,41 @@ library LibTestExactDecimal {
         return divParts(1e76, -76, signedCoefficient, exponent);
     }
 
+    /// `mulParts` at any int256 exponents: `overflowed` where the exponent is
+    /// above `type(int256).max`, and below `10^type(int256).min` the digits
+    /// truncated towards zero as `atFloor`.
+    function mulPartsWide(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool, int256, int256) {
+        (int256 c, int256 e) = mulParts(ca, 0, cb, 0);
+        return wideParts(c, ea, 0, eb, e);
+    }
+
+    /// `divParts` at any int256 exponents, for a non-zero `cb`: `overflowed`
+    /// where the exponent is above `type(int256).max`, and below
+    /// `10^type(int256).min` the digits truncated towards zero as `atFloor`.
+    function divPartsWide(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool, int256, int256) {
+        (int256 c, int256 e) = divParts(ca, 0, cb, 0);
+        return wideParts(c, ea, eb, 0, e);
+    }
+
+    /// `c × 10^(p - q + r + k)` against the int256 exponent range, for `|k|`
+    /// below 1000. Zero is `(0, 0)`.
+    function wideParts(int256 c, int256 p, int256 q, int256 r, int256 k) internal pure returns (bool, int256, int256) {
+        if (c == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
+            return (false, 0, 0);
+        }
+        (int256 cls, int256 e) = wideExponent(p, q, r, k);
+        if (cls == 1) {
+            // forge-lint: disable-next-line(boolean-cst)
+            return (true, 0, 0);
+        }
+        if (cls == -1) {
+            (c, e) = atFloor(c, -e);
+        }
+        // forge-lint: disable-next-line(boolean-cst)
+        return (false, c, e);
+    }
+
     /// `signedCoefficient × 10^(type(int256).min + headroom)` held at the
     /// int256 exponent floor: a negative headroom truncates that many digits
     /// towards zero, and a coefficient that truncates to zero is `(0, 0)`.

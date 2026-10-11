@@ -5,8 +5,6 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {
     LibDecimalFloatImplementation,
-    EXPONENT_MIN,
-    EXPONENT_MAX,
     DivisionByZero,
     ExponentOverflow
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
@@ -106,10 +104,8 @@ contract LibDecimalFloatImplementationDivTest is Test {
         checkDivExact(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    /// The exact quotient floored as `divParts` at a zero exponent difference,
-    /// moved by `exponentA - exponentB`. Above `type(int256).max` that is
-    /// `ExponentOverflow`; below `10^type(int256).min` its digits truncate
-    /// towards zero as `atFloor`. A zero divisor is `DivisionByZero`.
+    /// The exact quotient as `divPartsWide`, `ExponentOverflow` where that
+    /// overflows. A zero divisor is `DivisionByZero`.
     function checkDivExact(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
     {
@@ -118,19 +114,12 @@ contract LibDecimalFloatImplementationDivTest is Test {
             this.divExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             return;
         }
-        (int256 expectedQ, int256 expectedExponent) =
-            LibTestExactDecimal.divParts(signedCoefficientA, 0, signedCoefficientB, 0);
-        if (expectedQ != 0) {
-            int256 cls;
-            (cls, expectedExponent) = LibTestExactDecimal.wideExponent(exponentA, exponentB, 0, expectedExponent);
-            if (cls == 1) {
-                vm.expectPartialRevert(ExponentOverflow.selector);
-                this.divExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-                return;
-            }
-            if (cls == -1) {
-                (expectedQ, expectedExponent) = LibTestExactDecimal.atFloor(expectedQ, -expectedExponent);
-            }
+        (bool overflowed, int256 expectedQ, int256 expectedExponent) =
+            LibTestExactDecimal.divPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        if (overflowed) {
+            vm.expectPartialRevert(ExponentOverflow.selector);
+            this.divExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            return;
         }
         (int256 q, int256 qExponent) = this.divExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertEq(q, expectedQ, "coefficient");
@@ -350,11 +339,25 @@ contract LibDecimalFloatImplementationDivTest is Test {
         }
     }
 
-    /// forge-config: default.fuzz.runs = 100
-    function testUnnormalizedThreesDiv0(int256 exponentA, int256 exponentB) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN / 2, EXPONENT_MAX / 2);
-        exponentB = bound(exponentB, EXPONENT_MIN / 2, EXPONENT_MAX / 2);
+    /// `i / d` is `THREES × 10^(exponentA - exponentB + j)`: `ExponentOverflow`
+    /// above `type(int256).max`, and below `10^type(int256).min` its digits
+    /// truncated towards zero.
+    function checkThrees(int256 i, int256 exponentA, int256 d, int256 exponentB, int256 j) internal {
+        (int256 cls, int256 e) = LibTestExactDecimal.wideExponent(exponentA, exponentB, 0, j);
+        if (cls == 1) {
+            vm.expectPartialRevert(ExponentOverflow.selector);
+            this.divExternal(i, exponentA, d, exponentB);
+            return;
+        }
+        int256 c = THREES;
+        if (cls == -1) {
+            (c, e) = LibTestExactDecimal.atFloor(c, -e);
+        }
+        checkDiv(i, exponentA, d, exponentB, c, e);
+    }
 
+    /// forge-config: default.fuzz.runs = 100
+    function testUnnormalizedThreesDiv0(int256 exponentA, int256 exponentB) external {
         int256 d = 3;
         int256 di = 0;
         while (true) {
@@ -363,7 +366,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
             while (true) {
                 // want to see full precision on the THREES regardless of the
                 // scale of the numerator and denominator.
-                checkDiv(i, exponentA, d, exponentB, THREES, exponentA - exponentB + j);
+                checkThrees(i, exponentA, d, exponentB, j);
 
                 if (i == 1e76) {
                     break;

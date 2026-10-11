@@ -2,11 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {
-    LibDecimalFloatImplementation,
-    EXPONENT_MIN,
-    EXPONENT_MAX
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
@@ -118,51 +114,36 @@ contract LibDecimalFloatImplementationMulTest is Test {
         (signedCoefficient, exponent);
     }
 
-    /// a * 1 == a for all in-range inputs.
+    /// a * 1 == a for every int256 coefficient and exponent.
     function testMulIdentity(int256 signedCoefficient, int256 exponent) external pure {
-        exponent = bound(exponent, EXPONENT_MIN, EXPONENT_MAX / 2);
-
         (int256 resultCoeff, int256 resultExp) = LibDecimalFloatImplementation.mul(signedCoefficient, exponent, 1, 0);
         assertTrue(LibTestExactDecimal.eq(resultCoeff, resultExp, signedCoefficient, exponent), "a * 1 should equal a");
     }
 
-    /// a * b and b * a are both the exact product's parts. The exponent
-    /// sum stays above the floor, so no digits are shed into it.
+    /// a * b and b * a are both the exact product's parts as `mulPartsWide`,
+    /// each reverting `ExponentOverflow` with its first operand where those
+    /// overflow.
     function testMulCommutative(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
-    ) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX / 2);
-        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX / 2);
-
-        (int256 coeffAB, int256 expAB) =
-            LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (int256 coeffBA, int256 expBA) =
-            LibDecimalFloatImplementation.mul(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
-
-        (int256 expectedCoeff, int256 expectedExp) =
-            LibTestExactDecimal.mulParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        assertEq(coeffAB, expectedCoeff, "a * b coefficient");
-        assertEq(expAB, expectedExp, "a * b exponent");
-        assertEq(coeffBA, expectedCoeff, "b * a coefficient");
-        assertEq(expBA, expectedExp, "b * a exponent");
+    ) external {
+        checkMulExact(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        checkMulExact(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
     }
 
-    function testMulNotRevertAnyExpectation(
-        int256 signedCoefficientA,
-        int256 exponentA,
-        int256 signedCoefficientB,
-        int256 exponentB
-    ) external pure {
-        exponentA = bound(exponentA, EXPONENT_MIN, EXPONENT_MAX / 2);
-        exponentB = bound(exponentB, EXPONENT_MIN, EXPONENT_MAX / 2);
+    function checkMulExact(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
+        internal
+    {
+        (bool overflowed, int256 expectedSignedCoefficient, int256 expectedExponent) =
+            LibTestExactDecimal.mulPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        if (overflowed) {
+            checkMulExponentOverflow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            return;
+        }
         (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.mulParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-
+            this.mulExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertEq(signedCoefficient, expectedSignedCoefficient, "signedCoefficient");
         assertEq(exponent, expectedExponent, "exponent");
     }
