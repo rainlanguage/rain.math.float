@@ -1893,4 +1893,13 @@ mod anchors {
         eprintln!("worst: {}", n_term_ratio(&a, &b));
         assert_tight(&a, &b);
     }
+
+    /// b < 0 where K1 is the lesser, d 1.23e-31: the inverse of a drops 0.84
+    /// of a unit at 1e-75, which a^-N weighs N.
+    #[test]
+    fn pow_near_one_inverse_k1() {
+        let a = r::literal_value("9999999999999999999999999999998765432109876543210987654321099e-61");
+        let b = Dec::new(-1, 40);
+        eprintln!("inverse k1: {}", n_term_ratio(&a, &b));
+    }
 }

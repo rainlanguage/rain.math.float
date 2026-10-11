@@ -441,7 +441,8 @@ contract LibDecimalFloatPowTest is Test {
     /// The issue's (1 + 1e-66)^1e67, where N d is 10: its error is 0.915 of
     /// the N term K2 N d, 1.5e-37, and of (1 + 1e-66)^-1e67 0.395 of
     /// 3.4786e-37. The b < 0 worst case of the derivation, d 3.15e-38 near
-    /// sqrt(1e-75), is 0.980 of its N term.
+    /// sqrt(1e-75), is 0.980 of its N term, and one where K1 is the lesser
+    /// 0.752.
     function testPowNearOneLargeExponent() external view {
         Float a = LibDecimalFloat.packLossless(1e66 + 1, -66);
         checkPowNearOne(
@@ -464,6 +465,15 @@ contract LibDecimalFloatPowTest is Test {
             273340921843676829617917998988580983641908213383205218973152502588,
             -37,
             true
+        );
+        // b < 0 where K1 is the lesser, d 1.23e-31: the inverse of a drops
+        // 0.84 of a unit at 1e-75, which a^-N weighs N, 0.752 of K1 N in all.
+        checkPowNearOne(
+            LibDecimalFloat.packLossless(9999999999999999999999999999998765432109876543210987654321099, -61),
+            LibDecimalFloat.packLossless(-1, 40),
+            164269673983696849634751694922256511706057586860385783903477528715,
+            536165957,
+            false
         );
     }
 
