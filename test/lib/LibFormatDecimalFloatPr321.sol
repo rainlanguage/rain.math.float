@@ -10,6 +10,8 @@ import {UnformatableExponent} from "src/error/ErrFormat.sol";
 /// `LibFormatDecimalFloat` verbatim from
 /// `src/lib/format/LibFormatDecimalFloat.sol` at ce55522 (#321), before #310's
 /// format change. Equivalence tests only.
+/// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
+/// nothing about a value. Expected values come from `LibExactFloat`.
 library LibFormatDecimalFloatPr321 {
     /// Maximum `|exponent|` supported by non-scientific formatting. Exponents
     /// outside `[-MAX_NON_SCIENTIFIC_EXPONENT, MAX_NON_SCIENTIFIC_EXPONENT]`

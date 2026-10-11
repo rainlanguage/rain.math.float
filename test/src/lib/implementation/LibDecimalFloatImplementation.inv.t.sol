@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {
     LibDecimalFloatImplementation,
     DivisionByZero,
@@ -25,7 +25,7 @@ contract LibDecimalFloatImplementationInvTest is Test {
     /// `10^type(int256).min` the digits truncated towards zero.
     function checkInv(int256 signedCoefficient, int256 exponent) internal {
         (bool overflowed, int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.divPartsWide(1e76, -76, signedCoefficient, exponent);
+            LibExactFloat.divPartsWide(1e76, -76, signedCoefficient, exponent);
         if (overflowed) {
             vm.expectPartialRevert(ExponentOverflow.selector);
             this.invExternal(signedCoefficient, exponent);
@@ -35,28 +35,24 @@ contract LibDecimalFloatImplementationInvTest is Test {
         assertEq(q, expectedCoefficient, "coefficient");
         assertEq(e, expectedExponent, "exponent");
 
-        (, int256 unfloored) = LibTestExactDecimal.invParts(signedCoefficient, 0);
-        (int256 cls,) = LibTestExactDecimal.wideExponent(0, exponent, 0, unfloored);
+        (, int256 unfloored) = LibExactFloat.invParts(signedCoefficient, 0);
+        (int256 cls,) = LibExactFloat.wideExponent(0, exponent, 0, unfloored);
         if (cls == -1) {
             return;
         }
 
         assertEq(q < 0, signedCoefficient < 0, "sign");
-        uint256 magnitude = LibTestExactDecimal.abs(q);
+        uint256 magnitude = LibExactFloat.abs(q);
         assertGe(magnitude, 1e75, "precision low");
         assertLe(magnitude, 1e76, "precision high");
 
-        uint256 x = LibTestExactDecimal.abs(signedCoefficient);
+        uint256 x = LibExactFloat.abs(signedCoefficient);
         int256 scale = e + exponent;
         assertLe(
-            LibTestExactDecimal.cmpScaled(LibTestExactDecimal.mul(magnitude, x), scale, LibTestExactDecimal.u512(1), 0),
-            0,
-            "above 1 / x"
+            LibExactFloat.cmpScaled(LibExactFloat.mul(magnitude, x), scale, LibExactFloat.u512(1), 0), 0, "above 1 / x"
         );
         assertGt(
-            LibTestExactDecimal.cmpScaled(
-                LibTestExactDecimal.mul(magnitude + 1, x), scale, LibTestExactDecimal.u512(1), 0
-            ),
+            LibExactFloat.cmpScaled(LibExactFloat.mul(magnitude + 1, x), scale, LibExactFloat.u512(1), 0),
             0,
             "not floor"
         );

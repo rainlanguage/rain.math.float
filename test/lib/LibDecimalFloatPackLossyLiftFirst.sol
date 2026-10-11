@@ -10,7 +10,7 @@ import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 /// int32.max before any shedding, with the nearest-bound rule of #332 added
 /// after shedding. EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing
 /// with it says nothing about a result's value. Expected values come from
-/// `LibTestExactDecimal` over exact math.
+/// `LibExactFloat` over exact math.
 library LibDecimalFloatPackLossyLiftFirst {
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {

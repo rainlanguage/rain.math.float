@@ -3,8 +3,7 @@
 pragma solidity =0.8.25;
 
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibTranscendentalOracle, ORACLE_LN10, ORACLE_ONE} from "test/lib/LibTranscendentalOracle.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat, ORACLE_LN10, ORACLE_ONE} from "test/lib/LibExactFloat.sol";
 import {LibTestErrorBound, POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "test/lib/LibTestErrorBound.sol";
 import {Float} from "src/lib/LibDecimalFloat.sol";
 import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
@@ -146,8 +145,7 @@ library LibTestPowRange {
     /// plus `POW10_RAW_ERROR_E52` units of 1e-52.
     function pow10Range(Float x) internal pure returns (PowRange) {
         (int256 signedCoefficient, int256 exponent) = unpack(x);
-        (uint256 lowMagnitude, uint256 highMagnitude) =
-            magnitudeUnits(LibTestExactDecimal.abs(signedCoefficient), exponent);
+        (uint256 lowMagnitude, uint256 highMagnitude) = magnitudeUnits(LibExactFloat.abs(signedCoefficient), exponent);
         (int256 low, int256 high) = signed(signedCoefficient < 0, lowMagnitude, highMagnitude);
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 up = int256(units(LOG10_UP_PER_E, POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52, -56, true));
@@ -166,14 +164,14 @@ library LibTestPowRange {
     /// quotient is within 6e-69 relative: `nearOne`. Any other a has the
     /// oracle's log10, within 1e-67.
     function log10Abs(int256 signedCoefficient, int256 exponent) internal pure returns (Log10 memory log) {
-        uint256 magnitude = LibTestExactDecimal.abs(signedCoefficient);
+        uint256 magnitude = LibExactFloat.abs(signedCoefficient);
         if (exponent < 0 && exponent >= -76) {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 unit = 10 ** uint256(-exponent);
             bool below = magnitude < unit;
             uint256 distance = below ? unit - magnitude : magnitude - unit;
             if (distance <= unit / 1000) {
-                uint256 ratio = LibTranscendentalOracle.lnOnePlusOverRatio(distance, unit, below);
+                uint256 ratio = LibExactFloat.lnOnePlusOverRatio(distance, unit, below);
                 // distance is below 1e73, so lifting it to [1e75, 1e76)
                 // keeps the quotient's rounding under 3e-75 relative.
                 uint256 lift = 0;
@@ -190,7 +188,7 @@ library LibTestPowRange {
                 return log;
             }
         }
-        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(magnitude, exponent);
+        (int256 characteristic, uint256 fraction) = LibExactFloat.log10(magnitude, exponent);
         log.fractionExponent = -70;
         if (characteristic >= 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -215,7 +213,7 @@ library LibTestPowRange {
     function powLog(Float a, Float b) internal pure returns (int256, int256) {
         (int256 signedCoefficientA, int256 exponentA) = unpack(a);
         (int256 signedCoefficientB, int256 exponentB) = unpack(b);
-        uint256 magnitudeB = LibTestExactDecimal.abs(signedCoefficientB);
+        uint256 magnitudeB = LibExactFloat.abs(signedCoefficientB);
         Log10 memory log = log10Abs(signedCoefficientA, exponentA);
         uint256 lowMagnitude = Math.min(
             units(magnitudeB, log.whole, exponentB, false)
@@ -247,9 +245,7 @@ library LibTestPowRange {
         uint256 error = uint256(errorCoefficient);
         error += error / 1e60;
         uint256 up = units(LOG10_UP_PER_E, error, errorExponent - 4, true);
-        uint256 down = LibTestExactDecimal.cmpScaled(
-                LibTestExactDecimal.u512(error), errorExponent, LibTestExactDecimal.u512(1), -3
-            ) <= 0
+        uint256 down = LibExactFloat.cmpScaled(LibExactFloat.u512(error), errorExponent, LibExactFloat.u512(1), -3) <= 0
             ? units(LOG10_DOWN_PER_E, error, errorExponent - 4, true)
             : CAP;
         // forge-lint: disable-next-line(unsafe-typecast)

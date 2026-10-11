@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {LossyConversionToFloat} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
@@ -126,9 +126,7 @@ contract LibDecimalFloatPackTest is Test {
     /// packLossy reverts exactly when the value is at least
     /// (int224.max / 10 + 1) 10^(int32.max + 1) in magnitude.
     function checkPackLossyOverflowThreshold(int256 signedCoefficient, int256 exponent) internal view {
-        bool over = LibTestExactDecimal.overflows(
-            LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)), exponent
-        );
+        bool over = LibExactFloat.overflows(LibExactFloat.u512(LibExactFloat.abs(signedCoefficient)), exponent);
         bool reverted;
         try this.packLossyExternal(signedCoefficient, exponent) {}
         catch {

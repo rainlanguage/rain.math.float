@@ -8,7 +8,7 @@ import {
     ADD_MAX_EXPONENT_DIFF
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {LibDecimalFloatImplementationAddPre394} from "test/lib/LibDecimalFloatImplementationAddPre394.sol";
 
 contract LibDecimalFloatImplementationAddTest is Test {
@@ -70,9 +70,9 @@ contract LibDecimalFloatImplementationAddTest is Test {
         bool swap
     ) internal pure {
         (bool overflowed, int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibExactFloat.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertFalse(overflowed, "sum past int256 exponent");
-        assertEq(LibTestExactDecimal.int256Unit(signedCoefficientA, exponentA), unit, "unit");
+        assertEq(LibExactFloat.int256Unit(signedCoefficientA, exponentA), unit, "unit");
         assertEq(expectedExponent, unit + 1, "sum past int256");
         if (swap) {
             (signedCoefficientA, exponentA, signedCoefficientB, exponentB) =
@@ -316,12 +316,12 @@ contract LibDecimalFloatImplementationAddTest is Test {
         vm.assume(signedCoefficientA != 0);
         vm.assume(signedCoefficientB != 0);
 
-        (, int256 normalizedExponentA,) = LibTestExactDecimal.maximize(signedCoefficientA, exponentA);
+        (, int256 normalizedExponentA,) = LibExactFloat.maximize(signedCoefficientA, exponentA);
         (int256 expectedSignedCoefficient, int256 expectedExponent, int256 shortfallB) =
-            LibTestExactDecimal.maximize(signedCoefficientB, exponentB);
+            LibExactFloat.maximize(signedCoefficientB, exponentB);
         vm.assume(shortfallB == 0);
 
-        (int256 cls, int256 gap) = LibTestExactDecimal.wideExponent(expectedExponent, normalizedExponentA, 0, 0);
+        (int256 cls, int256 gap) = LibExactFloat.wideExponent(expectedExponent, normalizedExponentA, 0, 0);
         // ADD_MAX_EXPONENT_DIFF = 76
         // forge-lint: disable-next-line(unsafe-typecast)
         vm.assume(cls == 1 || (cls == 0 && gap > int256(ADD_MAX_EXPONENT_DIFF)));
@@ -453,9 +453,8 @@ contract LibDecimalFloatImplementationAddTest is Test {
         int256 signedCoefficientB,
         int256 exponentB
     ) external view {
-        (bool overflowed, int256 expectedCoeff, int256 expectedExp) = LibTestExactDecimal.addPartsWide(
-            signedCoefficientA, exponentA, signedCoefficientB, exponentB
-        );
+        (bool overflowed, int256 expectedCoeff, int256 expectedExp) =
+            LibExactFloat.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         checkAddByValue(
             signedCoefficientA, exponentA, signedCoefficientB, exponentB, overflowed, expectedCoeff, expectedExp
         );
@@ -475,7 +474,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
     ) internal view {
         try this.addExternal(a, ea, b, eb) returns (int256 c, int256 e) {
             assertFalse(overflowed, "exact sum overflows");
-            assertTrue(LibTestExactDecimal.eq(c, e, expectedCoeff, expectedExp), "value");
+            assertTrue(LibExactFloat.eq(c, e, expectedCoeff, expectedExp), "value");
         } catch (bytes memory err) {
             assertTrue(overflowed, "exact sum returns");
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -537,7 +536,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
     /// reverts `ExponentOverflow` where their exponent is past int256.
     function checkAddExact(int256 a, int256 ea, int256 b, int256 eb) internal view {
         (bool overflows, int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.addPartsWide(a, ea, b, eb);
+            LibExactFloat.addPartsWide(a, ea, b, eb);
         try this.addExternal(a, ea, b, eb) returns (int256 signedCoefficient, int256 exponent) {
             assertFalse(overflows, "exact sum overflows");
             assertEq(signedCoefficient, expectedSignedCoefficient, "exact coefficient");

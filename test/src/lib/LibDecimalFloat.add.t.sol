@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
@@ -32,7 +32,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
         (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloat.unpack(b);
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(result);
         assertTrue(
-            LibTestExactDecimal.isSumResult(
+            LibExactFloat.isSumResult(
                 signedCoefficientA, exponentA, signedCoefficientB, exponentB, signedCoefficient, exponent
             ),
             "documented rounding of the exact sum"
@@ -45,9 +45,9 @@ contract LibDecimalFloatDecimalAddTest is Test {
     function testAddPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloat.unpack(a);
         (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloat.unpack(b);
-        if (LibTestExactDecimal.addOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB)) {
+        if (LibExactFloat.addOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB)) {
             (bool overflowed, int256 signedCoefficientSum, int256 exponentSum) =
-                LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                LibExactFloat.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             assertFalse(overflowed, "sum past int256 exponent");
             vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientSum, exponentSum));
             this.addExternal(a, b);
@@ -71,19 +71,19 @@ contract LibDecimalFloatDecimalAddTest is Test {
     function testAddCancelRuleAcceptsOneFloat() external pure {
         Float cancel = LibDecimalFloat.packLossless(1, 100).add(LibDecimalFloat.packLossless(-1, 0));
         assertTrue(cancel.eq(LibDecimalFloat.packLossless(1e67 - 1, 33)), "towards zero");
-        assertTrue(LibTestExactDecimal.isSumResult(1, 100, -1, 0, 1e67 - 1, 33), "towards accepted");
-        assertFalse(LibTestExactDecimal.isSumResult(1, 100, -1, 0, 1, 100), "away rejected");
+        assertTrue(LibExactFloat.isSumResult(1, 100, -1, 0, 1e67 - 1, 33), "towards accepted");
+        assertFalse(LibExactFloat.isSumResult(1, 100, -1, 0, 1, 100), "away rejected");
 
         Float toward = LibDecimalFloat.packLossless(1e66, 10).add(LibDecimalFloat.packLossless(-10000000015, -1));
         assertTrue(toward.eq(LibDecimalFloat.packLossless(1e67 - 2, 9)), "towards zero");
-        assertTrue(LibTestExactDecimal.isSumResult(1e66, 10, -10000000015, -1, 1e67 - 2, 9), "towards accepted");
-        assertFalse(LibTestExactDecimal.isSumResult(1e66, 10, -10000000015, -1, 1e67 - 1, 9), "towards: away rejected");
-        assertFalse(LibTestExactDecimal.isSumResult(1e66, 10, -10000000015, -1, 1e67 - 3, 9), "two below");
+        assertTrue(LibExactFloat.isSumResult(1e66, 10, -10000000015, -1, 1e67 - 2, 9), "towards accepted");
+        assertFalse(LibExactFloat.isSumResult(1e66, 10, -10000000015, -1, 1e67 - 1, 9), "towards: away rejected");
+        assertFalse(LibExactFloat.isSumResult(1e66, 10, -10000000015, -1, 1e67 - 3, 9), "two below");
 
         Float same = LibDecimalFloat.packLossless(1, 100).add(LibDecimalFloat.packLossless(1, -100));
         assertTrue(same.eq(LibDecimalFloat.packLossless(1, 100)), "same sign");
-        assertTrue(LibTestExactDecimal.isSumResult(1, 100, 1, -100, 1, 100), "same sign accepted");
-        assertFalse(LibTestExactDecimal.isSumResult(1, 100, 1, -100, 1e67 + 1, 33), "same sign: away rejected");
+        assertTrue(LibExactFloat.isSumResult(1, 100, 1, -100, 1, 100), "same sign accepted");
+        assertFalse(LibExactFloat.isSumResult(1, 100, 1, -100, 1e67 + 1, 33), "same sign: away rejected");
     }
 
     function addPartsExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -142,7 +142,7 @@ contract LibDecimalFloatDecimalAddTest is Test {
             signedCoefficientA, exponentA, signedCoefficientB, exponentB
         );
         (bool overflowed, int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibExactFloat.addPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertFalse(overflowed, "sum past int256 exponent");
         assertEq(signedCoefficient, expectedSignedCoefficient, "coefficient");
         assertEq(exponent, expectedExponent, "exponent");

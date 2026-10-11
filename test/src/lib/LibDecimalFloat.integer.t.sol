@@ -3,6 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatIntegerTest is Test {
@@ -80,5 +81,23 @@ contract LibDecimalFloatIntegerTest is Test {
         checkInteger(type(int224).min, 0, type(int224).min, 0);
         checkInteger(type(int224).min, -1, type(int224).min / 10 * 10, -1);
         checkInteger(type(int224).min, -76, 0, 0);
+    }
+
+    /// `integer` of every Float equals its exact value.
+    function testIntegerExact(int224 c, int32 e) external pure {
+        checkIntegerExact(c, e);
+    }
+
+    /// Exponents near the decimal point, where the integer and fraction both
+    /// carry digits.
+    function testIntegerExactNearUnit(int224 c, int32 e) external pure {
+        checkIntegerExact(c, int32(bound(e, -80, 5)));
+    }
+
+    function checkIntegerExact(int224 c, int32 e) internal pure {
+        (int256 rc, int256 re) = LibDecimalFloat.packLossless(c, e).integer().unpack();
+        (int256 xc,) = LibExactFloat.wholeAndFraction(c, e);
+        int256 xe = e;
+        assertEq(LibExactFloat.cmpParts(rc, re, xc, xe), 0, "exact integer");
     }
 }

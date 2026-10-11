@@ -3,12 +3,12 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 /// #350: `add` and `sub` are the exact sum rounded once towards zero, checked
-/// against `LibTestExactDecimal.isNearestSum`, which takes the exact sum
+/// against `LibExactFloat.isNearestSum`, which takes the exact sum
 /// without the int256 unit `isSumResult` works in.
 contract LibDecimalFloatRoundOnceTest is Test {
     using LibDecimalFloat for Float;
@@ -23,13 +23,13 @@ contract LibDecimalFloatRoundOnceTest is Test {
 
     function checkSumRoundOnce(int256 ca, int256 ea, int256 cb, int256 eb, Float result) internal pure {
         (int256 rc, int256 re) = result.unpack();
-        assertTrue(LibTestExactDecimal.isNearestSum(ca, ea, cb, eb, rc, re), "once towards zero");
+        assertTrue(LibExactFloat.isNearestSum(ca, ea, cb, eb, rc, re), "once towards zero");
     }
 
     function testAddRoundOnce(Float a, Float b) external view {
         (int256 ca, int256 ea) = a.unpack();
         (int256 cb, int256 eb) = b.unpack();
-        vm.assume(!LibTestExactDecimal.addOverflows(ca, ea, cb, eb));
+        vm.assume(!LibExactFloat.addOverflows(ca, ea, cb, eb));
         checkSumRoundOnce(ca, ea, cb, eb, this.addExternal(a, b));
     }
 
@@ -37,7 +37,7 @@ contract LibDecimalFloatRoundOnceTest is Test {
     function testSubRoundOnce(Float a, Float b) external view {
         (int256 ca, int256 ea) = a.unpack();
         (int256 cb, int256 eb) = b.unpack();
-        vm.assume(!LibTestExactDecimal.addOverflows(ca, ea, -cb, eb));
+        vm.assume(!LibExactFloat.addOverflows(ca, ea, -cb, eb));
         checkSumRoundOnce(ca, ea, -cb, eb, this.subExternal(a, b));
     }
 
@@ -48,7 +48,7 @@ contract LibDecimalFloatRoundOnceTest is Test {
         vm.assume(eb >= type(int32).min);
         Float a = LibDecimalFloat.packLossless(ca, ea);
         Float b = LibDecimalFloat.packLossless(cb, eb);
-        vm.assume(!LibTestExactDecimal.addOverflows(ca, ea, cb, eb));
+        vm.assume(!LibExactFloat.addOverflows(ca, ea, cb, eb));
         checkSumRoundOnce(ca, ea, cb, eb, this.addExternal(a, b));
     }
 
@@ -57,14 +57,14 @@ contract LibDecimalFloatRoundOnceTest is Test {
     function testAddCancelBelowUnitRoundOnce(int224 ca, int32 ea, int224 cb, uint256 gap) external pure {
         vm.assume(ca != 0 && cb != 0);
         cb = (ca < 0) == (cb < 0) ? (cb == type(int224).min ? type(int224).max : -cb) : cb;
-        int256 top = int256(ea) + LibTestExactDecimal.digits(LibTestExactDecimal.u512(LibTestExactDecimal.abs(ca)));
-        int256 eb = top - 77 - LibTestExactDecimal.digits(LibTestExactDecimal.u512(LibTestExactDecimal.abs(cb)))
-            - int256(bound(gap, 0, 1000));
+        int256 top = int256(ea) + LibExactFloat.digits(LibExactFloat.u512(LibExactFloat.abs(ca)));
+        int256 eb =
+            top - 77 - LibExactFloat.digits(LibExactFloat.u512(LibExactFloat.abs(cb))) - int256(bound(gap, 0, 1000));
         vm.assume(eb >= type(int32).min);
         Float a = LibDecimalFloat.packLossless(ca, ea);
         Float result = a.add(LibDecimalFloat.packLossless(cb, eb));
         (int256 rc, int256 re) = result.unpack();
-        assertTrue(LibTestExactDecimal.isNearestSum(ca, ea, cb, eb, rc, re), "once towards zero");
+        assertTrue(LibExactFloat.isNearestSum(ca, ea, cb, eb, rc, re), "once towards zero");
         assertTrue(ca < 0 ? result.gt(a) : result.lt(a), "before a");
     }
 
@@ -74,20 +74,18 @@ contract LibDecimalFloatRoundOnceTest is Test {
         Float big = LibDecimalFloat.packLossless(1, 100);
         Float r = big.add(LibDecimalFloat.packLossless(-1, 0));
         assertTrue(r.eq(LibDecimalFloat.packLossless(1e67 - 1, 33)), "1e100 + -1");
-        assertTrue(LibTestExactDecimal.isNearestSum(1, 100, -1, 0, 1e67 - 1, 33), "oracle 1e100 + -1");
-        assertFalse(LibTestExactDecimal.isNearestSum(1, 100, -1, 0, 1, 100), "oracle 1e100 + -1 away");
+        assertTrue(LibExactFloat.isNearestSum(1, 100, -1, 0, 1e67 - 1, 33), "oracle 1e100 + -1");
+        assertFalse(LibExactFloat.isNearestSum(1, 100, -1, 0, 1, 100), "oracle 1e100 + -1 away");
 
         r = big.sub(LibDecimalFloat.packLossless(1e33 + 1, 0));
         assertTrue(r.eq(LibDecimalFloat.packLossless(1e67 - 2, 33)), "1e100 - (1e33 + 1)");
-        assertTrue(LibTestExactDecimal.isNearestSum(1, 100, -(1e33 + 1), 0, 1e67 - 2, 33), "oracle 1e100 - (1e33 + 1)");
-        assertFalse(
-            LibTestExactDecimal.isNearestSum(1, 100, -(1e33 + 1), 0, 1e67 - 1, 33), "oracle 1e100 - (1e33 + 1) away"
-        );
+        assertTrue(LibExactFloat.isNearestSum(1, 100, -(1e33 + 1), 0, 1e67 - 2, 33), "oracle 1e100 - (1e33 + 1)");
+        assertFalse(LibExactFloat.isNearestSum(1, 100, -(1e33 + 1), 0, 1e67 - 1, 33), "oracle 1e100 - (1e33 + 1) away");
 
         Float one = LibDecimalFloat.packLossless(1, 0);
         r = one.sub(LibDecimalFloat.packLossless(1, -100));
         assertTrue(r.eq(LibDecimalFloat.packLossless(1e67 - 1, -67)), "1 - 1e-100");
-        assertTrue(LibTestExactDecimal.isNearestSum(1, 0, -1, -100, 1e67 - 1, -67), "oracle 1 - 1e-100");
-        assertFalse(LibTestExactDecimal.isNearestSum(1, 0, -1, -100, 1, 0), "oracle 1 - 1e-100 away");
+        assertTrue(LibExactFloat.isNearestSum(1, 0, -1, -100, 1e67 - 1, -67), "oracle 1 - 1e-100");
+        assertFalse(LibExactFloat.isNearestSum(1, 0, -1, -100, 1, 0), "oracle 1 - 1e-100 away");
     }
 }

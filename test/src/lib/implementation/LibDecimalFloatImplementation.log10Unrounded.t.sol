@@ -6,8 +6,8 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LOG10_RAW_ERROR_E54} from "test/lib/LibTestErrorBound.sol";
 import {Log10Zero, Log10Negative, ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibTranscendentalOracle} from "../../../lib/LibTranscendentalOracle.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 /// @dev log10 of 1448249443771554926630073670106315934706894775468672318138123474693615199258e-75
 /// in units of 1e-76, from `bc -l` at scale 130, truncated.
@@ -39,19 +39,19 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         (int256 actualCoefficient, int256 actualExponent) =
             LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        (int256 characteristic, uint256 fraction) = LibExactFloat.log10(uint256(signedCoefficient), exponent);
         int256[] memory coefficients = new int256[](3);
         int256[] memory exponents = new int256[](3);
         (coefficients[0], exponents[0]) = (actualCoefficient, actualExponent);
         (coefficients[1], exponents[1]) = (-characteristic, 0);
         // forge-lint: disable-next-line(unsafe-typecast)
         (coefficients[2], exponents[2]) = (-int256(fraction), -70);
-        return LibTestExactDecimal.absSumLte(coefficients, exponents, boundCoefficients, boundExponents);
+        return LibExactFloat.absSumLte(coefficients, exponents, boundCoefficients, boundExponents);
     }
 
     function checkAbsolute(int256 signedCoefficient, int256 exponent) internal pure {
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 characteristic,) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        (int256 characteristic,) = LibExactFloat.log10(uint256(signedCoefficient), exponent);
         int256[] memory boundCoefficients = new int256[](3);
         int256[] memory boundExponents = new int256[](3);
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -59,7 +59,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         (boundCoefficients[1], boundExponents[1]) = (1, -67);
         // `add` rounds the sum to the characteristic's int256 unit.
         if (characteristic != 0) {
-            int256 unit = LibTestExactDecimal.int256Unit(characteristic, 0);
+            int256 unit = LibExactFloat.int256Unit(characteristic, 0);
             if (unit > -50) {
                 (boundCoefficients[2], boundExponents[2]) = (1, unit);
             }
@@ -71,7 +71,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
     /// under 3.11e-49 of it.
     function checkRelative(int256 signedCoefficient, int256 exponent) internal pure {
         // forge-lint: disable-next-line(unsafe-typecast)
-        (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
+        (int256 characteristic, uint256 fraction) = LibExactFloat.log10(uint256(signedCoefficient), exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 expected = characteristic * 1e70 + int256(fraction);
         int256[] memory boundCoefficients = new int256[](2);
@@ -210,7 +210,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         room = bound(room, 0, 160);
         int256 exponent = type(int256).max - room;
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 digits = LibTestExactDecimal.digits(LibTestExactDecimal.u512(uint256(signedCoefficient))) - 1;
+        int256 digits = LibExactFloat.digits(LibExactFloat.u512(uint256(signedCoefficient))) - 1;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 power = int256(10 ** uint256(digits));
         // Below 1000, c is at most 10^(d + 1) - 1, under 9.999 10^d.

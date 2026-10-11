@@ -3,8 +3,8 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 
 contract LibDecimalFloatImplementationEqTest is Test {
     function testEqGasDifferentSigns() external pure {
@@ -155,7 +155,7 @@ contract LibDecimalFloatImplementationEqTest is Test {
         pure
     {
         bool actual = LibDecimalFloatImplementation.eq(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        bool expected = LibDecimalFloatSlow.eqSlow(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        bool expected = LibExactFloat.cmpParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB) == 0;
 
         assertEq(actual, expected);
     }

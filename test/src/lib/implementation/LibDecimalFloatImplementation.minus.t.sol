@@ -4,9 +4,8 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMinusTest is Test {
     /// Minus is the exact `-x` at the same exponent, by the
@@ -15,7 +14,7 @@ contract LibDecimalFloatImplementationMinusTest is Test {
     function testMinusMatchesRule(int256 signedCoefficient, int256 exponent) external pure {
         vm.assume(signedCoefficient != type(int256).min || exponent != type(int256).max);
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.signedParts(signedCoefficient > 0, LibTestExactDecimal.abs(signedCoefficient), exponent);
+            LibExactFloat.signedParts(signedCoefficient > 0, LibExactFloat.abs(signedCoefficient), exponent);
         (int256 signedCoefficientMinus, int256 exponentMinus) =
             LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
         assertEq(signedCoefficientMinus, expectedSignedCoefficient, "coefficient");
@@ -50,9 +49,9 @@ contract LibDecimalFloatImplementationMinusTest is Test {
         (int256 negCoeff, int256 negExp) = LibDecimalFloatImplementation.minus(signedCoefficient, exponent);
         (int256 doubleNegCoeff, int256 doubleNegExp) = LibDecimalFloatImplementation.minus(negCoeff, negExp);
 
-        assertTrue(LibTestExactDecimal.eq(negCoeff, negExp, -signedCoefficient, exponent), "-a");
+        assertTrue(LibExactFloat.eq(negCoeff, negExp, -signedCoefficient, exponent), "-a");
         assertTrue(
-            LibTestExactDecimal.eq(signedCoefficient, exponent, doubleNegCoeff, doubleNegExp),
+            LibExactFloat.eq(signedCoefficient, exponent, doubleNegCoeff, doubleNegExp),
             "double negation should be identity"
         );
     }

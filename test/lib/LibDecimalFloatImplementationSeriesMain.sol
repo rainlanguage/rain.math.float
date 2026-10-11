@@ -15,6 +15,8 @@ import {Exp10FixedOutOfRange, Log10RatioOutOfRange, Log10RatioRelativeSumTooSmal
 /// `src/lib/implementation/LibDecimalFloatImplementation.sol` at 9d843e7,
 /// before their multiplies were written out in place. The helpers they call
 /// are called on the live library. Equivalence tests only.
+/// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
+/// nothing about a value. Expected values come from `LibExactFloat`.
 library LibDecimalFloatImplementationSeriesMain {
     function mulDivFixedUnguarded(uint256 x, uint256 y) private pure returns (uint256 result) {
         uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;

@@ -11,6 +11,8 @@ import {
 /// `add` verbatim from `src/lib/implementation/LibDecimalFloatImplementation.sol`
 /// at 8fcfeb3, before its overflow shed kept the carry (#394). `maximize` is
 /// called on the live library. Equivalence tests only.
+/// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
+/// nothing about a value. Expected values come from `LibExactFloat`.
 library LibDecimalFloatImplementationAddPre394 {
     function add(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal

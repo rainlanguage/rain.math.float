@@ -57,6 +57,9 @@ import {Exp10FixedOutOfRange, Log10RatioOutOfRange, Log10RatioRelativeSumTooSmal
 /// atanh terms, the 1e25 split of z^2, every `mulDivFixed` written out in place,
 /// the same constants) and every assembly block written as plain Solidity.
 /// Gas comparison and equivalence tests only, isolating the assembly.
+/// GAS AND EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: the same algorithm
+/// in plain Solidity, to measure the assembly against. Expected values come
+/// from `LibExactFloat`.
 library LibDecimalFloatImplementationSeriesSolidity {
     // slither-disable-start divide-before-multiply
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {

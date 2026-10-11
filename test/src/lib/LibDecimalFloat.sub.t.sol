@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
@@ -35,7 +35,7 @@ contract LibDecimalFloatSubTest is Test {
 
     function assertValue(Float float, int256 signedCoefficient, int256 exponent, string memory label) internal pure {
         (int256 signedCoefficientOut, int256 exponentOut) = float.unpack();
-        assertEq(LibTestExactDecimal.cmpParts(signedCoefficientOut, exponentOut, signedCoefficient, exponent), 0, label);
+        assertEq(LibExactFloat.cmpParts(signedCoefficientOut, exponentOut, signedCoefficient, exponent), 0, label);
     }
 
     function assertUnpacks(Float float, int256 signedCoefficient, int256 exponent, string memory label) internal pure {
@@ -51,9 +51,9 @@ contract LibDecimalFloatSubTest is Test {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         // a - b is a + (-b), and -b of an int224 coefficient is exact in int256.
-        if (LibTestExactDecimal.addOverflows(signedCoefficientA, exponentA, -signedCoefficientB, exponentB)) {
+        if (LibExactFloat.addOverflows(signedCoefficientA, exponentA, -signedCoefficientB, exponentB)) {
             (bool overflowed, int256 signedCoefficientDifference, int256 exponentDifference) =
-                LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
+                LibExactFloat.addPartsWide(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
             assertFalse(overflowed, "difference past int256 exponent");
             vm.expectRevert(
                 abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientDifference, exponentDifference)
@@ -63,7 +63,7 @@ contract LibDecimalFloatSubTest is Test {
         }
         (int256 signedCoefficient, int256 exponent) = this.subExternal(a, b).unpack();
         assertTrue(
-            LibTestExactDecimal.isSumResult(
+            LibExactFloat.isSumResult(
                 signedCoefficientA, exponentA, -signedCoefficientB, exponentB, signedCoefficient, exponent
             ),
             "documented rounding of the exact difference"

@@ -6,7 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatInvTest is Test {
     using LibDecimalFloat for Float;
@@ -86,8 +86,8 @@ contract LibDecimalFloatInvTest is Test {
             this.invExternal(float);
             return;
         }
-        assertFalse(LibTestExactDecimal.divOverflows(1, 0, signedCoefficient, exponent), "inverse overflows");
-        if (LibTestExactDecimal.divUnderflows(1, 0, signedCoefficient, exponent)) {
+        assertFalse(LibExactFloat.divOverflows(1, 0, signedCoefficient, exponent), "inverse overflows");
+        if (LibExactFloat.divUnderflows(1, 0, signedCoefficient, exponent)) {
             vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, signedCoefficient, exponent));
             this.invExternal(float);
             return;
@@ -95,11 +95,11 @@ contract LibDecimalFloatInvTest is Test {
         Float floatInv = this.invExternal(float);
         assertEq(Float.unwrap(this.invExternal(signedCoefficient, exponent)), Float.unwrap(floatInv), "unpacked path");
         (int256 signedCoefficientResult, int256 exponentResult) = floatInv.unpack();
-        (int256 q, int256 exponentExact) = LibTestExactDecimal.quotient(1, 0, signedCoefficient, exponent);
+        (int256 q, int256 exponentExact) = LibExactFloat.quotient(1, 0, signedCoefficient, exponent);
         assertTrue(
-            LibTestExactDecimal.isNearestTowardZero(
+            LibExactFloat.isNearestTowardZero(
                 signedCoefficient < 0,
-                LibTestExactDecimal.u512(LibTestExactDecimal.abs(q)),
+                LibExactFloat.u512(LibExactFloat.abs(q)),
                 exponentExact,
                 signedCoefficientResult,
                 exponentResult

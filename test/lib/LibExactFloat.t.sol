@@ -3,12 +3,12 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
 
 /// The helpers the error bounds use, against plain 512 bit alignment.
-contract LibTestExactDecimalTest is Test {
+contract LibExactFloatTest is Test {
     function cmpWords(uint256 x, int256 ex, uint256 y, int256 ey) private pure returns (int256) {
-        return LibTestExactDecimal.cmpScaled(LibTestExactDecimal.u512(x), ex, LibTestExactDecimal.u512(y), ey);
+        return LibExactFloat.cmpScaled(LibExactFloat.u512(x), ex, LibExactFloat.u512(y), ey);
     }
 
     /// Single words aligned at the lower exponent, which fits 512 bits for a
@@ -25,20 +25,18 @@ contract LibTestExactDecimalTest is Test {
         } else if (ey - ex >= 78) {
             expected = -1;
         } else {
-            U512 memory a = LibTestExactDecimal.u512(x);
-            U512 memory b = LibTestExactDecimal.u512(y);
+            U512 memory a = LibExactFloat.u512(x);
+            U512 memory b = LibExactFloat.u512(y);
             if (ex > ey) {
                 // forge-lint: disable-next-line(unsafe-typecast)
-                a = LibTestExactDecimal.mulPow10(a, uint256(ex - ey));
+                a = LibExactFloat.mulPow10(a, uint256(ex - ey));
             } else {
                 // forge-lint: disable-next-line(unsafe-typecast)
-                b = LibTestExactDecimal.mulPow10(b, uint256(ey - ex));
+                b = LibExactFloat.mulPow10(b, uint256(ey - ex));
             }
-            expected = LibTestExactDecimal.cmp(a, b);
+            expected = LibExactFloat.cmp(a, b);
         }
-        assertEq(
-            LibTestExactDecimal.cmpScaled(LibTestExactDecimal.u512(x), ex, LibTestExactDecimal.u512(y), ey), expected
-        );
+        assertEq(LibExactFloat.cmpScaled(LibExactFloat.u512(x), ex, LibExactFloat.u512(y), ey), expected);
     }
 
     /// Equal leading digits at different exponents, the case that aligns.
@@ -68,35 +66,32 @@ contract LibTestExactDecimalTest is Test {
         b = bound(b, type(int256).min + 1, type(int256).max);
         int256 expected;
         if (a < 0 && b < 0) {
-            expected = cmpWords(LibTestExactDecimal.abs(b), eb, LibTestExactDecimal.abs(a), ea);
+            expected = cmpWords(LibExactFloat.abs(b), eb, LibExactFloat.abs(a), ea);
         } else if (a >= 0 && b >= 0) {
-            expected = cmpWords(LibTestExactDecimal.abs(a), ea, LibTestExactDecimal.abs(b), eb);
+            expected = cmpWords(LibExactFloat.abs(a), ea, LibExactFloat.abs(b), eb);
         } else {
             expected = a < b ? int256(-1) : int256(1);
         }
-        assertEq(LibTestExactDecimal.cmpParts(a, ea, b, eb), expected);
+        assertEq(LibExactFloat.cmpParts(a, ea, b, eb), expected);
     }
 
     /// q |b| 10^(e + eb) <= |a| 10^ea < (q + 1) |b| 10^(e + eb), with q in
     /// [1e74, 1e76) and the sign of a / b, or q = e = 0 for a = 0.
     function checkQuotient(int256 a, int256 ea, int256 b, int256 eb) internal pure {
-        (int256 q, int256 e) = LibTestExactDecimal.quotient(a, ea, b, eb);
+        (int256 q, int256 e) = LibExactFloat.quotient(a, ea, b, eb);
         if (a == 0) {
             assertEq(q, 0, "zero");
             assertEq(e, 0, "zero exponent");
             return;
         }
         assertEq(q < 0, (a < 0) != (b < 0), "sign");
-        uint256 magnitude = LibTestExactDecimal.abs(q);
+        uint256 magnitude = LibExactFloat.abs(q);
         assertTrue(magnitude >= 1e74 && magnitude < 1e76, "digits");
-        uint256 absB = LibTestExactDecimal.abs(b);
-        U512 memory exact = LibTestExactDecimal.u512(LibTestExactDecimal.abs(a));
+        uint256 absB = LibExactFloat.abs(b);
+        U512 memory exact = LibExactFloat.u512(LibExactFloat.abs(a));
+        assertTrue(LibExactFloat.cmpScaled(LibExactFloat.mul(magnitude, absB), e + eb, exact, ea) <= 0, "floor");
         assertTrue(
-            LibTestExactDecimal.cmpScaled(LibTestExactDecimal.mul(magnitude, absB), e + eb, exact, ea) <= 0, "floor"
-        );
-        assertTrue(
-            LibTestExactDecimal.cmpScaled(LibTestExactDecimal.mul(magnitude + 1, absB), e + eb, exact, ea) > 0,
-            "below the next"
+            LibExactFloat.cmpScaled(LibExactFloat.mul(magnitude + 1, absB), e + eb, exact, ea) > 0, "below the next"
         );
     }
 
@@ -111,15 +106,15 @@ contract LibTestExactDecimalTest is Test {
     /// ratio just above 1e74 truncates to 1e74, a 77 digit a over a 1 digit b
     /// scales down, and a 1 digit a over a 77 digit b scales up past 1e77.
     function testQuotientEdges() external pure {
-        (int256 q, int256 e) = LibTestExactDecimal.quotient(1e75, 0, 1e76 - 1, 0);
+        (int256 q, int256 e) = LibExactFloat.quotient(1e75, 0, 1e76 - 1, 0);
         assertEq(q, 1e74);
         assertEq(e, -75);
-        (q, e) = LibTestExactDecimal.quotient(1, 0, 1, 0);
+        (q, e) = LibExactFloat.quotient(1, 0, 1, 0);
         assertEq(q, 1e75);
         assertEq(e, -75);
-        (q, e) = LibTestExactDecimal.quotient(9, 0, 1, 0);
+        (q, e) = LibExactFloat.quotient(9, 0, 1, 0);
         assertEq(q, 9e75);
-        (q, e) = LibTestExactDecimal.quotient(1, 0, 9, 0);
+        (q, e) = LibExactFloat.quotient(1, 0, 9, 0);
         assertEq(q, 111111111111111111111111111111111111111111111111111111111111111111111111111);
         assertEq(e, -75);
         checkQuotient(-7, 5, type(int256).min, -5);
@@ -164,7 +159,7 @@ contract LibTestExactDecimalTest is Test {
 
     function testQuotientZero(int256 b, int256 ea, int256 eb) external pure {
         vm.assume(b != 0 && b != type(int256).min);
-        (int256 q, int256 e) = LibTestExactDecimal.quotient(0, ea, b, eb);
+        (int256 q, int256 e) = LibExactFloat.quotient(0, ea, b, eb);
         assertEq(q, 0);
         assertEq(e, 0);
     }
@@ -175,19 +170,19 @@ contract LibTestExactDecimalTest is Test {
     function testAddPartsWideMinusOneExact(int256 c, int256 e) external pure {
         c = bound(c, -1e76 + 1, 1e76 - 1);
         e = bound(e, -76, -1);
-        (bool overflowed, int256 r, int256 re) = LibTestExactDecimal.addPartsWide(c, e, -1, 0);
+        (bool overflowed, int256 r, int256 re) = LibExactFloat.addPartsWide(c, e, -1, 0);
         assertFalse(overflowed);
         // forge-lint: disable-next-line(unsafe-typecast)
-        assertTrue(LibTestExactDecimal.eq(r, re, c - int256(10 ** uint256(-e)), e));
+        assertTrue(LibExactFloat.eq(r, re, c - int256(10 ** uint256(-e)), e));
     }
 
     function testAddPartsWideMinusOneOfOne() external pure {
-        (, int256 r,) = LibTestExactDecimal.addPartsWide(1e75, -75, -1, 0);
+        (, int256 r,) = LibExactFloat.addPartsWide(1e75, -75, -1, 0);
         assertEq(r, 0);
-        (, int256 s, int256 se) = LibTestExactDecimal.addPartsWide(1e75 + 3, -75, -1, 0);
-        assertTrue(LibTestExactDecimal.eq(s, se, 3, -75));
-        (, s, se) = LibTestExactDecimal.addPartsWide(1e75 - 3, -75, -1, 0);
-        assertTrue(LibTestExactDecimal.eq(s, se, -3, -75));
+        (, int256 s, int256 se) = LibExactFloat.addPartsWide(1e75 + 3, -75, -1, 0);
+        assertTrue(LibExactFloat.eq(s, se, 3, -75));
+        (, s, se) = LibExactFloat.addPartsWide(1e75 - 3, -75, -1, 0);
+        assertTrue(LibExactFloat.eq(s, se, -3, -75));
     }
 
     /// |r| 10^t <= |c| 10^e < (|r| + 1) 10^t, with the sign of c.
@@ -195,11 +190,11 @@ contract LibTestExactDecimalTest is Test {
         c = bound(c, type(int224).min, type(int224).max);
         e = bound(e, -100, 100);
         t = bound(t, e - 9, e + 100);
-        int256 r = LibTestExactDecimal.atExponent(c, e, t);
+        int256 r = LibExactFloat.atExponent(c, e, t);
         assertTrue(c < 0 ? r <= 0 : r >= 0, "sign");
-        uint256 magnitude = LibTestExactDecimal.abs(r);
-        U512 memory exact = LibTestExactDecimal.u512(LibTestExactDecimal.abs(c));
-        assertTrue(LibTestExactDecimal.cmpScaled(LibTestExactDecimal.u512(magnitude), t, exact, e) <= 0, "floor");
-        assertTrue(LibTestExactDecimal.cmpScaled(LibTestExactDecimal.u512(magnitude + 1), t, exact, e) > 0, "next");
+        uint256 magnitude = LibExactFloat.abs(r);
+        U512 memory exact = LibExactFloat.u512(LibExactFloat.abs(c));
+        assertTrue(LibExactFloat.cmpScaled(LibExactFloat.u512(magnitude), t, exact, e) <= 0, "floor");
+        assertTrue(LibExactFloat.cmpScaled(LibExactFloat.u512(magnitude + 1), t, exact, e) > 0, "next");
     }
 }

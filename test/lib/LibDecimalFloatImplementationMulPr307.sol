@@ -14,7 +14,7 @@ import {
 /// 26cd9e86, before the packed-exponent fast path. The helpers it calls are
 /// called on the live library. EQUIVALENCE BASELINE ONLY, NEVER A VALUE
 /// ORACLE: it copies the old steps, so agreeing with it says nothing about a
-/// value. Expected values come from `LibTestExactDecimal` over exact math.
+/// value. Expected values come from `LibExactFloat` over exact math.
 library LibDecimalFloatImplementationMulPr307 {
     function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal

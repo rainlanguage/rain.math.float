@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
@@ -42,8 +42,8 @@ contract LibDecimalFloatMulTest is Test {
     /// headroom to lift back down overflows with the unshed product:
     /// `1e67 × 10^(int32.max + 1)` is `1e68 × 10^int32.max`.
     function testMulOverflowPastLiftHeadroom() external {
-        assertTrue(LibTestExactDecimal.mulOverflows(1e67, type(int32).max, 1, 1), "product overflows");
-        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.mulPayload(1e67, type(int32).max, 1, 1);
+        assertTrue(LibExactFloat.mulOverflows(1e67, type(int32).max, 1, 1), "product overflows");
+        (int256 signedCoefficient, int256 exponent) = LibExactFloat.mulPayload(1e67, type(int32).max, 1, 1);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
         this.mulExternal(LibDecimalFloat.packLossless(1e67, type(int32).max), LibDecimalFloat.packLossless(1, 1));
     }
@@ -55,12 +55,11 @@ contract LibDecimalFloatMulTest is Test {
     function testMulPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        bool overflows = LibTestExactDecimal.mulOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        bool underflows =
-            LibTestExactDecimal.mulUnderflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        bool overflows = LibExactFloat.mulOverflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        bool underflows = LibExactFloat.mulUnderflows(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         if (overflows || underflows) {
             (int256 signedCoefficient, int256 exponent) =
-                LibTestExactDecimal.mulPayload(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+                LibExactFloat.mulPayload(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
             vm.expectRevert(
                 abi.encodeWithSelector(
                     overflows ? ExponentOverflow.selector : ExponentUnderflow.selector, signedCoefficient, exponent
@@ -83,11 +82,9 @@ contract LibDecimalFloatMulTest is Test {
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) = result.unpack();
         assertTrue(
-            LibTestExactDecimal.isNearestTowardZero(
+            LibExactFloat.isNearestTowardZero(
                 (signedCoefficientA < 0) != (signedCoefficientB < 0),
-                LibTestExactDecimal.mul(
-                    LibTestExactDecimal.abs(signedCoefficientA), LibTestExactDecimal.abs(signedCoefficientB)
-                ),
+                LibExactFloat.mul(LibExactFloat.abs(signedCoefficientA), LibExactFloat.abs(signedCoefficientB)),
                 exponentA + exponentB,
                 signedCoefficient,
                 exponent

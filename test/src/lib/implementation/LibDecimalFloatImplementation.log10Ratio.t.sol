@@ -7,9 +7,9 @@ import {
     LibDecimalFloatImplementation,
     LOG10_RATIO_Z_MAX
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibTranscendentalOracle, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibTranscendentalOracle.sol";
+import {LibExactFloat, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {Log10RatioRelativeSumTooSmall, Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
 
 /// Bounds from the `log10Ratio` NatSpec, for z = |a - b| / (a + b) at most
@@ -62,9 +62,7 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         (boundCoefficients[0], boundExponents[0], boundCoefficients[1], boundExponents[1]) =
             multiple(c, 13, exponent - 52);
         (boundCoefficients[2], boundExponents[2]) = (1, expectedExponent);
-        assertTrue(
-            LibTestExactDecimal.sumLte(coefficients, exponents, boundCoefficients, boundExponents), "log10Ratio above"
-        );
+        assertTrue(LibExactFloat.sumLte(coefficients, exponents, boundCoefficients, boundExponents), "log10Ratio above");
         (coefficients[0], coefficients[1]) = (-coefficients[0], -coefficients[1]);
         if (relative) {
             // C relativeBelow 1e-53 as its thousands at 1e-50 and the rest at
@@ -78,9 +76,7 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
             (boundCoefficients[0], boundExponents[0]) = (fixedBelow, -54);
             (boundCoefficients[1], boundCoefficients[2]) = (0, 0);
         }
-        assertTrue(
-            LibTestExactDecimal.sumLte(coefficients, exponents, boundCoefficients, boundExponents), "log10Ratio below"
-        );
+        assertTrue(LibExactFloat.sumLte(coefficients, exponents, boundCoefficients, boundExponents), "log10Ratio below");
         if (relative) {
             assertGe(c, 1e48, "48 digits");
         } else {
@@ -246,7 +242,7 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     /// log10(1 + d / b) / (d / b) at `ORACLE_ONE`. lnOnePlusOverRatio is
     /// within 50 units of 1e-70, so this is within 24.
     function oracleRatio(uint256 d, uint256 b, bool below) internal pure returns (uint256) {
-        return Math.mulDiv(LibTranscendentalOracle.lnOnePlusOverRatio(d, b, below), ORACLE_ONE, ORACLE_LN10);
+        return Math.mulDiv(LibExactFloat.lnOnePlusOverRatio(d, b, below), ORACLE_ONE, ORACLE_LN10);
     }
 
     /// Not relative: the expected log, d / b times the ratio, at 1e-70 is

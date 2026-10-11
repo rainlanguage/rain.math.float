@@ -5,9 +5,8 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "test/lib/LibTestPowRange.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "test/lib/LibTestErrorBound.sol";
-import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 
 contract LibDecimalFloatPow10Test is Test {
     using LibDecimalFloat for Float;
@@ -144,10 +143,10 @@ contract LibDecimalFloatPow10Test is Test {
         (int256 signedCoefficient, int256 exponent) = result.unpack();
         assertTrue(signedCoefficient > 0, "positive");
         if (signedCoefficientX == 0) {
-            assertTrue(LibTestExactDecimal.eq(signedCoefficient, exponent, 1, 0), "pow10 zero");
+            assertTrue(LibExactFloat.eq(signedCoefficient, exponent, 1, 0), "pow10 zero");
             return;
         }
-        if (LibTestExactDecimal.isWhole(signedCoefficientX, exponentX)) {
+        if (LibExactFloat.isWhole(signedCoefficientX, exponentX)) {
             // A returned x is within int32 of zero, so its whole value and
             // the power of ten it is read with fit, and a whole x below 1e-67
             // is zero.
@@ -159,17 +158,17 @@ contract LibDecimalFloatPow10Test is Test {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 whole = signedCoefficientX / int256(10 ** uint256(-exponentX));
             }
-            assertTrue(LibTestExactDecimal.eq(signedCoefficient, exponent, 1, whole), "pow10 whole");
+            assertTrue(LibExactFloat.eq(signedCoefficient, exponent, 1, whole), "pow10 whole");
             return;
         }
-        (uint256 power, int256 powerExponent) = LibTranscendentalOracle.exp10(signedCoefficientX, exponentX);
+        (uint256 power, int256 powerExponent) = LibExactFloat.exp10(signedCoefficientX, exponentX);
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 magnitude = uint256(signedCoefficient);
         assertTrue(
-            LibTestExactDecimal.cmpScaled(
-                LibTestExactDecimal.u512(magnitude),
+            LibExactFloat.cmpScaled(
+                LibExactFloat.u512(magnitude),
                 exponent,
-                LibTestExactDecimal.mul(power, 1e52 + POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52 + 1),
+                LibExactFloat.mul(power, 1e52 + POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52 + 1),
                 powerExponent - 52
             ) <= 0,
             "pow10 above the bound"
@@ -178,10 +177,10 @@ contract LibDecimalFloatPow10Test is Test {
             magnitude += 1;
         }
         assertTrue(
-            LibTestExactDecimal.cmpScaled(
-                LibTestExactDecimal.u512(magnitude),
+            LibExactFloat.cmpScaled(
+                LibExactFloat.u512(magnitude),
                 exponent,
-                LibTestExactDecimal.mul(power, 1e52 - POW10_HALF_UNIT_E52 - POW10_RAW_ERROR_E52 - 1),
+                LibExactFloat.mul(power, 1e52 - POW10_HALF_UNIT_E52 - POW10_RAW_ERROR_E52 - 1),
                 powerExponent - 52
             ) >= 0,
             "pow10 below the bound"

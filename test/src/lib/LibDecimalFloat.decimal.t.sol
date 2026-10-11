@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, NegativeFixedDecimalConversion, Float} from "src/lib/LibDecimalFloat.sol";
 import {FixedDecimalOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatDecimalTest is Test {
     using LibDecimalFloat for Float;
@@ -75,17 +75,17 @@ contract LibDecimalFloatDecimalTest is Test {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
         int256 exponentExact = -int256(uint256(decimals));
         assertTrue(
-            LibTestExactDecimal.isNearestTowardZero(
-                false, LibTestExactDecimal.u512(value), exponentExact, signedCoefficient, exponent
+            LibExactFloat.isNearestTowardZero(
+                false, LibExactFloat.u512(value), exponentExact, signedCoefficient, exponent
             ),
             "nearest Float towards zero"
         );
         assertEq(
             lossless,
-            LibTestExactDecimal.cmpScaled(
-                LibTestExactDecimal.u512(value),
+            LibExactFloat.cmpScaled(
+                LibExactFloat.u512(value),
                 exponentExact,
-                LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)),
+                LibExactFloat.u512(LibExactFloat.abs(signedCoefficient)),
                 exponent
             ) == 0,
             "lossless iff exact"
@@ -99,7 +99,7 @@ contract LibDecimalFloatDecimalTest is Test {
     function testToFixedDecimalLossyPacked(Float float, uint8 decimals) external {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
         (bytes memory expectedError, uint256 expectedValue, bool expectedLossless) =
-            LibTestExactDecimal.toFixedDecimal(signedCoefficient, exponent, decimals);
+            LibExactFloat.toFixedDecimal(signedCoefficient, exponent, decimals);
         if (expectedError.length > 0) {
             vm.expectRevert(expectedError);
             this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
@@ -133,7 +133,7 @@ contract LibDecimalFloatDecimalTest is Test {
 
     function checkToFixedDecimalExact(int256 signedCoefficient, int256 exponent, uint8 decimals) internal {
         (bytes memory expectedError, uint256 expectedValue, bool expectedLossless) =
-            LibTestExactDecimal.toFixedDecimal(signedCoefficient, exponent, decimals);
+            LibExactFloat.toFixedDecimal(signedCoefficient, exponent, decimals);
         if (expectedError.length > 0) {
             vm.expectRevert(expectedError);
             this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);

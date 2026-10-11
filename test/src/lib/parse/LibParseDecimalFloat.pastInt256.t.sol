@@ -8,7 +8,7 @@ import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
@@ -218,11 +218,11 @@ contract LibParseDecimalFloatPastInt256Test is Test {
     function checkIntegerTrailingZeros(int256 c, uint8 z) internal view {
         string memory s = string.concat(Strings.toStringSigned(c), zeros(z));
         (bytes4 err, Float float) = this.parse(s);
-        uint256 significand = LibTestExactDecimal.abs(c);
+        uint256 significand = LibExactFloat.abs(c);
         while (significand != 0 && significand % 10 == 0) {
             significand /= 10;
         }
-        if (significand > LibTestExactDecimal.coefficientLimit(c < 0)) {
+        if (significand > LibExactFloat.coefficientLimit(c < 0)) {
             assertEq(err, ParseDecimalPrecisionLoss.selector, "error");
             assertEq(Float.unwrap(float), bytes32(0), "float");
             return;
@@ -232,7 +232,7 @@ contract LibParseDecimalFloatPastInt256Test is Test {
             assertEq(Float.unwrap(float), bytes32(0), "zero");
         } else {
             (int256 actualC, int256 actualE) = float.unpack();
-            assertTrue(LibTestExactDecimal.eq(actualC, actualE, c, int256(uint256(z))), "value");
+            assertTrue(LibExactFloat.eq(actualC, actualE, c, int256(uint256(z))), "value");
         }
     }
 }

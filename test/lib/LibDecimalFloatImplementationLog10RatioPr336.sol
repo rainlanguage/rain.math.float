@@ -16,6 +16,8 @@ import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 /// by a cascade, with the series written out in place as it is now, so the
 /// equivalence tests compare the scaling alone. The helpers it calls are
 /// called on the live library. Equivalence tests only.
+/// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
+/// nothing about a value. Expected values come from `LibExactFloat`.
 library LibDecimalFloatImplementationLog10RatioPr336 {
     // slither-disable-start divide-before-multiply
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {

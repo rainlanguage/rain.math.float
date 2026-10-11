@@ -6,7 +6,7 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 import {LibDecimalFloatImplementationMain} from "test/lib/LibDecimalFloatImplementationMain.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {MaximizeOverflow, ExponentOverflow, DivisionByZero} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 /// Wherever main returns, the PR returns the same bytes, and wherever main
 /// reverts, the PR reverts the same bytes, except in the floor shortfall,
@@ -198,7 +198,7 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             assertEq(ret, abi.encodeWithSelector(DivisionByZero.selector, a, ea), "DivisionByZero");
             return;
         }
-        (bool overflows, int256 ec, int256 ee) = LibTestExactDecimal.divPartsWide(a, ea, b, eb);
+        (bool overflows, int256 ec, int256 ee) = LibExactFloat.divPartsWide(a, ea, b, eb);
         if (overflows) {
             assertFalse(ok, "exact div overflows");
             assertEq(selector(ret), ExponentOverflow.selector, "div ExponentOverflow");
@@ -208,7 +208,7 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         (int256 c, int256 e) = pair(ret);
         assertEq(c, ec, "exact div coefficient");
         assertEq(e, ee, "exact div exponent");
-        assertTrue(LibTestExactDecimal.isTruncatedQuotient(a, ea, b, eb, c, e), "truncated quotient");
+        assertTrue(LibExactFloat.isTruncatedQuotient(a, ea, b, eb, c, e), "truncated quotient");
     }
 
     function checkDiv(int256 a, int256 ea, int256 b, int256 eb) internal view {
@@ -407,7 +407,7 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             }
             b = -b;
         }
-        (bool overflows, int256 ec, int256 ee) = LibTestExactDecimal.addPartsWide(a, ea, b, eb);
+        (bool overflows, int256 ec, int256 ee) = LibExactFloat.addPartsWide(a, ea, b, eb);
         if (overflows) {
             assertFalse(ok, "exact add overflows");
             assertEq(selector(ret), ExponentOverflow.selector, "add ExponentOverflow");

@@ -6,7 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {AgreeToleranceNegative, AgreeNoPositiveTolerance} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
 
 // The exponent gap at which the spread subtraction stops seeing a smaller
 // operand of 1 against a larger operand of 1. `add` truncates the smaller
@@ -32,19 +32,19 @@ contract LibDecimalFloatAgreeTest is Test {
 
     /// Whether `agree` accepts by its documented rule, independent of the
     /// library: the spread is `add`'s documented result of `highest - lowest`
-    /// (`LibTestExactDecimal.addPartsWide`), compared exactly with the limit.
+    /// (`LibExactFloat.addPartsWide`), compared exactly with the limit.
     function expectedAgree(Float limit, Float lowest, Float highest) internal pure returns (bool) {
         (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
         (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
         (int256 limitCoefficient, int256 limitExponent) = limit.unpack();
         (bool overflowed, int256 spreadCoefficient, int256 spreadExponent) =
-            LibTestExactDecimal.addPartsWide(highestCoefficient, highestExponent, -lowestCoefficient, lowestExponent);
+            LibExactFloat.addPartsWide(highestCoefficient, highestExponent, -lowestCoefficient, lowestExponent);
         // Float coefficients are int224 and exponents int32, so the spread fits.
         assertFalse(overflowed, "spread overflowed");
-        return LibTestExactDecimal.cmpScaled(
-            LibTestExactDecimal.u512(LibTestExactDecimal.abs(spreadCoefficient)),
+        return LibExactFloat.cmpScaled(
+            LibExactFloat.u512(LibExactFloat.abs(spreadCoefficient)),
             spreadExponent,
-            LibTestExactDecimal.u512(LibTestExactDecimal.abs(limitCoefficient)),
+            LibExactFloat.u512(LibExactFloat.abs(limitCoefficient)),
             limitExponent
         ) <= 0;
     }
@@ -399,14 +399,11 @@ contract LibDecimalFloatAgreeTest is Test {
 
         // Both are bounded positive and gap is at most 120.
         // forge-lint: disable-next-line(unsafe-typecast)
-        U512 memory scaled = LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(uint256(coefficient)), uint256(gap));
+        U512 memory scaled = LibExactFloat.mulPow10(LibExactFloat.u512(uint256(coefficient)), uint256(gap));
         // forge-lint: disable-next-line(unsafe-typecast)
-        U512 memory limitMagnitude = LibTestExactDecimal.u512(uint256(limitCoefficient));
-        int256 exactOrder = LibTestExactDecimal.cmpScaled(
-            LibTestExactDecimal.add(scaled, LibTestExactDecimal.u512(1)),
-            anchorExponent - gap,
-            limitMagnitude,
-            anchorExponent
+        U512 memory limitMagnitude = LibExactFloat.u512(uint256(limitCoefficient));
+        int256 exactOrder = LibExactFloat.cmpScaled(
+            LibExactFloat.add(scaled, LibExactFloat.u512(1)), anchorExponent - gap, limitMagnitude, anchorExponent
         );
         if (!accepted) {
             assertGt(exactOrder, 0, "refused without the exact spread exceeding the limit");

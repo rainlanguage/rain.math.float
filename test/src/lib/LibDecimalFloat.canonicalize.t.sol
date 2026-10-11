@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatCanonicalizeTest is Test {
     using LibDecimalFloat for Float;
@@ -18,7 +18,7 @@ contract LibDecimalFloatCanonicalizeTest is Test {
     function exactEq(Float a, Float b) internal pure returns (bool) {
         (int256 ca, int256 ea) = a.unpack();
         (int256 cb, int256 eb) = b.unpack();
-        return LibTestExactDecimal.eq(ca, ea, cb, eb);
+        return LibExactFloat.eq(ca, ea, cb, eb);
     }
 
     /// The canonical form by the documented rule: the value's representation

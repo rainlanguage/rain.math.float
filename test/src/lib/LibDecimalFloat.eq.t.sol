@@ -6,7 +6,7 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatEqTest is Test {
     using LibDecimalFloat for Float;
@@ -27,7 +27,7 @@ contract LibDecimalFloatEqTest is Test {
     function testEqPacked(Float a, Float b) external view {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        bool expected = LibTestExactDecimal.eq(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        bool expected = LibExactFloat.eq(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertEq(this.eqExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB), expected, "unpacked");
         assertEq(this.eqExternal(a, b), expected, "packed");
     }
