@@ -395,30 +395,6 @@ library LibTestExactDecimal {
         return cmpWide(mul(abs(c), b), e, ea, eb, 0, a) <= 0 && cmpWide(mul(abs(c) + 1, b), e, ea, eb, 0, a) > 0;
     }
 
-    /// `a / b` truncated toward zero to 76 digits, `[1e75, 1e76)`, for Float
-    /// parts and a non-zero `cb`. Every Float past int224 sheds at least eight
-    /// of them, so packing this is packing the exact quotient.
-    function quotient76(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
-        uint256 magnitudeA = abs(ca);
-        uint256 magnitudeB = abs(cb);
-        // magnitudeA lifted to [1e75, 1e76) over magnitudeB's leading digit
-        // is in (1e74, 1e76).
-        int256 liftA = 76 - digits(u512(magnitudeA));
-        int256 leadB = digits(u512(magnitudeB)) - 1;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 x = magnitudeA * 10 ** uint256(liftA);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 q = Math.mulDiv(x, 10 ** uint256(leadB), magnitudeB);
-        if (q < 1e75) {
-            leadB++;
-            // forge-lint: disable-next-line(unsafe-typecast)
-            q = Math.mulDiv(x, 10 ** uint256(leadB), magnitudeB);
-        }
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 signedQ = int256(q);
-        return ((ca < 0) != (cb < 0) ? -signedQ : signedQ, ea - liftA - eb - leadB);
-    }
-
     /// `mulPayload` at any int256 exponents: `overflowed` where the exponent is
     /// above `type(int256).max`, and below `10^type(int256).min` the digits
     /// truncated towards zero as `atFloor`. Zero is `(0, 0)`.
@@ -623,6 +599,53 @@ library LibTestExactDecimal {
         return sa * cmpWide(u512(abs(ca)), ea, eb, 0, 0, u512(abs(cb)));
     }
 
+    /// `a / b` for a nonzero `b`, truncated towards zero once, so under 1e-74
+    /// relative: `q = floor(|a| 10^k / |b|)` with `k = 75 + digits(b) -
+    /// digits(a)` puts the exact ratio in (1e74, 1e76), so `q` is in
+    /// [1e74, 1e76), 75 or 76 digits. That is more than any Float holds, so
+    /// the closest Float not above the exact quotient is the closest not above
+    /// `q × 10^e`.
+    function quotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        if (ca == 0) {
+            return (0, 0);
+        }
+        uint256 a = abs(ca);
+        uint256 b = abs(cb);
+        // Both at most 77 digits, so k is in [-1, 151].
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 k = 75 + int256(Math.log10(b)) - int256(Math.log10(a));
+        uint256 q;
+        if (k < 0) {
+            // k = -1 only where b has one digit, so 10 b fits.
+            q = a / (b * 10);
+        } else if (k <= 77) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            q = Math.mulDiv(a, 10 ** uint256(k), b);
+        } else {
+            // a 10^(k - 77) is below 10^(digits(b) - 2).
+            // forge-lint: disable-next-line(unsafe-typecast)
+            q = Math.mulDiv(a * 10 ** uint256(k - 77), 1e77, b);
+        }
+        // q is below 1e76.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedQ = int256(q);
+        return ((ca < 0) != (cb < 0) ? -signedQ : signedQ, ea - eb - k);
+    }
+
+    /// The coefficient of `c × 10^e` at exponent `target`, truncated towards
+    /// zero, and reverting where it does not fit int256.
+    function atExponent(int256 c, int256 e, int256 target) internal pure returns (int256) {
+        if (e >= target) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return c == 0 ? int256(0) : c * int256(10 ** uint256(e - target));
+        }
+        if (target - e > 76) {
+            return 0;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return c / int256(10 ** uint256(target - e));
+    }
+
     /// Exact numeric equality of two Floats' parts.
     function eq(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
         return cmpParts(ca, ea, cb, eb) == 0;
@@ -680,29 +703,6 @@ library LibTestExactDecimal {
     {
         (, int256 c, int256 e) = addPartsWide(ca, ea, cb, eb);
         return isNearestTowardZero(c < 0, u512(abs(c)), e, rc, re);
-    }
-
-    /// `|ca / cb|` for a non-zero `cb`, truncated to 71 or 72 significant
-    /// digits, more than any Float holds, as `q × 10^exponent`. The closest
-    /// Float not above the exact quotient is the closest not above `q` there.
-    function quotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (U512 memory, int256) {
-        (uint256 a, uint256 b) = (abs(ca), abs(cb));
-        if (a == 0) {
-            return (u512(0), 0);
-        }
-        // a × 10^k is in [10^70 b, 10^72 b), with k in [4, 138].
-        int256 k = 71 + digits(u512(b)) - digits(u512(a));
-        // a × 10^k1 is below 10^76, and k - k1 is at most 63 when positive.
-        int256 k1 = 76 - digits(u512(a));
-        uint256 q;
-        if (k <= k1) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            q = a * 10 ** uint256(k) / b;
-        } else {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            q = Math.mulDiv(a * 10 ** uint256(k1), 10 ** uint256(k - k1), b);
-        }
-        return (u512(q), ea - eb - k);
     }
 
     /// `ca × cb` with the fewest digits shed, truncating towards zero, that
