@@ -17,7 +17,6 @@ from decimal import (
     ROUND_DOWN,
     ROUND_FLOOR,
     ROUND_HALF_EVEN,
-    ROUND_UP,
     Context,
     Decimal,
     Inexact,
@@ -128,8 +127,9 @@ def int256_unit(x):
 
 def rounded_sum(a, b):
     """add's sum before packing, as its NatSpec states it: the exact sum
-    rounded to a multiple of the larger operand's int256 unit, towards zero
-    when the signs agree and away from zero when they differ."""
+    truncated towards zero to a multiple of the larger operand's int256 unit.
+    Packing truncates again, which composes, so add is the exact sum rounded
+    once towards zero."""
     if a.is_zero():
         return b
     if b.is_zero():
@@ -138,12 +138,14 @@ def rounded_sum(a, b):
     unit = int256_unit(big)
     # Under one unit, small leaves the exact sum strictly within a unit of
     # big, a multiple of it: outwards when the signs agree, so towards zero is
-    # big, and inwards when they differ, so away from zero is big.
+    # big, and inwards when they differ, so towards zero is one unit nearer
+    # zero than big.
     if small.adjusted() < unit:
-        return big
-    rounding = ROUND_DOWN if a.is_signed() == b.is_signed() else ROUND_UP
+        if a.is_signed() == b.is_signed():
+            return big
+        return EXACT.subtract(big, Decimal(-1 if big.is_signed() else 1).scaleb(unit, EXACT))
     # to_integral_value rounds without signalling Inexact.
-    units = EXACT.add(a, b).scaleb(-unit, EXACT).to_integral_value(rounding, EXACT)
+    units = EXACT.add(a, b).scaleb(-unit, EXACT).to_integral_value(ROUND_DOWN, EXACT)
     return units.scaleb(unit, EXACT)
 
 

@@ -1065,5 +1065,26 @@
       "testsAfter": 3,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-11T19:05:23Z",
+    "commit": "8b6a8ed6533ca21827c2b6b0cae66d35ea0aff79",
+    "testsAfterCommit": "8d60e7abc596f31d5d9acbab125e8c2c1c8a6648",
+    "publishedTag": "sol-v0.2.47",
+    "commitsAheadOfTag": 0,
+    "scope": "Issue #350 (PR #434): add and sub round once toward zero. The cancelling branches of LibDecimalFloatImplementation.add: the far step (B wholly below A's unit steps A one unit toward zero), the near bump (B shedding digits is taken one unit up), the cancelling flag, and the overflow check that discounts it. Each probe ran the PR source. Before = main 8b6a8ed's tests on the PR source, forge test --mc \"Add|Sub|RoundOnce|MainEquivalence|Agree|ExoticFloat|ExactDecimal|Minus\" less the 36 main tests that assert the old away-from-zero cancelling rule and are red against the new one (145 tests). After = the same match at 8d60e7a (186 tests). Mutants: M01/M02 far step never/also same-sign; M03 far step ignores sign; M04 far step away from zero; M05/M06 near bump never/also same-sign; M07 near bump without shed digits; M08 near bump ignores sign; M09 near bump reversed; M10 cancelling inverted; M11 overflow check drops the cancelling term; M12 overflow flagged on cancelling. Main's tests kill 9 and miss M01, M03 and M05 (the one-step-toward-zero cases themselves); the PR's tests kill all 12, M01/M03 through testAddRoundOnce, testAddCancelBelowUnitRoundOnce and testSubRoundOnce, M05 through testSubMatchesRuleCancelling against the exact LibTestExactDecimal rule. Bound helpers moved with the rule: the pow tight N term and the monotone spreads use addPartsWideUp so they are never smaller; the pow d term stays truncated, so the computed bound stays at most the derived one.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 12,
+      "killedBefore": 9,
+      "killedAfter": 12,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 145,
+      "testsAfter": 186,
+      "filed": []
+    }
   }
 ]

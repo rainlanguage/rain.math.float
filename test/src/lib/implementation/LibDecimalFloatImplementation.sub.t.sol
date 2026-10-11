@@ -130,7 +130,9 @@ contract LibDecimalFloatImplementationSubTest is Test {
     }
 
     function testSubOneFromMax() external pure {
-        checkSub(type(int224).max, type(int32).max, 1, 0, int256(type(int224).max) * 1e9, type(int32).max - 9);
+        // `1` is under one unit of the maximized `type(int224).max`, so the
+        // difference truncates one unit towards zero.
+        checkSub(type(int224).max, type(int32).max, 1, 0, int256(type(int224).max) * 1e9 - 1, type(int32).max - 9);
     }
 
     function testSubSelf(int224 signedCoefficientA, int32 exponentA) external pure {

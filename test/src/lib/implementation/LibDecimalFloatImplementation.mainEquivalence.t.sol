@@ -9,8 +9,9 @@ import {MaximizeOverflow, ExponentOverflow, DivisionByZero} from "src/error/ErrD
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 /// Wherever main returns, the PR returns the same bytes, and wherever main
-/// reverts, the PR reverts the same bytes, except in the floor shortfall
-/// classes each `check*` names. Those are asserted against an oracle.
+/// reverts, the PR reverts the same bytes, except in the floor shortfall,
+/// carry (#394) and cancelling (#350) classes each `check*` names. Those are
+/// asserted against an oracle.
 /// Equivalence only: main carries the mixed-sign add rounding of #340, so
 /// agreement is not a value check. `testAddPacked`, `testSubPacked`,
 /// `testDivPacked` and `testInvMem` check values against exact math.
@@ -427,11 +428,19 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         if (mOk == pOk && keccak256(m) == keccak256(p)) return;
 
         if (mOk) {
+            (int256 mc, int256 me) = pair(m);
+            (int256 pc, int256 pe) = pair(p);
+            if (a != 0 && b != 0 && (a < 0) != (isSub ? b > 0 : b < 0)) {
+                // By design (#350): the magnitudes cancel, main truncates the
+                // smaller operand towards zero, so the sum one unit away from
+                // zero where it sheds digits, the PR the sum.
+                assertEq(pe, me, "cancel exponent");
+                assertEq(mc - pc, mc < 0 ? int256(-1) : int256(1), "cancel");
+                return;
+            }
             // By design (#394): past int256 main sheds each operand's last
             // digit, the PR the sum's, one unit further from zero where those
             // digits carry.
-            (int256 mc, int256 me) = pair(m);
-            (int256 pc, int256 pe) = pair(p);
             assertEq(pe, me, "carry exponent");
             assertEq(pc - mc, pc < 0 ? int256(-1) : int256(1), "carry");
             return;
