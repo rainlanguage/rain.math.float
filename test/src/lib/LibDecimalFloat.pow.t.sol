@@ -9,7 +9,7 @@ import {ZeroNegativePower, PowNegativeBase, ExponentOverflow, ExponentUnderflow}
 import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "test/lib/LibTestPowRange.sol";
 import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 contract LibDecimalFloatPowTest is Test {
@@ -409,11 +409,30 @@ contract LibDecimalFloatPowTest is Test {
         checkPowExact(2, 0, -15e60, -61, 35355339059327376220042218105242451964242, -41);
     }
 
-    /// a^(1/2) is sqrt a, correctly rounded.
+    /// a^(1/2) is sqrt a, correctly rounded: the root c 10^e, c in
+    /// [1e40, 1e41), has (c - 1/2)^2 10^2e < a < (c + 1/2)^2 10^2e, the lower
+    /// midpoint at c = 1e40 a twentieth of a unit below. Doubled, 4a against
+    /// (2c +- 1)^2 10^2e.
     function testPowHalfIsSqrt(int224 signedCoefficient, int32 exponent) external view {
         vm.assume(signedCoefficient > 0);
         Float a = LibDecimalFloat.packLossless(signedCoefficient, exponent);
-        assertTrue(this.powExternal(a, LibDecimalFloat.FLOAT_HALF).eq(a.sqrt()), "sqrt");
+        (int256 c, int256 e) = this.powExternal(a, LibDecimalFloat.FLOAT_HALF).unpack();
+        while (c < 1e40) {
+            c *= 10;
+            e -= 1;
+        }
+        while (c >= 1e41) {
+            assertEq(c % 10, 0, "root digits");
+            c /= 10;
+            e += 1;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory x = LibTestExactDecimal.u512(uint256(int256(signedCoefficient)) * 4);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 m = uint256(2 * c);
+        assertLt(LibTestExactDecimal.cmpScaled(x, exponent, LibTestExactDecimal.mul(m + 1, m + 1), 2 * e), 0, "above");
+        (uint256 low, int256 lowExponent) = c == 1e40 ? (2e41 - 1, 2 * e - 2) : (m - 1, 2 * e);
+        assertGt(LibTestExactDecimal.cmpScaled(x, exponent, LibTestExactDecimal.mul(low, low), lowExponent), 0, "below");
     }
 
     /// A fractional part next to a half takes the log path, within its bound.
@@ -1245,11 +1264,11 @@ contract LibDecimalFloatPowTest is Test {
         // b = 1e76 fits int256, and (1 - 1e-67)^(±1e76) is 10^(∓434294481.9)
         // with every truncation moving it under 9 in log10: inside the range.
         Float c = this.powExternal(below, LibDecimalFloat.packLossless(1, 76));
-        assertTrue(c.gt(LibDecimalFloat.packLossless(1, -434294501)), "1e76 below floor");
-        assertTrue(c.lt(LibDecimalFloat.packLossless(1, -434294461)), "1e76 below ceiling");
+        assertGt(cmp(c, LibDecimalFloat.packLossless(1, -434294501)), 0, "1e76 below floor");
+        assertLt(cmp(c, LibDecimalFloat.packLossless(1, -434294461)), 0, "1e76 below ceiling");
         c = this.powExternal(below, LibDecimalFloat.packLossless(-1, 76));
-        assertTrue(c.gt(LibDecimalFloat.packLossless(1, 434294461)), "-1e76 below floor");
-        assertTrue(c.lt(LibDecimalFloat.packLossless(1, 434294501)), "-1e76 below ceiling");
+        assertGt(cmp(c, LibDecimalFloat.packLossless(1, 434294461)), 0, "-1e76 below floor");
+        assertLt(cmp(c, LibDecimalFloat.packLossless(1, 434294501)), 0, "-1e76 below ceiling");
 
         // 5.7e76 still fits int256 and goes to the squaring loop.
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1e67 + 1), int256(-67)));
