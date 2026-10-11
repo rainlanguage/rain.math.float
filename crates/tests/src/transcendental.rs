@@ -919,7 +919,7 @@ fn edge_integer() -> BoxedStrategy<i64> {
     .boxed()
 }
 
-fn x_pow10() -> BoxedStrategy<Dec> {
+pub(crate) fn x_pow10() -> BoxedStrategy<Dec> {
     prop_oneof![
         2 => float(),
         3 => with_fraction((-2_200_000_000i64..=2_200_000_000).boxed(), 55),
@@ -936,7 +936,7 @@ fn x_pow10() -> BoxedStrategy<Dec> {
     .boxed()
 }
 
-fn a_log10() -> BoxedStrategy<Dec> {
+pub(crate) fn a_log10() -> BoxedStrategy<Dec> {
     prop_oneof![
         4 => float(),
         // Powers of ten, the exact anchors, in every representation.
@@ -1039,7 +1039,7 @@ fn rational_power() -> BoxedStrategy<(Dec, Dec)> {
         .boxed()
 }
 
-fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
+pub(crate) fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
     prop_oneof![
         2 => (float(), float()),
         4 => (moderate(), small_b()),
@@ -1067,7 +1067,7 @@ fn pow_pair() -> BoxedStrategy<(Dec, Dec)> {
 /// |b| d near 10^s for d = |a - 1| and s in [-4, 10]: |b| reaches past
 /// 1e75, where pow's N term is K2 N d, and the power runs from near one to
 /// past every Float.
-fn near_one() -> BoxedStrategy<(Dec, Dec)> {
+pub(crate) fn near_one() -> BoxedStrategy<(Dec, Dec)> {
     (
         38u64..=66,
         any::<u64>(),
@@ -1090,7 +1090,7 @@ fn near_one() -> BoxedStrategy<(Dec, Dec)> {
         .boxed()
 }
 
-fn a_sqrt() -> BoxedStrategy<Dec> {
+pub(crate) fn a_sqrt() -> BoxedStrategy<Dec> {
     prop_oneof![
         3 => float(),
         // Perfect squares of up to 33 digits, whose root is exact.
