@@ -11,12 +11,11 @@ import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibDecimalFloatImplementationLog10RatioPr336} from "test/lib/LibDecimalFloatImplementationLog10RatioPr336.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-/// `log10Ratio` returns and reverts the same bytes as the #336 head it was
-/// restructured from, wherever a - b fits in int256, which #336 cast it to,
-/// and the input is in the range #422 named. Outside it the live one reverts
-/// `Log10RatioOutOfRange` with the input.
-/// a and b are kept within a factor 100 of each other, as the series loop runs
-/// about 1e50 times as z nears 1.
+/// `log10Ratio` returns and reverts the same bytes as the #336 head's
+/// `maximizeFull` scaling it was restructured from, wherever a - b fits in
+/// int256, which #336 cast it to, and the input is in the range #422 named.
+/// Outside it the live one reverts `Log10RatioOutOfRange` with the input.
+/// a and b are kept within a factor 100 of each other.
 contract LibDecimalFloatImplementationLog10RatioPr336EquivalenceTest is Test {
     function pr336Ratio(uint256 a, uint256 b, bool relative) external pure returns (int256, int256) {
         return LibDecimalFloatImplementationLog10RatioPr336.log10Ratio(a, b, relative);

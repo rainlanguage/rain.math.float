@@ -78,22 +78,38 @@ contract LibTestErrorBoundTest is Test {
         assertTrue(LibTestErrorBound.monotoneAbsolute(high, LibDecimalFloat.packLossless(5, 0), error, error), "below");
     }
 
-    /// 5.00000011343e-41 plus 3e-75 per unit of the integer part of |b|.
+    /// 5.00000011343e-41 plus N min(K1, K2 d), N the integer part of |b| and
+    /// d = max(|a|, 1/|a|) - 1.
     function testPowValues() external pure {
+        // d 1: K1, 2 1.7273e-76.
         assertTrue(
-            LibTestErrorBound.pow(LibDecimalFloat.packLossless(25, -1))
-                .eq(LibDecimalFloat.packLossless(50000001134300000000000000000000006, -75)),
-            "2.5"
+            LibTestErrorBound.pow(LibDecimalFloat.FLOAT_TWO, LibDecimalFloat.packLossless(25, -1))
+                .eq(LibDecimalFloat.packLossless(5000000113430000000000000000000000034546, -80)),
+            "2^2.5"
+        );
+        // 1/a has d 1: K1 for b < 0, 123 1.1728e-75.
+        assertTrue(
+            LibTestErrorBound.pow(LibDecimalFloat.FLOAT_HALF, LibDecimalFloat.packLossless(-1239, -1))
+                .eq(LibDecimalFloat.packLossless(5000000113430000000000000000000014425440, -80)),
+            "0.5^-123.9"
+        );
+        // d 1e-66: K2 d, 1e67 1.5e-104 and 1e67 3.4786e-104.
+        Float nearOne = LibDecimalFloat.packLossless(1e66 + 1, -66);
+        assertTrue(
+            LibTestErrorBound.pow(nearOne, LibDecimalFloat.packLossless(1, 67))
+                .eq(LibDecimalFloat.packLossless(1500500000011343, -52)),
+            "(1 + 1e-66)^1e67"
         );
         assertTrue(
-            LibTestErrorBound.pow(LibDecimalFloat.packLossless(-1239, -1))
-                .eq(LibDecimalFloat.packLossless(50000001134300000000000000000000369, -75)),
-            "-123.9"
+            LibTestErrorBound.pow(nearOne, LibDecimalFloat.packLossless(-1, 67))
+                .eq(LibDecimalFloat.packLossless(3479100000011343, -52)),
+            "(1 + 1e-66)^-1e67"
         );
+        // N 0.
         assertTrue(
-            LibTestErrorBound.pow(LibDecimalFloat.packLossless(5, -1))
+            LibTestErrorBound.pow(LibDecimalFloat.FLOAT_TWO, LibDecimalFloat.FLOAT_HALF)
                 .eq(LibDecimalFloat.packLossless(500000011343, -52)),
-            "0.5"
+            "2^0.5"
         );
     }
 
