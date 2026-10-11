@@ -565,13 +565,7 @@ library LibTestExactDecimal {
 
     /// Exact numeric equality of two Floats' parts.
     function eq(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
-        if (ca == 0 || cb == 0) {
-            return ca == cb;
-        }
-        if ((ca < 0) != (cb < 0)) {
-            return false;
-        }
-        return cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) == 0;
+        return cmpParts(ca, ea, cb, eb) == 0;
     }
 
     /// Whether `ca × 10^ea × cb × 10^eb` is exactly `cc × 10^ec`.

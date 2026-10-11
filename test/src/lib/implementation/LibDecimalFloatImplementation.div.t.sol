@@ -345,8 +345,17 @@ contract LibDecimalFloatImplementationDivTest is Test {
     function checkThrees(int256 i, int256 exponentA, int256 d, int256 exponentB, int256 j) internal {
         (int256 cls, int256 e) = LibTestExactDecimal.wideExponent(exponentA, exponentB, 0, j);
         if (cls == 1) {
+            // The caller loops thousands of times, so each revert's memory is
+            // released for the next.
+            uint256 freeMemoryPointer;
+            assembly ("memory-safe") {
+                freeMemoryPointer := mload(0x40)
+            }
             vm.expectPartialRevert(ExponentOverflow.selector);
             this.divExternal(i, exponentA, d, exponentB);
+            assembly ("memory-safe") {
+                mstore(0x40, freeMemoryPointer)
+            }
             return;
         }
         int256 c = THREES;
