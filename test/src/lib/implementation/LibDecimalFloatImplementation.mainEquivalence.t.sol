@@ -557,4 +557,37 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         checkAddSub(true, 2, min, 1, min);
         checkAddSub(true, 1, min, 1, min);
     }
+
+    /// Hand-derived results of both, so the cancelling class is entered.
+    function checkCancelExample(
+        bool isSub,
+        int256 a,
+        int256 ea,
+        int256 b,
+        int256 eb,
+        int256 pc,
+        int256 pe,
+        int256 mc,
+        int256 me
+    ) internal view {
+        (bool mOk, bytes memory m) = run(
+            isSub ? abi.encodeCall(this.mainSub, (a, ea, b, eb)) : abi.encodeCall(this.mainAdd, (a, ea, b, eb))
+        );
+        (bool pOk, bytes memory p) =
+            run(isSub ? abi.encodeCall(this.prSub, (a, ea, b, eb)) : abi.encodeCall(this.prAdd, (a, ea, b, eb)));
+        assertTrue(mOk && pOk, "returns");
+        assertEq(m, abi.encode(mc, me), "main");
+        assertEq(p, abi.encode(pc, pe), "PR");
+        checkAddSub(isSub, a, ea, b, eb);
+    }
+
+    /// 1e76 - 1e-100: under one unit of 1e76, so main keeps 1e76, a decade
+    /// past the PR's 76 nines. 1e76 - (1e76 + 5)e-10: the operand aligns to
+    /// 1e66 shedding 5e-10, so main sums 1e76 - 1e66 and the PR one less.
+    function testMainEquivalenceAddCancelExamples() external view {
+        checkCancelExample(false, 1e76, 0, -1, -100, 1e76 - 1, 0, 1e76, 0);
+        checkCancelExample(true, -1e76, 0, -1, -100, -(1e76 - 1), 0, -1e76, 0);
+        checkCancelExample(true, 1e76, 0, 1e76 + 5, -10, 1e76 - 1e66 - 1, 0, 1e76 - 1e66, 0);
+        checkCancelExample(false, -1e76, 0, 1e76 + 5, -10, -(1e76 - 1e66 - 1), 0, -(1e76 - 1e66), 0);
+    }
 }
