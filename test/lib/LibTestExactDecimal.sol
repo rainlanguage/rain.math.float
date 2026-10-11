@@ -13,7 +13,10 @@ struct U512 {
 
 /// Exact decimal comparisons, independent of the library under test. Values
 /// are `magnitude × 10^exponent` with a 512 bit magnitude, and every
-/// comparison is decided in exact integer arithmetic.
+/// comparison is decided in exact integer arithmetic. The `*Payload` functions
+/// state the unpacked parts the implementation hands to packing by its own
+/// steps: they pin that representation and the revert payloads that carry
+/// it, never a packed value, which `isNearestTowardZero` checks.
 library LibTestExactDecimal {
     /// A result packs iff the magnitude of its floor at `10^int32.max` is at
     /// most `2^223 + 1`: that far past the int224 bound of its sign, shedding a
@@ -296,51 +299,98 @@ library LibTestExactDecimal {
     }
 
     /// The parts `mul` of two Floats hands to packing, which are what its
-    /// `ExponentOverflow` and `ExponentUnderflow` carry: the exact product
-    /// floored to the fewest digits shed that fit 256 bits, as `signedParts`.
-    /// The 512 bit product is below `10^k × 2^256` iff its high word is below
-    /// `10^k`.
-    function mulParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+    /// `ExponentOverflow` and `ExponentUnderflow` carry: `productInt256` at the
+    /// exponent sum, and `(0, 0)` for a zero operand.
+    function mulPayload(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         if (ca == 0 || cb == 0) {
             return (0, 0);
         }
-        U512 memory product = mul(abs(ca), abs(cb));
-        uint256 dropped = 0;
-        while (product.hi >= 10 ** dropped) {
-            dropped++;
-        }
-        uint256 magnitude = Math.mulDiv(abs(ca), abs(cb), 10 ** dropped);
-        // The product is at most 2^510, so its high word is at most 2^254 and
-        // dropped is at most 77.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return signedParts((ca < 0) != (cb < 0), magnitude, ea + eb + int256(dropped));
+        (int256 product, int256 dropped) = productInt256(ca, cb);
+        return (product, ea + eb + dropped);
     }
 
-    /// The parts `div` of two Floats hands to packing, for a non-zero `cb`:
-    /// both operands maximized, the dividend's magnitude scaled by the largest
-    /// power of ten not above the divisor's and floor divided by it, as
-    /// `signedParts`.
+    /// `|ca| / |cb|` in units of `10^-offset`, truncated: the dividend
+    /// lifted to its int256 unit over the divisor's leading digit, so `offset`
+    /// is `int256UnitShift(ca) + digits(cb) - 1`. At most `2^255`.
+    function quotientAtUnit(int256 ca, int256 cb) internal pure returns (uint256 magnitude, int256 offset) {
+        int256 lift = int256UnitShift(ca);
+        int256 leadB = digits(u512(abs(cb))) - 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        magnitude = Math.mulDiv(abs(ca) * 10 ** uint256(lift), 10 ** uint256(leadB), abs(cb));
+        offset = lift + leadB;
+    }
+
+    /// The parts `div` of two Floats returns, for a non-zero `cb`, as its
+    /// NatSpec states them: `a / b` truncated toward zero at `10^(ua - lb)`,
+    /// `ua` the dividend's int256 unit and `lb` the divisor's leading digit's
+    /// exponent, as `signedParts`.
     function divParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         if (ca == 0) {
             return (0, 0);
         }
-        (int256 maximizedA, int256 exponentA) = maximizeFloat(ca, ea);
-        (int256 maximizedB, int256 exponentB) = maximizeFloat(cb, eb);
-        uint256 magnitudeB = abs(maximizedB);
-        uint256 scaleDigits = 0;
-        while (10 ** (scaleDigits + 1) <= magnitudeB) {
-            scaleDigits++;
-        }
-        uint256 magnitude = Math.mulDiv(abs(maximizedA), 10 ** scaleDigits, magnitudeB);
-        // scaleDigits is at most 76.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return signedParts((ca < 0) != (cb < 0), magnitude, exponentA - int256(scaleDigits) - exponentB);
+        (uint256 magnitude, int256 offset) = quotientAtUnit(ca, cb);
+        // ua - lb is ea - lift - (eb + digits(cb) - 1).
+        return signedParts((ca < 0) != (cb < 0), magnitude, ea - eb - offset);
     }
 
-    /// The parts `inv` of a non-zero Float hands to packing: `1e76 × 10^-76`
-    /// divided by it.
+    /// The parts `inv` of a non-zero Float returns: `1e76 × 10^-76` over it.
     function invParts(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         return divParts(1e76, -76, signedCoefficient, exponent);
+    }
+
+    /// `divParts` for any int256 parts and a non-zero `cb`, or `overflowed`
+    /// where `ua - lb` is above `type(int256).max`. A positive 2^255 sheds its
+    /// last digit, which overflows at `type(int256).max`. Below
+    /// `type(int256).min` the exact quotient truncates toward zero at it, and
+    /// zero is `(0, 0)`.
+    function divPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
+        internal
+        pure
+        returns (bool overflowed, int256 c, int256 e)
+    {
+        if (ca == 0) {
+            // forge-lint: disable-next-line(boolean-cst)
+            return (false, 0, 0);
+        }
+        bool negative = (ca < 0) != (cb < 0);
+        (uint256 magnitude, int256 offset) = quotientAtUnit(ca, cb);
+        int256 cls;
+        (cls, e) = wideExponent(ea, eb, 0, -offset);
+        if (cls == 1 || (cls == 0 && !negative && magnitude > uint256(type(int256).max) && e == type(int256).max)) {
+            // forge-lint: disable-next-line(boolean-cst)
+            return (true, 0, 0);
+        }
+        if (cls == -1) {
+            // The unit is `e` digits below the floor: shed them from the
+            // truncated quotient, which truncates the exact one there.
+            magnitude = shed(magnitude, e);
+            e = magnitude == 0 ? int256(0) : type(int256).min;
+        }
+        (c, e) = signedParts(negative, magnitude, e);
+    }
+
+    /// Whether `(c, e)` is `a / b` truncated toward zero at `10^e`, decided in
+    /// exact integer arithmetic for any int256 parts and a non-zero `cb`.
+    /// Zero is `(0, 0)`, only for a quotient below `10^type(int256).min`.
+    function isTruncatedQuotient(int256 ca, int256 ea, int256 cb, int256 eb, int256 c, int256 e)
+        internal
+        pure
+        returns (bool)
+    {
+        if (ca == 0) {
+            return c == 0 && e == 0;
+        }
+        if (c != 0 && (c < 0) != ((ca < 0) != (cb < 0))) {
+            return false;
+        }
+        U512 memory a = u512(abs(ca));
+        uint256 b = abs(cb);
+        if (c == 0) {
+            // |a| 10^ea < |b| 10^(eb + int256.min).
+            return e == 0 && cmpWide(u512(b), eb, ea, type(int256).min, 0, a) > 0;
+        }
+        // |c| |b| 10^(e + eb) <= |a| 10^ea < (|c| + 1) |b| 10^(e + eb).
+        return cmpWide(mul(abs(c), b), e, ea, eb, 0, a) <= 0 && cmpWide(mul(abs(c) + 1, b), e, ea, eb, 0, a) > 0;
     }
 
     /// `signedCoefficient × 10^(type(int256).min + headroom)` held at the
@@ -525,6 +575,53 @@ library LibTestExactDecimal {
         return sa * cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb);
     }
 
+    /// `a / b` for a nonzero `b`, truncated towards zero once, so under 1e-74
+    /// relative: `q = floor(|a| 10^k / |b|)` with `k = 75 + digits(b) -
+    /// digits(a)` puts the exact ratio in (1e74, 1e76), so `q` is in
+    /// [1e74, 1e76), 75 or 76 digits. That is more than any Float holds, so
+    /// the closest Float not above the exact quotient is the closest not above
+    /// `q × 10^e`.
+    function quotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
+        if (ca == 0) {
+            return (0, 0);
+        }
+        uint256 a = abs(ca);
+        uint256 b = abs(cb);
+        // Both at most 77 digits, so k is in [-1, 151].
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 k = 75 + int256(Math.log10(b)) - int256(Math.log10(a));
+        uint256 q;
+        if (k < 0) {
+            // k = -1 only where b has one digit, so 10 b fits.
+            q = a / (b * 10);
+        } else if (k <= 77) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            q = Math.mulDiv(a, 10 ** uint256(k), b);
+        } else {
+            // a 10^(k - 77) is below 10^(digits(b) - 2).
+            // forge-lint: disable-next-line(unsafe-typecast)
+            q = Math.mulDiv(a * 10 ** uint256(k - 77), 1e77, b);
+        }
+        // q is below 1e76.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedQ = int256(q);
+        return ((ca < 0) != (cb < 0) ? -signedQ : signedQ, ea - eb - k);
+    }
+
+    /// The coefficient of `c × 10^e` at exponent `target`, truncated towards
+    /// zero, and reverting where it does not fit int256.
+    function atExponent(int256 c, int256 e, int256 target) internal pure returns (int256) {
+        if (e >= target) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return c == 0 ? int256(0) : c * int256(10 ** uint256(e - target));
+        }
+        if (target - e > 76) {
+            return 0;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return c / int256(10 ** uint256(target - e));
+    }
+
     /// Exact numeric equality of two Floats' parts.
     function eq(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (bool) {
         if (ca == 0 || cb == 0) {
@@ -534,6 +631,82 @@ library LibTestExactDecimal {
             return false;
         }
         return cmpScaled(u512(abs(ca)), ea, u512(abs(cb)), eb) == 0;
+    }
+
+    /// The largest coefficient magnitude a Float of the sign holds.
+    function coefficientLimit(bool negative) internal pure returns (uint256) {
+        return negative ? 2 ** 223 : 2 ** 223 - 1;
+    }
+
+    /// Whether the Float `(rc, re)` is what the general rule packs the exact
+    /// `±magnitude × 10^exponent` to: zero for zero, otherwise the closest
+    /// Float of the same sign that does not exceed it in magnitude. The caller
+    /// rules out values that `overflows` or `underflows`, which no Float is.
+    /// Magnitudes must be below 10^154.
+    function isNearestTowardZero(bool negative, U512 memory magnitude, int256 exponent, int256 rc, int256 re)
+        internal
+        pure
+        returns (bool)
+    {
+        if (isZero(magnitude)) {
+            return rc == 0;
+        }
+        if (rc == 0 || (rc < 0) != negative) {
+            return false;
+        }
+        uint256 r = abs(rc);
+        if (cmpScaled(u512(r), re, magnitude, exponent) > 0) {
+            return false;
+        }
+        uint256 limit = coefficientLimit(negative);
+        // At its lowest exponent, the next larger Float is one unit up, or the
+        // smallest past the limit one exponent higher.
+        while (re > type(int32).min && r * 10 <= limit) {
+            r *= 10;
+            --re;
+        }
+        if (r < limit) {
+            return cmpScaled(magnitude, exponent, u512(r + 1), re) < 0;
+        }
+        if (re == type(int32).max) {
+            return true;
+        }
+        return cmpScaled(magnitude, exponent, u512(limit / 10 + 1), re + 1) < 0;
+    }
+
+    /// Whether the Float `(rc, re)` is what `add` documents for
+    /// `ca × 10^ea + cb × 10^eb`: `addPartsWide`, then packing, the closest
+    /// Float not exceeding that in magnitude. Exactly one Float is accepted.
+    /// The caller rules out sums that `addOverflows`.
+    function isSumResult(int256 ca, int256 ea, int256 cb, int256 eb, int256 rc, int256 re)
+        internal
+        pure
+        returns (bool)
+    {
+        (, int256 c, int256 e) = addPartsWide(ca, ea, cb, eb);
+        return isNearestTowardZero(c < 0, u512(abs(c)), e, rc, re);
+    }
+
+    /// `ca × cb` with the fewest digits shed, truncating towards zero, that
+    /// leave it in int256 of the product's sign, and the number shed.
+    function productInt256(int256 ca, int256 cb) internal pure returns (int256, int256) {
+        bool negative = (ca < 0) != (cb < 0);
+        (uint256 productHi, uint256 productLo) = Math.mul512(abs(ca), abs(cb));
+        // floor(product / 10^k) is within the bound iff product < (bound + 1) × 10^k.
+        uint256 aboveBound = negative ? 2 ** 255 + 1 : 2 ** 255;
+        uint256 dropped = 0;
+        while (true) {
+            (uint256 hi, uint256 lo) = Math.mul512(aboveBound, 10 ** dropped);
+            if (productHi < hi || (productHi == hi && productLo < lo)) {
+                break;
+            }
+            dropped++;
+        }
+        uint256 m = Math.mulDiv(abs(ca), abs(cb), 10 ** dropped);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signed = m == 2 ** 255 ? type(int256).min : (negative ? -int256(m) : int256(m));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (signed, int256(dropped));
     }
 
     /// Whether `ca × 10^ea × cb × 10^eb` is exactly `cc × 10^ec`.
