@@ -105,6 +105,35 @@ contract LibDecimalFloatDecimalTest is Test {
         assertEq(losslessOut, expectedLossless, "packed lossless");
     }
 
+    /// Every final exponent across both cutoffs, ±77, against the exact value,
+    /// for coefficients at the digit edges. `1 × 10^78` is the smallest value
+    /// past uint256 that the fuzz rarely draws.
+    function testToFixedDecimalLossyAcrossTheCutoffs() external {
+        int256[6] memory coefficients = [int256(1), 2, 9, 10, 1e18, type(int256).max];
+        uint8[3] memory decimalsList = [uint8(0), 77, 255];
+        for (uint256 i = 0; i < coefficients.length; i++) {
+            for (uint256 j = 0; j < decimalsList.length; j++) {
+                for (int256 finalExponent = -80; finalExponent <= 80; finalExponent++) {
+                    int256 exponent = finalExponent - int256(uint256(decimalsList[j]));
+                    checkToFixedDecimalExact(coefficients[i], exponent, decimalsList[j]);
+                }
+            }
+        }
+    }
+
+    function checkToFixedDecimalExact(int256 signedCoefficient, int256 exponent, uint8 decimals) internal {
+        (bytes memory expectedError, uint256 expectedValue, bool expectedLossless) =
+            LibTestExactDecimal.toFixedDecimal(signedCoefficient, exponent, decimals);
+        if (expectedError.length > 0) {
+            vm.expectRevert(expectedError);
+            this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
+            return;
+        }
+        (uint256 value, bool lossless) = this.toFixedDecimalLossyExternal(signedCoefficient, exponent, decimals);
+        assertEq(value, expectedValue, "value");
+        assertEq(lossless, expectedLossless, "lossless");
+    }
+
     /// Round trip from/to decimal values. Past int256.max the value sheds its
     /// last digit on the way in, losslessly iff that digit is zero, and comes
     /// back without it; any other value comes back exactly.
