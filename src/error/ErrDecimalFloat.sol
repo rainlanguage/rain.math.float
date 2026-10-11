@@ -82,3 +82,37 @@ error AgreeToleranceNegative(Float absolute, Float proportional);
 /// @param absolute The absolute tolerance as given.
 /// @param proportional The proportional tolerance as given.
 error AgreeNoPositiveTolerance(Float absolute, Float proportional);
+
+/// @dev Thrown when `log10Ratio` is given a + b past `uint256.max`, b of zero,
+/// or z = |a - b| / (a + b) at 1e-50 with z^16 of at least 1e-50, past which
+/// its series is not proven.
+/// @param a The numerator.
+/// @param b The denominator.
+error Log10RatioOutOfRange(uint256 a, uint256 b);
+
+/// @dev Thrown when `sqrt` is given a coefficient outside (0, 1e76), or an
+/// exponent so close to `int256.min` that scaling the coefficient and
+/// evening the exponent would pass it.
+/// @param signedCoefficient The coefficient as given.
+/// @param exponent The exponent as given.
+error SqrtOutOfRange(int256 signedCoefficient, int256 exponent);
+
+/// @dev Thrown when `exp10Fixed` is given an exponent outside [0, 1) at the
+/// 1e50 scale.
+/// @param x The exponent as given.
+error Exp10FixedOutOfRange(uint256 x);
+
+/// @dev Thrown when `log10Reduce` is given a value outside [1e75, 1e76).
+/// @param x The value as given.
+error Log10ReduceOutOfRange(uint256 x);
+
+/// @dev Thrown when `absCoefficient` is given `int256.min`, whose magnitude
+/// does not fit an int256.
+/// @param signedCoefficient The coefficient as given.
+error AbsCoefficientOverflow(int256 signedCoefficient);
+
+/// @dev Thrown when `scaleUp` is given a coefficient outside (0, 1e76), or an
+/// exponent the shift into [1e75, 1e76) would take past `type(int256).min`.
+/// @param signedCoefficient The coefficient as given.
+/// @param exponent The exponent as given.
+error ScaleUpOutOfRange(int256 signedCoefficient, int256 exponent);

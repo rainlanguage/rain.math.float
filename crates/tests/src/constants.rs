@@ -126,3 +126,29 @@ fn derivations_start_with_the_known_digits() {
             .starts_with("271828182845904523536028747135266249")
     );
 }
+
+/// The implementation library source, as committed.
+const IMPLEMENTATION: &str =
+    include_str!("../../../src/lib/implementation/LibDecimalFloatImplementation.sol");
+
+/// The decimal literal `LibDecimalFloatImplementation.sol` assigns to the
+/// constant `name`.
+fn decimal_constant(name: &str) -> num_bigint::BigUint {
+    let decl = format!("constant {name} =");
+    let at = IMPLEMENTATION
+        .find(&decl)
+        .unwrap_or_else(|| panic!("{name} is not declared in LibDecimalFloatImplementation.sol"));
+    let rest = IMPLEMENTATION[at + decl.len()..].trim_start();
+    let end = rest.find(';').expect("no `;` after the declaration");
+    rest[..end].parse().expect("a decimal literal")
+}
+
+/// `LOG10_RATIO_Z_MAX` is the largest z at 1e-50 whose 16th power is below
+/// 1e-50: z^16 < 10^(16 * 50 - 50) <= (z + 1)^16.
+#[test]
+fn log10_ratio_z_max_is_the_largest_z_with_z16_below_1e_minus_50() {
+    let z = decimal_constant("LOG10_RATIO_Z_MAX");
+    let bound = num_bigint::BigUint::from(10u8).pow(750);
+    assert!(z.pow(16) < bound);
+    assert!((z + 1u8).pow(16) >= bound);
+}

@@ -29,14 +29,19 @@ const POW10_RAW_E52: u64 = 11_111;
 /// coefficients and Horner steps, under 1 + 2r / (1 - r), and the terms past
 /// the ninth, under (ln 10 2^-16)^10 / 10! 1e50 / (1 - r), 0.079.
 const SERIES_LOSS_E5: u64 = 107_902;
+/// For z = |a - b| / (a + b) at most 5.1e-4, as log10Unrounded passes,
 /// log10Ratio relative is under C 8.03e-50 plus a unit below the true log.
-const LOG10_RATIO_RELATIVE_E52: u64 = 803;
+const LOG10_RATIO_RELATIVE_E53: u64 = 8_030;
 /// log10Ratio at the fixed point is under 1.0036 units below the true log.
 const LOG10_RATIO_FIXED_E54: u64 = 10_036;
+/// Up to `LOG10_RATIO_Z_MAX` those are C 8.082e-50 plus a unit and 1.0053
+/// units.
+const LOG10_RATIO_WIDE_RELATIVE_E53: u64 = 8_082;
+const LOG10_RATIO_WIDE_FIXED_E54: u64 = 10_053;
 /// log10Ratio is at most 1.3e-51 of the true log above it.
 const LOG10_RATIO_ABOVE_E52: u64 = 13;
 
-/// 2^-16 at 1e50.
+/// 2^-16 at 1e16.
 const STEP: u64 = 152_587_890_625;
 
 fn u256(x: &BigInt) -> U256 {
@@ -129,8 +134,8 @@ fn series_coefficients() -> Vec<BigInt> {
             out.push(literal_after(rest, ""));
         }
     }
-    assert!(body.contains("series = POW_FIXED_LN10 + mulDivFixed(series, x);"));
-    assert!(body.contains("series = POW_FIXED_ONE + mulDivFixed(series, x);"));
+    assert!(body.contains("series = POW_FIXED_LN10 + mulDivFixedUnguarded(series, x);"));
+    assert!(body.contains("series = POW_FIXED_ONE + mulDivFixedUnguarded(series, x);"));
     out
 }
 
@@ -375,13 +380,20 @@ fn ratio_error(a: &BigInt, b: &BigInt, relative: bool) -> Result<Ratio, TestCase
     })
 }
 
-/// log10Ratio(a, b) within its bounds.
+/// log10Ratio(a, b) within its bounds, the narrower ones for z at most
+/// 5.1e-4.
 fn check_ratio(a: &BigInt, b: &BigInt, relative: bool) -> Result<Ratio, TestCaseError> {
     let r = ratio_error(a, b, relative)?;
-    let limit = if relative {
-        &r.actual * LOG10_RATIO_RELATIVE_E52 / pow10(52) + &r.unit
+    let difference = if a < b { b - a } else { a - b };
+    let (relative_e53, fixed_e54) = if difference * 100_000u32 <= (a + b) * 51u32 {
+        (LOG10_RATIO_RELATIVE_E53, LOG10_RATIO_FIXED_E54)
     } else {
-        BigInt::from(LOG10_RATIO_FIXED_E54) * pow10((RATIO_SCALE - 54) as u64)
+        (LOG10_RATIO_WIDE_RELATIVE_E53, LOG10_RATIO_WIDE_FIXED_E54)
+    };
+    let limit = if relative {
+        &r.actual * relative_e53 / pow10(53) + &r.unit
+    } else {
+        BigInt::from(fixed_e54) * pow10((RATIO_SCALE - 54) as u64)
     };
     prop_assert!(
         r.below <= limit,
@@ -408,11 +420,12 @@ fn log10_ratio_worst_input() {
         .unwrap();
     let r = check_ratio(&a, &b, true).unwrap();
     // The true log is at least |C| less `above`: at least 94% of C 8.03e-50.
-    assert!(-r.above * pow10(52) * 100 >= r.actual * LOG10_RATIO_RELATIVE_E52 * 94);
+    assert!(-r.above * pow10(53) * 100 >= r.actual * LOG10_RATIO_RELATIVE_E53 * 94);
 }
 
 /// b with a uniformly random digit count up to 76, then a = b ± d for z =
-/// d / (a + b) at most 5.1e-4, weighted to the ends of d.
+/// d / (a + b) at most 5.1e-4, or when `wide` at most 7.4956e-4, inside
+/// `LOG10_RATIO_Z_MAX`, weighted to the ends of d.
 fn ratio_inputs() -> BoxedStrategy<(BigInt, BigInt)> {
     (
         1u64..=76,
@@ -420,8 +433,9 @@ fn ratio_inputs() -> BoxedStrategy<(BigInt, BigInt)> {
         any::<[u8; 32]>(),
         0u8..4,
         any::<bool>(),
+        any::<bool>(),
     )
-        .prop_map(|(n, rb, rd, shape, below)| {
+        .prop_map(|(n, rb, rd, shape, wide, below)| {
             let lo = pow10(n - 1);
             let hi = if n == 76 {
                 BigInt::from(998) * pow10(73)
@@ -429,7 +443,13 @@ fn ratio_inputs() -> BoxedStrategy<(BigInt, BigInt)> {
                 pow10(n)
             };
             let b = &lo + BigInt::from_bytes_be(Sign::Plus, &rb) % (hi - &lo);
-            let max = &b * if below { 1019 } else { 1020 } / 1_000_000;
+            let max =
+                &b * match (wide, below) {
+                    (false, true) => 1019,
+                    (false, false) => 1020,
+                    (true, true) => 1498,
+                    (true, false) => 1500,
+                } / 1_000_000;
             let r = BigInt::from_bytes_be(Sign::Plus, &rd);
             let d = match shape {
                 0 => r % (&max + 1),

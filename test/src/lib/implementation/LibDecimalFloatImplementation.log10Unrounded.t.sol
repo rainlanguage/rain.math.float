@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LOG10_RAW_ERROR_E54} from "test/lib/LibTestErrorBound.sol";
-import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
+import {Log10Zero, Log10Negative, ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {LibTranscendentalOracle} from "../../../lib/LibTranscendentalOracle.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
@@ -166,6 +166,62 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         exponent = bound(exponent, -1e40, 1e40);
         checkAbsolute(signedCoefficient, exponent);
+    }
+
+    /// #422: (2e75, int256.max) panicked. The characteristic reaches
+    /// int256.max exactly at 10^int256.max, by each of the coefficient's
+    /// paths: scaled up, in place, past 1e76, and rounded up to the next
+    /// power of ten from 9.999e75. The reduced path keeps the characteristic
+    /// at int256.max with a log just under int256.max + 1.
+    function testLog10UnroundedCharacteristicCeiling() external pure {
+        int256 max = type(int256).max;
+        checkExact(1, max, max);
+        checkExact(1e75, max - 75, max);
+        checkExact(1e76, max - 76, max);
+        checkAbsolute(9.999e75, max - 76);
+        checkAbsolute(1e76 - 1, max - 76);
+        checkAbsolute(9.999e75 - 1, max - 75);
+    }
+
+    /// A characteristic one past int256.max, on each path above, reverts
+    /// `ExponentOverflow` with the input.
+    function testLog10UnroundedCharacteristicOverflow() external {
+        int256 max = type(int256).max;
+        int256[2][7] memory inputs = [
+            [int256(10), max],
+            [int256(2e75), max],
+            [int256(1e75), max - 74],
+            [int256(1e76), max - 75],
+            [int256(9.999e75), max - 75],
+            [int256(1e76 - 1), max - 75],
+            [type(int256).max, max]
+        ];
+        for (uint256 i = 0; i < inputs.length; i++) {
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, inputs[i][0], inputs[i][1]));
+            this.log10UnroundedExternal(inputs[i][0], inputs[i][1]);
+        }
+    }
+
+    /// The characteristic is the floor of the log, rounded up from 9.999 of
+    /// a power of ten, so it passes int256.max exactly when the coefficient's
+    /// digits d, plus one from 9.999 10^d, plus the exponent do.
+    function testLog10UnroundedCharacteristicOverflowFuzz(int256 signedCoefficient, int256 room) external {
+        signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
+        room = bound(room, 0, 160);
+        int256 exponent = type(int256).max - room;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 digits = LibTestExactDecimal.digits(LibTestExactDecimal.u512(uint256(signedCoefficient))) - 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 power = int256(10 ** uint256(digits));
+        // Below 1000, c is at most 10^(d + 1) - 1, under 9.999 10^d.
+        bool roundsUp = power >= 1000 && signedCoefficient / (power / 1000) >= 9999;
+        int256 characteristicRoom = room - digits - (roundsUp ? int256(1) : int256(0));
+        if (characteristicRoom >= 0) {
+            checkAbsolute(signedCoefficient, exponent);
+        } else {
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+            this.log10UnroundedExternal(signedCoefficient, exponent);
+        }
     }
 
     /// The raw log of 1.4482...e0 is 0.99988e-50 below its log from `bc -l`
