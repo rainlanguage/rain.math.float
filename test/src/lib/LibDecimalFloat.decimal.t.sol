@@ -28,6 +28,16 @@ contract LibDecimalFloatDecimalTest is Test {
     /// that fit int224, or int224.max one digit lower where that is larger.
     /// It is lossless iff it is the value, and zero is `FLOAT_ZERO`.
     function testFromFixedDecimalLossyPacked(uint256 value, uint8 decimals) external pure {
+        checkFromFixedDecimalLossyPacked(value, decimals);
+    }
+
+    /// The same for every uint224 value, which packs exactly up to int224.max
+    /// and sheds digits past it.
+    function testFromFixedDecimalLossyPackedUint224(uint224 value, uint8 decimals) external pure {
+        checkFromFixedDecimalLossyPacked(value, decimals);
+    }
+
+    function checkFromFixedDecimalLossyPacked(uint256 value, uint8 decimals) internal pure {
         bool past = value > uint256(type(int256).max);
         (int256 signedCoefficient, int256 exponent, bool lossless) =
             LibDecimalFloat.fromFixedDecimalLossy(value, decimals);
@@ -138,6 +148,16 @@ contract LibDecimalFloatDecimalTest is Test {
     /// last digit on the way in, losslessly iff that digit is zero, and comes
     /// back without it; any other value comes back exactly.
     function testFixedDecimalRoundTripLossless(uint256 value, uint8 decimals) external pure {
+        checkFixedDecimalRoundTripLossless(value, decimals);
+    }
+
+    /// The same for every value up to int224.max, which comes back exactly.
+    function testFixedDecimalRoundTripLosslessInt224(uint256 value, uint8 decimals) external pure {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkFixedDecimalRoundTripLossless(bound(value, 0, uint256(int256(type(int224).max))), decimals);
+    }
+
+    function checkFixedDecimalRoundTripLossless(uint256 value, uint8 decimals) internal pure {
         bool past = value > uint256(type(int256).max);
         (int256 signedCoefficient, int256 exponent, bool lossless0) =
             LibDecimalFloat.fromFixedDecimalLossy(value, decimals);

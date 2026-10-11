@@ -44,6 +44,20 @@ contract LibDecimalFloatImplementationMulDivFixedTest is Test {
         }
     }
 
+    /// Every magnitude of x, each with every y whose product stays below
+    /// 2^422 < 2^256 1e50, so the quotient is below 2^256 and is the floor.
+    function testMulDivFixedIsTheFlooredQuotientAtEveryMagnitude(uint256 x, uint256 y, uint8 shiftX, uint8 shiftY)
+        external
+        pure
+    {
+        x >>= shiftX;
+        uint256 bitsX = x == 0 ? 0 : Math.log2(x) + 1;
+        // 422 - bitsX >= 166, so y keeps at least 166 bits.
+        uint256 minShiftY = bitsX > 166 ? bitsX - 166 : 0;
+        y >>= shiftY > minShiftY ? shiftY : minShiftY;
+        check(x, y);
+    }
+
     function mulDivFixedExternal(uint256 x, uint256 y) external pure returns (uint256) {
         return LibDecimalFloatImplementation.mulDivFixed(x, y);
     }

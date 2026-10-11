@@ -553,6 +553,28 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         checkCanonicalAcrossRepresentations(base, exponent, shift, scientific);
     }
 
+    /// The same at a base with room to shift, at least one digit short of
+    /// int224 and above the exponent floor, by a shift of at least one, so
+    /// the two representations differ. Non-scientific takes base exponents
+    /// inside the cap.
+    function testFormatCanonicalAcrossRepresentationsShifted(
+        int224 base,
+        uint256 drop,
+        int256 exponent,
+        uint256 shift,
+        bool scientific
+    ) external {
+        // Safe: 10^67 fits int224.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        base /= int224(int256(10 ** bound(drop, 1, 67)));
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        exponent =
+            scientific ? bound(exponent, int256(type(int32).min) + 1, type(int32).max) : bound(exponent, -cap, cap);
+        vm.assume(base != 0);
+        assertGe(maxShift(base, exponent), 1, "room to shift");
+        checkCanonicalAcrossRepresentations(base, exponent, shift, scientific);
+    }
+
     /// Non-scientific mode reverts past the exponent cap, which is most of
     /// int32, so this samples the base exponents it formats.
     function testFormatCanonicalAcrossRepresentationsInsideCap(int224 base, int256 exponent, uint256 shift) external {

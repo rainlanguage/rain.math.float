@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestRegion} from "test/lib/LibTestRegion.sol";
 
 contract LibDecimalFloatImplementationMaxTest is Test {
     function max(int256 coefficientA, int256 exponentA, int256 coefficientB, int256 exponentB)
@@ -59,8 +60,30 @@ contract LibDecimalFloatImplementationMaxTest is Test {
         int256 coefficientB,
         int256 exponentB
     ) external pure {
-        bool isA =
-            LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB) > 0;
+        checkMax(coefficientA, exponentA, coefficientB, exponentB);
+    }
+
+    /// The result is A, unchanged, when A is exactly above B, else B, with
+    /// coefficients of every digit count at exponents within 76 of each other,
+    /// where `max` rescales.
+    function testMaxIsOneOfTheInputsAndNotLessRescaled(
+        int256 coefficientA,
+        uint256 dropA,
+        int256 exponentA,
+        int256 coefficientB,
+        uint256 dropB,
+        int256 offset
+    ) external pure {
+        checkMax(
+            LibTestRegion.anyDigits(coefficientA, dropA),
+            exponentA,
+            LibTestRegion.anyDigits(coefficientB, dropB),
+            LibTestRegion.nearExponent(exponentA, offset)
+        );
+    }
+
+    function checkMax(int256 coefficientA, int256 exponentA, int256 coefficientB, int256 exponentB) internal pure {
+        bool isA = LibTestExactDecimal.cmpParts(coefficientA, exponentA, coefficientB, exponentB) > 0;
         assertMaxIs(
             coefficientA,
             exponentA,

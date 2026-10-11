@@ -121,12 +121,37 @@ contract LibDecimalFloatCanonicalizeTest is Test {
         // is covered separately by testCanonicalizeZero.
         vm.assume(signedCoefficient != 0);
 
-        // Base representation.
-        Float a = LibDecimalFloat.packLossless(signedCoefficient, exponent);
+        checkEqImpliesByteEqual(signedCoefficient, exponent, bound(shift, 0, maxShift(signedCoefficient, exponent)));
+    }
 
+    /// Fuzz: the same at a base with room to shift, at least one digit short
+    /// of int224 and above the exponent floor, by a shift of at least one, so
+    /// the two representations differ.
+    function testCanonicalizeEqImpliesByteEqualShiftedFuzz(
+        int224 signedCoefficient,
+        uint256 drop,
+        int32 exponent,
+        uint256 shift
+    ) external pure {
+        // Safe: 10^67 fits int224.
+        //forge-lint: disable-next-line(unsafe-typecast)
+        signedCoefficient /= int224(int256(10 ** bound(drop, 1, 67)));
+        vm.assume(signedCoefficient != 0);
+        // Safe: bounded within int32.
+        //forge-lint: disable-next-line(unsafe-typecast)
+        exponent = int32(bound(exponent, int256(INT32_MIN) + 1, type(int32).max));
+        uint256 maxS = maxShift(signedCoefficient, exponent);
+        assertGe(maxS, 1, "room to shift");
+        checkEqImpliesByteEqual(signedCoefficient, exponent, bound(shift, 1, maxS));
+    }
+
+    /// `signedCoefficient × 10^exponent` and the same value with the
+    /// coefficient shifted up `shift` digits canonicalize to the same bytes,
+    /// the documented representative.
+    function checkEqImpliesByteEqual(int224 signedCoefficient, int32 exponent, uint256 shift) internal pure {
+        Float a = LibDecimalFloat.packLossless(signedCoefficient, exponent);
         // Shifted representation of the same value: multiply the coefficient by
         // 10^shift and lower the exponent by the same amount.
-        shift = bound(shift, 0, maxShift(signedCoefficient, exponent));
         // Safe: c 10^shift fits int224, so 10^shift is at most 10^67.
         //forge-lint: disable-next-line(unsafe-typecast)
         int256 shiftedCoefficient = int256(signedCoefficient) * int256(10 ** shift);
@@ -242,10 +267,30 @@ contract LibDecimalFloatCanonicalizeTest is Test {
         // Safe: k <= 255, so the exponent stays within int32.
         //forge-lint: disable-next-line(unsafe-typecast)
         int32 expA = int32(int256(INT32_MIN) + int256(uint256(k)));
-        j = bound(j, 0, maxShift(base, expA));
+        checkFloorCrossRep(base, expA, bound(j, 0, maxShift(base, expA)));
+    }
+
+    /// The same at a base with room to shift, at least one digit short of
+    /// int224 and at least one exponent above the floor, by a shift of at
+    /// least one, so the two representations differ.
+    function testCanonicalizeFloorCrossRepShiftedFuzz(int224 base, uint256 drop, uint8 k, uint256 j) external pure {
+        // Safe: 10^67 fits int224.
+        //forge-lint: disable-next-line(unsafe-typecast)
+        base /= int224(int256(10 ** bound(drop, 1, 67)));
+        vm.assume(base != 0);
+        // Safe: 1 <= k <= 255, so the exponent stays within int32.
+        //forge-lint: disable-next-line(unsafe-typecast)
+        int32 expA = int32(int256(INT32_MIN) + int256(bound(k, 1, 255)));
+        uint256 maxS = maxShift(base, expA);
+        assertGe(maxS, 1, "room to shift");
+        checkFloorCrossRep(base, expA, bound(j, 1, maxS));
+    }
+
+    function checkFloorCrossRep(int224 base, int32 expA, uint256 j) internal pure {
         // Safe: base 10^j fits int224, so 10^j is at most 10^67.
         //forge-lint: disable-next-line(unsafe-typecast)
         int256 scaled = int256(base) * int256(10 ** j);
+        // Safe: j <= 67.
         //forge-lint: disable-next-line(unsafe-typecast)
         int256 expB = int256(expA) - int256(j);
 

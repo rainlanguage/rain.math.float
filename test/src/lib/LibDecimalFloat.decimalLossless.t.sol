@@ -42,6 +42,16 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
     /// optimization without re-discovering or re-asserting it. Every other
     /// value follows the packed rule.
     function testFromFixedDecimalLosslessPackedZeroDecimalsIsIdentity(uint256 value) external {
+        checkZeroDecimalsIsIdentity(value);
+    }
+
+    /// The identity for every value up to int224.max.
+    function testFromFixedDecimalLosslessPackedZeroDecimalsIsIdentityInt224(uint256 value) external {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkZeroDecimalsIsIdentity(bound(value, 0, uint256(int256(type(int224).max))));
+    }
+
+    function checkZeroDecimalsIsIdentity(uint256 value) internal {
         // forge-lint: disable-next-line(unsafe-typecast)
         if (value <= uint256(int256(type(int224).max))) {
             Float result = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, 0);
@@ -57,6 +67,16 @@ contract LibDecimalFloatDecimalLosslessTest is Test {
     /// is lossy iff it drops a nonzero digit. The packed path is also lossy
     /// where the value's significant digits are past int224.
     function testFromFixedDecimalLosslessMem(uint256 value, uint8 decimals) external {
+        checkFromFixedDecimalLosslessMem(value, decimals);
+    }
+
+    /// The same for every uint224 value, exact up to int224.max and past it
+    /// exact iff the significant digits fit int224.
+    function testFromFixedDecimalLosslessMemUint224(uint224 value, uint8 decimals) external {
+        checkFromFixedDecimalLosslessMem(value, decimals);
+    }
+
+    function checkFromFixedDecimalLosslessMem(uint256 value, uint8 decimals) internal {
         // forge-lint: disable-next-line(unsafe-typecast)
         bool past = value > uint256(type(int256).max);
         // value / 10 < 2^253 past int256.max, and value fits int256 otherwise.

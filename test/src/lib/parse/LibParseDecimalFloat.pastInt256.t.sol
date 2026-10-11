@@ -206,6 +206,16 @@ contract LibParseDecimalFloatPastInt256Test is Test {
     /// when that is a Float: its significant digits fit int224 of its sign.
     /// Otherwise it is no Float, `ParseDecimalPrecisionLoss`.
     function testParseIntegerTrailingZerosFuzz(int256 c, uint8 z) external view {
+        checkIntegerTrailingZeros(c, z);
+    }
+
+    /// Every int224 is a Float, so with any number of zeros it parses to
+    /// exactly its value.
+    function testParseIntegerTrailingZerosInt224Fuzz(int224 c, uint8 z) external view {
+        checkIntegerTrailingZeros(c, z);
+    }
+
+    function checkIntegerTrailingZeros(int256 c, uint8 z) internal view {
         string memory s = string.concat(Strings.toStringSigned(c), zeros(z));
         (bytes4 err, Float float) = this.parse(s);
         uint256 significand = LibTestExactDecimal.abs(c);

@@ -245,7 +245,7 @@ library LibTestExactDecimal {
             value = coefficient / scale;
             lossless = coefficient % scale == 0;
         } else {
-            // 10^78 alone exceeds any int224 coefficient.
+            // 10^78 alone exceeds any int256 coefficient.
             lossless = coefficient == 0;
         }
     }

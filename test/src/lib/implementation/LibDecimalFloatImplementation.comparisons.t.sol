@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestRegion} from "test/lib/LibTestRegion.sol";
 
 /// `lt`, `gt`, `gte` and `min` on unpacked values. `lte` and `max` have their
 /// own files; these are the rest of the set, so the unpacked surface carries
@@ -73,6 +74,25 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
 
     /// Every comparison is the exact order of the pair.
     function testAgainstExactOrder(int256 cA, int256 eA, int256 cB, int256 eB) external pure {
+        checkExactOrder(cA, eA, cB, eB);
+    }
+
+    /// Every comparison is the exact order of the pair, with coefficients of
+    /// every digit count at exponents within 76 of each other, where the
+    /// comparison rescales.
+    function testAgainstExactOrderRescaled(int256 cA, uint256 dropA, int256 eA, int256 cB, uint256 dropB, int256 offset)
+        external
+        pure
+    {
+        checkExactOrder(
+            LibTestRegion.anyDigits(cA, dropA),
+            eA,
+            LibTestRegion.anyDigits(cB, dropB),
+            LibTestRegion.nearExponent(eA, offset)
+        );
+    }
+
+    function checkExactOrder(int256 cA, int256 eA, int256 cB, int256 eB) internal pure {
         int256 order = LibTestExactDecimal.cmpParts(cA, eA, cB, eB);
         assertEq(lt(cA, eA, cB, eB), order < 0, "lt");
         assertEq(lte(cA, eA, cB, eB), order <= 0, "lte");
@@ -83,6 +103,33 @@ contract LibDecimalFloatImplementationComparisonsTest is Test {
 
     /// `lt` is transitive across rescaling.
     function testLtTransitive(int256 cA, int256 eA, int256 cB, int256 eB, int256 cC, int256 eC) external pure {
+        checkLtTransitive(cA, eA, cB, eB, cC, eC);
+    }
+
+    /// `lt` is transitive with coefficients of every digit count at exponents
+    /// within 76 of each other, where every comparison rescales.
+    function testLtTransitiveRescaled(
+        int256 cA,
+        int256 cB,
+        int256 cC,
+        uint256 drops,
+        int256 eB,
+        int256 offsetA,
+        int256 offsetC
+    ) external pure {
+        int256 eA = LibTestRegion.nearExponent(eB, offsetA % 39);
+        int256 eC = LibTestRegion.nearExponent(eB, offsetC % 39);
+        checkLtTransitive(
+            LibTestRegion.anyDigits(cA, drops),
+            eA,
+            LibTestRegion.anyDigits(cB, drops / 77),
+            eB,
+            LibTestRegion.anyDigits(cC, drops / 77 / 77),
+            eC
+        );
+    }
+
+    function checkLtTransitive(int256 cA, int256 eA, int256 cB, int256 eB, int256 cC, int256 eC) internal pure {
         if (lt(cA, eA, cB, eB) && lt(cB, eB, cC, eC)) {
             assertTrue(lt(cA, eA, cC, eC));
         }

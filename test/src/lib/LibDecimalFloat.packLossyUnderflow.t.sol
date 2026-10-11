@@ -252,31 +252,24 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
     /// dropped, at the floor, for as long as any digit remains. Once `d`
     /// reaches the digit count the value is below any representable Float and
     /// the pack is the underflow zero. Both outcomes report `lossless = false`.
-    /// Every int256 coefficient is fuzzed at every exponent below the floor,
-    /// and one past int224 is checked against the oracle.
+    /// Every int256 coefficient is fuzzed at every exponent below the floor.
     function testPackLossySignificantDigitsBelowFloorAreShed(int256 m, int256 exponent) external {
-        vm.assume(m % 10 != 0);
-        exponent = bound(exponent, type(int256).min, INT32_MIN - 1);
+        checkSignificantDigitsShed(m, bound(exponent, type(int256).min, INT32_MIN - 1));
+    }
 
+    /// Every int224 coefficient 1 to 76 digits below the floor, where the
+    /// shed keeps digits or drops the last of them.
+    function testPackLossySignificantDigitsBelowFloorAreShedInt224(int224 m, uint256 d) external {
+        // Safe: d <= 76.
+        //forge-lint: disable-next-line(unsafe-typecast)
+        checkSignificantDigitsShed(m, INT32_MIN - int256(bound(d, 1, 76)));
+    }
+
+    function checkSignificantDigitsShed(int256 m, int256 exponent) internal {
+        vm.assume(m % 10 != 0);
         checkAgainstOracle(m, exponent);
-        (Float float, bool lossless) = LibDecimalFloat.packLossy(m, exponent);
+        (, bool lossless) = LibDecimalFloat.packLossy(m, exponent);
         assertFalse(lossless, "lossless");
-        if (m >= INT224_MIN && m <= INT224_MAX) {
-            // Safe: exponent < int32.min, so the difference is positive and
-            // below 2^255.
-            //forge-lint: disable-next-line(unsafe-typecast)
-            uint256 d = uint256(INT32_MIN - exponent);
-            // Safe: d <= 76 so 10^d fits int256.
-            //forge-lint: disable-next-line(unsafe-typecast)
-            int256 expected = d > 76 ? int256(0) : m / int256(10 ** d);
-            if (expected == 0) {
-                assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "zero");
-            } else {
-                (int256 c, int256 e) = LibDecimalFloat.unpack(float);
-                assertEq(c, expected, "coeff");
-                assertEq(e, INT32_MIN, "exp");
-            }
-        }
     }
 
     /// `lossless` reports numeric equality, not whether the input already
