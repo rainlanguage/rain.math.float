@@ -6,6 +6,7 @@ import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/l
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "test/lib/LibTestPowRange.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "test/lib/LibTestErrorBound.sol";
 import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 
 contract LibDecimalFloatPow10Test is Test {
@@ -134,8 +135,9 @@ contract LibDecimalFloatPow10Test is Test {
     }
 
     /// A returned 10^x is exactly 1 for a zero x, exactly 10^x for a whole x,
-    /// and otherwise within 5.0000005e-41 of the oracle's power P: pow10's
-    /// 5.0000004e-41 of the true power, which is within 1e-67 of P. Below
+    /// and otherwise within `POW10_HALF_UNIT_E52` plus `POW10_RAW_ERROR_E52`
+    /// units of 1e-52, plus 1e-52, of the oracle's power P: pow10's bound
+    /// relative to the true power, which is within 1e-67 of P. Below
     /// 1e-2147483608 the bound adds 1e-2147483648.
     function assertPow10Value(Float x, Float result) internal pure {
         (int256 signedCoefficientX, int256 exponentX) = x.unpack();
@@ -167,8 +169,8 @@ contract LibDecimalFloatPow10Test is Test {
             LibTestExactDecimal.cmpScaled(
                 LibTestExactDecimal.u512(magnitude),
                 exponent,
-                LibTestExactDecimal.mul(power, 1e48 + 50000005),
-                powerExponent - 48
+                LibTestExactDecimal.mul(power, 1e52 + POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52 + 1),
+                powerExponent - 52
             ) <= 0,
             "pow10 above the bound"
         );
@@ -179,8 +181,8 @@ contract LibDecimalFloatPow10Test is Test {
             LibTestExactDecimal.cmpScaled(
                 LibTestExactDecimal.u512(magnitude),
                 exponent,
-                LibTestExactDecimal.mul(power, 1e48 - 50000005),
-                powerExponent - 48
+                LibTestExactDecimal.mul(power, 1e52 - POW10_HALF_UNIT_E52 - POW10_RAW_ERROR_E52 - 1),
+                powerExponent - 52
             ) >= 0,
             "pow10 below the bound"
         );

@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation, POW_FIXED_ONE} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Log10ReduceOutOfRange} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationLog10ReduceTest is Test {
     /// 1e75 10^(2^-i) rounded up, for i in [1, 16], from `bc -l` at scale 140.
@@ -68,5 +69,34 @@ contract LibDecimalFloatImplementationLog10ReduceTest is Test {
         (uint256 reduced, uint256 seed) = LibDecimalFloatImplementation.log10Reduce(x);
         assertLt(seed, POW_FIXED_ONE);
         assertReducedInRange(reduced);
+    }
+
+    function log10ReduceExternal(uint256 x) external pure returns (uint256, uint256) {
+        return LibDecimalFloatImplementation.log10Reduce(x);
+    }
+
+    /// The top of the range, 1e76 - 1, is past every threshold after the
+    /// steps before it, so it takes every step and lands in range.
+    function testLog10ReduceTop() external pure {
+        (uint256 reduced, uint256 seed) = LibDecimalFloatImplementation.log10Reduce(1e76 - 1);
+        // 1e50 is divisible by 2^16, so every step's 2^-i is exact.
+        assertEq(seed, POW_FIXED_ONE - (POW_FIXED_ONE >> 16), "every step");
+        assertReducedInRange(reduced);
+    }
+
+    /// #422: log10Reduce(5e76) broke its postcondition. Either side of
+    /// [1e75, 1e76) reverts with the input.
+    function testLog10ReduceOutOfRange() external {
+        uint256[5] memory xs = [uint256(0), 1e75 - 1, 1e76, 5e76, type(uint256).max];
+        for (uint256 i = 0; i < xs.length; i++) {
+            vm.expectRevert(abi.encodeWithSelector(Log10ReduceOutOfRange.selector, xs[i]));
+            this.log10ReduceExternal(xs[i]);
+        }
+    }
+
+    function testLog10ReduceOutOfRangeFuzz(uint256 x, bool high) external {
+        x = high ? bound(x, 1e76, type(uint256).max) : bound(x, 0, 1e75 - 1);
+        vm.expectRevert(abi.encodeWithSelector(Log10ReduceOutOfRange.selector, x));
+        this.log10ReduceExternal(x);
     }
 }
