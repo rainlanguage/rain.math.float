@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibSchoolbookProduct} from "../../../lib/LibSchoolbookProduct.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMul512Test is Test {
     function check(uint256 a, uint256 b, uint256 expectedHigh, uint256 expectedLow) internal pure {
@@ -39,7 +39,8 @@ contract LibDecimalFloatImplementationMul512Test is Test {
     }
 
     function testMul512Schoolbook(uint256 a, uint256 b) external pure {
-        (uint256 expectedHigh, uint256 expectedLow) = LibSchoolbookProduct.product(a, b);
+        U512 memory expected = LibTestExactDecimal.mul(a, b);
+        (uint256 expectedHigh, uint256 expectedLow) = (expected.hi, expected.lo);
         check(a, b, expectedHigh, expectedLow);
     }
 }

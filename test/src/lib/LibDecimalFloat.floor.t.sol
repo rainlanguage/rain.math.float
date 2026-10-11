@@ -136,4 +136,21 @@ contract LibDecimalFloatFloorTest is Test {
         Float a = LibDecimalFloat.packLossless(2.5e37, -37);
         a.floor();
     }
+
+    /// `floor` of every Float equals its exact value.
+    function testFloorExact(int224 c, int32 e) external pure {
+        checkFloorExact(c, e);
+    }
+
+    /// Exponents near the decimal point, where the integer and fraction both
+    /// carry digits.
+    function testFloorExactNearUnit(int224 c, int32 e) external pure {
+        checkFloorExact(c, int32(bound(e, -80, 5)));
+    }
+
+    function checkFloorExact(int224 c, int32 e) internal pure {
+        (int256 rc, int256 re) = LibDecimalFloat.packLossless(c, e).floor().unpack();
+        (int256 xc, int256 xe) = LibTestExactDecimal.floorParts(c, e);
+        assertEq(LibTestExactDecimal.cmpParts(rc, re, xc, xe), 0, "exact floor");
+    }
 }

@@ -133,4 +133,21 @@ contract LibDecimalFloatCeilTest is Test {
         assertTrue(LibTestExactDecimal.eq(c, e, cz, ez));
         assertEq(Float.unwrap(wrapZero.ceil()), Float.unwrap(packZeroBasic));
     }
+
+    /// `ceil` of every Float equals its exact value.
+    function testCeilExact(int224 c, int32 e) external pure {
+        checkCeilExact(c, e);
+    }
+
+    /// Exponents near the decimal point, where the integer and fraction both
+    /// carry digits.
+    function testCeilExactNearUnit(int224 c, int32 e) external pure {
+        checkCeilExact(c, int32(bound(e, -80, 5)));
+    }
+
+    function checkCeilExact(int224 c, int32 e) internal pure {
+        (int256 rc, int256 re) = LibDecimalFloat.packLossless(c, e).ceil().unpack();
+        (int256 xc, int256 xe) = LibTestExactDecimal.ceilParts(c, e);
+        assertEq(LibTestExactDecimal.cmpParts(rc, re, xc, xe), 0, "exact ceil");
+    }
 }

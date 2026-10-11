@@ -10,7 +10,6 @@ import {
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {MaximizeOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibDecimalFloatSlow} from "test/lib/LibDecimalFloatSlow.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatImplementationMaximizeTest is Test {
@@ -112,7 +111,7 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         assertEq(actualExponent, maximizedExponent);
     }
 
-    /// Maximization against the exact maximize and the slow reference.
+    /// Maximization against the exact maximize.
     function testMaximizedReference(int256 signedCoefficient, int256 exponent) external {
         (bool fits, int256 expectedSignedCoefficient, int256 expectedExponent) =
             maximizedOrReverts(signedCoefficient, exponent);
@@ -123,10 +122,6 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
             LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
         assertEq(actualSignedCoefficient, expectedSignedCoefficient);
         assertEq(actualExponent, expectedExponent);
-        (int256 slowSignedCoefficient, int256 slowExponent) =
-            LibDecimalFloatSlow.maximizeSlow(signedCoefficient, exponent);
-        assertEq(actualSignedCoefficient, slowSignedCoefficient);
-        assertEq(actualExponent, slowExponent);
     }
 
     /// Near the floor the coefficient is still fully maximized, and the shift

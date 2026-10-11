@@ -28,14 +28,27 @@ library LibTestExactDecimal {
         return U512(0, x);
     }
 
+    /// The 512 bit product by schoolbook multiplication of 128 bit limbs,
+    /// independent of the CRT trick `mul512` uses.
     function mul(uint256 a, uint256 b) internal pure returns (U512 memory) {
-        (uint256 hi, uint256 lo) = Math.mul512(a, b);
-        return U512(hi, lo);
+        uint256 mask = type(uint128).max;
+        uint256 lowLow = (a & mask) * (b & mask);
+        uint256 lowHigh = (a & mask) * (b >> 128);
+        uint256 highLow = (a >> 128) * (b & mask);
+        uint256 highHigh = (a >> 128) * (b >> 128);
+        uint256 middle = (lowLow >> 128) + (lowHigh & mask) + (highLow & mask);
+        return U512(
+            highHigh + (lowHigh >> 128) + (highLow >> 128) + (middle >> 128), (lowLow & mask) | ((middle & mask) << 128)
+        );
+    }
+
+    function words(U512 memory x) internal pure returns (uint256, uint256) {
+        return (x.hi, x.lo);
     }
 
     /// Checked: a product at or above 2^512 panics rather than wrapping.
     function mulSmall(U512 memory x, uint256 m) internal pure returns (U512 memory) {
-        (uint256 carry, uint256 lo) = Math.mul512(x.lo, m);
+        (uint256 carry, uint256 lo) = words(mul(x.lo, m));
         return U512(x.hi * m + carry, lo);
     }
 
@@ -231,7 +244,7 @@ library LibTestExactDecimal {
             if (!tooLarge && coefficient != 0) {
                 uint256 high;
                 // forge-lint: disable-next-line(unsafe-typecast)
-                (high, value) = Math.mul512(coefficient, 10 ** uint256(finalExponent));
+                (high, value) = words(mul(coefficient, 10 ** uint256(finalExponent)));
                 tooLarge = high != 0;
             }
             if (tooLarge) {
@@ -326,13 +339,10 @@ library LibTestExactDecimal {
     /// NatSpec states them: `a / b` truncated toward zero at `10^(ua - lb)`,
     /// `ua` the dividend's int256 unit and `lb` the divisor's leading digit's
     /// exponent, as `signedParts`.
-    function divParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
-        if (ca == 0) {
-            return (0, 0);
-        }
-        (uint256 magnitude, int256 offset) = quotientAtUnit(ca, cb);
-        // ua - lb is ea - lift - (eb + digits(cb) - 1).
-        return signedParts((ca < 0) != (cb < 0), magnitude, ea - eb - offset);
+    function divParts(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256 c, int256 e) {
+        bool overflowed;
+        (overflowed, c, e) = divPartsWide(ca, ea, cb, eb);
+        require(!overflowed, "divParts overflowed");
     }
 
     /// The parts `inv` of a non-zero Float returns: `1e76 × 10^-76` over it.
@@ -833,12 +843,12 @@ library LibTestExactDecimal {
     /// leave it in int256 of the product's sign, and the number shed.
     function productInt256(int256 ca, int256 cb) internal pure returns (int256, int256) {
         bool negative = (ca < 0) != (cb < 0);
-        (uint256 productHi, uint256 productLo) = Math.mul512(abs(ca), abs(cb));
+        (uint256 productHi, uint256 productLo) = words(mul(abs(ca), abs(cb)));
         // floor(product / 10^k) is within the bound iff product < (bound + 1) × 10^k.
         uint256 aboveBound = negative ? 2 ** 255 + 1 : 2 ** 255;
         uint256 dropped = 0;
         while (true) {
-            (uint256 hi, uint256 lo) = Math.mul512(aboveBound, 10 ** dropped);
+            (uint256 hi, uint256 lo) = words(mul(aboveBound, 10 ** dropped));
             if (productHi < hi || (productHi == hi && productLo < lo)) {
                 break;
             }
@@ -929,5 +939,48 @@ library LibTestExactDecimal {
             // forge-lint: disable-next-line(unsafe-typecast)
             bound = add(bound, mulPow10(u512(abs(boundCoefficients[i])), uint256(boundExponents[i] - floor)));
         }
+    }
+
+    /// The integer part of `c 10^e`, truncated toward zero, and the rest, both
+    /// at `10^e`: `c` is their exact sum.
+    function wholeAndFraction(int256 c, int256 e) internal pure returns (int256 whole, int256 fraction) {
+        if (e >= 0) {
+            return (c, 0);
+        }
+        if (e < -76) {
+            return (0, c);
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 unit = int256(10 ** uint256(-e));
+        fraction = c % unit;
+        whole = c - fraction;
+    }
+
+    /// The greatest integer not above `c 10^e`, as parts. One unit of `10^-e`
+    /// below an int224 coefficient fits int256; below `10^-76` the floor of a
+    /// negative value is `-1`.
+    function floorParts(int256 c, int256 e) internal pure returns (int256, int256) {
+        (int256 whole, int256 fraction) = wholeAndFraction(c, e);
+        if (fraction >= 0) {
+            return (whole, e);
+        }
+        if (e < -76) {
+            return (-1, 0);
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (whole - int256(10 ** uint256(-e)), e);
+    }
+
+    /// The least integer not below `c 10^e`, as parts.
+    function ceilParts(int256 c, int256 e) internal pure returns (int256, int256) {
+        (int256 whole, int256 fraction) = wholeAndFraction(c, e);
+        if (fraction <= 0) {
+            return (whole, e);
+        }
+        if (e < -76) {
+            return (1, 0);
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (whole + int256(10 ** uint256(-e)), e);
     }
 }
