@@ -7,7 +7,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
-import {ParseEmptyDecimalString, ParseDecimalOverflow} from "rain-string-0.3.9/src/error/ErrParse.sol";
+import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {
     MalformedExponentDigits,
     ParseDecimalPrecisionLoss,
@@ -16,8 +16,7 @@ import {
 } from "src/error/ErrParse.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestDecimalLiteral, Literal} from "test/lib/LibTestDecimalLiteral.sol";
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
@@ -52,47 +51,52 @@ contract LibParseDecimalFloatTest is Test {
         }
     }
 
-    /// The wrapper's outcome for `data`, tagged as `parseOutcome` tags it, from
-    /// the inline parse with overflow decided by the exact oracle.
-    function expectedParseOutcome(string memory data) internal view returns (bytes memory) {
-        // The inline parse reports every malformed input as a selector. Its only
-        // revert is a zero start pointer, which no memory string has.
-        (bytes4 errorSelector, uint256 cursorMove, int256 signedCoefficient, int256 exponent) =
-            this.parseDecimalFloatInlineExternal(data);
-        // Inline parsing doesn't treat a partially consumed string as an
-        // error, but the external parsing does, so we have to special case
-        // that check.
-        if (errorSelector != bytes4(0)) {
-            return abi.encode("return", errorSelector, Float.wrap(0));
-        } else if (cursorMove != bytes(data).length) {
-            return abi.encode("return", ParseDecimalFloatExcessCharacters.selector, Float.wrap(0));
-        } else if (
-            signedCoefficient != 0
-                && LibTestExactDecimal.overflows(
-                    LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)), exponent
-                )
-        ) {
-            // The parsed value is beyond the largest Float of its sign.
-            return abi.encode("revert", abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent));
+    /// Both entry points against the literal's exact value and the documented
+    /// rule, read by `LibTestDecimalLiteral` independently of the library.
+    function checkAgainstRule(string memory data) internal view {
+        Literal memory lit = LibTestDecimalLiteral.read(bytes(data));
+        bool isFloat = LibTestDecimalLiteral.isFloat(lit);
+        bytes4 valueError = LibTestDecimalLiteral.isPast(lit)
+            ? ExponentOverflow.selector
+            : (isFloat ? bytes4(0) : ParseDecimalPrecisionLoss.selector);
+
+        (bytes4 err, uint256 cursor, int256 c, int256 e) = this.parseDecimalFloatInlineExternal(data);
+        assertEq(cursor, lit.cursor, "inline cursor");
+        if (lit.malformed != 0) {
+            assertEq(err, lit.malformed, "inline malformed");
+        } else if (err == 0) {
+            assertTrue(LibTestDecimalLiteral.isValue(lit, c, e), "inline value");
+        } else {
+            assertEq(err, valueError, "inline value error");
         }
-        (Float packed, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-        if (!lossless) {
-            return abi.encode("return", ParseDecimalPrecisionLoss.selector, Float.wrap(0));
+        if (err != 0) {
+            assertEq(c, 0, "inline error coefficient");
+            assertEq(e, 0, "inline error exponent");
         }
-        // A lossless pack may still have shed trailing zeros, to fit the
-        // coefficient in int224 or to lift the exponent to int32.min, so the
-        // representation can differ from the inline parse. The VALUE cannot.
-        (int256 packedCoefficient, int256 packedExponent) = packed.unpack();
-        assertTrue(
-            LibDecimalFloatImplementation.eq(signedCoefficient, exponent, packedCoefficient, packedExponent),
-            "lossless pack changed the value"
-        );
-        return abi.encode("return", bytes4(0), packed);
+
+        bytes4 expected = lit.malformed != 0
+            ? lit.malformed
+            : (lit.cursor != bytes(data).length ? ParseDecimalFloatExcessCharacters.selector : valueError);
+        try this.parseDecimalFloatExternal(data) returns (bytes4 packedErr, Float float) {
+            assertEq(packedErr, expected, "error");
+            if (packedErr == 0) {
+                (int256 packedC, int256 packedE) = float.unpack();
+                assertTrue(LibTestDecimalLiteral.isValue(lit, packedC, packedE), "value");
+            } else {
+                assertEq(Float.unwrap(float), bytes32(0), "error float");
+            }
+        } catch (bytes memory revertData) {
+            assertEq(expected, ExponentOverflow.selector, "reverted");
+            assertGe(revertData.length, 4, "revert data");
+            // The first four bytes, checked present above.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertEq(bytes4(revertData), ExponentOverflow.selector, "revert selector");
+        }
     }
 
-    /// Check that the packed version matches the inline version.
+    /// Any string, against the rule.
     function testParsePacked(string memory data) external view {
-        assertEq(parseOutcome(data), expectedParseOutcome(data), "parse outcome");
+        checkAgainstRule(data);
     }
 
     function checkParseDecimalFloat(
@@ -124,7 +128,7 @@ contract LibParseDecimalFloatTest is Test {
     /// Fuzz every uint256 integer literal, either sign, with leading zeros.
     /// Within int256 of its sign it parses to itself at exponent 0. Past it,
     /// the trailing zeros move to the exponent, and significant digits still
-    /// past int256 are `ParseDecimalOverflow`.
+    /// past int256 are no Float, `ParseDecimalPrecisionLoss`.
     function testParseLiteralDecimalFloatFuzz(uint256 value, uint8 leadingZerosCount, bool isNeg) external pure {
         string memory str = value.toString();
 
@@ -145,7 +149,7 @@ contract LibParseDecimalFloatTest is Test {
             }
         }
         if (significand > limit) {
-            checkParseDecimalFloatFail(input, ParseDecimalOverflow.selector, bytes(input).length);
+            checkParseDecimalFloatFail(input, ParseDecimalPrecisionLoss.selector, bytes(input).length);
             return;
         }
         int256 expected;
@@ -678,9 +682,8 @@ contract LibParseDecimalFloatTest is Test {
         for (uint256 i = 0; i < fracs.length; i++) {
             string memory s = string.concat(nines, fracs[i], "e2200000000");
             checkParseDecimalFloat(s, ninesValue, 2200000000, bytes(s).length);
-            bytes memory expected = expectedParseOutcome(s);
-            assertEq(expected, overflow, "oracle overflow");
-            assertEq(parseOutcome(s), expected, "parse outcome");
+            assertEq(parseOutcome(s), overflow, "parse outcome");
+            checkAgainstRule(s);
         }
     }
 
@@ -719,9 +722,9 @@ contract LibParseDecimalFloatTest is Test {
             assertEq(fracCursor, bytes(frac).length, "frac cursor");
         }
 
-        bytes memory expected = expectedParseOutcome(bare);
-        assertEq(parseOutcome(bare), expected, "bare outcome");
-        assertEq(parseOutcome(frac), expected, "frac outcome");
+        assertEq(parseOutcome(frac), parseOutcome(bare), "outcome");
+        checkAgainstRule(bare);
+        checkAgainstRule(frac);
     }
 
     /// Can't have more than max total precision. Add decimals after the max int.
@@ -733,13 +736,165 @@ contract LibParseDecimalFloatTest is Test {
         );
     }
 
-    /// Can't have more than max total precision. Have an int that makes it
-    /// impossible to fit the max decimals.
-    function testParseLiteralDecimalFloatPrecisionRevert1() external pure {
-        checkParseDecimalFloatFail(
-            "2.5789604461865809771178549250434395392663499233282028201972879200395",
-            ParseDecimalPrecisionLoss.selector,
-            69
+    /// 69 significant digits are no Float, but fit int256, so the inline parse
+    /// returns them exactly and the wrapper reports the precision loss.
+    function testParseLiteralDecimalFloatPrecisionRevert1() external view {
+        string memory s = "2.5789604461865809771178549250434395392663499233282028201972879200395";
+        checkParseDecimalFloat(s, 25789604461865809771178549250434395392663499233282028201972879200395, -67, 69);
+        (bytes4 err, Float float) = this.parseDecimalFloatExternal(s);
+        assertEq(err, ParseDecimalPrecisionLoss.selector);
+        assertEq(Float.unwrap(float), bytes32(0));
+    }
+
+    /// Characters a literal is made of, weighted to zeros, and one it is not.
+    bytes internal constant ALPHABET = "0123456789000000.-+eEx";
+
+    /// Strings over the literal alphabet, against the rule.
+    function testParseRuleAlphabetFuzz(bytes memory seed) external view {
+        bytes memory str = new bytes(seed.length);
+        for (uint256 i = 0; i < seed.length; i++) {
+            str[i] = ALPHABET[uint8(seed[i]) % ALPHABET.length];
+        }
+        checkAgainstRule(string(str));
+    }
+
+    /// `len` digits from `seed`, each zero at odds `zeroOdds` in 8, otherwise
+    /// uniform.
+    function digitRun(uint256 seed, uint256 len, uint256 zeroOdds) internal pure returns (bytes memory out) {
+        out = new bytes(len);
+        for (uint256 i = 0; i < len; i++) {
+            uint256 r = uint256(keccak256(abi.encode(seed, i)));
+            // A digit, below 58.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            out[i] = r % 8 < zeroOdds ? bytes1("0") : bytes1(uint8(48 + (r >> 8) % 10));
+        }
+    }
+
+    /// An exponent part: none, small, near int32.min or int32.max, near
+    /// int256.min or int256.max, or digits past int256.
+    function exponentOfKind(uint256 kind, int256 raw, uint256 style) internal pure returns (string memory) {
+        kind = kind % 7;
+        if (kind == 0) {
+            return "";
+        }
+        string memory digits;
+        if (kind == 1) {
+            digits = Strings.toStringSigned(bound(raw, -200, 200));
+        } else if (kind == 2) {
+            digits = Strings.toStringSigned(type(int32).min + bound(raw, -300, 300));
+        } else if (kind == 3) {
+            digits = Strings.toStringSigned(type(int32).max + bound(raw, -300, 300));
+        } else if (kind == 4) {
+            digits = Strings.toStringSigned(type(int256).min + int256(bound(raw, 0, 300)));
+        } else if (kind == 5) {
+            digits = Strings.toStringSigned(type(int256).max - int256(bound(raw, 0, 300)));
+        } else {
+            // 2^255 and up, of either sign, possibly with more digits.
+            uint256 past = (uint256(1) << 255) + uint256(bound(raw, 0, 300));
+            digits = string.concat(raw < 0 ? "-" : "", past.toString(), raw % 3 == 0 ? "00" : "");
+        }
+        style = style % 3;
+        bool negative = bytes(digits)[0] == "-";
+        string memory marker = style == 1 ? "E" : "e";
+        if (!negative && style == 2) {
+            marker = "e+";
+        }
+        return string.concat(marker, digits);
+    }
+
+    /// What may follow a literal: nothing, or a malformed or excess tail.
+    function tail(uint256 kind) internal pure returns (string memory) {
+        string[9] memory tails = ["", "", "x", ".", "e", "e-", "e+", ".5", "-1"];
+        return tails[kind % tails.length];
+    }
+
+    /// Literals of every shape, digit runs past int256 and exponents near and
+    /// past the int32 and int256 bounds, with malformed tails, against the
+    /// rule.
+    function testParseRuleLiteralShapeFuzz(
+        bool negative,
+        uint8 leadingZeros,
+        uint256 intSeed,
+        uint8 intLength,
+        uint8 trailingZeros,
+        uint256 fracSeed,
+        uint8 fracLength,
+        uint8 zeroOdds,
+        uint256 expKind,
+        int256 expRaw,
+        uint256 expStyle,
+        uint256 tailKind
+    ) external view {
+        intLength = uint8(bound(intLength, 1, 160));
+        bytes memory intDigits = digitRun(intSeed, intLength, zeroOdds % 8);
+        string memory literal = string.concat(
+            negative ? "-" : "", zeros(leadingZeros % 100), string(intDigits), zeros(trailingZeros % 100)
         );
+        if (fracLength % 3 != 0) {
+            literal = string.concat(literal, ".", string(digitRun(fracSeed, bound(fracLength, 1, 160), zeroOdds % 8)));
+        }
+        literal = string.concat(literal, exponentOfKind(expKind, expRaw, expStyle), tail(tailKind));
+        checkAgainstRule(literal);
+    }
+
+    /// Around the overflow threshold `(2^223 + 2) × 10^int32.max`: a 68 digit
+    /// head near 2^223 followed by `extra` digits, its leading digit near
+    /// 10^(int32.max + 67), with the point anywhere in the digits.
+    function testParseRuleOverflowThresholdFuzz(
+        uint256 head,
+        uint8 extra,
+        uint256 extraSeed,
+        uint8 zeroOdds,
+        int8 shift,
+        uint8 point,
+        bool negative
+    ) external view {
+        head = bound(head, 2 ** 223 - 5, 2 ** 223 + 5);
+        bytes memory digits = bytes.concat(bytes(head.toString()), digitRun(extraSeed, extra, zeroOdds % 9));
+        uint256 fracLength = bound(point, 0, digits.length - 1);
+        string memory mantissa = fracLength == 0
+            ? string(digits)
+            : string.concat(
+                string(LibTestDecimalLiteral.slice(digits, 0, digits.length - fracLength)),
+                ".",
+                string(LibTestDecimalLiteral.slice(digits, digits.length - fracLength, digits.length))
+            );
+        // The leading digit is at 10^(int32.max + 67 + shift).
+        // Lengths are far below int256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 e = int256(type(int32).max) + 67 + bound(shift, -2, 2) - int256(digits.length - fracLength - 1);
+        checkAgainstRule(string.concat(negative ? "-" : "", mantissa, "e", Strings.toStringSigned(e)));
+    }
+
+    /// Literals past int256 that the old internal steps rejected, by value.
+    function testParseRulePastInt256Examples() external view {
+        string memory max = Strings.toStringSigned(type(int256).max);
+        string memory past = (uint256(1) << 255).toString();
+        string[12] memory literals = [
+            past,
+            string.concat("1e", past),
+            string.concat("-1e", past),
+            string.concat("1e-", past),
+            string.concat("0.", digitRunString(78)),
+            string.concat("1e-", (uint256(1) << 255).toString(), "1"),
+            string.concat("2", zeros(66), ".5"),
+            string.concat(max, ".5"),
+            string.concat(max, "e2147483647"),
+            string.concat(max, "e-2147483700"),
+            string.concat(past, "000e-80"),
+            string.concat("1", zeros(200), ".", zeros(200), "1")
+        ];
+        for (uint256 i = 0; i < literals.length; i++) {
+            checkAgainstRule(literals[i]);
+        }
+    }
+
+    function digitRunString(uint256 n) internal pure returns (string memory s) {
+        s = new string(n);
+        for (uint256 i = 0; i < n; i++) {
+            // A digit, below 58.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            bytes(s)[i] = bytes1(uint8(49 + i % 9));
+        }
     }
 }

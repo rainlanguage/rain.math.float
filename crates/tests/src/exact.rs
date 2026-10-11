@@ -715,40 +715,15 @@ pub(crate) fn literal() -> BoxedStrategy<String> {
         .boxed()
 }
 
+/// Python reads every literal's exact value and decides whether it is a
+/// Float, as the reference does.
 pub(crate) fn check_parse(s: &str) -> Result<(), TestCaseError> {
-    let case = format!("parse({s})");
-    let want = r::parse(s);
-    let unpacked = r::parse_unpacked(s);
-    if let Ok(unpacked) = &unpacked {
-        let lit = r::literal_value(s);
-        prop_assert!(
-            unpacked.eq_value(&lit) || unpacked.e.abs() > 1 << 60,
-            "{case}: unpacked {unpacked:?}, literal {lit:?}"
-        );
-    }
-    // Python reads every literal's value and decides whether it is a Float,
-    // so every representable literal parses to exactly its value. Which error
-    // a literal that is no Float gets is the parser's own before packing.
-    match (&want, py_float(&ask(json!({"op": "parse_value", "s": s})))) {
-        (Ok(w), Ok(p)) => prop_assert!(w.eq_value(&p), "{case}: reference {w:?}, python {p:?}"),
-        (Err(w), Err(p)) => {
-            if unpacked.is_ok() {
-                prop_assert_eq!(w.name(), p, "{}", case)
-            }
-        }
-        (w, p) => prop_assert!(false, "{case}: reference {w:?}, python {p:?}"),
-    }
-    match (sol_parse(s), want) {
-        (Ok(f), Ok(w)) => {
-            prop_assert!(f.eq_value(&w), "{case}: solidity {f:?}, reference {w:?}");
-        }
-        (Err(e), Err(w)) => prop_assert!(
-            error_matches(&e, w),
-            "{case}: solidity {e:?}, reference {w:?}"
-        ),
-        (s, w) => prop_assert!(false, "{case}: solidity {s:?}, reference {w:?}"),
-    }
-    Ok(())
+    check_float(
+        &format!("parse({s})"),
+        sol_parse(s),
+        r::parse(s),
+        ask(json!({"op": "parse_value", "s": s})),
+    )
 }
 
 proptest! {
@@ -967,7 +942,7 @@ mod checker {
         assert!(error_matches(&Fail::Selector(loss.selector()), loss));
         assert!(!error_matches(
             &Fail::Selector(loss.selector()),
-            RefError::ParseDecimalOverflow
+            RefError::ExponentOverflow
         ));
         assert!(matches!(sol_parse("abc"), Err(Fail::Selector(_))));
     }
@@ -1093,7 +1068,8 @@ mod found {
     }
 
     /// #341: a literal past int256 that is a Float parses to exactly its
-    /// value, and zero takes an exponent of any size.
+    /// value, and zero takes an exponent of any size. #375: a literal that is
+    /// no Float gets the error its value decides.
     #[test]
     fn parse_past_int256() {
         let zeros = |n: usize| "0".repeat(n);
@@ -1131,26 +1107,59 @@ mod found {
             (format!("0e-{}", &past + 1u32), BigInt::zero(), 0),
             (format!("-0.000E+{past}000"), BigInt::zero(), 0),
             (format!("0.0e-9{}", zeros(200)), BigInt::zero(), 0),
+            // #375: digit runs past int256 that leave a Float.
+            (format!("1e{}5", zeros(100)), BigInt::from(1), 5),
+            (format!("1e-{}5", zeros(100)), BigInt::from(1), -5),
+            (format!("1.{}", zeros(100)), BigInt::from(1), 0),
+            (
+                format!("{}1.5{}", zeros(100), zeros(100)),
+                BigInt::from(15),
+                -1,
+            ),
+            (format!("0.{}15e102", zeros(100)), BigInt::from(15), 0),
+            (format!("1{}.5", zeros(66)), r::pow10(67) + 5u32, -1),
         ] {
             let want = Dec::new(c, e);
             let got = sol_parse(&s);
             assert!(matches!(&got, Ok(f) if f.eq_value(&want)), "{s}: {got:?}");
             run(check_parse(&s));
         }
-        // No Float.
-        for s in [
-            format!("{past}"),
-            format!("{past}0"),
-            format!("{max}0000"),
-            format!("{}{}", r::int224_max() + 1u32, zeros(20)),
-            format!("1{}.5", zeros(77)),
-            format!("1{}.0001", zeros(77)),
-            format!("1{}e-2147483729", zeros(80)),
-            format!("1e{past}"),
-            format!("-0.1e-{}", &past + 1u32),
-            format!("1{}e{past}", zeros(80)),
+        // No Float: past every Float, at least (2^223 + 2)e2147483647 in
+        // magnitude, is ExponentOverflow; anything else is
+        // ParseDecimalPrecisionLoss.
+        let loss = RefError::ParseDecimalPrecisionLoss;
+        let over = RefError::ExponentOverflow;
+        let two223 = BigInt::from(1) << 223usize;
+        let nonzero78: String = (0..78).map(|i| char::from(b'1' + (i % 9) as u8)).collect();
+        for (s, want) in [
+            // 2^255 ends in 8: 77 significant digits.
+            (format!("{past}"), loss),
+            (format!("-{past}"), loss),
+            (format!("{past}0"), loss),
+            (format!("{max}0000"), loss),
+            (format!("{}{}", r::int224_max() + 1u32, zeros(20)), loss),
+            (format!("1{}.5", zeros(77)), loss),
+            (format!("1{}.0001", zeros(77)), loss),
+            (format!("1{}e-2147483729", zeros(80)), loss),
+            (format!("1e{past}"), over),
+            (format!("1e+{past}"), over),
+            (format!("-1e{past}"), over),
+            (format!("0.{nonzero78}"), loss),
+            (format!("1e-{}", &past + 1u32), loss),
+            (format!("-0.1e-{}", &past + 1u32), loss),
+            (format!("1{}e{past}", zeros(80)), over),
+            // 2e67 + 5 at exponent -1 is past int224.
+            (format!("2{}.5", zeros(66)), loss),
+            (format!("{}e2147483647", &two223 + 1u32), loss),
+            (format!("-{}e2147483647", &two223 + 1u32), loss),
+            (format!("{}e2147483647", &two223 + 2u32), over),
+            (format!("-{}e2147483647", &two223 + 2u32), over),
         ] {
-            assert!(sol_parse(&s).is_err(), "{s}");
+            let got = sol_parse(&s);
+            assert!(
+                matches!(&got, Err(e) if error_matches(e, want)),
+                "{s}: {got:?}, want {want:?}"
+            );
             run(check_parse(&s));
         }
     }
