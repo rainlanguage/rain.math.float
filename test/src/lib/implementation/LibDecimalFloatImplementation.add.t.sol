@@ -5,10 +5,9 @@ pragma solidity =0.8.25;
 import {
     ExponentOverflow,
     LibDecimalFloatImplementation,
-    EXPONENT_MIN,
-    EXPONENT_MAX,
     ADD_MAX_EXPONENT_DIFF
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {EXPONENT_MIN, EXPONENT_MAX} from "test/lib/LibTestExponentBounds.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibDecimalFloatImplementationAddPre394} from "test/lib/LibDecimalFloatImplementationAddPre394.sol";
