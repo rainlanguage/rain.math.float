@@ -43,14 +43,6 @@ uint256 constant FIVE_INVERSE = 926336713898529563388567880069503262826159877325
 /// @dev Guard digits pow10 rounds away.
 uint256 constant POW_GUARD = 1e10;
 
-/// @dev The most, in units of 1e-50, that the true 10^m 1e50 can lie from
-/// pow10's fixed point power. See `pow10`.
-uint256 constant POW10_RAW_ERROR = 112;
-
-/// @dev The most, in units of 1e-50, that the true log can lie from
-/// `log10Unrounded`. See `log10Unrounded`.
-uint256 constant LOG10_RAW_ERROR = 2;
-
 /// @dev Library implementing core DecimalFloat operations using only stack
 /// variables.
 /// NOT intended for external use, typical use is to treat the `Float` type
@@ -855,9 +847,8 @@ library LibDecimalFloatImplementation {
     }
 
     /// log10(x) for a float x: an internal approximation within
-    /// `LOG10_RAW_ERROR` units of 1e-50, rounded to nearest at 41 significant
-    /// digits half away from zero, so within half a unit in the 41st digit
-    /// plus that error. Near a tie either neighbour can result. log10(10^k) is
+    /// 1.0044e-50, rounded to nearest at 41 significant digits half away from
+    /// zero, so within half a unit in the 41st digit plus that error. Near a tie either neighbour can result. log10(10^k) is
     /// exactly k.
     ///
     /// @param signedCoefficient The signed coefficient of the floating point
@@ -945,15 +936,15 @@ library LibDecimalFloatImplementation {
     /// and takes S = 0, so a log near zero keeps its relative precision.
     ///
     /// The error, from the bounds on `log10Reduce` and `log10Ratio`, is within
-    /// `LOG10_RAW_ERROR` units of 1e-50 for a log below 1e25 in magnitude,
-    /// which includes every float:
+    /// 1.0037e-50 for a log below 1e25 in magnitude, which includes every
+    /// float:
     /// - Within a factor 1.001 of 1: the result is the relative coefficient
     ///   of `log10Ratio`, at least 4.34e48, so within 3.11e-49 relative of a
     ///   log below log10(1.001), under 1.5e-52.
     /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. R
     ///   is within 16.7 units of C / 10^S, 1.67e-74 relative, which moves its
     ///   log by under 1e-24 units. With log10Ratio's 1.0036 units the true
-    ///   log is within 1.0037 units, which rounds up to 2.
+    ///   log is within 1.0037 units.
     /// - log10(10^k) is exactly k.
     /// A characteristic of 1e25 or more is summed by `add`, which loses under
     /// a unit of the sum's exponent, at least -50.
@@ -1393,11 +1384,11 @@ library LibDecimalFloatImplementation {
     /// The fraction m of x, truncated to 1e-50, goes through `exp10Fixed`.
     /// Truncation moves 10^m by under 2.3026e-50 relative either way, and with
     /// exp10Fixed's bounds the true 10^x 1e50 is within 24 units below and
-    /// `POW10_RAW_ERROR` units above the fixed point power: exp10Fixed's
+    /// 111.10 units above the fixed point power: exp10Fixed's
     /// E_k 10^r + 1.07902 P / 1e50 + 1 plus 2.3026 10^(k 2^-16 + r), at most
-    /// 111.101 over every k, at k = 2^16 - 1, rounded up. A unit of the result
-    /// is `POW_GUARD` of those, so the result is within half a unit plus
-    /// 1.12e-8 of a unit, and under 5.00000012e-41 relative.
+    /// 111.101 over every k, at k = 2^16 - 1. A unit of the result is
+    /// `POW_GUARD` of those, so the result is within half a unit plus 1.12e-8
+    /// of a unit, and under 5.00000012e-41 relative.
     ///
     /// A nonzero fraction that truncates to zero is under 1e-50 from an
     /// integer, which puts 10^x within 2.4e-50 relative of the power of ten

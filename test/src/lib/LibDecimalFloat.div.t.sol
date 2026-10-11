@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
@@ -69,9 +69,9 @@ contract LibDecimalFloatDivTest is Test {
     }
 
     /// The Float closest to the exact `a / b` that does not exceed its
-    /// magnitude: the exact quotient to 76 digits, packed.
+    /// magnitude: the exact quotient to 75 or 76 digits, packed.
     function expectedQuotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (Float) {
-        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.quotient76(ca, ea, cb, eb);
+        (int256 signedCoefficient, int256 exponent) = LibTestExactDecimal.quotient(ca, ea, cb, eb);
         (Float expected,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         return expected;
     }
@@ -147,13 +147,13 @@ contract LibDecimalFloatDivTest is Test {
     function checkDivValue(Float a, Float b, Float result) internal pure {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
-        (U512 memory magnitude, int256 exponent) =
+        (int256 q, int256 exponent) =
             LibTestExactDecimal.quotient(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         (int256 signedCoefficient, int256 exponentResult) = result.unpack();
         assertTrue(
             LibTestExactDecimal.isNearestTowardZero(
                 (signedCoefficientA < 0) != (signedCoefficientB < 0),
-                magnitude,
+                LibTestExactDecimal.u512(LibTestExactDecimal.abs(q)),
                 exponent,
                 signedCoefficient,
                 exponentResult

@@ -379,10 +379,12 @@ contract LibDecimalFloatAgreeTest is Test {
         int256 gap,
         int256 anchorExponent
     ) external pure {
-        coefficient = bound(coefficient, 1, type(int224).max);
+        gap = bound(gap, 1, 120);
+        // c * 10^gap stays below the 10^154 `cmpScaled` takes: int224.max is
+        // under 10^67.5, so past a gap of 86 c is at most 10^(153 - gap).
+        // forge-lint: disable-next-line(unsafe-typecast)
+        coefficient = bound(coefficient, 1, gap > 86 ? int256(10 ** uint256(153 - gap)) : type(int224).max);
         int256 limitCoefficient = bound(coefficient + bound(limitOffset, -1, 1), 1, type(int224).max);
-        // c * 10^gap stays below the 10^154 `cmpScaled` takes.
-        gap = bound(gap, 1, 85);
         anchorExponent = bound(anchorExponent, -40, 40);
 
         Float lowest = f(-1, anchorExponent - gap);
@@ -395,7 +397,7 @@ contract LibDecimalFloatAgreeTest is Test {
             assertEq(LibDecimalFloat.agree(f(0, 0), f(1, 0), lowest, highest), accepted, "proportional limit differs");
         }
 
-        // Both are bounded positive and gap is at most 85.
+        // Both are bounded positive and gap is at most 120.
         // forge-lint: disable-next-line(unsafe-typecast)
         U512 memory scaled = LibTestExactDecimal.mulPow10(LibTestExactDecimal.u512(uint256(coefficient)), uint256(gap));
         // forge-lint: disable-next-line(unsafe-typecast)
