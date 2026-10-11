@@ -180,22 +180,26 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         checkRoundFromString("-1e200", LibDecimalFloat.packLossless(-1, 200), true);
     }
 
-    /// `value / 10^decimals` with the given sign, packed from fixed decimal,
+    /// `value / 10^decimals` packed from fixed decimal, negated if `negative`,
     /// formats as the exact value when the pack is lossless and as the packed
     /// Float otherwise, which is the closest Float toward zero. The string
     /// parses back to the same value and re-formats to itself.
     function checkFixedDecimalRoundTrip(uint256 value, uint8 decimals, bool negative, bool scientific) internal pure {
         (Float float, bool lossless) = LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
-        if (negative) {
-            float = float.minus();
-        }
         (int256 c, int256 e) = LibDecimalFloat.unpack(float);
         assertTrue(
             LibTestExactDecimal.isNearestTowardZero(
-                negative, LibTestExactDecimal.u512(value), -int256(uint256(decimals)), c, e
+                false, LibTestExactDecimal.u512(value), -int256(uint256(decimals)), c, e
             ),
             "nearest toward zero"
         );
+        if (negative) {
+            // The negative is the positive Float negated, which is exact.
+            float = float.minus();
+            (int256 nc, int256 ne) = LibDecimalFloat.unpack(float);
+            assertTrue(LibTestExactDecimal.eq(nc, ne, -c, e), "negated");
+            (c, e) = (nc, ne);
+        }
         string memory formatted = LibFormatDecimalFloat.toDecimalString(float, scientific);
         if (lossless) {
             assertEq(
@@ -222,6 +226,18 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     /// Negative matches positive.
     function testFormatDecimalRoundTripNegative(uint256 value, uint8 decimals, bool scientific) external pure {
         checkFixedDecimalRoundTrip(value, decimals, true, scientific);
+    }
+
+    /// Values either side of the int224 bound, where the positive pack sheds
+    /// to int224.max and its negation is not the closest negative Float.
+    function testFormatDecimalRoundTripInt224Boundary() external pure {
+        uint256[4] memory values = [uint256(2 ** 223 - 1), 2 ** 223, 2 ** 223 + 1, 2 ** 223 * 10];
+        for (uint256 i = 0; i < values.length; i++) {
+            for (uint256 j = 0; j < 4; j++) {
+                checkFixedDecimalRoundTrip(values[i], j < 2 ? 0 : 104, j % 2 == 1, true);
+                checkFixedDecimalRoundTrip(values[i], j < 2 ? 0 : 104, j % 2 == 1, false);
+            }
+        }
     }
 
     /// Test some specific examples.
