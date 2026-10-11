@@ -39,10 +39,10 @@ contract LibDecimalFloatPowTest is Test {
         return signedCoefficient < 0;
     }
 
-    /// 1/b from `invPayload`, packed lossy, zero where it underflows.
+    /// 1/b from `invParts`, packed lossy, zero where it underflows.
     function inverse(Float b) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = b.unpack();
-        (signedCoefficient, exponent) = LibTestExactDecimal.invPayload(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibTestExactDecimal.invParts(signedCoefficient, exponent);
         (Float inv,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         return inv;
     }
@@ -76,7 +76,7 @@ contract LibDecimalFloatPowTest is Test {
     /// `LibTestErrorBound.floor` of 1/x, unpacked, as 1/x need not pack.
     function floorOfInverse(Float x) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = x.unpack();
-        (signedCoefficient, exponent) = LibTestExactDecimal.invPayload(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibTestExactDecimal.invParts(signedCoefficient, exponent);
         return LibTestErrorBound.floor(signedCoefficient, exponent);
     }
 
@@ -1130,7 +1130,7 @@ contract LibDecimalFloatPowTest is Test {
     /// 1/x, unpacked, is two orders inside the range on both sides.
     function inverseRepresentable(Float x) internal pure returns (bool) {
         (int256 signedCoefficient, int256 exponent) = x.unpack();
-        (signedCoefficient, exponent) = LibTestExactDecimal.invPayload(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = LibTestExactDecimal.invParts(signedCoefficient, exponent);
         return LibTestExactDecimal.cmpParts(signedCoefficient, exponent, type(int224).max, type(int32).max - 2) <= 0
             && LibTestExactDecimal.cmpParts(signedCoefficient, exponent, 1, type(int32).min + 2) >= 0;
     }
