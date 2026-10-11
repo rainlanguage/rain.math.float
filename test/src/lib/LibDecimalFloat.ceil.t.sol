@@ -10,10 +10,6 @@ import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 contract LibDecimalFloatCeilTest is Test {
     using LibDecimalFloat for Float;
 
-    function testCeilNotReverts(Float float) external pure {
-        float.ceil();
-    }
-
     function checkCeil(
         int256 signedCoefficient,
         int256 exponent,

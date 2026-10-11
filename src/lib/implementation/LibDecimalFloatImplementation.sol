@@ -884,9 +884,11 @@ library LibDecimalFloatImplementation {
         return div(1e76, -76, signedCoefficient, exponent);
     }
 
-    /// log10(x) for a float x, rounded to nearest at 41 significant digits,
-    /// half away from zero, so within half a unit in the 41st digit plus
-    /// `LOG10_RAW_ERROR` units of 1e-50. log10(10^k) is exactly k.
+    /// log10(x) for a float x: an internal approximation within
+    /// `LOG10_RAW_ERROR` units of 1e-50, rounded to nearest at 41 significant
+    /// digits half away from zero, so within half a unit in the 41st digit
+    /// plus that error. Near a tie either neighbour can result. log10(10^k) is
+    /// exactly k.
     ///
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
@@ -1084,6 +1086,7 @@ library LibDecimalFloatImplementation {
     /// the `POW_FIXED_ONE` scale.
     /// @return signedCoefficient The signed coefficient of the log.
     /// @return exponent The exponent of the log.
+    //slither-disable-next-line cyclomatic-complexity
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
@@ -1095,12 +1098,40 @@ library LibDecimalFloatImplementation {
                 revert Log10RatioRelativeSumTooSmall(a, b);
             }
             z = mulDiv(difference, POW_FIXED_ONE, sum);
-            // difference is below 1e76 so it fits and maximizes in place.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            (int256 differenceCoefficient, int256 differenceExponent) = maximizeFull(int256(difference), 0);
-            // forge-lint: disable-next-line(unsafe-typecast)
-            difference = uint256(differenceCoefficient);
-            exponent += differenceExponent;
+            // Scale the difference by the largest power of ten that keeps it
+            // within int256.max, as maximizeFull does.
+            unchecked {
+                if (difference != 0) {
+                    if (difference <= uint256(type(int256).max) / 1e64) {
+                        difference *= 1e64;
+                        exponent -= 64;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e32) {
+                        difference *= 1e32;
+                        exponent -= 32;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e16) {
+                        difference *= 1e16;
+                        exponent -= 16;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e8) {
+                        difference *= 1e8;
+                        exponent -= 8;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e4) {
+                        difference *= 1e4;
+                        exponent -= 4;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e2) {
+                        difference *= 1e2;
+                        exponent -= 2;
+                    }
+                    if (difference <= uint256(type(int256).max) / 10) {
+                        difference *= 10;
+                        exponent -= 1;
+                    }
+                }
+            }
         } else {
             z = mulDiv(difference, POW_FIXED_ONE, sum);
         }
@@ -1382,8 +1413,9 @@ library LibDecimalFloatImplementation {
 
     // slither-disable-end too-many-digits
 
-    /// 10^x for a float x, rounded to nearest at 41 significant digits, half
-    /// up. 10^k is exactly 10^k for an integer k.
+    /// 10^x for a float x: an internal approximation within the bound below,
+    /// rounded to nearest at 41 significant digits half up. Near a tie either
+    /// neighbour can result. 10^k is exactly 10^k for an integer k.
     ///
     /// The fraction m of x, truncated to 1e-50, goes through `exp10Fixed`.
     /// Truncation moves 10^m by under 2.3026e-50 relative either way, and with
