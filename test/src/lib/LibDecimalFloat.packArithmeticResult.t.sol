@@ -29,7 +29,7 @@ contract LibDecimalFloatPackArithmeticResultTest is Test {
         int256 exponent = 0;
         Float c = LibDecimalFloat.packArithmeticResult(signedCoefficient, exponent);
         (int256 unpackedCoefficient, int256 unpackedExponent) = c.unpack();
-        assertGt(unpackedCoefficient, 0);
+        assertEq(unpackedCoefficient, type(int224).max);
         assertEq(unpackedExponent, exponent + 2);
     }
 
