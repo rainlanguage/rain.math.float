@@ -4,11 +4,17 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatInvTest is Test {
     using LibDecimalFloat for Float;
+
+    function invExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float) {
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.inv(signedCoefficient, exponent);
+        return LibDecimalFloat.packArithmeticResult(signedCoefficient, exponent);
+    }
 
     function invExternal(Float float) external pure returns (Float) {
         return LibDecimalFloat.inv(float);
@@ -70,8 +76,9 @@ contract LibDecimalFloatInvTest is Test {
     /// Reverts only on zero, or where the exact inverse is below the smallest
     /// positive Float, with the input as the range error's payload. Otherwise
     /// the inverse is the Float closest to the exact one that does not exceed
-    /// its magnitude: the exact inverse to 76 digits, packed. No inverse
-    /// overflows.
+    /// its magnitude: the exact inverse to 76 digits, packed, and agrees with
+    /// the unpacked path. No inverse overflows: the smallest magnitude is
+    /// `1e-2147483648`, whose inverse is `10 × 10^int32.max`.
     function testInvMem(Float float) external {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         if (signedCoefficient == 0) {
@@ -85,9 +92,19 @@ contract LibDecimalFloatInvTest is Test {
             this.invExternal(float);
             return;
         }
-        (int256 signedCoefficientExact, int256 exponentExact) =
+        Float floatInv = this.invExternal(float);
+        assertEq(Float.unwrap(this.invExternal(signedCoefficient, exponent)), Float.unwrap(floatInv), "unpacked path");
+        (int256 signedCoefficientResult, int256 exponentResult) = floatInv.unpack();
+        (U512 memory magnitude, int256 exponentExact) = LibTestExactDecimal.quotient(1, 0, signedCoefficient, exponent);
+        assertTrue(
+            LibTestExactDecimal.isNearestTowardZero(
+                signedCoefficient < 0, magnitude, exponentExact, signedCoefficientResult, exponentResult
+            ),
+            "nearest Float towards zero"
+        );
+        (int256 signedCoefficient76, int256 exponent76) =
             LibTestExactDecimal.quotient76(1, 0, signedCoefficient, exponent);
-        (Float expected,) = LibDecimalFloat.packLossy(signedCoefficientExact, exponentExact);
-        assertEq(Float.unwrap(this.invExternal(float)), Float.unwrap(expected), "inverse");
+        (Float expected,) = LibDecimalFloat.packLossy(signedCoefficient76, exponent76);
+        assertEq(Float.unwrap(floatInv), Float.unwrap(expected), "inverse");
     }
 }
