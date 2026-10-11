@@ -35,6 +35,30 @@ contract LibDecimalFloatDecimalTest is Test {
         assertEq(floatLossless, lossless, "lossless");
     }
 
+    /// Over the full uint256 range, the nearest Float towards zero to the exact
+    /// `value × 10^-decimals`, lossless iff it is that value.
+    function testFromFixedDecimalLossyPackedValue(uint256 value, uint8 decimals) external pure {
+        (Float float, bool lossless) = LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
+        int256 exponentExact = -int256(uint256(decimals));
+        assertTrue(
+            LibTestExactDecimal.isNearestTowardZero(
+                false, LibTestExactDecimal.u512(value), exponentExact, signedCoefficient, exponent
+            ),
+            "nearest Float towards zero"
+        );
+        assertEq(
+            lossless,
+            LibTestExactDecimal.cmpScaled(
+                LibTestExactDecimal.u512(value),
+                exponentExact,
+                LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient)),
+                exponent
+            ) == 0,
+            "lossless iff exact"
+        );
+    }
+
     /// Memory version of to behaves same as stack version, and both match the
     /// exact `coefficient × 10^(exponent + decimals)`: a negative value
     /// reverts, a value at or above 2^256 overflows, and anything else is
