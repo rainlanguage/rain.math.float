@@ -536,14 +536,27 @@ fn check_to_decimal_string(a: &Dec) -> Result<(), TestCaseError> {
 /// `parseDecimalFloat`, which takes the whole string or reports the excess.
 fn check_parse_entry_points(lit: &str, suffix: &str) -> Result<(), TestCaseError> {
     let s = format!("{lit}{suffix}");
-    let py = match r::parse_inline(lit) {
-        Ok((_, e)) if in_python_range(&e) => Some(ask(json!({"op": "literal", "s": lit}))),
-        _ => None,
-    };
+    let py = Some(ask(json!({"op": "parse_value", "s": lit})));
     let inline = harness(H::parseDecimalFloatInlineCall { str: s.clone() });
     let whole = harness(H::parseDecimalFloatCall { str: s.clone() });
     let concrete = evm::concrete(T::parseCall { str: s });
     check_parse_entry_points_with(lit, suffix, py, inline, whole, concrete)
+}
+
+/// `c × 10^e` and `d × 10^f` are the same number, exponents unbounded.
+fn same_number(c: &BigInt, e: &BigInt, d: &BigInt, f: &BigInt) -> bool {
+    let strip = |c: &BigInt, e: &BigInt| {
+        let (mut c, mut e) = (c.clone(), e.clone());
+        if c.is_zero() {
+            return (c, BigInt::zero());
+        }
+        while (&c % 10u32).is_zero() {
+            c /= 10u32;
+            e += 1u32;
+        }
+        (c, e)
+    };
+    strip(c, e) == strip(d, f)
 }
 
 fn check_parse_entry_points_with(
@@ -556,42 +569,44 @@ fn check_parse_entry_points_with(
 ) -> Result<(), TestCaseError> {
     let s = format!("{lit}{suffix}");
     let case = format!("parseDecimalFloatInline({s:?})");
-    let want = r::parse_inline(lit);
-    if let (Ok((c, e)), Some(py)) = (&want, py) {
-        let p = py_float(&py);
-        let w = Dec::new(c.clone(), r::pin(e));
+    let want = r::parse(lit);
+    if let Some(py) = py {
+        match (&want, py_float(&py)) {
+            (Ok(w), Ok(p)) => prop_assert!(w.eq_value(&p), "{case}: reference {w:?}, python {p:?}"),
+            (Err(w), Err(p)) => prop_assert_eq!(w.name(), p, "{}: python", case),
+            (w, p) => prop_assert!(false, "{case}: reference {w:?}, python {p:?}"),
+        }
+    }
+    // The cursor stops at the end of the literal. A Float succeeds; any
+    // success is the literal's exact value; an error is the one its value
+    // decides.
+    let inline = match inline {
+        Ok(i) => i,
+        Err(e) => return Err(TestCaseError::fail(format!("{case}: reverted {e:?}"))),
+    };
+    prop_assert_eq!(inline._1, U256::from(lit.len()), "{}: cursor", case);
+    if inline._0.0 == [0u8; 4] {
+        let (c, e) = (big(inline._2), big(inline._3));
+        let (lc, le) = r::literal_exact(lit);
         prop_assert!(
-            p.as_ref().is_ok_and(|p| p.eq_value(&w)),
-            "{case}: reference {c}e{e}, python {p:?}"
+            same_number(&c, &e, &lc, &le),
+            "{case}: solidity {c}e{e}, literal {lc}e{le}"
+        );
+    } else {
+        prop_assert!(
+            matches!(&want, Err(w) if w.selector() == inline._0.0),
+            "{case}: solidity {:?}, reference {want:?}",
+            inline._0
         );
     }
-    // The cursor stops at the end of the literal, or reports the error.
-    let inline = inline.map(|s| (s._0.0, s._1, big(s._2), big(s._3)));
-    let want_inline = match want {
-        Ok((c, e)) => Ok(([0u8; 4], U256::from(lit.len()), c, e)),
-        Err(w) => Err(w),
-    };
-    match (inline, want_inline) {
-        (Ok((sel, ..)), Err(w)) => {
-            prop_assert!(
-                error_matches(&Fail::Selector(sel), w),
-                "{case}: solidity {sel:?}, reference {w:?}"
-            );
-        }
-        (inline, want) => judge(&case, inline, want)?,
-    }
 
-    // Only packing's ExponentOverflow reverts; every other error is a
-    // selector.
+    // A suffix is excess characters, whatever the literal's value. Only
+    // ExponentOverflow may revert; every other error is a selector.
     let case = format!("parseDecimalFloat({s:?})");
-    let (want, reverts) = match r::parse_inline(lit) {
-        Err(w) => (Err(w), false),
-        Ok(_) if !suffix.is_empty() => (Err(RefError::ParseDecimalFloatExcessCharacters), false),
-        Ok(_) => {
-            let w = r::parse(lit);
-            let reverts = matches!(w, Err(RefError::ExponentOverflow));
-            (w, reverts)
-        }
+    let want = if suffix.is_empty() {
+        want
+    } else {
+        Err(RefError::ParseDecimalFloatExcessCharacters)
     };
     match (&whole, &concrete) {
         (Ok(h), Ok(c)) => {
@@ -607,7 +622,7 @@ fn check_parse_entry_points_with(
             let s = Dec::from_bytes(s._1);
             prop_assert!(s.eq_value(&w), "{case}: solidity {s:?}, reference {w:?}");
         }
-        (Ok(s), Err(w)) if !reverts => {
+        (Ok(s), Err(w)) => {
             prop_assert!(
                 error_matches(&Fail::Selector(s._0.0), w),
                 "{case}: solidity {:?}, reference {w:?}",
@@ -615,9 +630,9 @@ fn check_parse_entry_points_with(
             );
             prop_assert!(s._1.is_zero(), "{}: an error returns zero", case);
         }
-        (Err(s), Err(w)) if reverts => prop_assert!(
-            error_matches(&s, w),
-            "{case}: solidity {s:?}, reference {w:?}"
+        (Err(s), Err(RefError::ExponentOverflow)) => prop_assert!(
+            error_matches(&s, RefError::ExponentOverflow),
+            "{case}: solidity {s:?}, reference ExponentOverflow"
         ),
         (s, w) => prop_assert!(false, "{case}: solidity {s:?}, reference {w:?}"),
     }
@@ -900,7 +915,7 @@ fn library_agree_last_aligned_digit() {
     }
 }
 
-/// A zero literal parses to exponent zero however it is written.
+/// A zero literal parses to zero however it is written.
 #[test]
 fn library_parse_zero() {
     for lit in ["0", "0.000", "0e5", "0e-5", "-0.0e3", "00.00e-1"] {
@@ -1345,6 +1360,20 @@ mod checker {
             whole(none, v),
             concrete(none, v)
         ));
+        assert!(parse_accepts(
+            "",
+            py(),
+            inline(none, 5, 150, -2),
+            whole(none, v),
+            concrete(none, v)
+        ));
+        assert!(!parse_accepts(
+            "",
+            Some(json!({"err": "ParseDecimalPrecisionLoss"})),
+            inline(none, 5, 15, -1),
+            whole(none, v),
+            concrete(none, v)
+        ));
         // The whole parse: another representation of the value is accepted,
         // as NatSpec documents no representation.
         let same = Dec::new(150, -2).to_bytes();
@@ -1417,113 +1446,238 @@ mod checker {
         ));
     }
 
-    /// Past every Float the whole parse reverts, from both contracts alike.
+    /// Past every Float the whole parse may revert, but only with
+    /// ExponentOverflow, from both contracts alike; or it returns that
+    /// selector. A suffix is excess characters, never a revert.
     #[test]
-    fn parse_overflow_must_revert() {
+    fn parse_overflow_reverts_or_selects() {
         let lit = "1e3000000000";
-        let s = || lit.to_string();
-        let inline = || harness(H::parseDecimalFloatInlineCall { str: s() });
-        let sol = harness(H::parseDecimalFloatCall { str: s() });
-        let c = evm::concrete(T::parseCall { str: s() });
-        let revert = c.clone().unwrap_err();
-        assert!(check_parse_entry_points_with(lit, "", None, inline(), sol, c).is_ok());
+        let len = lit.len() as u64;
         let none = [0u8; 4];
         let loss = RefError::ParseDecimalPrecisionLoss.selector();
-        assert!(
-            check_parse_entry_points_with(
-                lit,
-                "",
-                None,
-                inline(),
-                whole(loss, B256::ZERO),
-                concrete(loss, B256::ZERO)
-            )
-            .is_err()
-        );
-        assert!(
-            check_parse_entry_points_with(
-                lit,
-                "",
-                None,
-                inline(),
-                Err(Fail::Harness(revert.clone())),
-                concrete(none, B256::ZERO)
-            )
-            .is_err()
-        );
+        let eo = RefError::ExponentOverflow.selector();
+        let excess = RefError::ParseDecimalFloatExcessCharacters.selector();
+        let revert = alloy::primitives::Bytes::from([eo.as_slice(), &[0u8; 64]].concat());
+        let accepts = |suffix: &str, i, w, c| {
+            check_parse_entry_points_with(lit, suffix, None, i, w, c).is_ok()
+        };
+        let reverts = || Err(Fail::Harness(revert.clone()));
+        let ok = || inline(none, len, 1, 3_000_000_000);
+        assert!(accepts("", ok(), reverts(), Err(revert.clone())));
+        assert!(accepts(
+            "",
+            ok(),
+            whole(eo, B256::ZERO),
+            concrete(eo, B256::ZERO)
+        ));
+        assert!(accepts(
+            "",
+            inline(eo, len, 0, 0),
+            reverts(),
+            Err(revert.clone())
+        ));
+        // The inline parse: the exact value or ExponentOverflow, at the end.
+        assert!(!accepts(
+            "",
+            inline(none, len, 1, 3_000_000_001),
+            reverts(),
+            Err(revert.clone())
+        ));
+        assert!(!accepts(
+            "",
+            inline(none, len - 1, 1, 3_000_000_000),
+            reverts(),
+            Err(revert.clone())
+        ));
+        assert!(!accepts(
+            "",
+            inline(eo, 0, 0, 0),
+            reverts(),
+            Err(revert.clone())
+        ));
+        assert!(!accepts(
+            "",
+            inline(loss, len, 0, 0),
+            reverts(),
+            Err(revert.clone())
+        ));
+        assert!(!accepts(
+            "",
+            Err(Fail::Harness(revert.clone())),
+            reverts(),
+            Err(revert.clone())
+        ));
+        // The whole parse.
+        assert!(!accepts(
+            "",
+            ok(),
+            whole(loss, B256::ZERO),
+            concrete(loss, B256::ZERO)
+        ));
+        assert!(!accepts("", ok(), reverts(), concrete(none, B256::ZERO)));
         let other = no_positive();
         let Fail::Harness(other) = other else {
             unreachable!()
         };
-        assert!(
-            check_parse_entry_points_with(
-                lit,
-                "",
-                None,
-                inline(),
-                Err(Fail::Harness(other.clone())),
-                Err(other)
-            )
-            .is_err()
-        );
+        assert!(!accepts(
+            "",
+            ok(),
+            Err(Fail::Harness(other.clone())),
+            Err(other)
+        ));
+        assert!(accepts(
+            " x",
+            ok(),
+            whole(excess, B256::ZERO),
+            concrete(excess, B256::ZERO)
+        ));
+        assert!(accepts(
+            " x",
+            inline(eo, len, 0, 0),
+            whole(excess, B256::ZERO),
+            concrete(excess, B256::ZERO)
+        ));
+        assert!(!accepts(" x", ok(), reverts(), Err(revert.clone())));
+        assert!(!accepts(
+            " x",
+            ok(),
+            whole(eo, B256::ZERO),
+            concrete(eo, B256::ZERO)
+        ));
     }
 
-    /// An inline exponent below int256 is the precision loss selector, never
-    /// a revert and never ExponentOverflow.
+    /// A literal that is no Float but has an exact int256 coefficient and
+    /// exponent: the inline parse may return it, or the precision loss
+    /// selector; the whole parse is the precision loss selector.
+    #[test]
+    fn parse_precision_loss() {
+        let lit = format!("1.{}1", "0".repeat(67));
+        let len = U256::from(lit.len());
+        let none = [0u8; 4];
+        let loss = RefError::ParseDecimalPrecisionLoss.selector();
+        let eo = RefError::ExponentOverflow.selector();
+        let excess = RefError::ParseDecimalFloatExcessCharacters.selector();
+        let at = |selector: [u8; 4], cursor: U256, c: BigInt, e: i64| {
+            Ok(H::parseDecimalFloatInlineReturn {
+                _0: selector.into(),
+                _1: cursor,
+                _2: i256(&c),
+                _3: i256(&BigInt::from(e)),
+            })
+        };
+        let exact = || at(none, len, pow10(68) + 1u32, -68);
+        let accepts = |suffix: &str, py: Option<Value>, i, w, c| {
+            check_parse_entry_points_with(&lit, suffix, py, i, w, c).is_ok()
+        };
+        let py = || Some(json!({"err": "ParseDecimalPrecisionLoss"}));
+        let lossy = || (whole(loss, B256::ZERO), concrete(loss, B256::ZERO));
+        let (w, c) = lossy();
+        assert!(accepts("", py(), exact(), w, c));
+        let (w, c) = lossy();
+        assert!(accepts(
+            "",
+            py(),
+            at(none, len, (pow10(68) + 1u32) * 10u32, -69),
+            w,
+            c
+        ));
+        let (w, c) = lossy();
+        assert!(accepts("", py(), at(loss, len, BigInt::zero(), 0), w, c));
+        // Python's error, the inline parse's value, selector and cursor.
+        let (w, c) = lossy();
+        assert!(!accepts(
+            "",
+            Some(json!({"err": "ExponentOverflow"})),
+            exact(),
+            w,
+            c
+        ));
+        let (w, c) = lossy();
+        assert!(!accepts("", Some(json!({"ok": ["1", 0]})), exact(), w, c));
+        let (w, c) = lossy();
+        assert!(!accepts("", py(), at(none, len, pow10(68), -68), w, c));
+        let (w, c) = lossy();
+        assert!(!accepts("", py(), at(eo, len, BigInt::zero(), 0), w, c));
+        let (w, c) = lossy();
+        assert!(!accepts(
+            "",
+            py(),
+            at(loss, U256::from(2), BigInt::zero(), 0),
+            w,
+            c
+        ));
+        // The whole parse: the rounded value, another error, or a revert.
+        let rounded = Dec::new(1, 0).to_bytes();
+        assert!(!accepts(
+            "",
+            py(),
+            exact(),
+            whole(none, rounded),
+            concrete(none, rounded)
+        ));
+        assert!(!accepts(
+            "",
+            py(),
+            exact(),
+            whole(eo, B256::ZERO),
+            concrete(eo, B256::ZERO)
+        ));
+        let revert = alloy::primitives::Bytes::from([eo.as_slice(), &[0u8; 64]].concat());
+        assert!(!accepts(
+            "",
+            py(),
+            exact(),
+            Err(Fail::Harness(revert.clone())),
+            Err(revert)
+        ));
+        // A suffix after a value error is excess characters.
+        assert!(accepts(
+            " x",
+            py(),
+            at(loss, len, BigInt::zero(), 0),
+            whole(excess, B256::ZERO),
+            concrete(excess, B256::ZERO)
+        ));
+        let (w, c) = lossy();
+        assert!(!accepts(" x", py(), at(loss, len, BigInt::zero(), 0), w, c));
+    }
+
+    /// A value below every Float with no int256 exponent is the precision
+    /// loss selector, never a revert and never ExponentOverflow.
     #[test]
     fn parse_inline_exponent_wrap_is_a_selector() {
         let lit = format!("9.1e{}", r::int256_min());
-        let inline = || harness(H::parseDecimalFloatInlineCall { str: lit.clone() });
+        let len = lit.len() as u64;
         let loss = RefError::ParseDecimalPrecisionLoss.selector();
-        assert!(
-            check_parse_entry_points_with(
-                &lit,
-                "",
-                None,
-                inline(),
-                whole(loss, B256::ZERO),
-                concrete(loss, B256::ZERO)
-            )
-            .is_ok()
-        );
-        let revert = evm::concrete(T::parseCall {
-            str: "1e3000000000".into(),
-        })
-        .unwrap_err();
-        assert!(
-            check_parse_entry_points_with(
-                &lit,
-                "",
-                None,
-                inline(),
-                Err(Fail::Harness(revert.clone())),
-                Err(revert)
-            )
-            .is_err()
-        );
         let eo = RefError::ExponentOverflow.selector();
-        let wrong = Ok(H::parseDecimalFloatInlineReturn {
-            _0: eo.into(),
-            _1: U256::ZERO,
-            _2: I256::ZERO,
-            _3: I256::ZERO,
-        });
-        assert!(
-            check_parse_entry_points_with(
-                &lit,
-                "",
-                None,
+        let accepts = |i, w, c| check_parse_entry_points_with(&lit, "", None, i, w, c).is_ok();
+        assert!(accepts(
+            inline(loss, len, 0, 0),
+            whole(loss, B256::ZERO),
+            concrete(loss, B256::ZERO)
+        ));
+        let revert = alloy::primitives::Bytes::from([eo.as_slice(), &[0u8; 64]].concat());
+        assert!(!accepts(
+            inline(loss, len, 0, 0),
+            Err(Fail::Harness(revert.clone())),
+            Err(revert)
+        ));
+        for wrong in [
+            inline(eo, len, 0, 0),
+            inline(eo, 0, 0, 0),
+            inline([0u8; 4], len, 91, -2),
+        ] {
+            assert!(!accepts(
                 wrong,
                 whole(loss, B256::ZERO),
                 concrete(loss, B256::ZERO)
-            )
-            .is_err()
-        );
+            ));
+        }
     }
 }
 
-/// A fraction's exponent below an int256.min exponent: the inline parse's
-/// `ParseDecimalPrecisionLoss` selector, before any packing.
+/// A fraction's exponent below an int256.min exponent: a value below every
+/// Float, so `ParseDecimalPrecisionLoss`.
 #[test]
 fn library_parse_exponent_wrap() {
     let min = r::int256_min();
