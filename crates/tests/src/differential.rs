@@ -815,9 +815,19 @@ fn reach(t: &D, rel: &D, negative: bool) -> (D, bool, bool) {
     (tb, hi > largest_float(negative), lo < smallest())
 }
 
-/// sqrt is correctly rounded to nearest at 41 digits (NatSpec): exactly
-/// dashu's 41-digit root, half away from zero, which int224 inputs never
-/// tie. Negative reverts `PowNegativeBase(a)`.
+/// The root of a non-negative value correctly rounded to nearest at 41
+/// digits, half away from zero: the 100-digit truncated root rounded once.
+/// dashu's own 41-digit root is not used: it rounds sqrt(1 - 1e-41) up to 1.
+/// For a 67-digit coefficient a, |a - t^2| for a 42-digit tie t is at least
+/// one unit of t^2's last digit, so the root is at least about 1e-84
+/// relative from every tie, past the 1e-99 the truncation moves it.
+fn want_sqrt(x: &D) -> D {
+    let s = Context::<Zero>::new(100).sqrt(x.repr()).unwrap().value();
+    s.with_rounding::<HalfAway>().with_precision(41).value().with_rounding::<Zero>()
+}
+
+/// sqrt is correctly rounded to nearest at 41 digits (NatSpec). Negative
+/// reverts `PowNegativeBase(a)`.
 fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
     let x = d(a);
     let case = format!("sqrt({})", show(a));
@@ -825,7 +835,7 @@ fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
     if x < D::ZERO {
         return check(&case, sol, Err(RefError::PowNegativeBase), Some(a));
     }
-    let want = Context::<HalfAway>::new(41).sqrt(x.repr()).unwrap().value().with_rounding::<Zero>();
+    let want = want_sqrt(&x);
     check(&case, sol, Ok(want), None)
 }
 
@@ -1194,7 +1204,11 @@ mod oracle {
     /// and sqrt 10 to 50 places.
     #[test]
     fn transcendental_constants() {
-        let root2 = Context::<HalfAway>::new(41).sqrt(dec("2").repr()).unwrap().value().with_rounding::<Zero>();
+        // sqrt(1 - 1e-41) is 1 - 5e-42 - 1.25e-83 - ..., below the midpoint
+        // 1 - 5e-42 of 41 nines and 1.
+        let below_one = D::from_parts(nines(41), -41);
+        assert!(same(&want_sqrt(&below_one), &below_one));
+        let root2 = want_sqrt(&dec("2"));
         assert!(same(&root2, &dec("1.4142135623730950488016887242096980785697")));
         let within = |x: &D, s: &str| distance(x, &dec(s)) < dec("1e-49");
         assert!(within(&log10_of(&dec("2"), 100), "0.30102999566398119521373889472449302676818988146211"));
@@ -1249,7 +1263,7 @@ mod oracle {
     #[test]
     fn sqrt_extremes_are_cheap() {
         for a in extremes() {
-            let _ = Context::<HalfAway>::new(41).sqrt(a.repr()).unwrap();
+            let _ = want_sqrt(&a);
         }
     }
 
