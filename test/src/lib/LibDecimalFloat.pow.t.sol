@@ -6,7 +6,7 @@ import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {ZeroNegativePower, PowNegativeBase, ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
-import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
+import {LibTestErrorBound, POW_RELATIVE_ERROR_E52} from "test/lib/LibTestErrorBound.sol";
 import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "test/lib/LibTestPowRange.sol";
 import {LibTranscendentalOracle} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
@@ -15,9 +15,9 @@ import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 contract LibDecimalFloatPowTest is Test {
     using LibDecimalFloat for Float;
 
-    /// The proven bound of a pow leg, `LibTestErrorBound.pow`.
-    function legError(Float b) internal pure returns (Float) {
-        return LibTestErrorBound.pow(b);
+    /// The proven bound of a pow leg a^b, `LibTestErrorBound.pow`.
+    function legError(Float a, Float b) internal pure returns (Float) {
+        return LibTestErrorBound.pow(a, b);
     }
 
     /// Exact numeric equality of two Floats.
@@ -53,8 +53,8 @@ contract LibDecimalFloatPowTest is Test {
     /// result and, for a negative b, of the base it inverts. e is the 1e-66 of
     /// a pack and |b ln a| is below 5e9 for a finite c, so e ln a vanishes.
     function roundTripLogError(Float a, Float b, Float c, Float roundTrip) internal pure returns (Float) {
-        Float first = LibTestErrorBound.plus(legError(b), LibTestErrorBound.floor(c));
-        Float second = LibTestErrorBound.plus(legError(inverse(b)), LibTestErrorBound.floor(roundTrip));
+        Float first = LibTestErrorBound.plus(legError(a, b), LibTestErrorBound.floor(c));
+        Float second = LibTestErrorBound.plus(legError(c, inverse(b)), LibTestErrorBound.floor(roundTrip));
         if (isNegative(b)) {
             first = LibTestErrorBound.plus(first, floorOfInverse(a));
             second = LibTestErrorBound.plus(second, floorOfInverse(c));
@@ -281,7 +281,10 @@ contract LibDecimalFloatPowTest is Test {
         // 1e-74, and their products with the leg's bound, under 1e-27 here, under
         // 1e-96.
         (int256 limitCoefficient, int256 limitExponent) = LibTestErrorBound.plus(
-                legError(LibDecimalFloat.packLossless(signedCoefficientB, exponentB)),
+                legError(
+                    LibDecimalFloat.packLossless(signedCoefficientA, exponentA),
+                    LibDecimalFloat.packLossless(signedCoefficientB, exponentB)
+                ),
                 LibDecimalFloat.packLossless(1000010000000000000000000001, -96)
             ).unpack();
         assertTrue(
@@ -534,6 +537,155 @@ contract LibDecimalFloatPowTest is Test {
         // The largest odd b packs with exponent 0, below the integer leg's
         // limit, and keeps the sign.
         assertTrue(same(this.powExternal(minusOne, LibDecimalFloat.packLossless(type(int224).max, 0)), minusOne));
+    }
+
+    /// pow(a, b) within `legError(a, b)` of a reference, and when `tight` at
+    /// least 0.9 of its N term, `legError` past `POW_RELATIVE_ERROR_E52`. The
+    /// reference is the first 66 digits of the exact power, truncated, from the Rust
+    /// `truth_pow`, under 1e-65 relative.
+    function checkPowNearOne(Float a, Float b, int256 referenceCoefficient, int256 referenceExponent, bool tight)
+        internal
+        view
+    {
+        (int256 signedCoefficient, int256 exponent) = this.powExternal(a, b).unpack();
+        (signedCoefficient, exponent) =
+            LibTestExactDecimal.quotient(signedCoefficient, exponent, referenceCoefficient, referenceExponent);
+        (, signedCoefficient, exponent) = LibTestExactDecimal.addPartsWide(signedCoefficient, exponent, -1, 0);
+        U512 memory error = LibTestExactDecimal.u512(LibTestExactDecimal.abs(signedCoefficient));
+        (int256 boundCoefficient, int256 boundExponent) = legError(a, b).unpack();
+        assertTrue(
+            LibTestExactDecimal.cmpScaled(
+                error, exponent, LibTestExactDecimal.u512(LibTestExactDecimal.abs(boundCoefficient)), boundExponent
+            ) <= 0,
+            "bound"
+        );
+        if (tight) {
+            // The difference rounds away from zero, so the N term is never
+            // smaller.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 base = int256(POW_RELATIVE_ERROR_E52);
+            (, int256 nTerm, int256 nTermExponent) =
+                LibTestExactDecimal.addPartsWide(boundCoefficient, boundExponent, -base, -52);
+            (nTerm, nTermExponent) = LibTestExactDecimal.mulPayload(nTerm, nTermExponent, 9, -1);
+            assertTrue(
+                LibTestExactDecimal.cmpScaled(
+                    error, exponent, LibTestExactDecimal.u512(LibTestExactDecimal.abs(nTerm)), nTermExponent
+                ) >= 0,
+                "tight"
+            );
+        }
+    }
+
+    /// The issue's (1 + 1e-66)^1e67, where N d is 10: its error is 0.915 of
+    /// the N term K2 N d, 1.5e-37, and of (1 + 1e-66)^-1e67 0.395 of
+    /// 3.4786e-37. The b < 0 worst case of the derivation, d 3.15e-38 near
+    /// sqrt(1e-75), is 0.980 of its N term, and one where K1 is the lesser
+    /// 0.752.
+    function testPowNearOneLargeExponent() external view {
+        Float a = LibDecimalFloat.packLossless(1e66 + 1, -66);
+        checkPowNearOne(
+            a,
+            LibDecimalFloat.packLossless(1, 67),
+            220264657948067165169579006452842443663535126185567810742354263551,
+            -61,
+            true
+        );
+        checkPowNearOne(
+            a,
+            LibDecimalFloat.packLossless(-1, 67),
+            453999297624848515355915155605506102379180888665649692590713056512,
+            -70,
+            false
+        );
+        checkPowNearOne(
+            LibDecimalFloat.packLossless(999999999999999999999999999999999999968486793427, -48),
+            LibDecimalFloat.packLossless(-2077793387360115167471691320350296608394, 0),
+            273340921843676829617917998988580983641908213383205218973152502588,
+            -37,
+            true
+        );
+        // b < 0 where K1 is the lesser, d 1.23e-31: the inverse of a drops
+        // 0.84 of a unit at 1e-75, which a^-N weighs N, 0.752 of K1 N in all.
+        checkPowNearOne(
+            LibDecimalFloat.packLossless(9999999999999999999999999999998765432109876543210987654321099, -61),
+            LibDecimalFloat.packLossless(-1, 40),
+            164269673983696849634751694922256511706057586860385783903477528715,
+            536165957,
+            false
+        );
+    }
+
+    /// pow(a, b) where the integer leg's rules put the unrounded product at
+    /// exactly `magnitude × 10^exponent`, a 41 digit tie: its digits past the
+    /// 41st are a 5 then zeros. Rounding half away from zero takes the larger
+    /// neighbour, and one unit fewer anywhere in the product the smaller.
+    function checkPowAtTie(Float a, Float b, uint256 magnitude, int256 exponent) internal view {
+        int256 shed = LibTestExactDecimal.digits(LibTestExactDecimal.u512(magnitude)) - 41;
+        assertTrue(shed > 0, "past 41 digits");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 unit = 10 ** uint256(shed);
+        assertEq(magnitude % unit, unit / 2, "tie");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float expected = LibDecimalFloat.packLossless(int256(magnitude / unit + 1), exponent + shed);
+        assertTrue(same(this.powExternal(a, b), expected), "tie rounds away from zero");
+    }
+
+    /// a = 1 + 5e-p, or 1 - 5e-p when `below`, to the power N, or -N for a
+    /// negative b. For -N the inverse truncates toward zero, dropping only
+    /// (5e-p)^2 and below, so it is 1 -+ 5e-p, on the other side of one. Every
+    /// operand of a squaring or result multiply is then 1 + s k 5e-p for one
+    /// sign s and some k up to N, so the exact product of two is the sum of
+    /// their offsets plus the product of them, under (5N 1e-p)^2. Below 1e-76,
+    /// under every grid, that is all a squaring's floor or a multiply's
+    /// truncation toward zero drops, so the unrounded power is exactly
+    /// 1 + s 5N 1e-p.
+    function checkPowNearOneAtTie(uint256 p, bool below, uint256 n, int256 signedCoefficientB, int256 exponentB)
+        internal
+        view
+    {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponent = -int256(p);
+        assertEq(
+            LibTestExactDecimal.cmpScaled(
+                LibTestExactDecimal.mul(5 * n, 5 * n), 2 * exponent, LibTestExactDecimal.u512(1), -76
+            ),
+            -1,
+            "offset products below the grid"
+        );
+        bool resultBelow = below != (signedCoefficientB < 0);
+        uint256 magnitude = resultBelow ? 10 ** p - 5 * n : 10 ** p + 5 * n;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficientA = int256(below ? 10 ** p - 5 : 10 ** p + 5);
+        checkPowAtTie(
+            LibDecimalFloat.packLossless(signedCoefficientA, exponent),
+            LibDecimalFloat.packLossless(signedCoefficientB, exponentB),
+            magnitude,
+            exponent
+        );
+    }
+
+    /// The result multiply truncates toward zero and a squared partial is the
+    /// floor of its exact square. Here each is exact or drops only digits
+    /// below the grid, so the unrounded power is known exactly and sits on a
+    /// rounding tie, where one unit more dropped by any step shows.
+    function testPowIntegerLegAtRoundingTie() external view {
+        // 5e13 + 5 cubed: 1 times a, a squared and a times a^2 are all exact,
+        // and a^3 has 42 digits, the last a 5.
+        uint256 m = 5e13 + 5;
+        U512 memory cube = LibTestExactDecimal.mulSmall(LibTestExactDecimal.mul(m, m), m);
+        assertEq(cube.hi, 0, "cube in a word");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkPowAtTie(LibDecimalFloat.packLossless(int256(m), 0), LibDecimalFloat.packLossless(3, 0), cube.lo, 0);
+
+        // Near one with |b| at 3e25 and 3e26, each result multiply sheds
+        // nonzero digits below the grid.
+        // (1 + 5e-66)^3e25: 1 + 1.5e-40.
+        checkPowNearOneAtTie(66, false, 3e25, 3, 25);
+        // (1 - 5e-67)^3e25: 1 - 1.5e-41, the tie in its 42nd digit.
+        checkPowNearOneAtTie(67, true, 3e25, 3, 25);
+        // (1 - 5e-67)^-3e26: the inverse, truncated toward zero, is
+        // 1 + 5e-67 as it drops only 2.5e-133 and below, then 1 + 1.5e-40.
+        checkPowNearOneAtTie(67, true, 3e26, -3, 26);
     }
 
     /// a^0 = 1 for all a including 0^0.
@@ -1123,7 +1275,7 @@ contract LibDecimalFloatPowTest is Test {
         (bool returnedInverse, Float actual) = powChecked(a, b.minus());
         if (returned && inverseRepresentable(power)) {
             assertTrue(returnedInverse, "a^-b reverted");
-            assertInverse(b, power, actual);
+            assertInverse(a, b, power, actual);
         }
     }
 
@@ -1138,14 +1290,14 @@ contract LibDecimalFloatPowTest is Test {
     /// With power = a^b (1 + x) and actual = a^-b (1 + y), x and y each
     /// within `legError` plus the floor loss of its result, actual power - 1
     /// is x + y + x y. The product truncates under 1e-76.
-    function assertInverse(Float b, Float power, Float actual) internal pure {
+    function assertInverse(Float a, Float b, Float power, Float actual) internal pure {
         (int256 signedCoefficient, int256 exponent) = actual.unpack();
         (int256 powerCoefficient, int256 powerExponent) = power.unpack();
         (signedCoefficient, exponent) =
             LibTestExactDecimal.mulPayload(signedCoefficient, exponent, powerCoefficient, powerExponent);
         (, signedCoefficient, exponent) = LibTestExactDecimal.addPartsWide(signedCoefficient, exponent, -1, 0);
-        Float x = LibTestErrorBound.plus(legError(b), LibTestErrorBound.floor(power));
-        Float y = LibTestErrorBound.plus(legError(b), LibTestErrorBound.floor(actual));
+        Float x = LibTestErrorBound.plus(legError(a, b), LibTestErrorBound.floor(power));
+        Float y = LibTestErrorBound.plus(legError(a, b.minus()), LibTestErrorBound.floor(actual));
         Float limit = LibTestErrorBound.plus(LibTestErrorBound.plus(x, y), LibTestErrorBound.times(x, y));
         (int256 limitCoefficient, int256 limitExponent) =
             LibTestErrorBound.plus(limit, LibDecimalFloat.packLossless(1, -76)).unpack();
@@ -1398,9 +1550,14 @@ contract LibDecimalFloatPowTest is Test {
         gap = bound(gap, 1, 1e3);
         exponentA = bound(exponentA, -1000, 1000);
         Float b = LibDecimalFloat.packLossless(bound(signedCoefficientB, 1, 1e9), bound(exponentB, -9, -8));
-        Float low = this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
-        Float high = this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA + gap, exponentA), b);
-        assertTrue(LibTestErrorBound.monotoneRelative(low, high, legError(b), legError(b)), "monotone");
+        Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
+        Float c = LibDecimalFloat.packLossless(signedCoefficientA + gap, exponentA);
+        assertTrue(
+            LibTestErrorBound.monotoneRelative(
+                this.powExternal(a, b), this.powExternal(c, b), legError(a, b), legError(c, b)
+            ),
+            "monotone"
+        );
     }
 
     /// The exponent of one unit in the 41st significant digit of a nonzero x.
@@ -1432,7 +1589,7 @@ contract LibDecimalFloatPowTest is Test {
         Float c = LibDecimalFloat.packLossless(lowB + gap, exponentB);
         Float low = this.powExternal(a, b);
         Float high = this.powExternal(a, c);
-        assertTrue(LibTestErrorBound.monotoneRelative(low, high, legError(b), legError(c)), "monotone");
+        assertTrue(LibTestErrorBound.monotoneRelative(low, high, legError(a, b), legError(a, c)), "monotone");
         if (cmp(high, low) < 0) {
             (int256 lowCoefficient, int256 lowExponent) = low.unpack();
             (int256 highCoefficient, int256 highExponent) = high.unpack();

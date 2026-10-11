@@ -29,11 +29,35 @@ uint256 constant POW10_HALF_UNIT_E52 = 5e11;
 /// for a fraction f below 1, within pow10's 3.2774e-48 relative plus
 /// ln 10 f times log10Unrounded's 1.0044e-50, under 2.3128e-50. That is
 /// 5.0000003300528e-41, rounded up to 5.00000033006e-41. The integer part's
-/// truncations are under 2N 1e-75 and its product with the leg 1e-75 more,
-/// within the 3N 1e-75 `LibTestErrorBound.pow` adds from N 1. At N 0 that
-/// 1e-75, and the half-power root's (2N + 1.6) 1e-75 below N 2, are within
-/// the rounding up.
+/// truncations are within the N min(K1, K2 d) `LibTestErrorBound.pow` adds.
+/// The rest `LibDecimalFloat.pow` derives, the 1/2 per bit, the leg's
+/// product, the inverse's weight in the leg, the half-power root's extra
+/// square, multiply and dropped digit, and the higher orders, is under
+/// 1e-63, within the rounding up's 7.2e-53.
 uint256 constant POW_RELATIVE_ERROR_E52 = 500000033006;
+
+/// @dev K1 of pow for b > 0, in units of 1e-80: a multiply truncates toward
+/// zero to a coefficient of at least 2^255 / 10, so it drops under
+/// 10 / 2^255 relative, 17272.3 units, and the squarings and multiplies
+/// weigh it under N.
+uint256 constant POW_K1_E80 = 17273;
+
+/// @dev K1 of pow for b < 0, in units of 1e-80: `POW_K1_E80` plus the
+/// inverse's under 1e-75 relative, as it truncates to a coefficient of at
+/// least 1e75, which a^-N weighs N. 117273 units, rounded up to 117280.
+uint256 constant POW_INVERSE_K1_E80 = 117280;
+
+/// @dev K2 of pow for b > 0, in units of 1e-42: squaring a^(2^j) and its
+/// multiply drop under min(4^j d^2, 1e-76) weighed N / 2^(j+1), which with
+/// s = 2^j d / 1e-38 is (N d 1e-38 / 2) min(s, 1/s); s doubles in j, so they
+/// sum under 3 of it, 1.5e-38 N d.
+uint256 constant POW_K2_E42 = 15000;
+
+/// @dev K2 of pow for b < 0, in units of 1e-42: below d 1e-38 the squarings
+/// and the inverse's d^2 N drop under 2.5e-38 N d. Above it the squarings
+/// drop under 1e-76 N and the inverse min(d^2, 1e-75) N, over N d most at
+/// d = sqrt(1e-75): 1.1e-75 / sqrt(1e-75), 34785.05 units, rounded up.
+uint256 constant POW_INVERSE_K2_E42 = 34786;
 
 /// The proven error bound E of each transcendental function, and the
 /// monotonicity it implies: for x < y, the results r have r(x) <= r(y) + 2E.
@@ -127,13 +151,15 @@ library LibTestErrorBound {
         return LibDecimalFloat.packLossless(int256(POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52), -52);
     }
 
-    /// pow, relative, for the integer part N of |b|: `POW_RELATIVE_ERROR_E52`
-    /// units of 1e-52 and 3 N 1e-75. Every multiply and the inverse
-    /// truncate toward zero by under 1e-75, and squaring to the Nth power
-    /// weights them by at most 2N in all, so the integer part is within
-    /// 1 - (1 - 1e-75)^(2N), under 2N 1e-75; its product with the leg is
-    /// under N 1e-75.
-    function pow(Float b) internal pure returns (Float) {
+    /// pow, relative, for the integer part N of |b| and
+    /// d = max(|a|, 1/|a|) - 1: `POW_RELATIVE_ERROR_E52` units of 1e-52 plus
+    /// N min(K1, K2 d), with `POW_K1_E80` and `POW_K2_E42` for b > 0 and
+    /// `POW_INVERSE_K1_E80` and `POW_INVERSE_K2_E42` for b < 0. Where K2 d
+    /// is the lesser |a| is within 3.5e-38 of one, so |a| - 1 and 1 - |a| are
+    /// exact; the quotient, the products and the sum each truncate toward
+    /// zero, so this is at most the bound. A zero a, whose d has no bound,
+    /// takes K1.
+    function pow(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = b.unpack();
         // A Float coefficient is int224, so its magnitude fits int256.
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -141,7 +167,27 @@ library LibTestErrorBound {
         if (exponent < 0) {
             (n, exponent) = (LibTestExactDecimal.atExponent(n, exponent, 0), 0);
         }
-        (n, exponent) = LibTestExactDecimal.mulPayload(n, exponent, 3, -75);
+        (uint256 k1, uint256 k2) =
+            signedCoefficient < 0 ? (POW_INVERSE_K1_E80, POW_INVERSE_K2_E42) : (POW_K1_E80, POW_K2_E42);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (int256 perUnit, int256 perUnitExponent) = (int256(k1), int256(-80));
+        (int256 magnitude, int256 magnitudeExponent) = a.abs().unpack();
+        if (magnitude != 0) {
+            int256 d;
+            int256 dExponent;
+            if (LibTestExactDecimal.cmpParts(magnitude, magnitudeExponent, 1, 0) < 0) {
+                (, d, dExponent) = LibTestExactDecimal.addPartsWide(1, 0, -magnitude, magnitudeExponent);
+                (d, dExponent) = LibTestExactDecimal.quotient(d, dExponent, magnitude, magnitudeExponent);
+            } else {
+                (, d, dExponent) = LibTestExactDecimal.addPartsWide(magnitude, magnitudeExponent, -1, 0);
+            }
+            // forge-lint: disable-next-line(unsafe-typecast)
+            (d, dExponent) = LibTestExactDecimal.mulPayload(int256(k2), -42, d, dExponent);
+            if (LibTestExactDecimal.cmpParts(d, dExponent, perUnit, perUnitExponent) < 0) {
+                (perUnit, perUnitExponent) = (d, dExponent);
+            }
+        }
+        (n, exponent) = LibTestExactDecimal.mulPayload(perUnit, perUnitExponent, n, exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
         return sum(int256(POW_RELATIVE_ERROR_E52), -52, n, exponent);
     }
