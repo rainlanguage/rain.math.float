@@ -14,6 +14,7 @@ import {
     ParseDecimalFloatExcessCharacters
 } from "src/error/ErrParse.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibParseDecimalFloatPastInt256Test is Test {
     using LibDecimalFloat for Float;
@@ -184,15 +185,27 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         checkFail(s, ParseDecimalOverflow.selector, bytes(s).length);
     }
 
-    /// Any int224 followed by any number of zeros parses to exactly its value.
-    function testParseIntegerTrailingZerosFuzz(int224 c, uint8 z) external view {
+    /// Any int256 followed by any number of zeros parses to exactly its value
+    /// when that is a Float: its significant digits fit int224 of its sign.
+    /// Otherwise it is no Float, `ParseDecimalPrecisionLoss`.
+    function testParseIntegerTrailingZerosFuzz(int256 c, uint8 z) external view {
         string memory s = string.concat(Strings.toStringSigned(c), zeros(z));
         (bytes4 err, Float float) = this.parse(s);
+        uint256 significand = LibTestExactDecimal.abs(c);
+        while (significand != 0 && significand % 10 == 0) {
+            significand /= 10;
+        }
+        if (significand > LibTestExactDecimal.coefficientLimit(c < 0)) {
+            assertEq(err, ParseDecimalPrecisionLoss.selector, "error");
+            assertEq(Float.unwrap(float), bytes32(0), "float");
+            return;
+        }
         assertEq(err, bytes4(0), "error");
         if (c == 0) {
             assertEq(Float.unwrap(float), bytes32(0), "zero");
         } else {
-            assertTrue(float.eq(LibDecimalFloat.packLossless(c, int256(uint256(z)))), "value");
+            (int256 actualC, int256 actualE) = float.unpack();
+            assertTrue(LibTestExactDecimal.eq(actualC, actualE, c, int256(uint256(z))), "value");
         }
     }
 }
