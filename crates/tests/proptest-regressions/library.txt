@@ -5,3 +5,4 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 70f9eded3649f10d534dbe27afac75621052717e64b1c231b7f6102a85258bec # shrinks to lit = "1e21257139342", suffix = ""
+cc 737bd66f1e10bb00e7a6f1da82ff97b2f945853a3e4dfc7e37e0f3eda7e6b851 # shrinks to lit = "1.00000000000000000000000000000000000000000000000000000000000000000001e0", suffix = ""

@@ -27,7 +27,6 @@ pub enum RefError {
     FixedDecimalOverflow,
     UnformatableExponent,
     ParseDecimalPrecisionLoss,
-    ParseDecimalOverflow,
     Log10Zero,
     Log10Negative,
     ZeroNegativePower,
@@ -49,7 +48,6 @@ impl RefError {
             Self::FixedDecimalOverflow => "FixedDecimalOverflow(int256,int256,uint8)",
             Self::UnformatableExponent => "UnformatableExponent(int256)",
             Self::ParseDecimalPrecisionLoss => "ParseDecimalPrecisionLoss(uint256)",
-            Self::ParseDecimalOverflow => "ParseDecimalOverflow(uint256)",
             Self::Log10Zero => "Log10Zero()",
             Self::Log10Negative => "Log10Negative(int256,int256)",
             Self::ZeroNegativePower => "ZeroNegativePower(bytes32)",
@@ -775,8 +773,9 @@ pub fn format_plain(x: &Dec) -> Result<String, RefError> {
 }
 
 /// The exact value of a well formed decimal literal
-/// `-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?`, without the library's limits.
-pub fn literal_value(s: &str) -> Dec {
+/// `-?[0-9]+(\.[0-9]+)?([eE][+-]?[0-9]+)?`, without the library's limits, as
+/// a coefficient and an exponent.
+pub fn literal_exact(s: &str) -> (BigInt, BigInt) {
     let (mantissa, exp) = match s.find(['e', 'E']) {
         Some(i) => (
             &s[..i],
@@ -798,33 +797,20 @@ pub fn literal_value(s: &str) -> Dec {
     if negative {
         c = -c;
     }
-    let e = exp - frac.len();
-    match i64::try_from(&e) {
-        Ok(e) => Dec::new(c, e),
-        // An exponent past i64 is far past int32 either way; keep its sign.
-        Err(_) => Dec::new(
-            c,
-            if e.is_negative() {
-                i64::MIN / 2
-            } else {
-                i64::MAX / 2
-            },
-        ),
-    }
+    (c, exp - frac.len())
 }
 
-/// `LibParseDecimalFloat.parseDecimalFloat` over a well formed literal: an
-/// integer part past int256 moves its trailing zeros into the exponent, and
-/// then its significant digits, fraction digits (trailing zeros dropped) and
-/// a nonzero coefficient's exponent are each read as int256
-/// (`ParseDecimalOverflow`); a fraction digit after an integer part past
-/// int256 is `ParseDecimalPrecisionLoss`; a non-zero integer part
-/// takes at most 67 fraction digits and the combined coefficient must fit
-/// int224 (`ParseDecimalPrecisionLoss`); then the value packs, where any lost
-/// digit is `ParseDecimalPrecisionLoss` and a value past every Float is
-/// `ExponentOverflow`.
+/// `literal_exact` with its exponent pinned.
+pub fn literal_value(s: &str) -> Dec {
+    let (c, e) = literal_exact(s);
+    Dec::new(c, pin(&e))
+}
+
+/// `LibParseDecimalFloat.parseDecimalFloat` over a well formed literal: its
+/// exact value packs, where any lost digit is `ParseDecimalPrecisionLoss`
+/// and a value past every Float is `ExponentOverflow`.
 pub fn parse(s: &str) -> Result<Dec, RefError> {
-    parse_packed(&parse_unpacked(s)?)
+    parse_packed(&literal_value(s))
 }
 
 /// The value packs, where any lost digit is `ParseDecimalPrecisionLoss` and
@@ -835,12 +821,6 @@ pub fn parse_packed(x: &Dec) -> Result<Dec, RefError> {
         Packed::Value(_, false) | Packed::Underflow => Err(RefError::ParseDecimalPrecisionLoss),
         Packed::Overflow => Err(RefError::ExponentOverflow),
     }
-}
-
-/// The parser's limits before packing; the value it hands to packing.
-pub fn parse_unpacked(s: &str) -> Result<Dec, RefError> {
-    let (c, e) = parse_inline(s)?;
-    Ok(Dec::new(c, pin(&e)))
 }
 
 /// An int256 exponent past a quarter of i64 is past int32 by billions of
@@ -855,83 +835,6 @@ pub fn pin(e: &BigInt) -> i64 {
         } else {
             i64::MAX / 4
         })
-}
-
-/// `parseDecimalFloatInline` over a whole well formed literal: the
-/// coefficient and int256 exponent `parse_unpacked` describes, zero at
-/// exponent zero. A value with no int256 exponent is the error `parse_packed`
-/// gives it.
-pub fn parse_inline(s: &str) -> Result<(BigInt, BigInt), RefError> {
-    let (mantissa, exp_str) = match s.find(['e', 'E']) {
-        Some(i) => (&s[..i], Some(&s[i + 1..])),
-        None => (s, None),
-    };
-    let (int_str, frac_str) = match mantissa.find('.') {
-        Some(i) => (&mantissa[..i], Some(&mantissa[i + 1..])),
-        None => (mantissa, None),
-    };
-    let negative = int_str.starts_with('-');
-    let int: BigInt = int_str.parse().unwrap();
-    let frac = frac_str
-        .map(|f| f.trim_end_matches('0'))
-        .filter(|f| !f.is_empty());
-    let mut c = int.clone();
-    let mut e: BigInt = BigInt::zero();
-    if !fits_int256(&int) {
-        // Its trailing zeros move into the exponent. Significant digits past
-        // int256, or any fraction digit after them, need a coefficient past
-        // int256, so neither is a Float.
-        let mut zeros = 0u64;
-        while (&c % 10u32).is_zero() {
-            c /= 10u32;
-            zeros += 1;
-        }
-        if !fits_int256(&c) {
-            return Err(RefError::ParseDecimalOverflow);
-        }
-        if frac.is_some() {
-            return Err(RefError::ParseDecimalPrecisionLoss);
-        }
-        e = BigInt::from(zeros);
-    } else if let Some(trimmed) = frac {
-        let f: BigInt = trimmed.parse().unwrap();
-        if f > int256_max() {
-            return Err(RefError::ParseDecimalOverflow);
-        }
-        let f = if negative { -f } else { f };
-        let scale = trimmed.len() as u64;
-        e = -BigInt::from(scale);
-        if int.is_zero() {
-            c = f;
-        } else {
-            if scale > 67 {
-                return Err(RefError::ParseDecimalPrecisionLoss);
-            }
-            let rescaled = &int * pow10(scale);
-            if !fits_int224(&rescaled) {
-                return Err(RefError::ParseDecimalPrecisionLoss);
-            }
-            c = rescaled + f;
-        }
-    }
-    if let Some(exp_str) = exp_str {
-        let x: BigInt = exp_str.trim_start_matches('+').parse().unwrap();
-        // Zero is zero at any exponent; past int256 nothing else is a Float.
-        if c.is_zero() {
-            return Ok((BigInt::zero(), BigInt::zero()));
-        }
-        if !fits_int256(&x) {
-            return Err(RefError::ParseDecimalOverflow);
-        }
-        e += x;
-    }
-    if !c.is_zero() && !fits_int256(&e) {
-        return Err(parse_packed(&Dec::new(c, pin(&e))).unwrap_err());
-    }
-    if c.is_zero() {
-        return Ok((BigInt::zero(), BigInt::zero()));
-    }
-    Ok((c, e))
 }
 
 #[cfg(test)]
@@ -1080,6 +983,20 @@ mod tests {
                 .unwrap()
                 .eq_value(&Dec::new(10, I32_MAX))
         );
+        // Past every Float from (2^223 + 2)e2147483647 in magnitude: 2^223
+        // ends in 8, so 2^223 + 2 is a multiple of ten past int224 at the
+        // next exponent, and 2^223 + 1 truncates there to below int224.max.
+        let two223 = BigInt::from(1) << 223usize;
+        for sign in ["", "-"] {
+            for (k, want) in [
+                (1u32, RefError::ParseDecimalPrecisionLoss),
+                (2, RefError::ExponentOverflow),
+                (3, RefError::ExponentOverflow),
+            ] {
+                let s = format!("{sign}{}e{I32_MAX}", &two223 + k);
+                assert_eq!(parse(&s).unwrap_err(), want, "{s}");
+            }
+        }
     }
 
     #[test]
