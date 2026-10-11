@@ -166,10 +166,10 @@ including an integer power and `a^1`, within proven bounds of the true value.
 `sqrt` is correctly rounded; for the others, a true value within the bound of a
 rounding tie can round to either neighbour:
 
-- `pow10`: half a unit in the 41st digit plus 3.28e-8 of a unit, under
-  5.0000004e-41 relative.
-- `log10`: half a unit in the 41st digit plus 2e-50 absolute.
-- `pow`: 5.0000004e-41 + 3N·1e-75 relative, for N the integer part of |b|.
+- `pow10`: half a unit in the 41st digit plus 1.12e-8 of a unit, under
+  5.00000012e-41 relative.
+- `log10`: half a unit in the 41st digit plus 1.0037e-50 absolute.
+- `pow`: 5.00000012e-41 + 3N·1e-75 relative, for N the integer part of |b|.
 - `sqrt`: correctly rounded, half a unit in the 41st digit, under 5e-41
   relative.
 
@@ -181,9 +181,9 @@ carry above the largest Float is truncated to int224 instead.
 `sqrt` is monotone. The others are monotone within rounding error, not strictly
 monotone. For a < b the order of the results can flip by exactly one unit in the
 last place, only when both true values lie within the larger raw error of the
-same rounding tie, and never by more. The raw error, before rounding, is 3.28e-8
-of a unit for `pow10`, 2e-50 for `log10`, and 3.33e-48 + 3N·1e-75 relative for
-`pow`. Callers must not rely on strict ordering at one-ulp resolution.
+same rounding tie, and never by more. The raw error, before rounding, is 1.12e-8
+of a unit for `pow10`, 1.0037e-50 for `log10`, and 1.15e-48 + 3N·1e-75 relative
+for `pow`. Callers must not rely on strict ordering at one-ulp resolution.
 
 Exact results stay exact: powers of ten (`pow10(k)` is `10^k`, `log10(10^k)` is
 `k`), and integer and fractional powers, roots included, with at most 41
@@ -279,13 +279,13 @@ inherently approximations in many cases.
 
 `log10` divides the input by powers 10^(2^-i) down to within 10^(2^-16) of a
 power of ten and closes the gap with a fixed point series. Before rounding it is
-within 2e-50 of the true value, and within 3.3e-49 relative of it for an input
-within a factor 1.001 of a power of ten, so a log near zero keeps its precision.
-The result is rounded to 41 significant digits, so it is within half a unit in
-the 41st digit plus 2e-50. A power of ten has an exact log.
+within 1.0037e-50 of the true value, and within 3.11e-49 relative of it for an
+input within a factor 1.001 of a power of ten, so a log near zero keeps its
+precision. The result is rounded to 41 significant digits, so it is within half
+a unit in the 41st digit plus 1.0037e-50. A power of ten has an exact log.
 
 `pow10` computes the power in fixed point and rounds it to 41 significant
-digits, so it is within half a unit in the 41st digit plus 3.28e-8 of a unit,
+digits, so it is within half a unit in the 41st digit plus 1.12e-8 of a unit,
 and an exactly representable power such as `10^2` is exact.
 
 `pow` calculates an integer exponent by squaring, and the fractional component

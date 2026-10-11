@@ -847,7 +847,7 @@ library LibDecimalFloatImplementation {
     }
 
     /// log10(x) for a float x: an internal approximation within
-    /// 1.0044e-50, rounded to nearest at 41 significant digits half away from
+    /// 1.0037e-50, rounded to nearest at 41 significant digits half away from
     /// zero, so within half a unit in the 41st digit plus that error. Near a tie either neighbour can result. log10(10^k) is
     /// exactly k.
     ///
