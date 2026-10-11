@@ -521,7 +521,9 @@ library LibTestExactDecimal {
     /// `a / b` for a nonzero `b`, truncated towards zero once, so under 1e-74
     /// relative: `q = floor(|a| 10^k / |b|)` with `k = 75 + digits(b) -
     /// digits(a)` puts the exact ratio in (1e74, 1e76), so `q` is in
-    /// [1e74, 1e76), 75 or 76 digits.
+    /// [1e74, 1e76), 75 or 76 digits. That is more than any Float holds, so
+    /// the closest Float not above the exact quotient is the closest not above
+    /// `q × 10^e`.
     function quotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         if (ca == 0) {
             return (0, 0);
@@ -626,29 +628,6 @@ library LibTestExactDecimal {
     {
         (, int256 c, int256 e) = addPartsWide(ca, ea, cb, eb);
         return isNearestTowardZero(c < 0, u512(abs(c)), e, rc, re);
-    }
-
-    /// `|ca / cb|` for a non-zero `cb`, truncated to 71 or 72 significant
-    /// digits, more than any Float holds, as `q × 10^exponent`. The closest
-    /// Float not above the exact quotient is the closest not above `q` there.
-    function quotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (U512 memory, int256) {
-        (uint256 a, uint256 b) = (abs(ca), abs(cb));
-        if (a == 0) {
-            return (u512(0), 0);
-        }
-        // a × 10^k is in [10^70 b, 10^72 b), with k in [4, 138].
-        int256 k = 71 + digits(u512(b)) - digits(u512(a));
-        // a × 10^k1 is below 10^76, and k - k1 is at most 63 when positive.
-        int256 k1 = 76 - digits(u512(a));
-        uint256 q;
-        if (k <= k1) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            q = a * 10 ** uint256(k) / b;
-        } else {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            q = Math.mulDiv(a * 10 ** uint256(k1), 10 ** uint256(k - k1), b);
-        }
-        return (u512(q), ea - eb - k);
     }
 
     /// `ca × cb` with the fewest digits shed, truncating towards zero, that

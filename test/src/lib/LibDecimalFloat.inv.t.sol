@@ -6,7 +6,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
-import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
+import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 
 contract LibDecimalFloatInvTest is Test {
     using LibDecimalFloat for Float;
@@ -84,10 +84,14 @@ contract LibDecimalFloatInvTest is Test {
         (int256 signedCoefficientResultUnpacked, int256 exponentResultUnpacked) = floatInv.unpack();
         assertEq(signedCoefficientResultUnpacked, signedCoefficientResult);
         assertEq(exponentResultUnpacked, exponentResult);
-        (U512 memory magnitude, int256 exponentExact) = LibTestExactDecimal.quotient(1, 0, signedCoefficient, exponent);
+        (int256 q, int256 exponentExact) = LibTestExactDecimal.quotient(1, 0, signedCoefficient, exponent);
         assertTrue(
             LibTestExactDecimal.isNearestTowardZero(
-                signedCoefficient < 0, magnitude, exponentExact, signedCoefficientResultUnpacked, exponentResultUnpacked
+                signedCoefficient < 0,
+                LibTestExactDecimal.u512(LibTestExactDecimal.abs(q)),
+                exponentExact,
+                signedCoefficientResultUnpacked,
+                exponentResultUnpacked
             ),
             "nearest Float towards zero"
         );

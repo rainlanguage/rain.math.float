@@ -78,16 +78,14 @@ contract LibTestExactDecimalTest is Test {
     }
 
     /// q |b| 10^(e + eb) <= |a| 10^ea < (q + 1) |b| 10^(e + eb), with q in
-    /// [1e74, 1e76).
-    function testQuotientTruncates(int256 a, int256 ea, int256 b, int256 eb) external pure {
-        vm.assume(a != 0 && b != 0);
-        ea = bound(ea, -100, 100);
-        eb = bound(eb, -100, 100);
-        checkQuotient(a, ea, b, eb);
-    }
-
+    /// [1e74, 1e76) and the sign of a / b, or q = e = 0 for a = 0.
     function checkQuotient(int256 a, int256 ea, int256 b, int256 eb) internal pure {
         (int256 q, int256 e) = LibTestExactDecimal.quotient(a, ea, b, eb);
+        if (a == 0) {
+            assertEq(q, 0, "zero");
+            assertEq(e, 0, "zero exponent");
+            return;
+        }
         assertEq(q < 0, (a < 0) != (b < 0), "sign");
         uint256 magnitude = LibTestExactDecimal.abs(q);
         assertTrue(magnitude >= 1e74 && magnitude < 1e76, "digits");
@@ -100,6 +98,13 @@ contract LibTestExactDecimalTest is Test {
             LibTestExactDecimal.cmpScaled(LibTestExactDecimal.mul(magnitude + 1, absB), e + eb, exact, ea) > 0,
             "below the next"
         );
+    }
+
+    function testQuotientTruncates(int256 a, int256 ea, int256 b, int256 eb) external pure {
+        vm.assume(b != 0);
+        ea = bound(ea, type(int32).min, type(int32).max);
+        eb = bound(eb, type(int32).min, type(int32).max);
+        checkQuotient(a, ea, b, eb);
     }
 
     /// The ends of the range and the digit counts that pick each branch: a
@@ -117,12 +122,44 @@ contract LibTestExactDecimalTest is Test {
         (q, e) = LibTestExactDecimal.quotient(1, 0, 9, 0);
         assertEq(q, 111111111111111111111111111111111111111111111111111111111111111111111111111);
         assertEq(e, -75);
-        checkQuotient(type(int256).min, 0, 1, 0);
-        checkQuotient(type(int256).min, 0, -9, 0);
-        checkQuotient(type(int256).max, 0, 7, 3);
-        checkQuotient(1, 0, type(int256).max, 0);
         checkQuotient(-7, 5, type(int256).min, -5);
-        checkQuotient(1e75, 0, 1e76 - 1, 0);
+        checkQuotient(type(int256).max, 0, 7, 3);
+    }
+
+    /// Each in a fresh call frame, so the grid's U512 allocations do not
+    /// accumulate in one memory.
+    function checkQuotientExternal(int256 a, int256 ea, int256 b, int256 eb) external pure {
+        checkQuotient(a, ea, b, eb);
+    }
+
+    /// The digit-count extremes of both operands, both signs, at the Float
+    /// exponent extremes.
+    function testQuotientExtremes() external view {
+        int256[14] memory c = [
+            type(int256).max,
+            type(int256).min,
+            int256(type(int224).max),
+            int256(type(int224).min),
+            int256(1),
+            int256(-1),
+            int256(9),
+            int256(-9),
+            int256(10),
+            int256(1e67),
+            int256(1e67 - 1),
+            int256(1e75),
+            int256(1e76 - 1),
+            int256(0)
+        ];
+        int256[3] memory ea = [int256(0), type(int32).max, type(int32).min];
+        int256[3] memory eb = [int256(0), type(int32).min, type(int32).max];
+        for (uint256 i = 0; i < c.length; i++) {
+            for (uint256 j = 0; j < c.length - 1; j++) {
+                for (uint256 k = 0; k < ea.length; k++) {
+                    this.checkQuotientExternal(c[i], ea[k], c[j], eb[k]);
+                }
+            }
+        }
     }
 
     function testQuotientZero(int256 b, int256 ea, int256 eb) external pure {
