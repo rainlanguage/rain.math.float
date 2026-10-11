@@ -189,6 +189,12 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         g -= gasleft();
     }
 
+    function mainGas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
+        g = gasleft();
+        LibDecimalFloatSqrtVariants.sqrtMain(signedCoefficient, exponent);
+        g -= gasleft();
+    }
+
     function plainNewtonGas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
         g = gasleft();
         LibDecimalFloatSqrtVariants.sqrtPlainNewton(signedCoefficient, exponent);
@@ -211,14 +217,15 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         console2.log(name);
         console2.log("  library", this.sqrtGas(signedCoefficient, exponent));
         console2.log("  sqrtBase", this.baseGas(signedCoefficient, exponent));
+        console2.log("  pre-#359 main", this.mainGas(signedCoefficient, exponent));
         console2.log("  512-bit residual", this.residual512Gas(signedCoefficient, exponent));
         console2.log("  plain Newton", this.plainNewtonGas(signedCoefficient, exponent));
         console2.log("  assembly residual", this.asmResidualGas(signedCoefficient, exponent));
     }
 
-    /// Run with `-vv`: the library against #309's `sqrtBase`, the library with
-    /// `sqrtBase`'s 512-bit residual, Newton in plain Solidity, and the
-    /// residual in assembly.
+    /// Run with `-vv`: the library against #309's `sqrtBase`, the library before
+    /// #359, the library with `sqrtBase`'s 512-bit residual, Newton in plain
+    /// Solidity, and the residual in assembly.
     function testSqrtGas() external view {
         logGas("2", 2, 0);
         logGas("2e-1", 2, -1);
