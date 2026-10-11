@@ -420,6 +420,53 @@ contract LibDecimalFloatPowTest is Test {
         assertTrue(this.powExternal(minusOne, LibDecimalFloat.packLossless(type(int224).max, 0)).eq(minusOne));
     }
 
+    /// pow(a, b) within `legError(a, b)` of a reference, and when `tight` at
+    /// least 0.9 of its N term, `legError` past 5.0000004e-41. The reference
+    /// is the first 66 digits of the exact power, truncated, from the Rust
+    /// `truth_pow`, under 1e-65 relative.
+    function checkPowNearOne(Float a, Float b, int256 referenceCoefficient, int256 referenceExponent, bool tight)
+        internal
+        view
+    {
+        Float expected = LibDecimalFloat.packLossless(referenceCoefficient, referenceExponent);
+        Float error = this.powExternal(a, b).div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs();
+        Float bound = legError(a, b);
+        assertTrue(error.lte(bound), "bound");
+        if (tight) {
+            Float nTerm = bound.sub(LibDecimalFloat.packLossless(50000004, -48));
+            assertTrue(error.gte(nTerm.mul(LibDecimalFloat.packLossless(9, -1))), "tight");
+        }
+    }
+
+    /// The issue's (1 + 1e-66)^1e67, where N d is 10: its error is 0.915 of
+    /// the N term K2 N d, 1.5e-37, and of (1 + 1e-66)^-1e67 0.395 of
+    /// 3.4786e-37. The b < 0 worst case of the derivation, d 3.15e-38 near
+    /// sqrt(1e-75), is 0.980 of its N term.
+    function testPowNearOneLargeExponent() external view {
+        Float a = LibDecimalFloat.packLossless(1e66 + 1, -66);
+        checkPowNearOne(
+            a,
+            LibDecimalFloat.packLossless(1, 67),
+            220264657948067165169579006452842443663535126185567810742354263551,
+            -61,
+            true
+        );
+        checkPowNearOne(
+            a,
+            LibDecimalFloat.packLossless(-1, 67),
+            453999297624848515355915155605506102379180888665649692590713056512,
+            -70,
+            false
+        );
+        checkPowNearOne(
+            LibDecimalFloat.packLossless(999999999999999999999999999999999999968486793427, -48),
+            LibDecimalFloat.packLossless(-2077793387360115167471691320350296608394, 0),
+            273340921843676829617917998988580983641908213383205218973152502588,
+            -37,
+            true
+        );
+    }
+
     /// a^0 = 1 for all a including 0^0.
     function testPowBZero(Float a, int32 exponentB) external pure {
         Float b = LibDecimalFloat.packLossless(0, exponentB);

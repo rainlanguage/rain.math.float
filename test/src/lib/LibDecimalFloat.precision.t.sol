@@ -527,7 +527,8 @@ contract LibDecimalFloatPrecisionTest is Test {
         assertPowProduct(a, b, c);
     }
 
-    /// For a fixed positive power, pow is non decreasing in the base.
+    /// For a fixed positive power, pow is non decreasing in the base. b is
+    /// held to `powLimit` of both bases, so both powers pack.
     function testPowMonotoneInBase(
         int224 coefficientA,
         int32 exponentA,
@@ -535,9 +536,12 @@ contract LibDecimalFloatPrecisionTest is Test {
         int256 coefficientB,
         int256 exponentB
     ) external view {
-        (Float a, Float b) = powInputs(coefficientA, exponentA, 0, coefficientB, exponentB);
-        b = b.abs();
+        Float a = positive(coefficientA, exponentA, 0);
         Float c = stepUp(a, step);
+        exponentB = bound(exponentB, -76, 10);
+        int256 limit = powLimit(a, exponentB);
+        int256 limitC = powLimit(c, exponentB);
+        Float b = LibDecimalFloat.packLossless(bound(coefficientB, 0, limit < limitC ? limit : limitC), exponentB);
         assertTrue(
             LibTestErrorBound.monotoneRelative(
                 this.powExternal(a, b), this.powExternal(c, b), LibTestErrorBound.pow(a, b), LibTestErrorBound.pow(c, b)
