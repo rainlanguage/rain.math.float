@@ -87,7 +87,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
             (int256 signedCoefficient, int256 exponent) =
                 LibDecimalFloatImplementation.log10Unrounded(references[i][0], references[i][1]);
             (int256 boundCoefficient, int256 boundExponent) =
-                LibTestExactDecimal.mulParts(references[i][2], references[i][3], 327, -51);
+                LibTestExactDecimal.mulPayload(references[i][2], references[i][3], 327, -51);
             assertErrorWithin(
                 signedCoefficient, exponent, references[i], boundCoefficient, boundExponent, type(int256).min
             );
@@ -609,7 +609,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         exponent = -int256(p);
         uint256 ratio = Math.mulDiv(LibTranscendentalOracle.lnOnePlusOverU(d, p, negative), ORACLE_ONE, ORACLE_LN10);
         // d and ratio are below 1e72.
-        (expectedCoefficient, expectedExponent) = LibTestExactDecimal.mulParts(
+        (expectedCoefficient, expectedExponent) = LibTestExactDecimal.mulPayload(
             // forge-lint: disable-next-line(unsafe-typecast)
             negative ? -int256(d) : int256(d),
             exponent,

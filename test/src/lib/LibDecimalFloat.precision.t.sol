@@ -110,7 +110,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         (int256 signedCoefficient, int256 exponent) = b.unpack();
         // forge-lint: disable-next-line(unsafe-typecast)
         (signedCoefficient, exponent) =
-            LibTestExactDecimal.mulParts(int256(LibTestExactDecimal.abs(signedCoefficient)), exponent, 3, -67);
+            LibTestExactDecimal.mulPayload(int256(LibTestExactDecimal.abs(signedCoefficient)), exponent, 3, -67);
         (Float slack,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         return LibTestErrorBound.plus(slack, LibDecimalFloat.packLossless(2, -65));
     }
@@ -231,7 +231,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         (int256 logCoefficient, int256 logExponent) = oracleLog10(a);
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
-            LibTestExactDecimal.mulParts(signedCoefficientB, exponentB, logCoefficient, logExponent);
+            LibTestExactDecimal.mulPayload(signedCoefficientB, exponentB, logCoefficient, logExponent);
         return LibTranscendentalOracle.exp10(signedCoefficient, exponent);
     }
 
@@ -254,7 +254,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         return LibDecimalFloat.packLossless(1, -66);
     }
 
-    /// The `quotient` near 1 truncates under 1e-74, `mulParts` under 2e-76
+    /// The `quotient` near 1 truncates under 1e-74, `mulPayload` under 2e-76
     /// relative, and their products with the bounds under 1e-76.
     function packingSlack() internal pure returns (Float) {
         return LibDecimalFloat.packLossless(103, -76);
@@ -291,7 +291,7 @@ contract LibDecimalFloatPrecisionTest is Test {
         Float sum = b.add(c);
         (int256 powerB, int256 exponentB) = this.powExternal(a, b).unpack();
         (int256 powerC, int256 exponentC) = this.powExternal(a, c).unpack();
-        (powerB, exponentB) = LibTestExactDecimal.mulParts(powerB, exponentB, powerC, exponentC);
+        (powerB, exponentB) = LibTestExactDecimal.mulPayload(powerB, exponentB, powerC, exponentC);
         (int256 errorCoefficient, int256 errorExponent) = relativeError(powerB, exponentB, this.powExternal(a, sum));
         Float bound = LibTestErrorBound.plus(LibTestErrorBound.pow(b), LibTestErrorBound.pow(c));
         bound = LibTestErrorBound.plus(bound, LibTestErrorBound.pow(sum));
@@ -306,7 +306,7 @@ contract LibDecimalFloatPrecisionTest is Test {
     /// sqrt(a)^2 / a - 1, within twice the root's bound plus its square.
     function assertSqrtSquare(Float a) internal view {
         (int256 root, int256 rootExponent) = this.sqrtExternal(a).unpack();
-        (root, rootExponent) = LibTestExactDecimal.mulParts(root, rootExponent, root, rootExponent);
+        (root, rootExponent) = LibTestExactDecimal.mulPayload(root, rootExponent, root, rootExponent);
         (int256 errorCoefficient, int256 errorExponent) = relativeError(root, rootExponent, a);
         Float error = LibTestErrorBound.sqrt();
         Float bound =

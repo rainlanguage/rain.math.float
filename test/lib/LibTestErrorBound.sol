@@ -87,11 +87,11 @@ library LibTestErrorBound {
         return sum(ca, ea, cb, eb);
     }
 
-    /// Two bound Floats multiplied by `mulParts` and packed, both truncating.
+    /// Two bound Floats multiplied by `mulPayload` and packed, both truncating.
     function times(Float a, Float b) internal pure returns (Float) {
         (int256 ca, int256 ea) = a.unpack();
         (int256 cb, int256 eb) = b.unpack();
-        (ca, ea) = LibTestExactDecimal.mulParts(ca, ea, cb, eb);
+        (ca, ea) = LibTestExactDecimal.mulPayload(ca, ea, cb, eb);
         (Float bound,) = LibDecimalFloat.packLossy(ca, ea);
         return bound;
     }
@@ -124,7 +124,7 @@ library LibTestErrorBound {
         if (exponent < 0) {
             (n, exponent) = (LibTestExactDecimal.atExponent(n, exponent, 0), 0);
         }
-        (n, exponent) = LibTestExactDecimal.mulParts(n, exponent, 3, -75);
+        (n, exponent) = LibTestExactDecimal.mulPayload(n, exponent, 3, -75);
         return sum(50000004, -48, n, exponent);
     }
 
@@ -165,7 +165,7 @@ library LibTestErrorBound {
     function scaled(Float error, Float x) private pure returns (int256, int256) {
         (int256 errorCoefficient, int256 errorExponent) = error.unpack();
         (int256 signedCoefficient, int256 exponent) = x.abs().unpack();
-        return LibTestExactDecimal.mulParts(errorCoefficient, errorExponent, signedCoefficient, exponent);
+        return LibTestExactDecimal.mulPayload(errorCoefficient, errorExponent, signedCoefficient, exponent);
     }
 
     /// For x < y and results r within E f + u of the true f, r(x) - u over
