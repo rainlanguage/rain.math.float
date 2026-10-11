@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibTranscendentalOracle, ORACLE_LN10, ORACLE_ONE} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
+import {POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52, POW_RELATIVE_ERROR_E52} from "test/lib/LibTestErrorBound.sol";
 import {Float} from "src/lib/LibDecimalFloat.sol";
 import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 
@@ -38,10 +39,6 @@ int256 constant LOG10_UNDERFLOW = int256(type(int32).min) * 1e66;
 /// -log10(1 - E) <= E / ((1 - E) ln 10) < 0.4348 E.
 uint256 constant LOG10_UP_PER_E = 4343;
 uint256 constant LOG10_DOWN_PER_E = 4348;
-
-/// @dev The README's relative bound of pow10, and of pow before its 3N 1e-75,
-/// 5.0000004e-41, as 50000004e-48.
-uint256 constant RELATIVE_BOUND = 50000004;
 
 /// @dev 2.18e-41 in units of 1e-57, past the under 2.175e-41 that pow10, and pow
 /// for |b| under 1e10, may move log10 of their result by.
@@ -145,16 +142,17 @@ library LibTestPowRange {
         return negative ? (-high, -low) : (low, high);
     }
 
-    /// Where pow10(x) lands. L is x itself, exact. E is pow10's 5.0000004e-41.
+    /// Where pow10(x) lands. L is x itself, exact. E is `POW10_HALF_UNIT_E52`
+    /// plus `POW10_RAW_ERROR_E52` units of 1e-52.
     function pow10Range(Float x) internal pure returns (PowRange) {
         (int256 signedCoefficient, int256 exponent) = unpack(x);
         (uint256 lowMagnitude, uint256 highMagnitude) =
             magnitudeUnits(LibTestExactDecimal.abs(signedCoefficient), exponent);
         (int256 low, int256 high) = signed(signedCoefficient < 0, lowMagnitude, highMagnitude);
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 up = int256(units(LOG10_UP_PER_E, RELATIVE_BOUND, -52, true));
+        int256 up = int256(units(LOG10_UP_PER_E, POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52, -56, true));
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 down = int256(units(LOG10_DOWN_PER_E, RELATIVE_BOUND, -52, true));
+        int256 down = int256(units(LOG10_DOWN_PER_E, POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52, -56, true));
         return classify(low - down, high + up);
     }
 
@@ -237,18 +235,18 @@ library LibTestPowRange {
     }
 
     /// Where pow(a, b) lands, for a nonzero a other than +-1 and a nonzero b.
-    /// E is the README's 5.0000004e-41 + 3N 1e-75, with |b| for N. Past |b|
+    /// E is `POW_RELATIVE_ERROR_E52` + 3N 1e-75, with |b| for N. Past |b|
     /// 3e71, E may exceed 1e-3 and R has no lower bound.
     function powRange(Float a, Float b) internal pure returns (PowRange) {
         (int256 low, int256 high) = powLog(a, b);
         (int256 signedCoefficientB, int256 exponentB) = unpack(b);
         uint256 magnitudeB = LibTestExactDecimal.abs(signedCoefficientB);
-        uint256 up = units(LOG10_UP_PER_E, RELATIVE_BOUND, -52, true)
+        uint256 up = units(LOG10_UP_PER_E, POW_RELATIVE_ERROR_E52, -56, true)
             + units(LOG10_UP_PER_E * 3, magnitudeB, exponentB - 79, true);
         uint256 down = LibTestExactDecimal.cmpScaled(
                 LibTestExactDecimal.u512(magnitudeB), exponentB, LibTestExactDecimal.u512(3), 71
             ) <= 0
-            ? units(LOG10_DOWN_PER_E, RELATIVE_BOUND, -52, true)
+            ? units(LOG10_DOWN_PER_E, POW_RELATIVE_ERROR_E52, -56, true)
                 + units(LOG10_DOWN_PER_E * 3, magnitudeB, exponentB - 79, true)
             : CAP;
         // forge-lint: disable-next-line(unsafe-typecast)
