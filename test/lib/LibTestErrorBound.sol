@@ -37,16 +37,45 @@ library LibTestErrorBound {
         return LibDecimalFloat.packLossless(int256(POW_GUARD / 2 + POW10_RAW_ERROR), -50);
     }
 
-    /// pow, relative, for the integer part N of |b|: 5.0000004e-41, pow10's
-    /// bound plus log10Unrounded's 2e-50 times a fraction below 1 and
-    /// ln 10, plus the packing, and 3 N 1e-75. Every multiply and the inverse
-    /// truncate toward zero by under 1e-75, and squaring to the Nth power
-    /// weights them by at most 2N in all, so the integer part is within
-    /// 1 - (1 - 1e-75)^(2N), under 2N 1e-75; its product with the leg is
-    /// under N 1e-75.
-    function pow(Float b) internal pure returns (Float) {
-        return
-            LibDecimalFloat.packLossless(50000004, -48).add(b.abs().integer().mul(LibDecimalFloat.packLossless(3, -75)));
+    /// pow, relative, for the integer part N of |b| and
+    /// d = max(|a|, 1/|a|) - 1: 5.0000004e-41 + N min(K1, K2 d), with K1
+    /// 1.7273e-76 and K2 1.5e-38 for b > 0, and K1 1.1728e-75 and K2
+    /// 3.4786e-38 for b < 0, as `LibDecimalFloat.pow` derives. d, its product
+    /// and the sum each truncate toward zero, so this is at most the bound.
+    /// Where K2 d is the lesser |a| is within 3.5e-38 of one, so |a| - 1 and
+    /// 1 - |a| are exact.
+    function pow(Float a, Float b) internal pure returns (Float) {
+        Float base = LibDecimalFloat.packLossless(50000004, -48);
+        Float n = b.abs().integer();
+        if (n.isZero()) {
+            return base;
+        }
+        (int256 k1, int256 k1Exponent, int256 k2, int256 k2Exponent) = (17273, -80, 15, -39);
+        if (b.lt(LibDecimalFloat.FLOAT_ZERO)) {
+            (k1, k1Exponent, k2, k2Exponent) = (11728, -79, 34786, -42);
+        }
+        (int256 magnitude, int256 exponent) = a.unpack();
+        if (magnitude < 0) {
+            magnitude = -magnitude;
+        }
+        // For a zero a, whose d has no bound, K1.
+        (int256 d, int256 dExponent) = (k1, k1Exponent);
+        if (magnitude != 0) {
+            if (LibDecimalFloatImplementation.lt(magnitude, exponent, 1, 0)) {
+                (d, dExponent) = LibDecimalFloatImplementation.sub(1, 0, magnitude, exponent);
+                (d, dExponent) = LibDecimalFloatImplementation.div(d, dExponent, magnitude, exponent);
+            } else {
+                (d, dExponent) = LibDecimalFloatImplementation.sub(magnitude, exponent, 1, 0);
+            }
+            (d, dExponent) = LibDecimalFloatImplementation.mul(k2, k2Exponent, d, dExponent);
+            (d, dExponent) = LibDecimalFloatImplementation.min(d, dExponent, k1, k1Exponent);
+        }
+        (int256 count, int256 countExponent) = n.unpack();
+        (d, dExponent) = LibDecimalFloatImplementation.mul(d, dExponent, count, countExponent);
+        (int256 baseCoefficient, int256 baseExponent) = base.unpack();
+        (d, dExponent) = LibDecimalFloatImplementation.add(d, dExponent, baseCoefficient, baseExponent);
+        (Float bound,) = LibDecimalFloat.packLossy(d, dExponent);
+        return bound;
     }
 
     /// sqrt, relative: correctly rounded, so half a unit in the 41st digit of

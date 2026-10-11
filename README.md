@@ -169,7 +169,9 @@ rounding tie can round to either neighbour:
 - `pow10`: half a unit in the 41st digit plus 3.28e-8 of a unit, under
   5.0000004e-41 relative.
 - `log10`: half a unit in the 41st digit plus 2e-50 absolute.
-- `pow`: 5.0000004e-41 + 3N·1e-75 relative, for N the integer part of |b|.
+- `pow`: 5.0000004e-41 + N·min(K1, K2·d) relative, for N the integer part of |b|
+  and d = max(|a|, 1/|a|) - 1, with K1 = 1.7273e-76 and K2 = 1.5e-38 for b > 0,
+  and K1 = 1.1728e-75 and K2 = 3.4786e-38 for b < 0.
 - `sqrt`: correctly rounded, half a unit in the 41st digit, under 5e-41
   relative.
 
@@ -182,8 +184,9 @@ carry above the largest Float is truncated to int224 instead.
 monotone. For a < b the order of the results can flip by exactly one unit in the
 last place, only when both true values lie within the larger raw error of the
 same rounding tie, and never by more. The raw error, before rounding, is 3.28e-8
-of a unit for `pow10`, 2e-50 for `log10`, and 3.33e-48 + 3N·1e-75 relative for
-`pow`. Callers must not rely on strict ordering at one-ulp resolution.
+of a unit for `pow10`, 2e-50 for `log10`, and 3.33e-48 + N·min(K1, K2·d)
+relative for `pow`, with N, d, K1 and K2 as above. Callers must not rely on
+strict ordering at one-ulp resolution.
 
 Exact results stay exact: powers of ten (`pow10(k)` is `10^k`, `log10(10^k)` is
 `k`), and integer and fractional powers, roots included, with at most 41
@@ -290,10 +293,10 @@ and an exactly representable power such as `10^2` is exact.
 
 `pow` calculates an integer exponent by squaring, and the fractional component
 of a non-integer exponent as `pow10(frac(b) * log10(a))` with its guard digits,
-then rounds the product to 41 significant digits, so it is within about 5e-41
-relative of the true value and a power such as `4^1.5` is exact. A fractional
-part of exactly a half instead takes the square root of `a^(2N+1)`, for N the
-integer part of |b|.
+then rounds the product to 41 significant digits, so it is within the bound
+above of the true value and a power such as `4^1.5` is exact. A fractional part
+of exactly a half instead takes the square root of `a^(2N+1)`, for N the integer
+part of |b|.
 
 `sqrt` takes the integer square root of the coefficient scaled to 81 or 82
 digits and rounds it to nearest, so it is correctly rounded and a root such as

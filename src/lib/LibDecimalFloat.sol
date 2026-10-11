@@ -996,15 +996,37 @@ library LibDecimalFloat {
     ///
     /// The final product, including a^1, is rounded to nearest at 41
     /// significant digits, half away from zero. For N the integer part of
-    /// |b|, the result is within 5.0000004e-41 + 3N 1e-75 relative of the true
-    /// value:
+    /// |b| and d = max(|a|, 1/|a|) - 1, the result is within
+    /// 5.0000004e-41 + N min(K1, K2 d) relative of the true value, with K1
+    /// 1.7273e-76 and K2 1.5e-38 for b > 0, and K1 1.1728e-75 and K2
+    /// 3.4786e-38 for b < 0:
     /// - The leg keeps pow10's guard digits. Their 3.28e-48 relative, plus
     ///   log10Unrounded's 2e-50 times a fraction below 1 and ln 10, puts
     ///   it within 3.33e-48 relative of 10^(frac(b) log10(a)).
-    /// - Every multiply and the inverse truncate toward zero by under 1e-75,
-    ///   and squaring to the Nth power weights them by at most 2N in all, so
-    ///   the integer part is within 2N 1e-75 relative, and its product with
-    ///   the leg adds 1e-75 more. With N 1 the integer part is a itself.
+    /// - A multiply truncates toward zero to a coefficient of at least
+    ///   2^255 / 10, so it drops under u = 1.7273e-76 relative. Its operands P
+    ///   and Q are powers of a on one side of 1. With P, Q and PQ in
+    ///   [0.58, 5.78] all three are on the 1e-76 grid, so it drops only the
+    ///   part of (P - 1)(Q - 1) below 1e-76: under min(d(P) d(Q),
+    ///   1e-76 / min(PQ, 1)). Otherwise d(P) d(Q) is past u, as d(a) >= 1e-67.
+    /// - The inverse, for b < 0, truncates to a coefficient of at least 1e75,
+    ///   and its grid holds 1 -+ (|a| - 1), so it drops under min(d^2, 1e-75)
+    ///   relative. a^-N weighs it N, and the leg 1. 1/a has the same d.
+    /// - Squaring a^(2^j) weighs floor(N / 2^(j+1)) in a^N, and multiplying it
+    ///   in for bit j weighs 1, together under N / 2^(j+1) + 1/2. While its
+    ///   square is under u, d(a^(2^j)) is under 2^j d (1 + 3e-38), so each
+    ///   drops under min(4^j d^2, 1e-76) (1 + 5e-38), and under u anywhere.
+    ///   With s = 2^j d / 1e-38 doubling in j, the N / 2^(j+1) terms are
+    ///   (N d 1e-38 / 2) min(s, 1/s), which sum under 3 of it: the squarings
+    ///   drop under 1.5e-38 N d, and under N u alone.
+    /// - With the inverse, d under 1e-38 gives under 2.5e-38 N d. Above it the
+    ///   squarings drop under 1e-76 N and the inverse min(d^2, 1e-75) N, most
+    ///   at d = sqrt(1e-75): 1.1 sqrt(1e-75) N d, under 3.4786e-38 N d.
+    /// - The rest: the 1/2 per bit, the leg's product, the inverse's weight in
+    ///   the leg, and where K2 d is the lesser, d < 1e-37 so N d < 4.95e9 for
+    ///   a result that returns, the (1 + 5e-38) and the grids past 1e-76 on
+    ///   the N d terms. All come to under 1e-63, inside the 4e-48 that
+    ///   5.0000004e-41 leaves past the leg and the rounding.
     /// - Rounding adds half a unit in the 41st digit, at most 5e-41 of the
     ///   product. A product that rounding would carry above the largest
     ///   Float is instead truncated to int224, under 1e-67 relative.
@@ -1013,17 +1035,16 @@ library LibDecimalFloat {
     ///   1e-2147483648 it reverts `ExponentUnderflow`.
     /// A fractional part of exactly a half instead takes the root of a^(2N+1),
     /// the integer part squared times a, rounded to nearest at 41 digits by
-    /// `LibDecimalFloatImplementation.sqrt`. The truncations above, and the
-    /// digit dropped from a coefficient past 1e76, weigh at most 4N + 3.1 in
-    /// a^(2N+1), and all round down, so its root is at most the true power
-    /// and at least e^-((2N + 1.6) 1e-75) of it. With the rounding's 5e-41
-    /// that is inside the bound: (2N + 1.6) 1e-75 is under 3N 1e-75 from N 2,
-    /// and below N 2 under the 4e-48 left in 5.0000004e-41.
+    /// `LibDecimalFloatImplementation.sqrt`. The truncations above weigh twice
+    /// in a^(2N+1), the inverse 2N + 1, and the square, the multiply by a and
+    /// the digit dropped from a coefficient past 1e76 add under 1e-75 each.
+    /// All round down and the root halves them, so with the rounding's 5e-41
+    /// that is inside the bound.
     /// Monotone within rounding error: for b < c, a^b and a^c can be out of
     /// order by exactly one unit in the last place, only when both true
-    /// values lie within the larger raw error, 3.33e-48 + 3N 1e-75 relative,
-    /// of the same rounding tie, and never by more. Callers must not rely on
-    /// strict ordering at one-ulp resolution.
+    /// values lie within the larger raw error, 3.33e-48 + N min(K1, K2 d)
+    /// relative, of the same rounding tie, and never by more. Callers must
+    /// not rely on strict ordering at one-ulp resolution.
     /// Exact results stay exact: a power with at most 41 significant digits,
     /// integer or fractional such as 4^0.5.
     ///

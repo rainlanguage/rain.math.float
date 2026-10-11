@@ -6,6 +6,7 @@ import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibTranscendentalOracle, ORACLE_LN10, ORACLE_ONE} from "test/lib/LibTranscendentalOracle.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
 import {Float} from "src/lib/LibDecimalFloat.sol";
+import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
 import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
 
 /// Where a result R lands against the Float range, given bounds on log10 R.
@@ -39,8 +40,7 @@ int256 constant LOG10_UNDERFLOW = int256(type(int32).min) * 1e66;
 uint256 constant LOG10_UP_PER_E = 4343;
 uint256 constant LOG10_DOWN_PER_E = 4348;
 
-/// @dev The README's relative bound of pow10, and of pow before its 3N 1e-75,
-/// 5.0000004e-41, as 50000004e-48.
+/// @dev The README's relative bound of pow10, 5.0000004e-41, as 50000004e-48.
 uint256 constant RELATIVE_BOUND = 50000004;
 
 /// @dev 2.18e-41 in units of 1e-57, past the under 2.175e-41 that pow10, and pow
@@ -237,19 +237,23 @@ library LibTestPowRange {
     }
 
     /// Where pow(a, b) lands, for a nonzero a other than +-1 and a nonzero b.
-    /// E is the README's 5.0000004e-41 + 3N 1e-75, with |b| for N. Past |b|
-    /// 3e71, E may exceed 1e-3 and R has no lower bound.
+    /// E is `LibTestErrorBound.pow(a, b)`, the README's
+    /// 5.0000004e-41 + N min(K1, K2 d). That truncates toward zero, and is
+    /// exact or has a coefficient past 1e66 that its truncations each move by
+    /// under one unit, so its coefficient plus 1e-60 of it rounds E up. Past
+    /// E 1e-3, R has no lower bound.
     function powRange(Float a, Float b) internal pure returns (PowRange) {
         (int256 low, int256 high) = powLog(a, b);
-        (int256 signedCoefficientB, int256 exponentB) = unpack(b);
-        uint256 magnitudeB = LibTestExactDecimal.abs(signedCoefficientB);
-        uint256 up = units(LOG10_UP_PER_E, RELATIVE_BOUND, -52, true)
-            + units(LOG10_UP_PER_E * 3, magnitudeB, exponentB - 79, true);
+        (int256 errorCoefficient, int256 errorExponent) = unpack(LibTestErrorBound.pow(a, b));
+        // E is positive, so its coefficient is.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 error = uint256(errorCoefficient);
+        error += error / 1e60;
+        uint256 up = units(LOG10_UP_PER_E, error, errorExponent - 4, true);
         uint256 down = LibTestExactDecimal.cmpScaled(
-                LibTestExactDecimal.u512(magnitudeB), exponentB, LibTestExactDecimal.u512(3), 71
+                LibTestExactDecimal.u512(error), errorExponent, LibTestExactDecimal.u512(1), -3
             ) <= 0
-            ? units(LOG10_DOWN_PER_E, RELATIVE_BOUND, -52, true)
-                + units(LOG10_DOWN_PER_E * 3, magnitudeB, exponentB - 79, true)
+            ? units(LOG10_DOWN_PER_E, error, errorExponent - 4, true)
             : CAP;
         // forge-lint: disable-next-line(unsafe-typecast)
         return classify(low - int256(down), high + int256(up));

@@ -16,9 +16,9 @@ import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 contract LibDecimalFloatPowTest is Test {
     using LibDecimalFloat for Float;
 
-    /// The proven bound of a pow leg, `LibTestErrorBound.pow`.
-    function legError(Float b) internal pure returns (Float) {
-        return LibTestErrorBound.pow(b);
+    /// The proven bound of a pow leg a^b, `LibTestErrorBound.pow`.
+    function legError(Float a, Float b) internal pure returns (Float) {
+        return LibTestErrorBound.pow(a, b);
     }
 
     /// With c = a^b (1 + d1), the inverse 1/b (1 + e) and the round trip
@@ -27,8 +27,8 @@ contract LibDecimalFloatPowTest is Test {
     /// result and, for a negative b, of the base it inverts. e is the 1e-66 of
     /// a pack and |b ln a| is below 5e9 for a finite c, so e ln a vanishes.
     function roundTripLogError(Float a, Float b, Float c, Float roundTrip) internal pure returns (Float) {
-        Float first = legError(b).add(LibTestErrorBound.floor(c));
-        Float second = legError(b.inv()).add(LibTestErrorBound.floor(roundTrip));
+        Float first = legError(a, b).add(LibTestErrorBound.floor(c));
+        Float second = legError(c, b.inv()).add(LibTestErrorBound.floor(roundTrip));
         if (b.lt(LibDecimalFloat.FLOAT_ZERO)) {
             first = first.add(floorOfInverse(a));
             second = second.add(floorOfInverse(c));
@@ -198,7 +198,12 @@ contract LibDecimalFloatPowTest is Test {
         Float expected = LibDecimalFloat.packLossless(referenceSignedCoefficient, referenceExponent);
         assertTrue(
             c.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs()
-                .lte(legError(LibDecimalFloat.packLossless(signedCoefficientB, exponentB))),
+                .lte(
+                    legError(
+                        LibDecimalFloat.packLossless(signedCoefficientA, exponentA),
+                        LibDecimalFloat.packLossless(signedCoefficientB, exponentB)
+                    )
+                ),
             "precision"
         );
     }
@@ -998,7 +1003,7 @@ contract LibDecimalFloatPowTest is Test {
         (bool returnedInverse, Float actual) = powChecked(a, b.minus());
         if (returned && inverseRepresentable(power)) {
             assertTrue(returnedInverse, "a^-b reverted");
-            assertInverse(b, power, actual);
+            assertInverse(a, b, power, actual);
         }
     }
 
@@ -1010,10 +1015,10 @@ contract LibDecimalFloatPowTest is Test {
             && LibDecimalFloatImplementation.gte(signedCoefficient, exponent, 1, type(int32).min + 2);
     }
 
-    function assertInverse(Float b, Float power, Float actual) internal pure {
+    function assertInverse(Float a, Float b, Float power, Float actual) internal pure {
         Float expected = power.inv();
         Float diff = actual.div(expected).sub(LibDecimalFloat.FLOAT_ONE).abs();
-        Float limit = legError(b).add(legError(b)).add(LibTestErrorBound.floor(power))
+        Float limit = legError(a, b).add(legError(a, b.minus())).add(LibTestErrorBound.floor(power))
             .add(LibTestErrorBound.floor(actual)).add(LibTestErrorBound.floor(expected));
         assertTrue(diff.lte(limit), "diff");
     }
@@ -1256,9 +1261,14 @@ contract LibDecimalFloatPowTest is Test {
         gap = bound(gap, 1, 1e3);
         exponentA = bound(exponentA, -1000, 1000);
         Float b = LibDecimalFloat.packLossless(bound(signedCoefficientB, 1, 1e9), bound(exponentB, -9, -8));
-        Float low = this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA, exponentA), b);
-        Float high = this.powExternal(LibDecimalFloat.packLossless(signedCoefficientA + gap, exponentA), b);
-        assertTrue(LibTestErrorBound.monotoneRelative(low, high, legError(b), legError(b)), "monotone");
+        Float a = LibDecimalFloat.packLossless(signedCoefficientA, exponentA);
+        Float c = LibDecimalFloat.packLossless(signedCoefficientA + gap, exponentA);
+        assertTrue(
+            LibTestErrorBound.monotoneRelative(
+                this.powExternal(a, b), this.powExternal(c, b), legError(a, b), legError(c, b)
+            ),
+            "monotone"
+        );
     }
 
     /// One unit in the 41st significant digit of x.
@@ -1291,7 +1301,7 @@ contract LibDecimalFloatPowTest is Test {
         Float c = LibDecimalFloat.packLossless(lowB + gap, exponentB);
         Float low = this.powExternal(a, b);
         Float high = this.powExternal(a, c);
-        assertTrue(LibTestErrorBound.monotoneRelative(low, high, legError(b), legError(c)), "monotone");
+        assertTrue(LibTestErrorBound.monotoneRelative(low, high, legError(a, b), legError(a, c)), "monotone");
         if (high.lt(low)) {
             assertTrue(low.eq(high.add(ulp(high))), "one ulp");
         }
