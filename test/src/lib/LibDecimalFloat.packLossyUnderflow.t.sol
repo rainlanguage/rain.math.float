@@ -218,54 +218,64 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
     }
 
     /// Shedding trailing zeros to reach the floor is free: for any non-zero
-    /// `m` and any `z`, `m * 10^z` at `int32.min - z` packs losslessly to
-    /// exactly `(m, int32.min)`. This is the general form of the issue #271
+    /// int224 `m` and any `z`, `m * 10^z` at `int32.min - z` packs losslessly
+    /// to exactly `(m, int32.min)`. This is the general form of the issue #271
     /// counterexample, where maximisation had multiplied a value AT the floor
-    /// by `1e75` and lowered its exponent to match.
-    function testPackLossyTrailingZerosBelowFloorAreFree(int256 m, uint256 z) external pure {
-        // |m| <= 1e16 and z <= 60 keeps m * 10^z inside int256 (<= 1e76).
-        m = bound(m, -1e16, 1e16);
-        vm.assume(m != 0);
-        z = bound(z, 0, 60);
-        // Safe: 1e76 fits int256.
+    /// by `1e75` and lowered its exponent to match. Every `m * 10^z` in int256
+    /// is fuzzed, and one past int224 also sheds for int224, as the oracle has.
+    function testPackLossyTrailingZerosBelowFloorAreFree(int256 m, uint256 z) external {
+        // A nonzero m * 10^z fits int256 only for z <= 76.
+        z = bound(z, 0, 76);
+        // Safe: 10^76 fits int256.
         //forge-lint: disable-next-line(unsafe-typecast)
-        int256 signedCoefficient = m * int256(10 ** z);
-        // Safe: z <= 60.
+        int256 scale = int256(10 ** z);
+        m = bound(m, type(int256).min / scale, type(int256).max / scale);
+        vm.assume(m != 0);
+        int256 signedCoefficient = m * scale;
+        // Safe: z <= 76.
         //forge-lint: disable-next-line(unsafe-typecast)
         int256 exponent = INT32_MIN - int256(z);
 
-        (Float float, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-        assertTrue(lossless, "lossless");
-        (int256 c, int256 e) = LibDecimalFloat.unpack(float);
-        assertEq(c, m, "coeff");
-        assertEq(e, INT32_MIN, "exp");
+        checkAgainstOracle(signedCoefficient, exponent);
+        if (m >= INT224_MIN && m <= INT224_MAX) {
+            (Float float, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+            assertTrue(lossless, "lossless");
+            (int256 c, int256 e) = LibDecimalFloat.unpack(float);
+            assertEq(c, m, "coeff");
+            assertEq(e, INT32_MIN, "exp");
+        }
     }
 
     /// Shedding a significant digit to reach the floor is lossy but keeps the
-    /// magnitude: a coefficient whose last digit is non-zero at `int32.min - d`
-    /// packs to the coefficient with its last `d` digits dropped, at the floor,
-    /// for as long as any digit remains. Once `d` reaches the digit count the
-    /// value is below any representable Float and the pack is the underflow
-    /// zero. Both outcomes report `lossless = false`.
-    function testPackLossySignificantDigitsBelowFloorAreShed(int256 m, uint256 d) external pure {
-        m = bound(m, -1e16, 1e16);
+    /// magnitude: an int224 coefficient whose last digit is non-zero at
+    /// `int32.min - d` packs to the coefficient with its last `d` digits
+    /// dropped, at the floor, for as long as any digit remains. Once `d`
+    /// reaches the digit count the value is below any representable Float and
+    /// the pack is the underflow zero. Both outcomes report `lossless = false`.
+    /// Every int256 coefficient is fuzzed at every exponent below the floor,
+    /// and one past int224 is checked against the oracle.
+    function testPackLossySignificantDigitsBelowFloorAreShed(int256 m, int256 exponent) external {
         vm.assume(m % 10 != 0);
-        d = bound(d, 1, 20);
-        // Safe: d <= 20.
-        //forge-lint: disable-next-line(unsafe-typecast)
-        int256 exponent = INT32_MIN - int256(d);
-        // Safe: d <= 20 so 10^d fits int256.
-        //forge-lint: disable-next-line(unsafe-typecast)
-        int256 expected = m / int256(10 ** d);
+        exponent = bound(exponent, type(int256).min, INT32_MIN - 1);
 
+        checkAgainstOracle(m, exponent);
         (Float float, bool lossless) = LibDecimalFloat.packLossy(m, exponent);
         assertFalse(lossless, "lossless");
-        if (expected == 0) {
-            assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "zero");
-        } else {
-            (int256 c, int256 e) = LibDecimalFloat.unpack(float);
-            assertEq(c, expected, "coeff");
-            assertEq(e, INT32_MIN, "exp");
+        if (m >= INT224_MIN && m <= INT224_MAX) {
+            // Safe: exponent < int32.min, so the difference is positive and
+            // below 2^255.
+            //forge-lint: disable-next-line(unsafe-typecast)
+            uint256 d = uint256(INT32_MIN - exponent);
+            // Safe: d <= 76 so 10^d fits int256.
+            //forge-lint: disable-next-line(unsafe-typecast)
+            int256 expected = d > 76 ? int256(0) : m / int256(10 ** d);
+            if (expected == 0) {
+                assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "zero");
+            } else {
+                (int256 c, int256 e) = LibDecimalFloat.unpack(float);
+                assertEq(c, expected, "coeff");
+                assertEq(e, INT32_MIN, "exp");
+            }
         }
     }
 

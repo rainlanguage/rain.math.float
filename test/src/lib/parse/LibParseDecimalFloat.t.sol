@@ -7,7 +7,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
-import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
+import {ParseEmptyDecimalString, ParseDecimalOverflow} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {
     MalformedExponentDigits,
     ParseDecimalPrecisionLoss,
@@ -121,9 +121,11 @@ contract LibParseDecimalFloatTest is Test {
         assertEq(cursorAfter - cursor, expectedCursorAfter);
     }
 
-    /// Fuzz and round trip.
+    /// Fuzz every uint256 integer literal, either sign, with leading zeros.
+    /// Within int256 of its sign it parses to itself at exponent 0. Past it,
+    /// the trailing zeros move to the exponent, and significant digits still
+    /// past int256 are `ParseDecimalOverflow`.
     function testParseLiteralDecimalFloatFuzz(uint256 value, uint8 leadingZerosCount, bool isNeg) external pure {
-        value = bound(value, 0, uint256(type(int256).max) + (isNeg ? 1 : 0));
         string memory str = value.toString();
 
         string memory leadingZeros = new string(leadingZerosCount);
@@ -133,14 +135,28 @@ contract LibParseDecimalFloatTest is Test {
 
         string memory input = string(abi.encodePacked((isNeg ? "-" : ""), leadingZeros, str));
 
-        checkParseDecimalFloat(
-            input,
-            // value is bound to the int256 range so won't truncate when cast.
+        uint256 limit = isNeg ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
+        uint256 significand = value;
+        int256 exponent = 0;
+        if (value > limit) {
+            while (significand % 10 == 0) {
+                significand /= 10;
+                exponent++;
+            }
+        }
+        if (significand > limit) {
+            checkParseDecimalFloatFail(input, ParseDecimalOverflow.selector, bytes(input).length);
+            return;
+        }
+        int256 expected;
+        if (significand == uint256(type(int256).max) + 1) {
+            expected = type(int256).min;
+        } else {
+            // significand is at most int256.max here.
             // forge-lint: disable-next-line(unsafe-typecast)
-            isNeg ? (value == (uint256(type(int256).max) + 1) ? type(int256).min : -int256(value)) : int256(value),
-            0,
-            bytes(input).length
-        );
+            expected = isNeg ? -int256(significand) : int256(significand);
+        }
+        checkParseDecimalFloat(input, expected, exponent, bytes(input).length);
     }
 
     /// Check some specific examples.

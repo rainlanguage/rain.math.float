@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 import {FormatParseGas} from "test/concrete/FormatParseGas.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 
 /// `GAS|op|case|before|after|delta`.
 contract LibDecimalFloatFormatParseGasTest is Test {
@@ -44,12 +45,20 @@ contract LibDecimalFloatFormatParseGasTest is Test {
     }
 
     /// The plain-Solidity copy returns the same bytes and reverts with the
-    /// same data as the library, so its gas rows compare one algorithm.
-    function testFormatSolidityCopyEquivalence(int224 c, int256 e, bool scientific) external {
-        e = scientific ? bound(e, type(int32).min, type(int32).max) : bound(e, -1100, 100);
-        // Any int224 coefficient and int32 exponent pack losslessly.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        Float f = LibDecimalFloat.packLossless(c, e);
+    /// same data as the library, so its gas rows compare one algorithm. Every
+    /// Float, in both modes.
+    function testFormatSolidityCopyEquivalence(int224 c, int32 e, bool scientific) external {
+        checkSolidityCopy(LibDecimalFloat.packLossless(c, e), scientific);
+    }
+
+    /// Non-scientific mode reverts past the exponent cap, which is most of
+    /// int32, so this samples the exponents it formats.
+    function testFormatSolidityCopyEquivalenceInsideCap(int224 c, int256 e) external {
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        checkSolidityCopy(LibDecimalFloat.packLossless(c, bound(e, -cap, cap)), false);
+    }
+
+    function checkSolidityCopy(Float f, bool scientific) internal {
         try B.formatPr(f, scientific) returns (uint256, bytes32 h) {
             (, bytes32 hSol) = B.formatSol(f, scientific);
             assertEq(hSol, h);
