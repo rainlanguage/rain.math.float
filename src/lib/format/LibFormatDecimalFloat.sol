@@ -44,7 +44,8 @@ library LibFormatDecimalFloat {
 
     /// Scientific notation: render as `d.dddeN` where the leading digit is the
     /// most significant digit of the maximized coefficient, so the display
-    /// exponent is the maximized exponent plus 75 or 76.
+    /// exponent is the maximized exponent plus 75 or 76. When `N` is zero the
+    /// `eN` part is omitted, so `1.5e0` formats as `1.5`.
     //slither-disable-next-line cyclomatic-complexity
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory out) {
         int256 originalExponent = exponent;

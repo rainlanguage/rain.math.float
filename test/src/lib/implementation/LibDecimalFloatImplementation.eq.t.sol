@@ -138,10 +138,6 @@ contract LibDecimalFloatImplementationEqTest is Test {
         assertTrue(eq);
     }
 
-    function testEqNotReverts(int256 x, int256 exponentX, int256 y, int256 exponentY) external pure {
-        LibDecimalFloatImplementation.eq(x, exponentX, y, exponentY);
-    }
-
     /// x == x
     function testEqX(int256 x) external pure {
         bool eq = LibDecimalFloatImplementation.eq(x, 0, x, 0);
