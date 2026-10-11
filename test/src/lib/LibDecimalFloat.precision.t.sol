@@ -36,7 +36,15 @@ contract LibDecimalFloatPrecisionTest is Test {
         pure
     {
         (int256 boundCoefficient, int256 boundExponent) = bound.unpack();
-        assertTrue(LibTestExactDecimal.absLte(errorCoefficient, errorExponent, boundCoefficient, boundExponent), what);
+        assertTrue(
+            LibTestExactDecimal.cmpScaled(
+                LibTestExactDecimal.u512(LibTestExactDecimal.abs(errorCoefficient)),
+                errorExponent,
+                LibTestExactDecimal.u512(LibTestExactDecimal.abs(boundCoefficient)),
+                boundExponent
+            ) <= 0,
+            what
+        );
     }
 
     /// |Σ cᵢ 10^eᵢ| within the bound, exactly.
@@ -60,7 +68,8 @@ contract LibDecimalFloatPrecisionTest is Test {
     function relativeError(int256 ca, int256 ea, Float expected) internal pure returns (int256, int256) {
         (int256 cb, int256 eb) = expected.unpack();
         (ca, ea) = LibTestExactDecimal.quotient(ca, ea, cb, eb);
-        return LibTestExactDecimal.minusOne(ca, ea);
+        (, ca, ea) = LibTestExactDecimal.addPartsWide(ca, ea, -1, 0);
+        return (ca, ea);
     }
 
     function relativeError(Float actual, Float expected) internal pure returns (int256, int256) {
@@ -75,7 +84,9 @@ contract LibDecimalFloatPrecisionTest is Test {
         int256 signedPower = int256(power);
         (signedCoefficient, actualExponent) =
             LibTestExactDecimal.quotient(signedCoefficient, actualExponent, signedPower, exponent);
-        return LibTestExactDecimal.minusOne(signedCoefficient, actualExponent);
+        (, signedCoefficient, actualExponent) =
+            LibTestExactDecimal.addPartsWide(signedCoefficient, actualExponent, -1, 0);
+        return (signedCoefficient, actualExponent);
     }
 
     /// The floor's term relative to the oracle's power, which is within 1e-67
@@ -176,7 +187,8 @@ contract LibDecimalFloatPrecisionTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 characteristic, uint256 fraction) = LibTranscendentalOracle.log10(uint256(signedCoefficient), exponent);
         // forge-lint: disable-next-line(unsafe-typecast)
-        return LibTestExactDecimal.sumParts(characteristic, 0, int256(fraction), -70);
+        (, int256 log, int256 logExponent) = LibTestExactDecimal.addPartsWide(characteristic, 0, int256(fraction), -70);
+        return (log, logExponent);
     }
 
     /// log10 a within half a unit plus `DOCUMENTED_LOG10_RAW_ERROR` units of 1e-50, plus
@@ -242,10 +254,10 @@ contract LibDecimalFloatPrecisionTest is Test {
         return LibDecimalFloat.packLossless(1, -66);
     }
 
-    /// The `quotient` near 1 truncates under 2e-74 and `mulParts` under
-    /// 2e-76 relative.
+    /// The `quotient` near 1 truncates under 1e-74, `mulParts` under 2e-76
+    /// relative, and their products with the bounds under 1e-76.
     function packingSlack() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(1, -73);
+        return LibDecimalFloat.packLossless(103, -76);
     }
 
     /// |log10(a b) - log10 a - log10 b| within the three logs' bounds.

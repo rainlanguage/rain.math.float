@@ -242,6 +242,41 @@ impl Dec {
         Some(Self::new(self.at_exponent(e) + other.at_exponent(e), e))
     }
 
+    /// The sign of the exact sum of `terms`, for any exponents. Terms are
+    /// added from the highest exponent down. A nonzero partial sum is at
+    /// least one unit at its own exponent, so once every remaining term
+    /// together is below that unit they cannot change its sign; until then
+    /// aligning costs no more digits than the remaining terms already hold.
+    pub fn sign_of_sum(terms: &[Self]) -> Ordering {
+        let mut terms: Vec<&Self> = terms.iter().filter(|t| !t.is_zero()).collect();
+        terms.sort_by_key(|t| std::cmp::Reverse(t.e));
+        let mut acc = Self::zero();
+        for (i, t) in terms.iter().enumerate() {
+            if !acc.is_zero() {
+                let rest = &terms[i..];
+                let top = rest
+                    .iter()
+                    .map(|r| r.e + digits(&r.c) as i64)
+                    .max()
+                    .unwrap();
+                // |rest| < len · 10^top <= 10^(top + digits(len)).
+                if top + digits(&BigInt::from(rest.len())) as i64 <= acc.e {
+                    break;
+                }
+            }
+            acc = if acc.is_zero() {
+                (*t).clone()
+            } else {
+                Self::new(acc.at_exponent(t.e) + &t.c, t.e)
+            };
+        }
+        match acc.c.sign() {
+            Sign::Minus => Ordering::Less,
+            Sign::NoSign => Ordering::Equal,
+            Sign::Plus => Ordering::Greater,
+        }
+    }
+
     pub fn mul_exact(&self, other: &Self) -> Self {
         Self::new(&self.c * &other.c, self.e + other.e)
     }
@@ -909,6 +944,39 @@ pub fn parse_inline(s: &str) -> Result<(BigInt, BigInt), RefError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sign_of_sum_any_exponents() {
+        let big = Dec::new(1, 100_000_000);
+        let tiny = Dec::new(1, I32_MIN);
+        let sign = |t: &[Dec]| Dec::sign_of_sum(t);
+        assert_eq!(sign(&[big.clone(), tiny.neg(), big.neg()]), Ordering::Less);
+        assert_eq!(
+            sign(&[big.neg(), tiny.clone(), big.clone()]),
+            Ordering::Greater
+        );
+        assert_eq!(
+            sign(&[tiny.clone(), big.neg(), big.clone(), tiny.neg()]),
+            Ordering::Equal
+        );
+        assert_eq!(sign(&[big.clone(), tiny.neg()]), Ordering::Greater);
+        assert_eq!(sign(&[]), Ordering::Equal);
+        // A low term with enough digits to reach the high one's unit.
+        let reach = Dec::new(pow10(600), -100);
+        let high = Dec::new(1, 500);
+        assert_eq!(sign(&[high.clone(), reach.neg()]), Ordering::Equal);
+        let under = Dec::new(pow10(600) - 1, -100);
+        assert_eq!(sign(&[high.clone(), under.neg()]), Ordering::Greater);
+        assert_eq!(
+            sign(&[high.neg(), under.clone(), tiny.clone()]),
+            Ordering::Less
+        );
+        // Ten terms each just below the unit of the first carry into it.
+        let unit = Dec::new(1, 500);
+        let mut terms = vec![unit.neg()];
+        terms.extend(std::iter::repeat_n(Dec::new(1, 499), 10));
+        assert_eq!(sign(&terms), Ordering::Equal);
+    }
 
     #[test]
     fn pack_grows_into_the_exponent_ceiling() {

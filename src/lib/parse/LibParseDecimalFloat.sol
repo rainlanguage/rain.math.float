@@ -81,9 +81,12 @@ library LibParseDecimalFloat {
                 }
                 // Trailing zeros are allowed in fractional literals but should
                 // not be counted in the precision.
+                // The scan stops at the decimal point at the latest.
                 uint256 nonZeroCursor = cursor;
-                while (LibParseChar.isMask(nonZeroCursor - 1, end, CMASK_ZERO) == 1) {
-                    nonZeroCursor--;
+                assembly ("memory-safe") {
+                    for {} eq(byte(0, mload(sub(nonZeroCursor, 1))), 0x30) {} {
+                        nonZeroCursor := sub(nonZeroCursor, 1)
+                    }
                 }
 
                 // An all-zero fraction is the same literal as no fraction.

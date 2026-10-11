@@ -136,8 +136,8 @@ library LibTranscendentalOracle {
     }
 
     /// 10^(signedCoefficient 10^exponent) as power 10^powerExponent, power in
-    /// [ORACLE_ONE, 10 ORACLE_ONE], within 1e-67 relative, for an exponent of
-    /// at most 10 and an integer part that fits.
+    /// [ORACLE_ONE, 10 ORACLE_ONE], within 1e-67 relative, for an integer part
+    /// that fits int256.
     ///
     /// Relative, in units of 1e-70: the fraction f floors under a unit, 2.31
     /// of the power. y = f ln 10 / 16, at most 0.144, is within 2 below, so

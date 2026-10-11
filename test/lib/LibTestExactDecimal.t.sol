@@ -75,35 +75,54 @@ contract LibTestExactDecimalTest is Test {
             expected = a < b ? int256(-1) : int256(1);
         }
         assertEq(LibTestExactDecimal.cmpParts(a, ea, b, eb), expected);
-        assertEq(
-            LibTestExactDecimal.absLte(a, ea, b, eb),
-            cmpWords(LibTestExactDecimal.abs(a), ea, LibTestExactDecimal.abs(b), eb) <= 0
-        );
     }
 
-    /// q |b| 10^(e + eb) <= |a| 10^ea < (q + 1) |b| 10^(e + eb), with q
-    /// between 1e74 and 1e76. An |a| past 75 digits first sheds up to a unit
-    /// of its 75th digit, which is under 10 units of q.
+    /// q |b| 10^(e + eb) <= |a| 10^ea < (q + 1) |b| 10^(e + eb), with q in
+    /// [1e74, 1e76).
     function testQuotientTruncates(int256 a, int256 ea, int256 b, int256 eb) external pure {
-        a = bound(a, type(int256).min + 1, type(int256).max);
-        b = bound(b, type(int256).min + 1, type(int256).max);
         vm.assume(a != 0 && b != 0);
         ea = bound(ea, -100, 100);
         eb = bound(eb, -100, 100);
+        checkQuotient(a, ea, b, eb);
+    }
+
+    function checkQuotient(int256 a, int256 ea, int256 b, int256 eb) internal pure {
         (int256 q, int256 e) = LibTestExactDecimal.quotient(a, ea, b, eb);
         assertEq(q < 0, (a < 0) != (b < 0), "sign");
         uint256 magnitude = LibTestExactDecimal.abs(q);
-        assertTrue(magnitude > 1e74 && magnitude < 1e76, "digits");
+        assertTrue(magnitude >= 1e74 && magnitude < 1e76, "digits");
         uint256 absB = LibTestExactDecimal.abs(b);
         U512 memory exact = LibTestExactDecimal.u512(LibTestExactDecimal.abs(a));
-        uint256 slack = LibTestExactDecimal.abs(a) < 1e75 ? 1 : 11;
         assertTrue(
             LibTestExactDecimal.cmpScaled(LibTestExactDecimal.mul(magnitude, absB), e + eb, exact, ea) <= 0, "floor"
         );
         assertTrue(
-            LibTestExactDecimal.cmpScaled(LibTestExactDecimal.mul(magnitude + slack, absB), e + eb, exact, ea) > 0,
+            LibTestExactDecimal.cmpScaled(LibTestExactDecimal.mul(magnitude + 1, absB), e + eb, exact, ea) > 0,
             "below the next"
         );
+    }
+
+    /// The ends of the range and the digit counts that pick each branch: a
+    /// ratio just above 1e74 truncates to 1e74, a 77 digit a over a 1 digit b
+    /// scales down, and a 1 digit a over a 77 digit b scales up past 1e77.
+    function testQuotientEdges() external pure {
+        (int256 q, int256 e) = LibTestExactDecimal.quotient(1e75, 0, 1e76 - 1, 0);
+        assertEq(q, 1e74);
+        assertEq(e, -75);
+        (q, e) = LibTestExactDecimal.quotient(1, 0, 1, 0);
+        assertEq(q, 1e75);
+        assertEq(e, -75);
+        (q, e) = LibTestExactDecimal.quotient(9, 0, 1, 0);
+        assertEq(q, 9e75);
+        (q, e) = LibTestExactDecimal.quotient(1, 0, 9, 0);
+        assertEq(q, 111111111111111111111111111111111111111111111111111111111111111111111111111);
+        assertEq(e, -75);
+        checkQuotient(type(int256).min, 0, 1, 0);
+        checkQuotient(type(int256).min, 0, -9, 0);
+        checkQuotient(type(int256).max, 0, 7, 3);
+        checkQuotient(1, 0, type(int256).max, 0);
+        checkQuotient(-7, 5, type(int256).min, -5);
+        checkQuotient(1e75, 0, 1e76 - 1, 0);
     }
 
     function testQuotientZero(int256 b, int256 ea, int256 eb) external pure {
@@ -113,27 +132,25 @@ contract LibTestExactDecimalTest is Test {
         assertEq(e, 0);
     }
 
-    /// Exact on the fast path, and agreeing with `sumParts` of -1 off it.
-    function testMinusOne(int256 c, int256 e) external pure {
-        c = bound(c, type(int224).min, type(int224).max);
-        e = bound(e, -90, 10);
-        (int256 r, int256 re) = LibTestExactDecimal.minusOne(c, e);
-        (int256 s, int256 se) = LibTestExactDecimal.sumParts(c, e, -1, 0);
-        assertTrue(LibTestExactDecimal.eq(r, re, s, se));
-        if (e < 0 && e >= -67) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            assertEq(r, c - int256(10 ** uint256(-e)));
-            assertEq(re, e);
-        }
+    /// The error measures subtract 1 from parts under 1e76 at exponents in
+    /// [-76, -1] with `addPartsWide`, which is exact there: 1 and c are both
+    /// whole units of the larger operand's int256 unit.
+    function testAddPartsWideMinusOneExact(int256 c, int256 e) external pure {
+        c = bound(c, -1e76 + 1, 1e76 - 1);
+        e = bound(e, -76, -1);
+        (bool overflowed, int256 r, int256 re) = LibTestExactDecimal.addPartsWide(c, e, -1, 0);
+        assertFalse(overflowed);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertTrue(LibTestExactDecimal.eq(r, re, c - int256(10 ** uint256(-e)), e));
     }
 
-    function testMinusOneOfOne() external pure {
-        (int256 r,) = LibTestExactDecimal.minusOne(1e75, -75);
+    function testAddPartsWideMinusOneOfOne() external pure {
+        (, int256 r,) = LibTestExactDecimal.addPartsWide(1e75, -75, -1, 0);
         assertEq(r, 0);
-        (r,) = LibTestExactDecimal.minusOne(1e75 + 3, -75);
-        assertEq(r, 3);
-        (r,) = LibTestExactDecimal.minusOne(1e75 - 3, -75);
-        assertEq(r, -3);
+        (, int256 s, int256 se) = LibTestExactDecimal.addPartsWide(1e75 + 3, -75, -1, 0);
+        assertTrue(LibTestExactDecimal.eq(s, se, 3, -75));
+        (, s, se) = LibTestExactDecimal.addPartsWide(1e75 - 3, -75, -1, 0);
+        assertTrue(LibTestExactDecimal.eq(s, se, -3, -75));
     }
 
     /// |r| 10^t <= |c| 10^e < (|r| + 1) 10^t, with the sign of c.
