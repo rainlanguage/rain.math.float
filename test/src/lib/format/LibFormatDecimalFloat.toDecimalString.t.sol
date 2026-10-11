@@ -38,12 +38,20 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         pure
         returns (string memory)
     {
-        if (signedCoefficient == 0) {
+        return expectedFormatMagnitude(
+            signedCoefficient < 0, LibTestExactDecimal.abs(signedCoefficient), exponent, scientific
+        );
+    }
+
+    /// `expectedFormat` for `±absCoef × 10^exponent`, any uint256 magnitude.
+    function expectedFormatMagnitude(bool negative, uint256 absCoef, int256 exponent, bool scientific)
+        internal
+        pure
+        returns (string memory)
+    {
+        if (absCoef == 0) {
             return "0";
         }
-        // |signedCoefficient| fits int224 so negation fits int256.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 absCoef = uint256(signedCoefficient < 0 ? -signedCoefficient : signedCoefficient);
         bytes memory raw = bytes(Strings.toString(absCoef));
         uint256 sigK = raw.length;
         while (raw[sigK - 1] == "0") {
@@ -75,7 +83,7 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
             // forge-lint: disable-next-line(unsafe-typecast)
             body = placeDecimalPoint(string(sig), uint256(-sigExponent));
         }
-        return string.concat(signedCoefficient < 0 ? "-" : "", body);
+        return string.concat(negative ? "-" : "", body);
     }
 
     function zeros(uint256 n) internal pure returns (string memory) {
@@ -172,36 +180,48 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         checkRoundFromString("-1e200", LibDecimalFloat.packLossless(-1, 200), true);
     }
 
-    /// Test round tripping a value through parse and format.
-    function testFormatDecimalRoundTripNonNegative(uint256 value, bool scientific) external pure {
-        value = bound(value, 0, uint256(int256(type(int224).max)));
-        Float float = LibDecimalFloat.fromFixedDecimalLosslessPacked(value, 18);
+    /// `value / 10^decimals` with the given sign, packed from fixed decimal,
+    /// formats as the exact value when the pack is lossless and as the packed
+    /// Float otherwise, which is the closest Float toward zero. The string
+    /// parses back to the same value and re-formats to itself.
+    function checkFixedDecimalRoundTrip(uint256 value, uint8 decimals, bool negative, bool scientific) internal pure {
+        (Float float, bool lossless) = LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
+        if (negative) {
+            float = float.minus();
+        }
+        (int256 c, int256 e) = LibDecimalFloat.unpack(float);
+        assertTrue(
+            LibTestExactDecimal.isNearestTowardZero(
+                negative, LibTestExactDecimal.u512(value), -int256(uint256(decimals)), c, e
+            ),
+            "nearest toward zero"
+        );
         string memory formatted = LibFormatDecimalFloat.toDecimalString(float, scientific);
-        // value <= int224.max so the cast cannot truncate.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assertEq(formatted, expectedFormat(int256(value), -18, scientific), "Formatted value mismatch");
+        if (lossless) {
+            assertEq(
+                formatted,
+                expectedFormatMagnitude(negative && value != 0, value, -int256(uint256(decimals)), scientific),
+                "exact value format"
+            );
+        }
+        assertEq(formatted, expectedFormat(c, e, scientific), "Formatted value mismatch");
         (bytes4 errorCode, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(formatted);
         assertEq(errorCode, 0, "Parse error");
-        assertTrue(float.eq(parsed), "Round trip failed");
-        assertFormatsAsOracle(parsed, scientific);
+        (int256 pc, int256 pe) = LibDecimalFloat.unpack(parsed);
+        assertTrue(LibTestExactDecimal.eq(c, e, pc, pe), "Round trip failed");
+        assertEq(LibFormatDecimalFloat.toDecimalString(parsed, scientific), formatted, "Formatting not canonical");
+    }
+
+    /// Test round tripping every fixed decimal value through format and parse.
+    /// A uint8 `decimals` and a value below 1e78 keep the exponent inside the
+    /// non-scientific cap, so both modes format.
+    function testFormatDecimalRoundTripNonNegative(uint256 value, uint8 decimals, bool scientific) external pure {
+        checkFixedDecimalRoundTrip(value, decimals, false, scientific);
     }
 
     /// Negative matches positive.
-    function testFormatDecimalRoundTripNegative(int256 value, bool scientific) external pure {
-        value = bound(value, 1, int256(type(int224).max));
-        // value [1, int256(type(int224).max)]
-        // forge-lint: disable-next-line(unsafe-typecast)
-        Float float = LibDecimalFloat.fromFixedDecimalLosslessPacked(uint256(value), 18);
-        string memory formatted = float.toDecimalString(scientific);
-        float = float.minus();
-        string memory formattedNeg = float.toDecimalString(scientific);
-
-        assertEq(formatted, expectedFormat(value, -18, scientific), "Positive format mismatch");
-        assertEq(formattedNeg, expectedFormat(-value, -18, scientific), "Negative format mismatch");
-        (bytes4 err, Float parsedNeg) = LibParseDecimalFloat.parseDecimalFloat(formattedNeg);
-        assertEq(err, 0, "Parse error (neg)");
-        assertTrue(float.eq(parsedNeg), "Round trip failed (neg)");
-        assertFormatsAsOracle(parsedNeg, scientific);
+    function testFormatDecimalRoundTripNegative(uint256 value, uint8 decimals, bool scientific) external pure {
+        checkFixedDecimalRoundTrip(value, decimals, true, scientific);
     }
 
     /// Test some specific examples.
@@ -463,42 +483,65 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         assertEq(LibFormatDecimalFloat.toDecimalString(float, scientific), expectedFormat(c, e, scientific));
     }
 
+    /// The largest s with c 10^s in int224 and e - s >= int32.min, for c
+    /// nonzero.
+    function maxShift(int256 c, int256 e) internal pure returns (uint256 s) {
+        int256 limit = c < 0 ? int256(type(int224).min) : int256(type(int224).max);
+        while (e > type(int32).min && (c < 0 ? c >= limit / 10 : c <= limit / 10)) {
+            c *= 10;
+            e -= 1;
+            s++;
+        }
+    }
+
+    /// `float` formats as the oracle renders `c × 10^e`, or non-scientific
+    /// past the cap on its own exponent reverts.
+    function assertFormatsAs(Float float, int256 c, int256 e, bool scientific) internal {
+        (, int256 exponent) = LibDecimalFloat.unpack(float);
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        if (!scientific && (exponent > cap || exponent < -cap)) {
+            vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, exponent));
+            this.formatExternal(float, false);
+            return;
+        }
+        assertEq(LibFormatDecimalFloat.toDecimalString(float, scientific), expectedFormat(c, e, scientific));
+    }
+
+    /// Two representations of `base × 10^exponent`, the second with the
+    /// coefficient shifted up by `shift` digits, format to the same string.
+    function checkCanonicalAcrossRepresentations(int224 base, int256 exponent, uint256 shift, bool scientific)
+        internal
+    {
+        vm.assume(base != 0);
+        uint256 maxS = maxShift(base, exponent);
+        shift = bound(shift, maxS == 0 ? 0 : 1, maxS);
+        // Safe: base 10^shift fits int224, so 10^shift is at most 10^67.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 scaled = int256(base) * int256(10 ** shift);
+        Float a = LibDecimalFloat.packLossless(base, exponent);
+        // Safe: shift <= 67.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float b = LibDecimalFloat.packLossless(scaled, exponent - int256(shift));
+        assertFormatsAs(a, base, exponent, scientific);
+        assertFormatsAs(b, base, exponent, scientific);
+    }
+
     /// Fuzz: two representations of the same numeric value format to identical
     /// strings. Covers the formatter's canonicalization behavior (trailing
     /// zeros in coefficient vs expressed via exponent) without going through
-    /// the parser. Runs for both scientific and non-scientific modes.
-    function testFormatCanonicalAcrossRepresentations(int128 base, uint8 shift, bool scientific) external pure {
-        vm.assume(base != 0);
-        int256 baseInt = int256(base);
-        int256 absBase = baseInt < 0 ? -baseInt : baseInt;
+    /// the parser. Every nonzero int224 at every int32 exponent, with every
+    /// shift that leaves another Float, in both modes.
+    function testFormatCanonicalAcrossRepresentations(int224 base, int32 exponent, uint256 shift, bool scientific)
+        external
+    {
+        checkCanonicalAcrossRepresentations(base, exponent, shift, scientific);
+    }
 
-        // Find the largest shift `s` such that `absBase * 10^s` fits int224.
-        uint256 maxShift = 0;
-        int256 scale = 1;
-        while (scale <= type(int224).max / 10 / absBase) {
-            scale *= 10;
-            maxShift++;
-        }
-        if (maxShift == 0) return;
-
-        uint256 s = bound(shift, 1, maxShift);
-        // Casting to `int256` is safe because `s` is bounded far below the exponent
-        // at which `10 ** s` leaves int256.
-        //forge-lint: disable-next-line(unsafe-typecast)
-        int256 scaled = baseInt * int256(10 ** s);
-
-        // Exponent pair chosen so both representations are well inside int32.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 baseExp = scientific ? int256(0) : -int256(s);
-
-        Float a = LibDecimalFloat.packLossless(baseInt, baseExp);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        Float b = LibDecimalFloat.packLossless(scaled, baseExp - int256(s));
-        assertTrue(a.eq(b), "precondition: representations should be equal");
-
-        string memory expected = expectedFormat(baseInt, baseExp, scientific);
-        assertEq(LibFormatDecimalFloat.toDecimalString(a, scientific), expected, "Formatted value mismatch");
-        assertEq(LibFormatDecimalFloat.toDecimalString(b, scientific), expected, "Representation mismatch");
+    /// Non-scientific mode reverts past the exponent cap, which is most of
+    /// int32, so this samples the base exponents it formats.
+    function testFormatCanonicalAcrossRepresentationsInsideCap(int224 base, int256 exponent, uint256 shift) external {
+        int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
+        checkCanonicalAcrossRepresentations(base, bound(exponent, -cap, cap), shift, false);
     }
 
     function testFormatNonScientificExponentAtNegativeCap() external pure {
