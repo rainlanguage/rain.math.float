@@ -944,8 +944,8 @@ library LibDecimalFloat {
     /// @param float The Float struct containing the signed coefficient and
     /// exponent of the floating point number.
     /// @return The result of 10^float, rounded to nearest at 41 significant
-    /// digits, within half a unit in the 41st digit plus 3.28e-8 of a unit,
-    /// under 5.0000004e-41 relative. A result below 1e-2147483608 sheds digits
+    /// digits, within half a unit in the 41st digit plus 1.12e-8 of a unit,
+    /// under 5.00000012e-41 relative. A result below 1e-2147483608 sheds digits
     /// to lift its exponent to the int32 floor, so its bound adds
     /// 1e-2147483648 absolute, and below 1e-2147483648 it reverts
     /// `ExponentUnderflow`. Monotone within rounding error: for
@@ -1017,11 +1017,11 @@ library LibDecimalFloat {
     ///
     /// The final product, including a^1, is rounded to nearest at 41
     /// significant digits, half away from zero. For N the integer part of
-    /// |b|, the result is within 5.0000004e-41 + 3N 1e-75 relative of the true
+    /// |b|, the result is within 5.00000012e-41 + 3N 1e-75 relative of the true
     /// value:
-    /// - The leg keeps pow10's guard digits. Their 3.28e-48 relative, plus
+    /// - The leg keeps pow10's guard digits. Their 1.12e-48 relative, plus
     ///   log10Unrounded's 2e-50 times a fraction below 1 and ln 10, puts
-    ///   it within 3.33e-48 relative of 10^(frac(b) log10(a)).
+    ///   it within 1.17e-48 relative of 10^(frac(b) log10(a)).
     /// - Every multiply and the inverse truncate toward zero by under 1e-75,
     ///   and squaring to the Nth power weights them by at most 2N in all, so
     ///   the integer part is within 2N 1e-75 relative, and its product with
@@ -1039,10 +1039,10 @@ library LibDecimalFloat {
     /// a^(2N+1), and all round down, so its root is at most the true power
     /// and at least e^-((2N + 1.6) 1e-75) of it. With the rounding's 5e-41
     /// that is inside the bound: (2N + 1.6) 1e-75 is under 3N 1e-75 from N 2,
-    /// and below N 2 under the 4e-48 left in 5.0000004e-41.
+    /// and below N 2 under the 3e-50 left in 5.00000012e-41.
     /// Monotone within rounding error: for b < c, a^b and a^c can be out of
     /// order by exactly one unit in the last place, only when both true
-    /// values lie within the larger raw error, 3.33e-48 + 3N 1e-75 relative,
+    /// values lie within the larger raw error, 1.17e-48 + 3N 1e-75 relative,
     /// of the same rounding tie, and never by more. Callers must not rely on
     /// strict ordering at one-ulp resolution.
     /// Exact results stay exact: a power with at most 41 significant digits,

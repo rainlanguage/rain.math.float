@@ -10,6 +10,8 @@ mod evm;
 #[cfg(test)]
 mod exact;
 #[cfg(test)]
+mod fixed;
+#[cfg(test)]
 mod float;
 #[cfg(test)]
 mod library;
