@@ -49,7 +49,7 @@ fn word(x: &BigInt) -> [u8; 32] {
 /// The revert data of `e` from a call whose first input is `a`. Every error
 /// reports `a` as its coefficient and exponent, but `Log10Zero`, which reports
 /// nothing, and `ZeroNegativePower`, which reports pow's `b` packed.
-fn revert_data(e: RefError, a: &Dec, b: Option<&Dec>) -> Vec<u8> {
+pub(crate) fn revert_data(e: RefError, a: &Dec, b: Option<&Dec>) -> Vec<u8> {
     let mut out = e.selector().to_vec();
     match e {
         RefError::Log10Zero => {}
