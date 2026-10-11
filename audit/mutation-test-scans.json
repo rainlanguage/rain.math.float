@@ -876,22 +876,22 @@
     }
   },
   {
-    "timestamp": "2026-10-09T18:30:50Z",
-    "commit": "7d900415f834f5980fa58c66435b85711dc7d78e",
+    "timestamp": "2026-10-11T11:12:39Z",
+    "commit": "51a34512ad010f3465f290df554ecc519b014575",
     "testsAfterCommit": "6aa038686b32b8c8a6aa06b82feffb493a39e75e",
     "publishedTag": "sol-v0.2.34",
-    "commitsAheadOfTag": 17,
-    "scope": "issues #374/#368 (PR branch 2026-10-09-issue-374-div-inv-exact): the changed lines of LibDecimalFloat.div (inlined pack, overflow fast path at int32.max - 10, range errors reporting a), LibDecimalFloat.inv (DivisionByZero reporting the input, underflow reporting the input) and LibDecimalFloatImplementation.div (shedding below the floor before the sign). Mutants on src at 6aa0386, probed with mutation-probe and the full forge test. killedBefore: test/ restored to 7d90041 (854 tests, compiles unchanged), which already carries this PR's div/inv tests. killedAfter: test/ at 6aa0386 (864 tests). M01 overflow check skipped, M02 fast path at int32.max - 9, M03 overflow reports b, M04 div underflow without !lossless, M05/M10 underflow reported as overflow, M06 underflow reports b, M07 inv zero check removed, M08 inv zero reports exponent 0, M09 inv underflow without !lossless, M11 floor shed one digit more, M12 zero after the floor shed not normalised, M13 zero cutoff at 75, M14 divisor sign dropped, M15 a 2^255 quotient sheds a digit before the floor shed (the #368 shape). Both trees kill the same 14: every mutant but M09, which is equivalent: no inverse of a non-zero Float is exactly zero and zero is rejected first, so the guard was removed at 8c3fc49. Not probed: underflowExponentBy > 0 as >= 0 and the 76 cutoff as 77, both equivalent (dividing by 10^0; 2^255 / 10^77 is zero).",
+    "commitsAheadOfTag": 62,
+    "scope": "issues #374/#368 (PR #421, branch 2026-10-09-issue-374-div-inv-exact): the changed lines of LibDecimalFloat.div (inlined pack, overflow fast path at int32.max - 10, range errors reporting a), LibDecimalFloat.inv (DivisionByZero reporting the input, underflow reporting the input) and LibDecimalFloatImplementation.div (shedding below the floor before the sign). Mutants on the PR src (79b529d, identical to 6aa0386), probed with mutation-probe and the full forge test. killedBefore: test/ restored to main at merge-base 51a3451, before this PR's tests (854 tests, compiles unchanged); four of them pin the pre-PR revert payloads this PR changes and are red on the unmutated PR src, so the probe suite excludes testDivPacked, testDivRevertsOnExponentUnderflow, testInvMem and testInvRevertsOnExponentUnderflow (850 run). They kill 4: M04, M11, M12, M14. killedAfter: the 10 more that test/ at 6aa0386 (864 tests, identical to 79b529d) kills: M01, M02, M03, M05, M06, M07, M08, M10, M13, M15. M01 overflow check skipped, M02 fast path at int32.max - 9, M03 overflow reports b, M04 div underflow without !lossless, M05/M10 underflow reported as overflow, M06 underflow reports b, M07 inv zero check removed, M08 inv zero reports exponent 0, M09 inv underflow without !lossless, M11 floor shed one digit more, M12 zero after the floor shed not normalised, M13 zero cutoff at 75, M14 divisor sign dropped, M15 a positive 2^255 quotient sheds a digit before the floor shed (the #368 shape). M09 is equivalent: no inverse of a non-zero Float is exactly zero and zero is rejected first, so the guard was removed at 8c3fc49. Not probed: underflowExponentBy > 0 as >= 0 and the 76 cutoff as 77, both equivalent (dividing by 10^0; 2^255 / 10^77 is zero).",
     "tool": "adversarial-mutation-test",
     "skillVersion": "0.35.0",
     "summary": {
       "behaviours": 15,
-      "killedBefore": 14,
-      "killedAfter": 14,
+      "killedBefore": 4,
+      "killedAfter": 10,
       "equivalent": 1,
       "candidates": 0,
       "confirmed": 0,
-      "testsBefore": 854,
+      "testsBefore": 850,
       "testsAfter": 864,
       "filed": []
     }
