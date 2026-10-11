@@ -897,6 +897,27 @@
     }
   },
   {
+    "timestamp": "2026-10-11T11:07:08Z",
+    "commit": "369aee06683d248021fa836464efaf7fb262f9df",
+    "testsAfterCommit": "8975508b6bf6080140080791428de761c2e0f877",
+    "publishedTag": "sol-v0.2.38",
+    "commitsAheadOfTag": 0,
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "scope": "Issue #342 (PR #354): transcendental error-bound tests made independent of the implementation and of the README. Before = main 369aee0. After = 8975508, where LibTestErrorBound carries bounds derived from the proofs of each step (log10Unrounded 1.0044e-50 absolute, pow10Unrounded 327.74e-50 of 10^k, pow 5.00000033006e-41 relative before its integer part), the Solidity and Rust suites read those instead of the README's 2e-50, 3.28e-8 of a unit and 5.0000004e-41, documentedErrors.t.sol (which pinned the source constants to the README) is deleted, and testLog10UnroundedRawErrorReached, testLog10TieWindowReached and testPow10RawErrorReached show the bounds reached by real inputs against bc -l references. Probe suite: whole forge test in each tree. Mutants of src/lib/implementation/LibDecimalFloatImplementation.sol: M01-M02 LOG10_RAW_ERROR 2 to 3 and 200, M03-M04 POW10_RAW_ERROR 328 to 329 and 32800, M05 POW_GUARD 1e10 to 1e11, M06 pow10 truncates, M07 pow10 rounds a whole guard up, M08-M09 exp10Fixed 10^(1/2) constant 300 and 50 units low, M10 roundSignificant tie rounds down, M11 roundSignificant rounds up two units, M12 roundSignificant sheds to 40 digits, M13 log10Ratio series stops early (term > 1e10), M14 log10Ratio terms over k + 2, H01 sqrt round-up adds two units, H02 sqrt rounds up only past r + 1 (residual > root + 1), T01 LOG10_RAW_ERROR 2 to 1, T02 POW10_RAW_ERROR 328 to 327, T03 POW_GUARD 1e10 to 1e9. Killed after: M05-M14, H01, T03. Equivalent: M01-M04, T01, T02, since LOG10_RAW_ERROR and POW10_RAW_ERROR are read by no source code, only NatSpec; the earlier record of this entry counted them killed by documentedErrors.t.sol, which compared them with README values and is deleted. H02 is equivalent: N = C 10^s with s 5 or 6 is even and N - r^2 = r + 1 needs N = r^2 + r + 1, which is odd. The earlier record's H02 kill (8f15727, testPowHalfIsSqrt only) was of a mutant whose exact text was not kept; H02 here is reconstructed from its name. M06-M14 and H01 are likewise reconstructed and re-probed at 8975508. Before verdicts for M01-M14 and H01-H02 are the earlier record's at 369aee0; T01-T03 were probed at 369aee0 in a fresh clone: T01, T02 survived, T03 killed.",
+    "summary": {
+      "behaviours": 19,
+      "killedBefore": 12,
+      "killedAfter": 12,
+      "equivalent": 7,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 873,
+      "testsAfter": 931,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-11T11:12:39Z",
     "commit": "51a34512ad010f3465f290df554ecc519b014575",
     "testsAfterCommit": "6aa038686b32b8c8a6aa06b82feffb493a39e75e",
