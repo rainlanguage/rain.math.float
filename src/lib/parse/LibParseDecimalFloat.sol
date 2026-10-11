@@ -48,6 +48,7 @@ library LibParseDecimalFloat {
     /// @return signedCoefficient The signed coefficient of the parsed decimal
     /// float.
     /// @return exponent The exponent of the parsed decimal float.
+    //slither-disable-next-line cyclomatic-complexity
     function parseDecimalFloatInline(uint256 start, uint256 end)
         internal
         pure
