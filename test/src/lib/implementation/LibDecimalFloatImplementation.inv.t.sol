@@ -2,14 +2,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
+import {EXPONENT_MIN, EXPONENT_MAX} from "test/lib/LibTestExponentBounds.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibTestExactDecimal} from "test/lib/LibTestExactDecimal.sol";
-import {
-    LibDecimalFloatImplementation,
-    EXPONENT_MIN,
-    EXPONENT_MAX,
-    DivisionByZero
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation, DivisionByZero} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationInvTest is Test {
     function invExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {

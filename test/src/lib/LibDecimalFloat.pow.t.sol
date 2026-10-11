@@ -1013,7 +1013,7 @@ contract LibDecimalFloatPowTest is Test {
         checkPowPrecision(2, 0, 1, 9, 4612976001169069393116119221037316018704689765158218586254214245826256, 301029926);
         Float a = LibDecimalFloat.packLossless(2, 0);
 
-        // 2 ^ 1e10 pushes the squared base exponent past EXPONENT_MAX and
+        // 2 ^ 1e10 pushes the result exponent past int32 and
         // reverts with ExponentOverflow. A round trip catches this rather than
         // treating it as a math regression.
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2), int256(0)));

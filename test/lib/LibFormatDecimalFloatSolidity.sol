@@ -15,7 +15,7 @@ library LibFormatDecimalFloatSolidity {
 
     /// Longer than any uint256 in decimal.
     uint256 private constant DIGITS_BUFFER = 78;
-    /// Longer than any int32 magnitude in decimal.
+    /// Longer than any display exponent magnitude, int32 plus 76, in decimal.
     uint256 private constant EXPONENT_BUFFER = 11;
 
     function toDecimalString(Float float, bool scientific) internal pure returns (string memory) {
@@ -44,7 +44,6 @@ library LibFormatDecimalFloatSolidity {
     }
 
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
-        int256 originalExponent = exponent;
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
 
         bool isNeg = signedCoefficient < 0;
@@ -55,9 +54,6 @@ library LibFormatDecimalFloatSolidity {
             absCoef = isNeg ? uint256(-signedCoefficient) : uint256(signedCoefficient);
         }
         int256 displayExponent = exponent + (absCoef >= 1e76 ? int256(76) : int256(75));
-        if (displayExponent > type(int32).max || displayExponent < type(int32).min) {
-            revert UnformatableExponent(originalExponent);
-        }
         (uint256 significand,) = stripTrailingZeros(absCoef);
 
         unchecked {
@@ -68,7 +64,7 @@ library LibFormatDecimalFloatSolidity {
             bytes memory expBuffer = new bytes(EXPONENT_BUFFER);
             uint256 eStart = EXPONENT_BUFFER;
             if (displayExponent != 0) {
-                // displayExponent is within int32, so its negation fits.
+                // displayExponent is within int32 plus 76, so its negation fits.
                 // forge-lint: disable-next-line(unsafe-typecast)
                 uint256 e = expNeg ? uint256(-displayExponent) : uint256(displayExponent);
                 do {
@@ -119,18 +115,6 @@ library LibFormatDecimalFloatSolidity {
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
             absCoef = isNeg ? uint256(-signedCoefficient) : uint256(signedCoefficient);
-        }
-
-        if (exponent > 0) {
-            if (exponent >= 68) {
-                revert UnformatableExponent(exponent);
-            }
-            unchecked {
-                // forge-lint: disable-next-line(unsafe-typecast)
-                if (absCoef > uint256(int256(type(int224).max)) / 10 ** uint256(exponent)) {
-                    revert UnformatableExponent(exponent);
-                }
-            }
         }
 
         (uint256 significand, uint256 trailingZeros) = stripTrailingZeros(absCoef);
