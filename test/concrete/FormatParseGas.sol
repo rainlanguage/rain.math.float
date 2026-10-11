@@ -7,6 +7,7 @@ import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {LibFormatDecimalFloatPr321} from "test/lib/LibFormatDecimalFloatPr321.sol";
 import {LibParseDecimalFloatPr321} from "test/lib/LibParseDecimalFloatPr321.sol";
+import {LibFormatDecimalFloatSolidity} from "test/lib/LibFormatDecimalFloatSolidity.sol";
 
 contract FormatParseGas {
     function formatBase(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
@@ -19,6 +20,13 @@ contract FormatParseGas {
     function formatPr(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
         uint256 s = gasleft();
         string memory r = LibFormatDecimalFloat.toDecimalString(f, scientific);
+        g = s - gasleft();
+        h = keccak256(bytes(r));
+    }
+
+    function formatSol(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
+        uint256 s = gasleft();
+        string memory r = LibFormatDecimalFloatSolidity.toDecimalString(f, scientific);
         g = s - gasleft();
         h = keccak256(bytes(r));
     }

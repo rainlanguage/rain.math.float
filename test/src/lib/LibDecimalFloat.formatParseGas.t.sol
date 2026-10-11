@@ -36,6 +36,27 @@ contract LibDecimalFloatFormatParseGasTest is Test {
         (uint256 g1, bytes32 h1) = B.formatPr(f, scientific);
         assertEq(h1, h0, label);
         row(scientific ? "formatSci" : "format", label, g0, g1);
+        // The same digit-buffer algorithm in plain Solidity, so the
+        // assembly's own saving is measured apart from the algorithm's.
+        (uint256 g2, bytes32 h2) = B.formatSol(f, scientific);
+        assertEq(h2, h1, label);
+        row(scientific ? "formatSciSolVsAsm" : "formatSolVsAsm", label, g2, g1);
+    }
+
+    /// The plain-Solidity copy returns the same bytes and reverts with the
+    /// same data as the library, so its gas rows compare one algorithm.
+    function testFormatSolidityCopyEquivalence(int224 c, int256 e, bool scientific) external {
+        e = scientific ? bound(e, type(int32).min, type(int32).max) : bound(e, -1100, 100);
+        // Any int224 coefficient and int32 exponent pack losslessly.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float f = LibDecimalFloat.packLossless(c, e);
+        try B.formatPr(f, scientific) returns (uint256, bytes32 h) {
+            (, bytes32 hSol) = B.formatSol(f, scientific);
+            assertEq(hSol, h);
+        } catch (bytes memory err) {
+            vm.expectRevert(err);
+            B.formatSol(f, scientific);
+        }
     }
 
     function parse(string memory str) internal view {
