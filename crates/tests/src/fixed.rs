@@ -37,7 +37,7 @@ const LOG10_RATIO_FIXED_E54: u64 = 10_036;
 const LOG10_RATIO_ABOVE_E52: u64 = 13;
 
 /// 2^-16 at 1e50.
-const STEP: u64 = 1_525_878_906_25;
+const STEP: u64 = 152_587_890_625;
 
 fn u256(x: &BigInt) -> U256 {
     U256::from_str_radix(&x.to_string(), 10).unwrap()
