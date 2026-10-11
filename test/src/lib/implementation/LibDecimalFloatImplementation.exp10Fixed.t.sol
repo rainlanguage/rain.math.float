@@ -9,10 +9,12 @@ import {Exp10FixedOutOfRange} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationExp10FixedTest is Test {
     /// The true power is in [truncated, truncated + 1), and exp10Fixed is
-    /// within [-3.048e-49, 0] relative of it, so at most truncated.
+    /// never above it, so at most truncated. It is under 88.08 units below,
+    /// so at least truncated - 88, and under 1.408e-49 of it below.
     function assertProvenBound(uint256 actual, uint256 truncated) internal pure {
-        uint256 below = Math.mulDiv(truncated + 1, 3048, 1e52, Math.Rounding.Ceil);
-        assertGe(actual + below, truncated, "below");
+        uint256 below = Math.mulDiv(truncated + 1, 1408, 1e52, Math.Rounding.Ceil);
+        assertGe(actual + below, truncated, "below relative");
+        assertGe(actual + 88, truncated, "below");
         assertLe(actual, truncated, "above");
     }
 

@@ -1015,7 +1015,7 @@ library LibDecimalFloatImplementation {
     }
 
     /// log10(x) for a float x: an internal approximation within
-    /// 1.0044e-50, rounded to nearest at 41 significant digits half away from
+    /// 1.0037e-50, rounded to nearest at 41 significant digits half away from
     /// zero, so within half a unit in the 41st digit plus that error. Near a tie either neighbour can result. log10(10^k) is
     /// exactly k.
     ///
@@ -1104,15 +1104,15 @@ library LibDecimalFloatImplementation {
     /// and takes S = 0, so a log near zero keeps its relative precision.
     ///
     /// The error, from the bounds on `log10Reduce` and `log10Ratio`, is within
-    /// 1.0044e-50 for a log below 1e25 in magnitude, which includes every
+    /// 1.0037e-50 for a log below 1e25 in magnitude, which includes every
     /// float:
     /// - Within a factor 1.001 of 1: the result is the relative coefficient
-    ///   of `log10Ratio`, at least 4.34e48, so within 3.27e-49 relative of a
+    ///   of `log10Ratio`, at least 4.34e48, so within 3.11e-49 relative of a
     ///   log below log10(1.001), under 1.5e-52.
     /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. R
     ///   is within 16.7 units of C / 10^S, 1.67e-74 relative, which moves its
-    ///   log by under 1e-24 units. With log10Ratio's 1 + 8.3 z, under 1.0043
-    ///   units for z at most 5e-4, the true log is within 1.0044 units.
+    ///   log by under 1e-24 units. With log10Ratio's 1.0036 units for z at
+    ///   most 5.1e-4 the true log is within 1.0037 units.
     /// - log10(10^k) is exactly k.
     /// A characteristic of 1e25 or more is summed by `add`, which loses under
     /// a unit of the sum's exponent, at least -50. A characteristic past
@@ -1211,21 +1211,28 @@ library LibDecimalFloatImplementation {
     /// Error, in units of 1e-50 unless stated, for z = |a - b| / (a + b) at
     /// most `LOG10_RATIO_Z_MAX`, 7.499e-4. A larger z, a + b past 2^256 or b
     /// of zero reverts `Log10RatioOutOfRange`. `log10Unrounded` passes z at
-    /// most 5e-4: a / b within a factor 1.001 at a power of ten and within
+    /// most 5.1e-4: a / b within a factor 1.001 at a power of ten and within
     /// 10^(2^-16) after `log10Reduce`.
-    /// - The floored z and z^2 make each power of z^2 at most 2.001 below its
-    ///   exact value, then at most 1.000001 once the floor dominates. Each
-    ///   term's divide floors a further unit. z^16 is below 1e-50, so the eighth
-    ///   term floors to zero, seven are summed, and the floored series is at
-    ///   most 8.4 below atanh(z) / z.
-    /// - Scaling by 2 / ln 10 floors a unit, and POW_FIXED_LN10 is 0.2976
-    ///   below ln 10 1e50, so the scaled series is within (-8.3, 1.3e-51
-    ///   relative] of 2 atanh(z) / (z ln 10).
+    /// - Flooring z moves atanh(z) / z by under 2z / 3, 5e-4, or 3.5e-4 for
+    ///   z at most 5.1e-4.
+    /// - z^2 floors under a unit, and each term's multiply under one more
+    ///   plus 2e-6 carried, so the term for z^(2j) is under 1.000002 below
+    ///   it. The term is an integer, so the term over 2j + 1 floors to under
+    ///   1 + 1e-6 below z^(2j) / (2j + 1). z^16 is under a unit, so terms
+    ///   stop after z^14 and the rest sum under z^16 / 17: 0.0589, or 1.3e-4
+    ///   for z at most 5.1e-4. So the series is under 7.0594, or 7.0005,
+    ///   below atanh(z) / z.
+    /// - POW_FIXED_LN10 is 0.2976 below ln 10 1e50, 1.2925e-51 relative, and
+    ///   the quotient by it floors under a unit of at least 0.8686e50, under
+    ///   1.15130e-50 relative. So the scaled series is within (-8.0815e-50,
+    ///   1.2925e-51] relative of 2 atanh(z) / (z ln 10), and above -8.0226e-50
+    ///   for z at most 5.1e-4.
     /// - The last mulDiv multiplies that by z, or by z 10^k when `relative`,
-    ///   and floors a unit. Not relative, the result is within 1 + 8.3 z,
-    ///   under 1.0063, units of the log. Relative, it is within the coefficient C times 9.6e-50, plus
-    ///   a unit, below and 1.3e-51 relative above, so within C / 1e49 + 2
-    ///   units of its exponent.
+    ///   and floors a unit. Not relative, the result is within
+    ///   1 + 0.8686 8.0815 z, under 1.0053, units of the log, and under 1.0036
+    ///   for z at most 5.1e-4. Relative, it is under C 8.082e-50 plus a unit
+    ///   below, for C the coefficient, and under C 8.03e-50 plus a unit for z
+    ///   at most 5.1e-4, and 1.3e-51 relative above.
     /// @param a The numerator.
     /// @param b The denominator.
     /// @param relative `true` for at least 48 significant digits however small
@@ -1684,10 +1691,11 @@ library LibDecimalFloatImplementation {
     /// The fraction m of x, truncated to 1e-50, goes through `exp10Fixed`.
     /// Truncation moves 10^m by under 2.3026e-50 relative either way, and with
     /// exp10Fixed's bounds the true 10^x 1e50 is within 24 units below and
-    /// 327.74 units, 304.71 plus 23.03, above the fixed
-    /// point power, for a power below 1e51 units. A unit of the result is
-    /// `POW_GUARD` of those, so the result is within half a unit plus 3.28e-8
-    /// of a unit, and under 5.0000004e-41 relative.
+    /// 111.11 units above the fixed point power: exp10Fixed's
+    /// E_k 10^r + 1.07902 P / 1e50 + 1 plus 2.3026 10^(k 2^-16 + r), at most
+    /// 111.101 over every k, at k = 2^16 - 1. A unit of the result is
+    /// `POW_GUARD` of those, so the result is within half a unit plus 1.12e-8
+    /// of a unit, and under 5.00000012e-41 relative.
     ///
     /// A nonzero fraction that truncates to zero is under 1e-50 from an
     /// integer, which puts 10^x within 2.4e-50 relative of the power of ten
@@ -1742,17 +1750,20 @@ library LibDecimalFloatImplementation {
     /// rule. Every constant and every product is floored, so the result is
     /// never above 10^x.
     ///
-    /// The result is within [-3.048e-49, 0] relative of 10^x. In units of
-    /// 1e-50 relative:
-    /// - Each 10^(2^-i) constant is under a unit below 10^(2^-i) 1e50, and
-    ///   each multiply after the first floors under a unit of a product of at
-    ///   least 10^(2^-i) 1e50, so the digits lose under the sum of
-    ///   2 / 10^(2^-i) less the first multiply's, 28.392.
-    /// - The floored coefficients and steps leave the series under
-    ///   1 + 2r / (1 - r) below its nine terms, and the terms past the ninth
-    ///   sum under 0.079, so it is under 1.079 below 10^r, which is at least 1.
+    /// The result is under 88.08 units, and 1.408e-49 relative, below
+    /// 10^x 1e50. For x = k 2^-16 + r, in units of 1e-50:
+    /// - The steps' product P depends only on k, and is the result at
+    ///   x = k 2^-16, where the series is exactly `POW_FIXED_ONE`. Each of the
+    ///   2^16 is E_k below 10^(k 2^-16) 1e50, never above (crates/tests
+    ///   `fixed.rs` enumerates them).
+    /// - The coefficients are (ln 10)^j / j! 1e50 floored and each Horner
+    ///   step floors under a unit, so the series is under 1 + 2r / (1 - r)
+    ///   below its nine terms, and the terms past the ninth sum under 0.079:
+    ///   under 1.07902 below 10^r 1e50.
     /// - The last multiply floors under a unit.
-    /// In all that is under 30.471.
+    /// So the result is under E_k 10^r + 1.07902 P / 1e50 + 1 below
+    /// 10^x 1e50. Over every k that is at most 88.075, at k = 2^16 - 1, and
+    /// at most 14.078e-50 of 10^x, at k = 3071.
     /// @param x The exponent at the `POW_FIXED_ONE` scale, in [0, 1), reverting
     /// `Exp10FixedOutOfRange` past it.
     /// @return result The power at the `POW_FIXED_ONE` scale, in [1, 10).
