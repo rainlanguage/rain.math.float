@@ -18,16 +18,6 @@ error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int2
 /// @dev The maximum difference in exponents when adding to rescale.
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
 
-/// @dev The maximum exponent that can be maximized.
-/// This is crazy large, so should never be a problem for any real use case.
-/// We need it to guard against overflow when maximizing.
-int256 constant EXPONENT_MAX = type(int256).max / 2;
-
-/// @dev The minimum exponent that can be maximized.
-/// This is crazy small, so should never be a problem for any real use case.
-/// We need it to guard against overflow when maximized.
-int256 constant EXPONENT_MIN = -EXPONENT_MAX;
-
 /// @dev The signed coefficient of maximized zero.
 int256 constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
 
@@ -282,8 +272,7 @@ library LibDecimalFloatImplementation {
                 exponent += int256(adjustExponent);
             }
 
-            // q = floor(P / 10^n), as `mulDivPow10` on the product already
-            // taken. P less its remainder mod 10^n is a multiple of
+            // q = floor(P / 10^n) for the product P already taken. P less its remainder mod 10^n is a multiple of
             // 10^n = 2^n 5^n, so its low n bits are zero and shifting both
             // words right by n divides by 2^n exactly, keeping the low word of
             // 5^n q. 5 is odd, so FIVE_INVERSE^n is the inverse of 5^n mod
@@ -552,25 +541,6 @@ library LibDecimalFloatImplementation {
             let prod1 := sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0))
             prod0 := sub(prod0, remainder)
             result := mul(or(shr(50, prod0), shl(206, prod1)), inverse)
-        }
-    }
-
-    /// mulDiv(x, y, 10^n) for n in [0, 77] and a quotient below 2^256. The
-    /// remainder is subtracted so 10^n divides the product exactly, the 2^n
-    /// is shifted out and the 5^n divided out by its inverse modulo 2^256.
-    function mulDivPow10(uint256 x, uint256 y, uint256 n) internal pure returns (uint256 result) {
-        (uint256 prod1, uint256 prod0) = mul512(x, y);
-        if (prod1 == 0) {
-            unchecked {
-                return prod0 / 10 ** n;
-            }
-        }
-        uint256 inverse = FIVE_INVERSE;
-        assembly ("memory-safe") {
-            let remainder := mulmod(x, y, exp(10, n))
-            prod1 := sub(prod1, gt(remainder, prod0))
-            prod0 := sub(prod0, remainder)
-            result := mul(or(shr(n, prod0), shl(sub(256, n), prod1)), exp(inverse, n))
         }
     }
 

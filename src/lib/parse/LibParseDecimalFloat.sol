@@ -125,7 +125,7 @@ library LibParseDecimalFloat {
                         uint256 scale = uint256(-exponent);
                         // 67 is the maximum number of fractional digits we can
                         // rescale by without overflowing. The coefficient is at
-                        // most int224 (~6.7e66), and the rescaled product
+                        // most int224 (~1.35e67), and the rescaled product
                         // (coefficient * 10^scale) must fit in int256 (~5.8e76).
                         // Beyond 67 digits the multiplication would overflow
                         // int256 for any non-trivial coefficient.
