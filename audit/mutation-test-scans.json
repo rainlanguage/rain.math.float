@@ -920,21 +920,21 @@
   {
     "timestamp": "2026-10-11T12:24:30Z",
     "commit": "4ecd21232b7a94ce357032e4dbc8956f738e5975",
-    "testsAfterCommit": "271e5eec340b573d856ddd9075d17456304c971c",
+    "testsAfterCommit": "a9f6f9372d063112a032f30bd21c860b50fd6d05",
     "publishedTag": "sol-v0.2.38",
     "commitsAheadOfTag": 20,
-    "scope": "Issue #424: pow large |b| near a = 1, the integer leg (squaring, result multiply, inverse) and the past-int256 b guard. Before = forge test --mc \"LibDecimalFloatPowTest|LibDecimalFloatPrecisionTest\" at main 4ecd212 (bound 5.0000004e-41 + 3N 1e-75, |b| <= 1e6 in powInputs). After = the same suites at 271e5ee: bound 5.0000004e-41 + N min(K1, K2 d), powInputs near one with |b| past 1e75, testPowNearOneLargeExponent against Rust truth_pow. Mutants of src/lib/LibDecimalFloat.sol: M1 squaring drops one more unit of an inexact full-width square, M2 result multiply drops one more unit, M3 inverse drops one more unit when its last digit is nonzero, M3b inverse drops one more unit when a times it is not one, M4 squaring keeps only 70 digits, M5 past-int256 b reverts on the wrong side, M6 integer b scales one decade short. Before: M5, M6 killed; M1-M4, M3b survive. After: all killed but M2 (equivalent: under 256 units of 1e-75 across the bits, far inside the 4e-48 the bound leaves). M3 first survived the PR too, as near one the inverse lands on the grid with trailing zeros; the K1 case (d 1.23e-31, b = -1e40, error 0.752 of K1 N) was added and kills it. testsAfter 874 is at 271e5ee, which branches from main 369aee0, older than 4ecd212; with main merged in (e0024f3) the suite has 909, and the pow, mul and inv code the mutants hit is unchanged.",
+    "scope": "Issue #424: pow large |b| near a = 1, the integer leg (squaring, result multiply, inverse) and the past-int256 b guard. Before = forge test --mc \"LibDecimalFloatPowTest|LibDecimalFloatPrecisionTest\" at main 4ecd212 (bound 5.0000004e-41 + 3N 1e-75, |b| <= 1e6 in powInputs). After = the same suites at a9f6f93: bound 5.0000004e-41 + N min(K1, K2 d), powInputs near one with |b| past 1e75, testPowNearOneLargeExponent against Rust truth_pow, and testPowIntegerLegAtRoundingTie. Mutants of src/lib/LibDecimalFloat.sol: M1 squaring drops one more unit of an inexact full-width square, M2 result multiply drops one more unit of an inexact product, M3 inverse drops one more unit when its last digit is nonzero, M3b inverse drops one more unit when a times it is not one, M4 squaring keeps only 70 digits, M5 past-int256 b reverts on the wrong side, M6 integer b scales one decade short. Before: M5, M6 killed; M1-M4, M3b survive. After: all killed. M2 survived the bound tests, as it moves the result under 256 units of 1e-75, and is killed by testPowIntegerLegAtRoundingTie: inputs where each step by its own rule (squared partial the floor of the exact square, result multiply truncated toward zero) leaves the unrounded power exactly on a 41 digit tie, (1 + 5e-66)^3e25, (1 - 5e-67)^3e25, (1 - 5e-67)^-3e26 and (5e13 + 5)^3, so one unit more dropped rounds to the other neighbour. Two other result-multiply forms were already killed by the suite before that test: one more unit dropped whenever the multiply sheds digits (testPows) and whenever its last digit is nonzero (testPowFloor, testPowFractionExact, testPowFractionPrecision, testPowHalfPastTheRange, testPowHalfReference). M3 first survived the PR too, as near one the inverse lands on the grid with trailing zeros; the K1 case (d 1.23e-31, b = -1e40, error 0.752 of K1 N) was added and kills it. testsAfter 910 is the full forge suite at a9f6f93.",
     "tool": "adversarial-mutation-test",
     "skillVersion": "0.35.0",
     "summary": {
       "behaviours": 7,
       "killedBefore": 2,
-      "killedAfter": 6,
-      "equivalent": 1,
+      "killedAfter": 7,
+      "equivalent": 0,
       "candidates": 0,
       "confirmed": 0,
       "testsBefore": 898,
-      "testsAfter": 874,
+      "testsAfter": 910,
       "filed": []
     }
   }
