@@ -304,6 +304,22 @@ fn exact_power(a: &Dec, b: &Dec) -> Option<Dec> {
     (r::digits(&m) <= 41).then(|| Dec::new(m, t))
 }
 
+/// The error of a positive exact g with |log10 g| past RANGE, as every other
+/// branch and the Python oracle decide it. With g = m 10^t, m free of
+/// trailing zeros, floor(log10 g) is t + digits(m) - 1, and log10 g equals
+/// it only for m = 1.
+fn past_range(g: &Dec) -> Option<RefError> {
+    let n = g.normalized();
+    let top = n.e + r::digits(&n.c) as i64 - 1;
+    if top > RANGE || (top == RANGE && n.c != BigInt::from(1)) {
+        Some(past(true))
+    } else if top < -RANGE {
+        Some(past(false))
+    } else {
+        None
+    }
+}
+
 /// a^b as `LibDecimalFloat.pow` documents it.
 pub fn truth_pow(a: &Dec, b: &Dec) -> Truth {
     if b.is_zero() {
@@ -356,7 +372,10 @@ pub fn truth_pow(a: &Dec, b: &Dec) -> Truth {
         });
     }
     if let Some(g) = exact_power(&base, b) {
-        return Truth::exact(sign(g));
+        return match past_range(&g) {
+            Some(e) => Truth::err(e),
+            None => Truth::exact(sign(g)),
+        };
     }
     match precise::pow_true(&base, b) {
         Err(rising) => Truth::err(past(rising)),
@@ -1790,6 +1809,9 @@ mod anchors {
             ("10", "2147483715", RefError::ExponentOverflow),
             ("10", "1e10", RefError::ExponentOverflow),
             ("0.1", "1e10", RefError::ExponentUnderflow),
+            // Exact powers past RANGE.
+            ("-9e-750000001", "4", RefError::ExponentUnderflow),
+            ("9e750000001", "4", RefError::ExponentOverflow),
         ] {
             assert_eq!(contract_error(&truth_pow(&d(a), &d(b))), Some(e), "{a}^{b}");
             run(check_pow(&d(a), &d(b)));
