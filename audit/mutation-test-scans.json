@@ -301,6 +301,27 @@
     }
   },
   {
+    "timestamp": "2026-10-07T17:52:30Z",
+    "commit": "1c2258b672d9c9876b4c11525324fef6b29f3069",
+    "testsAfterCommit": "cb9e8b52f2533812dc460194a4101b264c3ffcaf",
+    "publishedTag": "sol-v0.2.21",
+    "commitsAheadOfTag": 50,
+    "scope": "issue #310 item 11: the assembly rewrite of LibFormatDecimalFloat (_toScientific, _toNonScientific, stripTrailingZeros) and the assembly trailing-zero scan in LibParseDecimalFloat.parseDecimalFloatInline. Probe suite: forge test --mc ^(LibFormatDecimalFloatToDecimalStringTest|LibParseDecimalFloatTest|LibDecimalFloatExoticFloatTest|LibDecimalFloatFormatParseGasTest|LibDecimalFloatFormatParsePr321EquivalenceTest|LibFormatDecimalFloatMemoryTest)$, every forge contract that reaches format or parse; test counts are that suite. 89 mutants. 82 were killed by the suite at commit (pass 1: 84 mutants, then 5 more from a re-survey). The new memory test kills S05 and N07 (digits written below the free pointer), and S26 and N32 (the string's padding left dirty). S26 and N32 were first written as mstore(cursor, cursor), whose padding bytes are zero, and survived; respecified as mstore(cursor, not(0)) they were probed only after the new test existed, so they are counted as killed after. Equivalent: N02 and N03 (moving the positive exponent cap from 68 to 69 or 79: int224.max / 10^e is 0 for e in [68, 78], including the wrapped 10^78, so the fit check still reverts with the same error), N34 (rounding the free pointer from cursor + 0x3f to cursor + 0x1f still covers the string's padding; the extra word only reserves the cleared word past it).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 89,
+      "killedBefore": 82,
+      "killedAfter": 4,
+      "equivalent": 3,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 95,
+      "testsAfter": 98,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-07T18:35:36Z",
     "commit": "e8b9ae8b5e8c506cd85906821cce0e91cff0bda8",
     "testsAfterCommit": "a14aed040a7962085a251fea49e15c535b818761",
