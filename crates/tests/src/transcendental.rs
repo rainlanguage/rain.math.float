@@ -682,8 +682,7 @@ fn raw(bound: &Bound, t: &Approx) -> (Dec, Dec) {
         Bound::Log10 => (Dec::new(2, -50), one),
         Bound::Pow10(k) => (Dec::new(328, k - 50), one),
         Bound::Pow(term) => (
-            term.relative(Dec::new(333, -50))
-                .mul_exact(&t.value.abs()),
+            term.relative(Dec::new(333, -50)).mul_exact(&t.value.abs()),
             term.den.clone(),
         ),
         // Correctly rounded: never out of order, which check_monotone asserts.
@@ -1214,8 +1213,18 @@ mod checker {
             // 1/a has the same d.
             (Dec::new(5, -1), one.neg(), 7, Dec::new(7 * 11728, -79)),
             // d 1e-66: K2 d, 7 1.5e-104 and 7 3.4786e-104.
-            (Dec::new(pow10(66) + 1, -66), one.clone(), 7, Dec::new(105, -105)),
-            (Dec::new(pow10(66) + 1, -66), one.neg(), 7, Dec::new(7 * 34786, -108)),
+            (
+                Dec::new(pow10(66) + 1, -66),
+                one.clone(),
+                7,
+                Dec::new(105, -105),
+            ),
+            (
+                Dec::new(pow10(66) + 1, -66),
+                one.neg(),
+                7,
+                Dec::new(7 * 34786, -108),
+            ),
             // Either side of K1 = K2 d for b > 0, at d 1.15153e-38.
             (
                 Dec::new(pow10(43) + 115153, -43),
@@ -1251,7 +1260,13 @@ mod checker {
         let x = sum(&Dec::new(50_000_004, -48).mul_exact(&a), &Dec::new(15, -49))
             .mul_exact(&sum(&v, &Dec::new(-1, -300)));
         let (down, up) = bracket(&x, &a, -350);
-        edge_between(&v, &pow_n(&a, &b, pow10(40)), &down, &up, &Dec::new(1, -310));
+        edge_between(
+            &v,
+            &pow_n(&a, &b, pow10(40)),
+            &down,
+            &up,
+            &Dec::new(1, -310),
+        );
     }
 
     /// N 3.3e74 for b < 0 and d past K1 / K2 puts the relative bound past one,
@@ -1504,11 +1519,7 @@ mod checker {
             check_monotone(
                 "m",
                 point(hi, tie.clone(), pow_zero()),
-                point(
-                    Dec::new(1, 0),
-                    sum(&tie, &d.neg()),
-                    pow_zero(),
-                ),
+                point(Dec::new(1, 0), sum(&tie, &d.neg()), pow_zero()),
             )
         };
         let at = sum(&raw.mul_exact(&tie), &fuzz);
@@ -1898,7 +1909,8 @@ mod anchors {
     /// of a unit at 1e-75, which a^-N weighs N.
     #[test]
     fn pow_near_one_inverse_k1() {
-        let a = r::literal_value("9999999999999999999999999999998765432109876543210987654321099e-61");
+        let a =
+            r::literal_value("9999999999999999999999999999998765432109876543210987654321099e-61");
         let b = Dec::new(-1, 40);
         eprintln!("inverse k1: {}", n_term_ratio(&a, &b));
     }
