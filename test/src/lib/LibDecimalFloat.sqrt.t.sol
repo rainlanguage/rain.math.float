@@ -8,6 +8,7 @@ import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {PowNegativeBase} from "src/error/ErrDecimalFloat.sol";
 import {LibTestExactDecimal, U512} from "test/lib/LibTestExactDecimal.sol";
+import {LibDecimalFloatSqrtVariants} from "test/lib/LibDecimalFloatSqrtVariants.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 contract LibDecimalFloatSqrtTest is Test {
@@ -208,6 +209,43 @@ contract LibDecimalFloatSqrtTest is Test {
         int256 signedCoefficient = int256(coefficient);
         (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
         checkReference(rootCoefficient, rootExponent, coefficient, exponent);
+    }
+
+    /// The root before #359's seed, and the exact one.
+    function checkMain(uint256 coefficient, int256 exponent) internal pure {
+        // coefficient is below 1e76, so it fits int256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = int256(coefficient);
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
+        (int256 mainCoefficient, int256 mainExponent) =
+            LibDecimalFloatSqrtVariants.sqrtMain(signedCoefficient, exponent);
+        assertEq(rootCoefficient, mainCoefficient, "main coefficient");
+        assertEq(rootExponent, mainExponent, "main exponent");
+        checkReference(rootCoefficient, rootExponent, coefficient, exponent);
+    }
+
+    function testImplementationSqrtMainFuzz(uint256 coefficient, int256 exponent) external pure {
+        checkMain(bound(coefficient, 1, 1e76 - 1), bound(exponent, type(int256).min + 81, type(int256).max));
+    }
+
+    function testImplementationSqrtMainPackedFuzz(int224 signedCoefficient, int32 exponent) external pure {
+        vm.assume(signedCoefficient > 0);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkMain(uint256(int256(signedCoefficient)), exponent);
+    }
+
+    /// The seed is furthest from the root at the ends of E's decade and at
+    /// E = a b: 312e73 for an even exponent, where E is the coefficient, and
+    /// 3116e71 for an odd one, where it is the coefficient over 10.
+    function testImplementationSqrtMainSeedExtremes() external pure {
+        uint256[3] memory even = [uint256(1e75), 312e73 - 10, 1e76 - 21];
+        uint256[3] memory odd = [uint256(1e75), 3116e72 - 10, 1e76 - 21];
+        for (uint256 i = 0; i < 3; i++) {
+            for (uint256 k = 0; k < 21; k++) {
+                checkMain(even[i] + k, 0);
+                checkMain(odd[i] + k, 1);
+            }
+        }
     }
 
     /// A 10^s is 2^256 - 2^(s + 5) mod 2^256 for A 10^s with s 5 and 6, so
