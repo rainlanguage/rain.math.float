@@ -11,7 +11,7 @@ import {Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 
 /// `log10Ratio` and `exp10Fixed` verbatim from
 /// `src/lib/implementation/LibDecimalFloatImplementation.sol` at
-/// 7a9aee57, before their multiplies were written out in place. The helpers
+/// 369aee06, before their multiplies were written out in place. The helpers
 /// they call are called on the live library. Equivalence tests only.
 library LibDecimalFloatImplementationSeriesMain {
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
@@ -25,14 +25,40 @@ library LibDecimalFloatImplementationSeriesMain {
                 revert Log10RatioRelativeSumTooSmall(a, b);
             }
             z = LibDecimalFloatImplementation.mulDiv(difference, POW_FIXED_ONE, sum);
-            // difference is below 1e76 so it fits and maximizes in place.
-            // forge-lint: disable-start(unsafe-typecast)
-            (int256 differenceCoefficient, int256 differenceExponent) =
-                LibDecimalFloatImplementation.maximizeFull(int256(difference), 0);
-            // forge-lint: disable-end(unsafe-typecast)
-            // forge-lint: disable-next-line(unsafe-typecast)
-            difference = uint256(differenceCoefficient);
-            exponent += differenceExponent;
+            // Scale the difference by the largest power of ten that keeps it
+            // within int256.max, as maximizeFull does.
+            unchecked {
+                if (difference != 0) {
+                    if (difference <= uint256(type(int256).max) / 1e64) {
+                        difference *= 1e64;
+                        exponent -= 64;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e32) {
+                        difference *= 1e32;
+                        exponent -= 32;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e16) {
+                        difference *= 1e16;
+                        exponent -= 16;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e8) {
+                        difference *= 1e8;
+                        exponent -= 8;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e4) {
+                        difference *= 1e4;
+                        exponent -= 4;
+                    }
+                    if (difference <= uint256(type(int256).max) / 1e2) {
+                        difference *= 1e2;
+                        exponent -= 2;
+                    }
+                    if (difference <= uint256(type(int256).max) / 10) {
+                        difference *= 10;
+                        exponent -= 1;
+                    }
+                }
+            }
         } else {
             z = LibDecimalFloatImplementation.mulDiv(difference, POW_FIXED_ONE, sum);
         }
