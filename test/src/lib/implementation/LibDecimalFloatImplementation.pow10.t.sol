@@ -364,10 +364,74 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         return (x, exponent);
     }
 
-    /// Test the current range that we can handle power10 over does not revert.
+    /// Whether a pow10 result is within the README's bound of a power P 10^e
+    /// that is itself within `referenceError` units of 10^e of the true
+    /// power T. In units of 10^e, T is below 10^n for n the digits of
+    /// P + referenceError, so a unit in T's 41st digit is at most 10^(n - 41),
+    /// and the bound is half of it plus 3.28e-8 of it.
+    function pow10WithinPower(
+        uint256 power,
+        int256 powerExponent,
+        uint256 referenceError,
+        int256 resultCoefficient,
+        int256 resultExponent
+    ) internal pure returns (bool) {
+        // P has 70 to 72 digits, a result within bound at most 41, or 1 at a
+        // power of ten.
+        if (resultCoefficient <= 0 || resultExponent < powerExponent || resultExponent > powerExponent + 71) {
+            return false;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 actual = uint256(resultCoefficient) * 10 ** uint256(resultExponent - powerExponent);
+        uint256 n = 0;
+        for (uint256 rest = power + referenceError; rest > 0; rest /= 10) {
+            n++;
+        }
+        uint256 bound = 5 * 10 ** (n - 42) + 328 * 10 ** (n - 51) + referenceError;
+        return (actual > power ? actual - power : power - actual) <= bound;
+    }
+
+    /// `pow10WithinPower` against the oracle, which is within 1e-67 relative.
+    function pow10WithinOracle(
+        int256 signedCoefficient,
+        int256 exponent,
+        int256 resultCoefficient,
+        int256 resultExponent
+    ) internal pure returns (bool) {
+        (uint256 power, int256 powerExponent) = LibTranscendentalOracle.exp10(signedCoefficient, exponent);
+        return pow10WithinPower(power, powerExponent, power / 1e67 + 1, resultCoefficient, resultExponent);
+    }
+
+    /// Over the whole range pow10 handles, it does not revert and is within
+    /// its bound of the oracle.
     function testNoRevert(int224 x, int32 exponent) external pure {
         (x, exponent) = boundFloat(x, exponent);
-        LibDecimalFloatImplementation.pow10(x, exponent);
+        (int256 signedCoefficient, int256 resultExponent) = LibDecimalFloatImplementation.pow10(x, exponent);
+        assertTrue(pow10WithinOracle(x, exponent, signedCoefficient, resultExponent), "pow10 oracle");
+    }
+
+    /// The `testPow10RoundsHalfUp` inputs, whose true powers sit within 2e-9
+    /// of a unit of a tie at the 41st digit, are within the bound of their
+    /// 70 digit powers from `bc -l` at scale 220. The last is above its tie
+    /// and rounds down, which the bound allows.
+    function testPow10NearTiesWithinBound() external pure {
+        int256[2][4] memory references = [
+            [int256(10857362048), 1000000000000000000000000000000000000000250000000009641022996351405692],
+            [int256(67315644695), 1000000000000000000000000000000000000001549999999999907130159533527510],
+            [
+                int256(52839762350034614138096464404871856380432525744962),
+                3375962574923628115885758764340189836032550000000186267648444008762503
+            ],
+            [
+                int256(62876337819492131669053461917963730523385842721800),
+                4253665924693161986466925885576001212321550000000178414220893221038845
+            ]
+        ];
+        for (uint256 i = 0; i < references.length; i++) {
+            (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.pow10(references[i][0], -50);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assertTrue(pow10WithinPower(uint256(references[i][1]), -69, 1, signedCoefficient, exponent), "pow10 bc");
+        }
     }
 
     /// Guard digits of exactly half a unit round up, and one below half
@@ -448,6 +512,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
     /// pow10(x + k) is pow10(x) 10^k exactly for an integer k. x is at the
     /// 1e-50 that pow10 truncates its fraction to, so the shift does not move
     /// the truncation.
+    /// Both are within the bound of the oracle.
     function testPow10DecadeShift(int256 x, int256 shift) external pure {
         x = bound(x, -1e55, 1e55);
         shift = bound(shift, -1e5, 1e5);
@@ -455,6 +520,10 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         (int256 shiftedCoefficient, int256 shiftedExponent) = LibDecimalFloatImplementation.pow10(x + shift * 1e50, -50);
         assertEq(shiftedCoefficient, signedCoefficient, "coefficient");
         assertEq(shiftedExponent, exponent + shift, "exponent");
+        assertTrue(pow10WithinOracle(x, -50, signedCoefficient, exponent), "pow10 oracle");
+        assertTrue(
+            pow10WithinOracle(x + shift * 1e50, -50, shiftedCoefficient, shiftedExponent), "shifted pow10 oracle"
+        );
     }
 
     /// pow10(k) is exactly 10^k for an integer k however it is written.
@@ -467,6 +536,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
 
     /// x < y implies pow10(x) <= pow10(y) + 2E, down to adjacent inputs at
     /// 1e-70.
+    /// Both are within the bound of the oracle.
     function testPow10Monotone(int256 x, int256 gap) external pure {
         x = bound(x, -1e75, 1e75);
         gap = bound(gap, 1, 1e3);
@@ -481,5 +551,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
             ),
             "monotone"
         );
+        assertTrue(pow10WithinOracle(x, -70, lowCoefficient, lowExponent), "low pow10 oracle");
+        assertTrue(pow10WithinOracle(x + gap, -70, highCoefficient, highExponent), "high pow10 oracle");
     }
 }

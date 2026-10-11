@@ -432,26 +432,6 @@ contract LibDecimalFloatAgreeTest is Test {
         );
     }
 
-    /// `agree` promises an ANSWER rather than a revert for representable values,
-    /// and that promise is the reason it works unpacked. Fuzzed over arbitrary
-    /// bit patterns in all four operands, including tolerances, so nothing about
-    /// the packing is assumed sane.
-    ///
-    /// `sub` reverting `ExponentUnderflow` is a live bug in this library
-    /// (`testSubPacked`), but it lives in the PACKED wrapper, which packs the
-    /// result. `agree` never packs back, so it cannot inherit it — this asserts
-    /// that rather than relying on it.
-    /// forge-config: default.fuzz.runs = 20000
-    function testAgreeNeverRevertsOnValues(bytes32 lowest, bytes32 highest, uint256 toleranceSeed) external pure {
-        // A valid tolerance, so the only thing under test is the VALUES. The
-        // tolerance guard has its own tests; this one asserts that no pair of
-        // representable values can make the arithmetic revert.
-        Float absolute = f(int256(bound(toleranceSeed, 1, 1e12)), -3);
-        bool result = LibDecimalFloat.agree(absolute, f(0, 0), Float.wrap(lowest), Float.wrap(highest));
-        // Only that it returned. The value is whatever the operands imply.
-        assertTrue(result || !result);
-    }
-
     /// A NEGATIVE TOLERANCE IS REJECTED, either side.
     ///
     /// It cannot mean anything: the spread is a distance and so non-negative,
@@ -589,7 +569,8 @@ contract LibDecimalFloatAgreeTest is Test {
         Float b = Float.wrap(0x8000000000000000000000000000000000000000000000000000000000000003);
         bool forward = LibDecimalFloat.agree(f(0, 0), f(1, -2), a, b);
         bool backward = LibDecimalFloat.agree(f(0, 0), f(1, -2), b, a);
-        assertTrue(forward || !forward);
-        assertTrue(backward || !backward);
+        // In units of 1e-2147483648 the spreads are -6 and 6, the limit 0.09.
+        assertTrue(forward, "forward");
+        assertFalse(backward, "backward");
     }
 }

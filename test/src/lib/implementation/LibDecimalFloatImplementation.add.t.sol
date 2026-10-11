@@ -283,19 +283,30 @@ contract LibDecimalFloatImplementationAddTest is Test {
         this.addExternal(type(int256).max, type(int256).max, 1, type(int256).max);
     }
 
-    /// Provided our exponents are in range we should never revert.
-    function testAddNeverRevert(
+    /// For in-range exponents and every int256 coefficient, `add` returns
+    /// the exact parts `addPartsWide` states.
+    function testAddRoundsTheExactSum(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
-    ) external pure {
+    ) external view {
         exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
         exponentB = bound(exponentB, EXPONENT_MIN / 10, EXPONENT_MAX / 10);
+        checkAddExact(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+    }
 
-        (int256 signedCoefficient, int256 exponent) =
-            LibDecimalFloatImplementation.add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        (signedCoefficient, exponent);
+    /// Independent exponents are almost never within a unit's reach of each
+    /// other, so this reaches the aligned, cancelling and shedding sums.
+    function testAddRoundsTheExactSumNearbyExponents(
+        int256 signedCoefficientA,
+        int256 exponentA,
+        int256 signedCoefficientB,
+        int256 gap
+    ) external view {
+        exponentA = bound(exponentA, EXPONENT_MIN / 10, EXPONENT_MAX / 10 - 80);
+        int256 exponentB = exponentA + bound(gap, -80, 80);
+        checkAddExact(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
     function testAddingSmallToLargeReturnsLargeFuzz(
