@@ -14,10 +14,6 @@ contract LibDecimalFloatSubTest is Test {
         return LibDecimalFloat.sub(floatA, floatB);
     }
 
-    function packLossyExternal(int256 signedCoefficient, int256 exponent) external pure returns (Float, bool) {
-        return LibDecimalFloat.packLossy(signedCoefficient, exponent);
-    }
-
     /// The exact counterexample from issue #271. Both operands sit at the
     /// packed exponent floor and the exact difference `-7e-2147483648` is a
     /// Float, so `sub` must return it rather than revert `ExponentUnderflow`.
@@ -49,8 +45,8 @@ contract LibDecimalFloatSubTest is Test {
     }
 
     /// Reverts only where the exact difference is beyond the largest Float of
-    /// its sign, and otherwise is `packLossy` of `addPartsWide(a, -b)`, the
-    /// exact sum rule of `a` and `-b`.
+    /// its sign, and otherwise is the documented rounding of the exact sum of
+    /// `a` and `-b` (#340).
     function testSubPacked(Float a, Float b) external {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
@@ -65,10 +61,13 @@ contract LibDecimalFloatSubTest is Test {
             this.subExternal(a, b);
             return;
         }
-        (, int256 signedCoefficient, int256 exponent) =
-            LibTestExactDecimal.addPartsWide(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
-        (Float expected,) = this.packLossyExternal(signedCoefficient, exponent);
-        assertTrue(this.subExternal(a, b).eq(expected), "difference");
+        (int256 signedCoefficient, int256 exponent) = this.subExternal(a, b).unpack();
+        assertTrue(
+            LibTestExactDecimal.isSumResult(
+                signedCoefficientA, exponentA, -signedCoefficientB, exponentB, signedCoefficient, exponent
+            ),
+            "documented rounding of the exact difference"
+        );
     }
 
     /// #340: magnitudes cancel, so `1 - 1e-100` rounds away from zero at

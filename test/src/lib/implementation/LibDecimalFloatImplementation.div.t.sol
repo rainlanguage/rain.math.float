@@ -73,14 +73,14 @@ contract LibDecimalFloatImplementationDivTest is Test {
         checkDivByMaxTruncatesTheExactQuotient(type(int256).min, exponent);
     }
 
-    /// The exact quotient floored as `divParts` at a zero exponent
+    /// The exact quotient floored as `divPayload` at a zero exponent
     /// difference, moved by `exponent - int32.max`, with the digits below
     /// `10^type(int256).min` truncated towards zero as `atFloor`.
     function checkDivByMaxTruncatesTheExactQuotient(int256 signedCoefficient, int256 exponent) internal pure {
         (int256 q, int256 qExponent) =
             LibDecimalFloatImplementation.div(signedCoefficient, exponent, type(int256).max, type(int32).max);
         (int256 expectedQ, int256 expectedExponent) =
-            LibTestExactDecimal.divParts(signedCoefficient, 0, type(int256).max, 0);
+            LibTestExactDecimal.divPayload(signedCoefficient, 0, type(int256).max, 0);
         // exponent - int256.min, which is in [0, 2^256).
         uint256 aboveFloor;
         unchecked {
@@ -443,7 +443,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
     }
 
     /// A numerator at the floor, full or not, divides to the exact quotient
-    /// floored as `divParts`, which only the exponent difference reaches.
+    /// floored as `divPayload`, which only the exponent difference reaches.
     function testDivFloorNumeratorExact(int256 signedCoefficientA, int256 signedCoefficientB, int256 shift)
         external
         pure
@@ -452,7 +452,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         vm.assume(signedCoefficientB != 0);
         shift = bound(shift, 76, type(int128).max);
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.divParts(signedCoefficientA, 0, signedCoefficientB, shift);
+            LibTestExactDecimal.divPayload(signedCoefficientA, 0, signedCoefficientB, shift);
         checkDiv(
             signedCoefficientA,
             type(int256).min,
@@ -464,7 +464,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
     }
 
     /// Both operands near the floor, either one short of its full shift,
-    /// divide to the exact quotient floored as `divParts`.
+    /// divide to the exact quotient floored as `divPayload`.
     function testDivNearFloorExact(
         int256 signedCoefficientA,
         int256 signedCoefficientB,
@@ -478,7 +478,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = int256(bound(headroomB, 0, 80));
         (int256 expectedCoefficient, int256 expectedExponent) =
-            LibTestExactDecimal.divParts(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+            LibTestExactDecimal.divPayload(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         checkDiv(
             signedCoefficientA,
             type(int256).min + exponentA,
