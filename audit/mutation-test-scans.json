@@ -1107,26 +1107,5 @@
       "testsAfter": 186,
       "filed": []
     }
-  },
-  {
-    "timestamp": "2026-10-12T09:47:48Z",
-    "commit": "cfa33af44ca9bf62bf3135794c271a8aac0965a1",
-    "testsAfterCommit": "fbc582ed123994326ec49e74adc9dee47810f39e",
-    "publishedTag": "sol-v0.2.50",
-    "commitsAheadOfTag": 8,
-    "scope": "Issues #457, #458, #486: the mul ceiling margin (type(int256).max - 77), the div spill-overflow guard and return, and mulDiv with its overflow guard ahead of the one-word path. Each probe ran the PR source. Before = main cfa33af tests on the PR source less testMulDivZeroDenominator, which asserts the old Panic(0x12) (160 tests). After = the same match at fbc582e (166 tests). forge test --mc over the mul, div, mulDiv, mulPr307Equivalence, sqrt and log10Ratio implementation suites and the Float mul, div, exoticFloat and mixed suites. Mutants: M01 margin 76; M02 margin 78; M03 mulDiv guard > ; M04 mulDiv guard skipped when prod1 is 0; M05 spill guard < ; M06 spill return replaced by clamping exponentB to int256.max; M07 spill guard removed. Main kills M01, M03, M07; the PR adds M04 through testMulDivZeroDenominator(Fuzz). M02, M05 and M06 are equivalent: M02 by the 77 bound argued in mulExponentNearCeiling NatSpec (it only routes max - 77 to the extra mul), M05/M06 because the spill return is the underflowExponentBy > 76 zero, shown against the exact quotient by testDivSpillOverflowMatchesUnderflowZero and testDivSpillOverflowExact.",
-    "tool": "adversarial-mutation-test",
-    "skillVersion": "0.35.0",
-    "summary": {
-      "behaviours": 7,
-      "killedBefore": 3,
-      "killedAfter": 4,
-      "equivalent": 3,
-      "candidates": 0,
-      "confirmed": 0,
-      "testsBefore": 160,
-      "testsAfter": 166,
-      "filed": []
-    }
   }
 ]
