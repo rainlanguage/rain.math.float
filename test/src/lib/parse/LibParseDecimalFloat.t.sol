@@ -912,12 +912,94 @@ contract LibParseDecimalFloatTest is Test {
         }
     }
 
+    /// A nonzero integer part with a fraction ending 10^-76 rescales by 10^76
+    /// to `10^76 + 1`, inside int256. Ending 10^-77 it is `10^77 + 1`, past
+    /// int256 and 78 significant digits, so no Float, and its magnitude near 1
+    /// is not past every Float.
+    function testParseFractionRescaleBound() external view {
+        string memory atBound = string.concat("1.", zeros(75), "1");
+        string memory pastBound = string.concat("1.", zeros(76), "1");
+        checkParseDecimalFloat(atBound, 1e76 + 1, -76, 78);
+        checkParseDecimalFloat(string.concat("-", atBound), -(1e76 + 1), -76, 79);
+        checkParseDecimalFloatFail(pastBound, ParseDecimalPrecisionLoss.selector, 79);
+        checkParseDecimalFloatFail(string.concat("-", pastBound), ParseDecimalPrecisionLoss.selector, 80);
+        checkAgainstRule(atBound);
+        checkAgainstRule(pastBound);
+        checkAgainstRule(string.concat("-", pastBound));
+    }
+
+    /// Signs, zeros and the int256 bounds of the integer and fraction digits,
+    /// against the rule.
+    function testParseRuleMantissaEdges() external view {
+        string memory max = Strings.toStringSigned(type(int256).max);
+        string memory past = (uint256(1) << 255).toString();
+        // 2^255 with the point after its first digit.
+        string memory pastPointed = string.concat("5.", string(LibTestDecimalLiteral.slice(bytes(past), 1, 77)));
+        string[24] memory literals = [
+            "-0",
+            "-0.0",
+            "-00.000e5",
+            "-0.5",
+            "-00.10",
+            "-1.05",
+            string.concat("-", past),
+            string.concat("-", past, ".0"),
+            string.concat("-", past, ".5"),
+            string.concat("-", past, "e-1"),
+            string.concat("-", past, "e1"),
+            string.concat(max, ".0"),
+            string.concat("-", max, ".5"),
+            string.concat("0.", max),
+            string.concat("-0.", max),
+            string.concat("0.", past),
+            string.concat("-0.", past),
+            string.concat("0.", max, "000"),
+            pastPointed,
+            string.concat("-", pastPointed),
+            string.concat("9.", zeros(75), "9"),
+            string.concat("-9.", zeros(75), "9"),
+            string.concat("1.", zeros(76), "0"),
+            string.concat("1.", zeros(300), "1")
+        ];
+        for (uint256 i = 0; i < literals.length; i++) {
+            checkAgainstRule(literals[i]);
+        }
+    }
+
     function digitRunString(uint256 n) internal pure returns (string memory s) {
         s = new string(n);
         for (uint256 i = 0; i < n; i++) {
             // A digit, below 58.
             // forge-lint: disable-next-line(unsafe-typecast)
             bytes(s)[i] = bytes1(uint8(49 + i % 9));
+        }
+    }
+
+    /// Leading zeros in the exponent digits do not change its value, however
+    /// many: an exponent padded past 78 digits is still the exponent it
+    /// spells, and int256.min padded so is still int256.min.
+    function testParseExponentLeadingZeros() external view {
+        string memory pad = zeros(100);
+        // "1e" + 100 zeros + "5" = 103.
+        checkParseDecimalFloat(string.concat("1e", pad, "5"), 1, 5, 103);
+        checkParseDecimalFloat(string.concat("1e-", pad, "5"), 1, -5, 104);
+        checkParseDecimalFloat(string.concat("-1.5E+", pad, "5"), -15, 4, 107);
+        checkParseDecimalFloat(string.concat("2.5e-", pad, "3"), 25, -4, 106);
+        string memory minDigits = "57896044618658097711785492504343953926634992332820282019728792003956564819968";
+        checkParseDecimalFloat(string.concat("1e-", pad, minDigits), 1, type(int256).min, 180);
+        // Padded int256.min plus the fraction's -1 is below int256.min.
+        string memory wraps = string.concat("0.1e-", pad, minDigits);
+        checkParseDecimalFloatFail(wraps, ParseDecimalPrecisionLoss.selector, bytes(wraps).length);
+        string[6] memory literals = [
+            string.concat("1e", pad, "5"),
+            string.concat("1e-", pad, "5"),
+            string.concat("-1.5E+", pad, "5"),
+            string.concat("1e-", pad, minDigits),
+            wraps,
+            string.concat("1e", pad, "2147483647")
+        ];
+        for (uint256 i = 0; i < literals.length; i++) {
+            checkAgainstRule(literals[i]);
         }
     }
 }

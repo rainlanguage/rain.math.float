@@ -89,6 +89,34 @@ contract LibDecimalFloatImplementationExp10FixedTest is Test {
         );
     }
 
+    /// x below 2^-16 whose r^1 Horner multiply, ln 10 term included, has a
+    /// low word below its remainder mod 1e50. References are 10^x truncated to
+    /// 50 places from `bc -l` at scale 200.
+    function testExp10FixedLn10TermMultiplyBorrow() external pure {
+        assertProvenBound(
+            LibDecimalFloatImplementation.exp10Fixed(1000000000000000000045587860971055972294985359),
+            100002302611602688067106602906991101183429167140617
+        );
+        assertProvenBound(
+            LibDecimalFloatImplementation.exp10Fixed(1000000000000000001051322010896134384349740718),
+            100002302611602688067108918748775847507337638560317
+        );
+        assertProvenBound(
+            LibDecimalFloatImplementation.exp10Fixed(1000000000000000003565657385708830414486527219),
+            100002302611602688067114708353237713317108817109568
+        );
+    }
+
+    /// 10^x 1e50 is 0.99999908 above its truncation here, so a result one unit
+    /// higher than the truncation is above 10^x. Reference from `bc -l` at
+    /// scale 200.
+    function testExp10FixedJustBelowNextUnit() external pure {
+        assertProvenBound(
+            LibDecimalFloatImplementation.exp10Fixed(300000000000000000000000000000000000987345372),
+            100000690777913757857062170874388096259674712694619
+        );
+    }
+
     function exp10FixedExternal(uint256 x) external pure returns (uint256) {
         return LibDecimalFloatImplementation.exp10Fixed(x);
     }

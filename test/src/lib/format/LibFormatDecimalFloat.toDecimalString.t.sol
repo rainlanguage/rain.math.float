@@ -237,6 +237,33 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         }
     }
 
+    /// Every count of trailing zeros a coefficient can carry, 0 through 67,
+    /// under significands of 1, 2 and 9 digits, both signs, exponents that
+    /// place the point before, inside and after the digits, both modes,
+    /// against `expectedFormat`.
+    function testFormatEveryTrailingZeroCount() external pure {
+        uint256[3] memory significands = [uint256(1), 75, 123456789];
+        int256[5] memory offsets = [int256(0), 5, -1, -2, -9];
+        for (uint256 k = 0; k <= 67; k++) {
+            for (uint256 i = 0; i < significands.length; i++) {
+                uint256 magnitude = significands[i] * 10 ** k;
+                if (magnitude > uint256(int256(type(int224).max))) {
+                    continue;
+                }
+                // forge-lint: disable-next-line(unsafe-typecast)
+                int256 c = int256(magnitude);
+                for (uint256 j = 0; j < offsets.length; j++) {
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    int256 e = offsets[j] - (j == 0 ? int256(0) : int256(k));
+                    checkFormat(c, e, false, expectedFormat(c, e, false));
+                    checkFormat(-c, e, false, expectedFormat(-c, e, false));
+                    checkFormat(c, e, true, expectedFormat(c, e, true));
+                    checkFormat(-c, e, true, expectedFormat(-c, e, true));
+                }
+            }
+        }
+    }
+
     /// Test some specific examples.
     function testFormatDecimalExamples() external pure {
         // pos decs
@@ -561,13 +588,23 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         uint256 shift,
         bool scientific
     ) external {
-        // Safe: 10^67 fits int224.
+        // A magnitude of at least two digits, divided by at most its digit
+        // count less one, stays non-zero, so no input is rejected (#448).
+        // Safe: int224.max fits int256 and uint256.
         // forge-lint: disable-next-line(unsafe-typecast)
-        base /= int224(int256(10 ** bound(drop, 1, 67)));
+        uint256 magnitude =
+            bound(uint256(int256(base < 0 ? -int256(base) : int256(base))), 10, uint256(int256(type(int224).max)));
+        uint256 digits = 0;
+        for (uint256 rest = magnitude; rest > 0; rest /= 10) {
+            digits++;
+        }
+        magnitude /= 10 ** bound(drop, 1, digits - 1);
+        // Safe: magnitude is below int224.max.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        base = int224(base < 0 ? -int256(magnitude) : int256(magnitude));
         int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
         exponent =
             scientific ? bound(exponent, int256(type(int32).min) + 1, type(int32).max) : bound(exponent, -cap, cap);
-        vm.assume(base != 0);
         assertGe(maxShift(base, exponent), 1, "room to shift");
         checkCanonicalAcrossRepresentations(base, exponent, shift, scientific);
     }
