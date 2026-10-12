@@ -5,7 +5,8 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {
     LibDecimalFloatImplementation,
-    LOG10_RATIO_Z_MAX
+    LOG10_RATIO_Z_MAX,
+    LOG10_SKIP_BELOW
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibExactFloat, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
@@ -112,7 +113,15 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     /// The 1.001 edges log10Unrounded hands over.
     function testLog10RatioTableEdges() external pure {
         checkBothModes(1001e72, 1e75, 4340774793186406689213877779888660200037751774867729013649473955595637, -73);
-        checkBothModes(9999e72, 1e76, -4343161980751038455604402380722667375072594570258433791106376134065183, -74);
+        checkBothModes(
+            // Positive constant.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256(LOG10_SKIP_BELOW),
+            1e76,
+            -4340774793186406689213877779888660200037751774867729013649473955595637,
+            -73
+        );
+        checkBothModes(1001e73, 1e76, 4340774793186406689213877779888660200037751774867729013649473955595637, -73);
     }
 
     /// A difference of one unit keeps 48 digits only when `relative`; at the
