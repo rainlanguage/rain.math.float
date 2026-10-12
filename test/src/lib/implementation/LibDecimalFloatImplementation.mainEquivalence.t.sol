@@ -538,13 +538,20 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         // #368: a positive 2^255 quotient below the floor, by each scale,
         // down to the last digit it keeps.
         for (int256 u = 1; u <= 76; u++) {
-            assertDiffers(
-                abi.encodeCall(this.mainDiv, (min, min + 76, -1e76, u)),
-                abi.encodeCall(this.prDiv, (min, min + 76, -1e76, u))
-            );
-            checkDiv(min, min + 76, -1e76, u);
-            checkDiv(min, min + 75, -1e75, u);
+            this.checkDivMinByMinusScaleBelowFloor(u);
         }
+    }
+
+    /// One shed of the #368 loop, in its own call frame so memory does not
+    /// accumulate across the 76 sheds.
+    function checkDivMinByMinusScaleBelowFloor(int256 u) external view {
+        int256 min = type(int256).min;
+        assertDiffers(
+            abi.encodeCall(this.mainDiv, (min, min + 76, -1e76, u)),
+            abi.encodeCall(this.prDiv, (min, min + 76, -1e76, u))
+        );
+        checkDiv(min, min + 76, -1e76, u);
+        checkDiv(min, min + 75, -1e75, u);
     }
 
     function testMainEquivalenceAddFloorExamples() external view {

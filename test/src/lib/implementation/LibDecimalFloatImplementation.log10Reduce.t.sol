@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation, POW_FIXED_ONE} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Log10ReduceOutOfRange} from "src/error/ErrDecimalFloat.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationLog10ReduceTest is Test {
     /// 1e75 10^(2^-i) rounded up, for i in [1, 16], from `bc -l` at scale 140.
@@ -112,6 +113,79 @@ contract LibDecimalFloatImplementationLog10ReduceTest is Test {
             assertEq(seed, POW_FIXED_ONE >> i, "seed");
             assertEq(reduced, 1e75 + cases[c][2], "reduced");
         }
+    }
+
+    /// 2^256 / 10^(2^-i) rounded to nearest, for i in [1, 4], from `bc -l`
+    /// at scale 200.
+    function reciprocals() internal pure returns (uint256[4] memory) {
+        return [
+            uint256(36616673701938843778068833497358723556965087776446405157389940026215161181517),
+            65114676908271546481783089451486774924122586772716488419433647202158216225712,
+            86831817205570396472488487376619414734776470364260362375271208847034186727869,
+            100271818206840824917852211318445810475964718432762174250931870037200512150264
+        ];
+    }
+
+    /// A step's quotient is floor(x K / 2^256). Each example takes step i alone
+    /// and sits where a reciprocal one off or a dropped borrow moves the floor:
+    /// x K mod 2^256 is below x, at least 2^256 - x, or at least
+    /// 2^256 - 1 - floor(x K / 2^256). Expected values from `bc` at scale 0.
+    function testLog10ReduceOneStepExamples() external pure {
+        uint256[2][9] memory cases = [
+            [
+                uint256(3162277660168379331998893544432718533719555139325216826857504852792594438693),
+                1000000000000000000000000000000000000000000000000000000000000000000000000017
+            ],
+            [
+                uint256(3162277660168379331998893544432718533719555139325216826857504852792594438655),
+                1000000000000000000000000000000000000000000000000000000000000000000000000004
+            ],
+            [
+                uint256(3162277660168379331998893544432718533719555139325216826857504852792594438674),
+                1000000000000000000000000000000000000000000000000000000000000000000000000010
+            ],
+            [
+                uint256(1778279410038922801225421195192684844735790526402255358011830722776301881680),
+                1000000000000000000000000000000000000000000000000000000000000000000000000079
+            ],
+            [
+                uint256(1778279410038922801225421195192684844735790526402255358011830722776301881776),
+                1000000000000000000000000000000000000000000000000000000000000000000000000132
+            ],
+            [
+                uint256(1333521432163324025675931715295331092415667964764370993329549987162758944079),
+                1000000000000000000000000000000000000000000000000000000000000000000000000674
+            ],
+            [
+                uint256(1333521432163324025675931715295331092415667964764370993329549987162758944187),
+                1000000000000000000000000000000000000000000000000000000000000000000000000754
+            ],
+            [
+                uint256(1154781984689458179666482887295508281566948041479611129977426848717929207017),
+                1000000000000000000000000000000000000000000000000000000000000000000000000032
+            ],
+            [
+                uint256(1154781984689458179666482887295508281566948041479611129977426848717929207032),
+                1000000000000000000000000000000000000000000000000000000000000000000000000044
+            ]
+        ];
+        uint256[9] memory steps = [uint256(1), 1, 1, 2, 2, 3, 3, 4, 4];
+        for (uint256 j = 0; j < cases.length; j++) {
+            (uint256 reduced, uint256 seed) = LibDecimalFloatImplementation.log10Reduce(cases[j][0]);
+            assertEq(seed, POW_FIXED_ONE >> steps[j], "seed");
+            assertEq(reduced, cases[j][1], "reduced");
+        }
+    }
+
+    /// Within 1e69 above 1e75 10^(2^-i), i in [1, 4], only step i is taken,
+    /// as the quotient stays below 1e75 10^(2^-16), and x reduces to
+    /// floor(x K / 2^256) by the schoolbook 512 bit product.
+    function testLog10ReduceOneStep(uint256 i, uint256 d) external pure {
+        i = bound(i, 0, 3);
+        uint256 x = thresholds()[i] + bound(d, 0, 1e69);
+        (uint256 reduced, uint256 seed) = LibDecimalFloatImplementation.log10Reduce(x);
+        assertEq(seed, POW_FIXED_ONE >> (i + 1), "seed");
+        assertEq(reduced, LibExactFloat.mul(x, reciprocals()[i]).hi, "reduced");
     }
 
     /// #422: log10Reduce(5e76) broke its postcondition. Either side of
