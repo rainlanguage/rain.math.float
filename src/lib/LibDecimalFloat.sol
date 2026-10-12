@@ -706,27 +706,15 @@ library LibDecimalFloat {
         }
     }
 
-    /// https://speleotrove.com/decimal/daops.html#refmult
-    /// > multiply takes two operands. If either operand is a special value then
-    /// > the general rules apply.
-    /// >
-    /// > Otherwise, the operands are multiplied together
-    /// > (‘long multiplication’), resulting in a number which may be as long as
-    /// > the sum of the lengths of the two operands, as follows:
-    /// >
-    /// > - The coefficient of the result, before rounding, is computed by
-    /// >   multiplying together the coefficients of the operands.
-    /// > - The exponent of the result, before rounding, is the sum of the
-    /// >   exponents of the two operands.
-    /// > - The sign of the result is the exclusive or of the signs of the
-    /// >   operands.
-    /// >
-    /// > The result is then rounded to precision digits if necessary, counting
-    /// > from the most significant digit of the result.
-    /// @param a The Float struct containing the signed coefficient and
-    /// exponent of the first floating point number.
-    /// @param b The Float struct containing the signed coefficient and
-    /// exponent of the second floating point number.
+    /// Multiplies `a` by `b`. The result is the exact product rounded once
+    /// towards zero: the Float closest to it that does not exceed its
+    /// magnitude, as every arithmetic result packs. A product past every Float
+    /// reverts `ExponentOverflow`, and a non-zero one below every non-zero
+    /// Float `ExponentUnderflow`. Unlike `div`, both errors report the parts
+    /// handed to packing: the exact product truncated towards zero to fit
+    /// int256, at the exponent sum plus the digits dropped.
+    /// @param a The first factor.
+    /// @param b The second factor.
     /// @return The product of the two floats.
     function mul(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();

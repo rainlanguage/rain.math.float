@@ -341,9 +341,9 @@ library LibDecimalFloatImplementation {
                 } else if (exponent < exponentA) {
                     return mulExponentNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
                 }
-                // The lift below adds at most 77 and
-                // `unabsUnsignedMulOrDivLossy` at most 1.
-                if (exponent > type(int256).max - 78) {
+                // The lift below and `unabsUnsignedMulOrDivLossy` add at most
+                // 77 together, as `mulExponentNearCeiling` argues.
+                if (exponent > type(int256).max - 77) {
                     return mulExponentNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
                 }
             }
@@ -446,9 +446,18 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// `mul` for operands whose exponent sum is above `type(int256).max - 78`,
+    /// `mul` for operands whose exponent sum is above `type(int256).max - 77`,
     /// where the normalisation can lift the exponent past `type(int256).max`.
     /// Reverts `ExponentOverflow` when the result exponent does not fit.
+    ///
+    /// The lift is n, the digit count of the high word prod1 of
+    /// P = |a| |b|, plus the 1 `unabsUnsignedMulOrDivLossy` adds for a
+    /// quotient q = floor(P / 10^n) above int256. It is at most 77:
+    /// - |a|, |b| <= 2^255, so P <= 2^510, prod1 <= 2^254 < 1e77 and n <= 77.
+    /// - prod1 = 0: n = 0, so the lift is at most 1.
+    /// - n in [1, 76]: the lift is at most n + 1 <= 77.
+    /// - n = 77: q <= floor(2^510 / 1e77) < 3.36e76 < 2^255 - 1, so q fits
+    ///   int256 at either sign and the lift is 77.
     function mulExponentNearCeiling(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -577,9 +586,11 @@ library LibDecimalFloatImplementation {
             // The result exponent is exponentA - adjustExponent - exponentB.
             // Lowering exponentA and raising exponentB move it alike, so
             // what exponentA cannot take above int256.min goes to exponentB.
-            // If exponentB cannot take the rest below int256.max, the
-            // exponent is below int256.min - int256.max and the quotient,
-            // under 1e77, rounds to zero.
+            // If exponentB cannot take the rest below int256.max, the return
+            // is the `underflowExponentBy > 76` zero below: exponentA is
+            // int256.min, so headroom is 0 and underflowExponentBy would be
+            // exponentB + adjustExponent > int256.max. Returning here skips
+            // the mulDiv, and adding instead would wrap exponentB.
             unchecked {
                 if (exponentA >= type(int256).min + adjustExponent) {
                     exponentA -= adjustExponent;
@@ -687,19 +698,26 @@ library LibDecimalFloatImplementation {
 
     /// mulDiv as seen in Open Zeppelin, PRB Math, Solady, and other libraries.
     /// Credit to Remco Bloemen under MIT license: https://2π.com/21/muldiv
+    ///
+    /// Returns `floor(x y / denominator)`. Reverts `MulDivOverflow` with the
+    /// inputs where that is 2^256 or more, and for every `x` and `y` where
+    /// `denominator` is zero.
     function mulDiv(uint256 x, uint256 y, uint256 denominator) internal pure returns (uint256 result) {
         (uint256 prod1, uint256 prod0) = mul512(x, y);
 
-        // Handle non-overflow cases, 256 by 256 division.
-        if (prod1 == 0) {
-            unchecked {
-                return prod0 / denominator;
-            }
-        }
-
-        // Make sure the result is less than 2^256. Also prevents denominator == 0.
+        // x y = prod1 2^256 + prod0 with prod0 < 2^256, so the quotient is at
+        // least 2^256 iff prod1 >= denominator, and a zero denominator meets
+        // that at any prod1.
         if (prod1 >= denominator) {
             revert MulDivOverflow(x, y, denominator);
+        }
+
+        // Handle non-overflow cases, 256 by 256 division. denominator > 0.
+        if (prod1 == 0) {
+            assembly ("memory-safe") {
+                result := div(prod0, denominator)
+            }
+            return result;
         }
 
         ////////////////////////////////////////////////////////////////////////////

@@ -26,6 +26,21 @@ contract LibDecimalFloatMulTest is Test {
         return LibDecimalFloat.mul(floatA, floatB);
     }
 
+    /// int224.max × 8 is 107839786668602559178668060348078522694548577690162289924414440996856
+    /// (`bc`), 69 digits. One digit sheds towards zero, to ...99685e1, where
+    /// rounding to nearest would give ...99686e1.
+    function testMulRoundsTowardsZero() external pure {
+        int256 shed = 10783978666860255917866806034807852269454857769016228992441444099685;
+        Float a = LibDecimalFloat.packLossless(type(int224).max, 0);
+        Float eight = LibDecimalFloat.packLossless(8, 0);
+        (int256 c, int256 e) = a.mul(eight).unpack();
+        assertEq(c, shed);
+        assertEq(e, 1);
+        (c, e) = LibDecimalFloat.packLossless(type(int224).min + 1, 0).mul(eight).unpack();
+        assertEq(c, -shed);
+        assertEq(e, 1);
+    }
+
     /// `mul` of two operands whose exponents sum below `int32.min` reverts
     /// instead of silently producing `FLOAT_ZERO`. Without this, downstream
     /// code that branches on `result == 0` would mistake a tiny magnitude
