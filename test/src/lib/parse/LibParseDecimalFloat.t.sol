@@ -889,6 +889,29 @@ contract LibParseDecimalFloatTest is Test {
         }
     }
 
+    /// An integer part and a fraction that each fit int256 but whose combined
+    /// digits do not: the fraction pushes the sum past int256 of its sign, or
+    /// the integer rescaled by 10^77 passes uint256's int256 range.
+    function testParseRuleFractionRescaleEdges() external view {
+        string memory maxTenth = Strings.toStringSigned(type(int256).max / 10);
+        string memory maxHundredth = Strings.toStringSigned(type(int256).max / 100);
+        string memory minTenth = Strings.toStringSigned(type(int256).min / 10);
+        string[9] memory literals = [
+            string.concat(maxTenth, ".9"),
+            string.concat(maxTenth, ".7"),
+            string.concat(maxHundredth, ".99"),
+            string.concat(minTenth, ".9"),
+            string.concat(minTenth, ".8"),
+            string.concat("1.", zeros(75), "1"),
+            string.concat("1.", zeros(76), "1"),
+            string.concat("-1.", zeros(76), "1"),
+            string.concat("5.", zeros(76), "3")
+        ];
+        for (uint256 i = 0; i < literals.length; i++) {
+            checkAgainstRule(literals[i]);
+        }
+    }
+
     function digitRunString(uint256 n) internal pure returns (string memory s) {
         s = new string(n);
         for (uint256 i = 0; i < n; i++) {
