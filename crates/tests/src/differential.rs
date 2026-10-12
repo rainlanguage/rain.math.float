@@ -11,9 +11,9 @@ use crate::reference::{Dec, RefError};
 use crate::transcendental::{self, revert_data};
 use alloy::primitives::{B256, U256};
 use core::cmp::Ordering;
+use dashu_base::Abs;
 use dashu_float::round::mode::{Away, HalfAway, Zero};
 use dashu_float::{Context, FBig};
-use dashu_base::Abs;
 use dashu_int::IBig;
 use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
@@ -55,7 +55,11 @@ fn largest_float(negative: bool) -> D {
 /// The largest int224 coefficient magnitude of a sign: 2^223 - 1 positive,
 /// 2^223 negative.
 fn cap(negative: bool) -> IBig {
-    if negative { IBig::ONE << 223 } else { int224_max() }
+    if negative {
+        IBig::ONE << 223
+    } else {
+        int224_max()
+    }
 }
 
 pub(crate) fn same(a: &D, b: &D) -> bool {
@@ -195,19 +199,34 @@ fn bin(a: &Dec, b: &Dec) -> (B256, B256) {
 fn check_add(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let (fa, fb) = bin(a, b);
     let case = format!("add({}, {})", show(a), show(b));
-    check(&case, sol_float(T::addCall { a: fa, b: fb }), want_add(a, b), None)
+    check(
+        &case,
+        sol_float(T::addCall { a: fa, b: fb }),
+        want_add(a, b),
+        None,
+    )
 }
 
 fn check_sub(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let (fa, fb) = bin(a, b);
     let case = format!("sub({}, {})", show(a), show(b));
-    check(&case, sol_float(T::subCall { a: fa, b: fb }), want_sub(a, b), None)
+    check(
+        &case,
+        sol_float(T::subCall { a: fa, b: fb }),
+        want_sub(a, b),
+        None,
+    )
 }
 
 fn check_mul(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let (fa, fb) = bin(a, b);
     let case = format!("mul({}, {})", show(a), show(b));
-    check(&case, sol_float(T::mulCall { a: fa, b: fb }), want_mul(a, b), None)
+    check(
+        &case,
+        sol_float(T::mulCall { a: fa, b: fb }),
+        want_mul(a, b),
+        None,
+    )
 }
 
 /// Every range error of `div` reports `a`, unpacked (NatSpec).
@@ -242,11 +261,27 @@ fn check_compare(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
         order != Ordering::Greater,
         order != Ordering::Less,
     ];
-    prop_assert_eq!(got, want, "{}: eq lt gt lte gte, dashu order {:?}", case, order);
+    prop_assert_eq!(
+        got,
+        want,
+        "{}: eq lt gt lte gte, dashu order {:?}",
+        case,
+        order
+    );
     let min = evm::concrete(T::minCall { a: fa, b: fb }).unwrap();
     let max = evm::concrete(T::maxCall { a: fa, b: fb }).unwrap();
-    prop_assert_eq!(min, if order == Ordering::Less { fa } else { fb }, "{}: min", case);
-    prop_assert_eq!(max, if order == Ordering::Greater { fa } else { fb }, "{}: max", case);
+    prop_assert_eq!(
+        min,
+        if order == Ordering::Less { fa } else { fb },
+        "{}: min",
+        case
+    );
+    prop_assert_eq!(
+        max,
+        if order == Ordering::Greater { fa } else { fb },
+        "{}: max",
+        case
+    );
     Ok(())
 }
 
@@ -258,11 +293,26 @@ fn check_unary(a: &Dec) -> Result<(), TestCaseError> {
     let x = d(a);
     let s = show(a);
     let negative = x < D::ZERO;
-    check(&format!("minus({s})"), sol_float(T::minusCall { a: fa }), packed(-x.clone()), None)?;
+    check(
+        &format!("minus({s})"),
+        sol_float(T::minusCall { a: fa }),
+        packed(-x.clone()),
+        None,
+    )?;
     let abs = if negative { -x.clone() } else { x.clone() };
-    check(&format!("abs({s})"), sol_float(T::absCall { a: fa }), packed(abs), None)?;
+    check(
+        &format!("abs({s})"),
+        sol_float(T::absCall { a: fa }),
+        packed(abs),
+        None,
+    )?;
     let trunc = x.trunc();
-    check(&format!("integer({s})"), sol_float(T::integerCall { a: fa }), packed(trunc.clone()), None)?;
+    check(
+        &format!("integer({s})"),
+        sol_float(T::integerCall { a: fa }),
+        packed(trunc.clone()),
+        None,
+    )?;
     // dashu aligns an unlimited subtraction digit by digit, so a zero
     // integer part, whose exponent is 0, is not subtracted from a value at
     // 10^-2^31.
@@ -271,9 +321,24 @@ fn check_unary(a: &Dec) -> Result<(), TestCaseError> {
     } else {
         rounded(Context::<Zero>::new(0).sub(x.repr(), trunc.repr()).unwrap())
     };
-    check(&format!("frac({s})"), sol_float(T::fracCall { a: fa }), packed(frac), None)?;
-    check(&format!("floor({s})"), sol_float(T::floorCall { a: fa }), packed(x.floor()), None)?;
-    check(&format!("ceil({s})"), sol_float(T::ceilCall { a: fa }), packed(x.ceil()), None)?;
+    check(
+        &format!("frac({s})"),
+        sol_float(T::fracCall { a: fa }),
+        packed(frac),
+        None,
+    )?;
+    check(
+        &format!("floor({s})"),
+        sol_float(T::floorCall { a: fa }),
+        packed(x.floor()),
+        None,
+    )?;
+    check(
+        &format!("ceil({s})"),
+        sol_float(T::ceilCall { a: fa }),
+        packed(x.ceil()),
+        None,
+    )?;
     prop_assert_eq!(
         sol_bool(T::isZeroCall { a: fa }),
         x == D::ZERO,
@@ -306,7 +371,11 @@ fn check_from_fixed(value: U256, decimals: u8) -> Result<(), TestCaseError> {
         }
         (s, w) => prop_assert!(false, "{case}: solidity {s:?}, dashu {w:?}"),
     }
-    let want = if exact { want } else { Err(RefError::LossyConversionToFloat) };
+    let want = if exact {
+        want
+    } else {
+        Err(RefError::LossyConversionToFloat)
+    };
     check(
         &format!("{case} lossless"),
         sol_float(T::fromFixedDecimalLosslessCall { value, decimals }),
@@ -324,7 +393,10 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
     let float = a.to_bytes();
     let x = d(a);
     // Exact: only the exponent moves.
-    let scaled = D::from_parts(x.repr().significand().clone(), x.repr().exponent() + decimals as isize);
+    let scaled = D::from_parts(
+        x.repr().significand().clone(),
+        x.repr().exponent() + decimals as isize,
+    );
     let bound = D::from_parts(IBig::ONE << 256, 0);
     let want: Result<(U256, bool), RefError> = if x < D::ZERO {
         Err(RefError::NegativeFixedDecimalConversion)
@@ -349,7 +421,10 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
         Ok((_, false)) => Err(RefError::LossyConversionFromFloat),
         Err(e) => Err(e),
     };
-    match (evm::concrete(T::toFixedDecimalLosslessCall { float, decimals }), want) {
+    match (
+        evm::concrete(T::toFixedDecimalLosslessCall { float, decimals }),
+        want,
+    ) {
         (Ok(s), Ok(w)) => prop_assert_eq!(s, w, "{} lossless", case),
         (Err(s), Err(w)) => prop_assert!(
             error_matches(&Fail::Revert(s.clone()), w),
@@ -436,7 +511,10 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
         _ if *e > IBig::ZERO => Err(RefError::ExponentOverflow),
         _ => Ok((D::ZERO, false)),
     };
-    let lossy = evm::harness(H::packLossyCall { signedCoefficient: sc, exponent: se });
+    let lossy = evm::harness(H::packLossyCall {
+        signedCoefficient: sc,
+        exponent: se,
+    });
     match (lossy, &want) {
         (Ok(r), Ok((w, l))) => {
             let s = d(&Dec::from_bytes(r._0));
@@ -454,7 +532,10 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
         Ok((_, false)) => Err(RefError::LossyConversionToFloat),
         Err(e) => Err(e),
     };
-    let lossless = evm::harness(H::packLosslessCall { signedCoefficient: sc, exponent: se });
+    let lossless = evm::harness(H::packLosslessCall {
+        signedCoefficient: sc,
+        exponent: se,
+    });
     match (lossless, want) {
         (Ok(r), Ok(w)) => {
             let s = d(&Dec::from_bytes(r));
@@ -514,7 +595,11 @@ fn literal() -> BoxedStrategy<String> {
                 v
             }),
         ]
-        .prop_map(|v| v.into_iter().map(|d| char::from(b'0' + d)).collect::<String>())
+        .prop_map(|v| {
+            v.into_iter()
+                .map(|d| char::from(b'0' + d))
+                .collect::<String>()
+        })
     };
     let exp = prop_oneof![
         2 => -100i64..=100,
@@ -560,7 +645,9 @@ fn literal() -> BoxedStrategy<String> {
 /// (#433, `parseDecimalFloat` NatSpec). dashu reads the literal.
 fn check_parse(s: &str) -> Result<(), TestCaseError> {
     let case = format!("parse({s:?})");
-    let v: D = s.parse().unwrap_or_else(|e| panic!("dashu parse {s:?}: {e:?}"));
+    let v: D = s
+        .parse()
+        .unwrap_or_else(|e| panic!("dashu parse {s:?}: {e:?}"));
     let want = match toward_zero(&v) {
         Ok(w) if same(&w, &v) => Ok(v.clone()),
         Err(Range::Over) => Err(RefError::ExponentOverflow),
@@ -610,7 +697,10 @@ fn scientific_shape(s: &str) -> bool {
         Some((m, e)) => (m, Some(e)),
         None => (s, None),
     };
-    let lead_ok = mantissa.as_bytes().first().is_some_and(|b| (b'1'..=b'9').contains(b));
+    let lead_ok = mantissa
+        .as_bytes()
+        .first()
+        .is_some_and(|b| (b'1'..=b'9').contains(b));
     let rest = &mantissa[1.min(mantissa.len())..];
     let rest_ok = rest.is_empty()
         || rest.strip_prefix('.').is_some_and(|f| {
@@ -631,7 +721,10 @@ fn check_format(a: &Dec) -> Result<(), TestCaseError> {
     let x = d(a);
     for scientific in [false, true] {
         let case = format!("format({}, {scientific})", show(a));
-        let got = evm::concrete(T::formatCall { a: a.to_bytes(), scientific });
+        let got = evm::concrete(T::formatCall {
+            a: a.to_bytes(),
+            scientific,
+        });
         if x == D::ZERO {
             prop_assert_eq!(got.ok(), Some("0".to_string()), "{}", case);
             continue;
@@ -639,7 +732,8 @@ fn check_format(a: &Dec) -> Result<(), TestCaseError> {
         if !scientific && a.e.abs() > 1000 {
             let want = RefError::UnformatableExponent;
             prop_assert!(
-                got.as_ref().is_err_and(|out| error_matches(&Fail::Revert(out.clone()), want)),
+                got.as_ref()
+                    .is_err_and(|out| error_matches(&Fail::Revert(out.clone()), want)),
                 "{case}: solidity {got:?}, want {want:?}"
             );
             continue;
@@ -648,9 +742,15 @@ fn check_format(a: &Dec) -> Result<(), TestCaseError> {
             Ok(s) => s,
             Err(out) => return Err(TestCaseError::fail(format!("{case}: reverted {out:?}"))),
         };
-        let shaped = if scientific { scientific_shape(&s) } else { plain_shape(&s) };
+        let shaped = if scientific {
+            scientific_shape(&s)
+        } else {
+            plain_shape(&s)
+        };
         prop_assert!(shaped, "{case}: shape of {s:?}");
-        let back: D = s.parse().unwrap_or_else(|e| panic!("dashu parse {s:?}: {e:?}"));
+        let back: D = s
+            .parse()
+            .unwrap_or_else(|e| panic!("dashu parse {s:?}: {e:?}"));
         prop_assert!(same(&back, &x), "{case}: {s:?} reads as {back}, not {x}");
     }
     Ok(())
@@ -680,7 +780,10 @@ fn ulp41(x: &D, k: u64, j: isize) -> D {
 /// |x - y|, rounded away from zero at 200 digits: never under the exact
 /// distance, so a check against it is never looser than the bound.
 fn distance(x: &D, y: &D) -> D {
-    let s = Context::<Away>::new(200).sub(x.repr(), y.repr()).unwrap().value();
+    let s = Context::<Away>::new(200)
+        .sub(x.repr(), y.repr())
+        .unwrap()
+        .value();
     magnitude(&s.with_rounding::<Zero>())
 }
 
@@ -722,7 +825,11 @@ fn log10_of(x: &D, digits: usize) -> D {
         .value()
         .with_rounding::<Zero>();
     let e = D::from_parts(IBig::from(r.exponent()), 0);
-    rounded(Context::<Zero>::new(digits + 20).add(l.repr(), e.repr()).unwrap())
+    rounded(
+        Context::<Zero>::new(digits + 20)
+            .add(l.repr(), e.repr())
+            .unwrap(),
+    )
 }
 
 /// 10^y for |y| at most 2^33: 10^f at 100 digits, f = y - floor(y) at 120,
@@ -759,19 +866,28 @@ struct Band<'a, F: Fn(&D, &D) -> D> {
     input: &'a Dec,
 }
 
-fn check_band<F: Fn(&D, &D) -> D>(case: &str, sol: Sol<Dec>, band: Band<F>) -> Result<(), TestCaseError> {
+fn check_band<F: Fn(&D, &D) -> D>(
+    case: &str,
+    sol: Sol<Dec>,
+    band: Band<F>,
+) -> Result<(), TestCaseError> {
     match sol {
         Ok(r) => {
             let r = d(&r);
             let Some(t) = band.t else {
-                return Err(TestCaseError::fail(format!("{case}: solidity {r}, dashu past every Float")));
+                return Err(TestCaseError::fail(format!(
+                    "{case}: solidity {r}, dashu past every Float"
+                )));
             };
             if band.exact {
                 prop_assert!(same(&r, &t), "{case}: solidity {r}, exact {t}");
             } else {
                 let b = (band.bound)(&r, &t);
                 let gap = distance(&r, &t);
-                prop_assert!(gap <= b, "{case}: solidity {r}, dashu {t}, |r - t| {gap} past {b}");
+                prop_assert!(
+                    gap <= b,
+                    "{case}: solidity {r}, dashu {t}, |r - t| {gap} past {b}"
+                );
             }
             // Rounded at 41 significant digits, but for a product truncated to
             // int224 below the largest Float.
@@ -781,9 +897,12 @@ fn check_band<F: Fn(&D, &D) -> D>(case: &str, sol: Sol<Dec>, band: Band<F>) -> R
             }
         }
         Err(f) => {
-            let hit = [(band.over, RefError::ExponentOverflow), (band.under, RefError::ExponentUnderflow)]
-                .into_iter()
-                .find(|(ok, e)| *ok && error_matches(&f, *e));
+            let hit = [
+                (band.over, RefError::ExponentOverflow),
+                (band.under, RefError::ExponentUnderflow),
+            ]
+            .into_iter()
+            .find(|(ok, e)| *ok && error_matches(&f, *e));
             let Some((_, e)) = hit else {
                 return Err(TestCaseError::fail(format!(
                     "{case}: solidity {f:?}, dashu {:?} (overflow allowed {}, underflow allowed {})",
@@ -811,7 +930,11 @@ fn reach(t: &D, rel: &D, negative: bool) -> (D, bool, bool) {
         tb = bound_sum(&tb, &smallest());
     }
     let hi = rounded(Context::<Zero>::new(200).add(t.repr(), tb.repr()).unwrap());
-    let lo = Context::<Away>::new(200).sub(t.repr(), tb.repr()).unwrap().value().with_rounding::<Zero>();
+    let lo = Context::<Away>::new(200)
+        .sub(t.repr(), tb.repr())
+        .unwrap()
+        .value()
+        .with_rounding::<Zero>();
     (tb, hi > largest_float(negative), lo < smallest())
 }
 
@@ -823,7 +946,10 @@ fn reach(t: &D, rel: &D, negative: bool) -> (D, bool, bool) {
 /// relative from every tie, past the 1e-99 the truncation moves it.
 fn want_sqrt(x: &D) -> D {
     let s = Context::<Zero>::new(100).sqrt(x.repr()).unwrap().value();
-    s.with_rounding::<HalfAway>().with_precision(41).value().with_rounding::<Zero>()
+    s.with_rounding::<HalfAway>()
+        .with_precision(41)
+        .value()
+        .with_rounding::<Zero>()
 }
 
 /// sqrt is correctly rounded to nearest at 41 digits (NatSpec). Negative
@@ -859,7 +985,11 @@ fn check_log10(a: &Dec) -> Result<(), TestCaseError> {
         bound: |r: &D, t: &D| {
             let m = max_of(magnitude(r), magnitude(t));
             let abs = D::from_parts(IBig::from(10037), -54);
-            if m == D::ZERO { abs } else { bound_sum(&ulp41(&m, 5, 1), &abs) }
+            if m == D::ZERO {
+                abs
+            } else {
+                bound_sum(&ulp41(&m, 5, 1), &abs)
+            }
         },
         over: false,
         under: false,
@@ -879,11 +1009,22 @@ fn check_pow10(a: &Dec) -> Result<(), TestCaseError> {
     let sol = sol_float(T::pow10Call { a: a.to_bytes() });
     let value = |r: &D, t: &D| {
         let b = ulp41(&max_of(magnitude(r), t.clone()), 5000000112, 10);
-        if sheds(t) { bound_sum(&b, &smallest()) } else { b }
+        if sheds(t) {
+            bound_sum(&b, &smallest())
+        } else {
+            b
+        }
     };
     if magnitude(&x) > huge() {
         let rising = x > D::ZERO;
-        let band = Band { t: None, exact: false, bound: value, over: rising, under: !rising, input: a };
+        let band = Band {
+            t: None,
+            exact: false,
+            bound: value,
+            over: rising,
+            under: !rising,
+            input: a,
+        };
         return check_band(&case, sol, band);
     }
     let t = ten_to(&x);
@@ -894,7 +1035,18 @@ fn check_pow10(a: &Dec) -> Result<(), TestCaseError> {
         let (_, over, under) = reach(&t, &D::from_parts(IBig::from(500000012), -49), false);
         (over, under)
     };
-    check_band(&case, sol, Band { t: Some(t), exact, bound: value, over, under, input: a })
+    check_band(
+        &case,
+        sol,
+        Band {
+            t: Some(t),
+            exact,
+            bound: value,
+            over,
+            under,
+            input: a,
+        },
+    )
 }
 
 /// The true a^b when it has at most 41 significant digits, for b = p/q in
@@ -909,15 +1061,25 @@ fn exact_power(a: &D, b: &D, t: &D) -> Option<D> {
         return None;
     }
     let (p, q) = if r.exponent() >= 0 {
-        (r.significand() * IBig::from(10).pow(r.exponent() as usize), IBig::ONE)
+        (
+            r.significand() * IBig::from(10).pow(r.exponent() as usize),
+            IBig::ONE,
+        )
     } else {
         let den = IBig::from(10).pow((-r.exponent()) as usize);
         let g: IBig = dashu_base::Gcd::gcd(r.significand(), &den).into();
         (r.significand() / &g, den / g)
     };
     let q = usize::try_from(q).ok().filter(|q| *q <= 1000)?;
-    let p = isize::try_from(p).ok().filter(|p| p.unsigned_abs() <= 2000)?;
-    let g = t.clone().with_rounding::<HalfAway>().with_precision(41).value().with_rounding::<Zero>();
+    let p = isize::try_from(p)
+        .ok()
+        .filter(|p| p.unsigned_abs() <= 2000)?;
+    let g = t
+        .clone()
+        .with_rounding::<HalfAway>()
+        .with_precision(41)
+        .value()
+        .with_rounding::<Zero>();
     let pow = |x: &D, k: usize| {
         let r = x.repr();
         D::from_parts(r.significand().pow(k), r.exponent() * k as isize)
@@ -927,7 +1089,10 @@ fn exact_power(a: &D, b: &D, t: &D) -> Option<D> {
     let holds = if p > 0 {
         same(&gq, &ap)
     } else {
-        same(&rounded(Context::<Zero>::new(0).mul(gq.repr(), ap.repr()).unwrap()), &D::ONE)
+        same(
+            &rounded(Context::<Zero>::new(0).mul(gq.repr(), ap.repr()).unwrap()),
+            &D::ONE,
+        )
     };
     holds.then_some(g)
 }
@@ -957,7 +1122,10 @@ fn distance_from_one(ax: &D) -> D {
 fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let (x, y) = (d(a), d(b));
     let case = format!("pow({}, {})", show(a), show(b));
-    let sol = sol_float(T::powCall { a: a.to_bytes(), b: b.to_bytes() });
+    let sol = sol_float(T::powCall {
+        a: a.to_bytes(),
+        b: b.to_bytes(),
+    });
     if y == D::ZERO {
         return check(&case, sol, Ok(D::ONE), None);
     }
@@ -968,7 +1136,10 @@ fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
         let want = RefError::ZeroNegativePower;
         match &sol {
             Err(f @ Fail::Revert(out)) => {
-                prop_assert!(error_matches(f, want), "{case}: solidity {f:?}, dashu {want:?}");
+                prop_assert!(
+                    error_matches(f, want),
+                    "{case}: solidity {f:?}, dashu {want:?}"
+                );
                 let data = revert_data(want, a, Some(b));
                 prop_assert_eq!(out.as_ref(), data.as_slice(), "{}: revert data", case);
             }
@@ -986,12 +1157,22 @@ fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     if ax == D::ONE {
         return check(&case, sol, Ok(sign(D::ONE)), None);
     }
-    let z = rounded(Context::<Zero>::new(120).mul(y.repr(), log10_of(&ax, 130).repr()).unwrap());
+    let z = rounded(
+        Context::<Zero>::new(120)
+            .mul(y.repr(), log10_of(&ax, 130).repr())
+            .unwrap(),
+    );
     let dd = distance_from_one(&ax);
     let (k1, k2) = if y > D::ZERO {
-        (D::from_parts(IBig::from(17273), -80), D::from_parts(IBig::from(15), -39))
+        (
+            D::from_parts(IBig::from(17273), -80),
+            D::from_parts(IBig::from(15), -39),
+        )
     } else {
-        (D::from_parts(IBig::from(11728), -79), D::from_parts(IBig::from(34786), -42))
+        (
+            D::from_parts(IBig::from(11728), -79),
+            D::from_parts(IBig::from(34786), -42),
+        )
     };
     let k2d = bound_mul(&k2, &dd);
     let n = magnitude(&y).trunc();
@@ -1005,20 +1186,52 @@ fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
             // The band reaches from zero past every Float.
             return match sol {
                 Ok(_) => Ok(()),
-                Err(f) => check_band(&case, Err(f), Band { t: None, exact: false, bound: |_: &D, _: &D| D::ZERO, over: true, under: false, input: a }),
+                Err(f) => check_band(
+                    &case,
+                    Err(f),
+                    Band {
+                        t: None,
+                        exact: false,
+                        bound: |_: &D, _: &D| D::ZERO,
+                        over: true,
+                        under: false,
+                        input: a,
+                    },
+                ),
             };
         }
-        let band = Band { t: None, exact: false, bound: |_: &D, _: &D| D::ZERO, over: rising, under: !rising, input: a };
+        let band = Band {
+            t: None,
+            exact: false,
+            bound: |_: &D, _: &D| D::ZERO,
+            over: rising,
+            under: !rising,
+            input: a,
+        };
         return check_band(&case, sol, band);
     }
     let t = ten_to(&z);
     if let Some(e) = exact_power(&ax, &y, &t) {
         let (over, under) = (e > largest_float(negative), e < smallest());
-        let band = Band { t: Some(sign(e)), exact: true, bound: |_: &D, _: &D| D::ZERO, over, under, input: a };
+        let band = Band {
+            t: Some(sign(e)),
+            exact: true,
+            bound: |_: &D, _: &D| D::ZERO,
+            over,
+            under,
+            input: a,
+        };
         return check_band(&case, sol, band);
     }
     let (tb, over, under) = reach(&t, &rel, negative);
-    let band = Band { t: Some(sign(t)), exact: false, bound: move |_: &D, _: &D| tb.clone(), over, under, input: a };
+    let band = Band {
+        t: Some(sign(t)),
+        exact: false,
+        bound: move |_: &D, _: &D| tb.clone(),
+        over,
+        under,
+        input: a,
+    };
     check_band(&case, sol, band)
 }
 
@@ -1119,7 +1332,10 @@ mod oracle {
         let want = D::from_parts(IBig::from(10).pow(67) - IBig::from(2), 33);
         let b = Dec::new(num_bigint::BigInt::from(10).pow(33) + 1, 0);
         assert!(same(&want_sub(&Dec::new(1, 100), &b).unwrap(), &want));
-        assert!(same(&want_sub(&Dec::new(1, 100), &Dec::new(17, 32)).unwrap(), &want));
+        assert!(same(
+            &want_sub(&Dec::new(1, 100), &Dec::new(17, 32)).unwrap(),
+            &want
+        ));
     }
 
     #[test]
@@ -1154,19 +1370,34 @@ mod oracle {
         // 2^223 packs as int224.max at the same exponent, and -2^223 is
         // int224.min (#333).
         let two223 = D::from_parts(IBig::ONE << 223, 5);
-        assert!(same(&toward_zero(&two223).unwrap(), &D::from_parts(int224_max(), 5)));
-        assert!(same(&toward_zero(&-two223.clone()).unwrap(), &-two223.clone()));
+        assert!(same(
+            &toward_zero(&two223).unwrap(),
+            &D::from_parts(int224_max(), 5)
+        ));
+        assert!(same(
+            &toward_zero(&-two223.clone()).unwrap(),
+            &-two223.clone()
+        ));
         let past = D::from_parts(-(IBig::ONE << 223) - IBig::ONE, 5);
         assert!(same(&toward_zero(&past).unwrap(), &-two223.clone()));
         // Overflow starts at (2^223 + 2) 10^int32.max (#433, revertIfPastLargestFloat).
         let edge = (IBig::ONE << 223) + IBig::from(2);
-        assert_eq!(toward_zero(&D::from_parts(edge.clone(), I32_MAX)), Err(Range::Over));
-        assert_eq!(toward_zero(&D::from_parts(-edge.clone(), I32_MAX)), Err(Range::Over));
+        assert_eq!(
+            toward_zero(&D::from_parts(edge.clone(), I32_MAX)),
+            Err(Range::Over)
+        );
+        assert_eq!(
+            toward_zero(&D::from_parts(-edge.clone(), I32_MAX)),
+            Err(Range::Over)
+        );
         let below = D::from_parts(edge.clone() * IBig::from(10) - IBig::ONE, I32_MAX - 1);
         assert!(same(&toward_zero(&below).unwrap(), &largest_float(false)));
         assert!(same(&toward_zero(&-below).unwrap(), &-largest_float(true)));
         // Below 1e-2147483648 nothing non-zero is left.
-        assert_eq!(toward_zero(&D::from_parts(IBig::from(9), I32_MIN - 1)), Err(Range::Under));
+        assert_eq!(
+            toward_zero(&D::from_parts(IBig::from(9), I32_MIN - 1)),
+            Err(Range::Under)
+        );
         let lifted = toward_zero(&D::from_parts(IBig::from(19), I32_MIN - 1)).unwrap();
         assert!(same(&lifted, &D::from_parts(IBig::ONE, I32_MIN)));
     }
@@ -1184,7 +1415,9 @@ mod oracle {
         ] {
             assert!(same(&dec(s), &D::from_parts(IBig::from(c), e)), "{s}");
         }
-        assert!(plain_shape("-0.5") && plain_shape("120") && !plain_shape("1.50") && !plain_shape("01"));
+        assert!(
+            plain_shape("-0.5") && plain_shape("120") && !plain_shape("1.50") && !plain_shape("01")
+        );
         assert!(scientific_shape("-1.5e-7") && scientific_shape("3") && !scientific_shape("1e0"));
         assert!(!scientific_shape("15e1") && !scientific_shape("1.0e2"));
     }
@@ -1196,8 +1429,14 @@ mod oracle {
         // < 3.3e67).
         assert!(same(&w, &D::from_parts(nines(67) / IBig::from(3), -67)));
         let w = want_div(&Dec::new(-2, 0), &Dec::new(3, 0)).unwrap();
-        assert!(same(&w, &-D::from_parts(nines(67) * IBig::from(2) / IBig::from(3), -67)));
-        assert_eq!(want_div(&Dec::new(1, 0), &Dec::zero()), Err(RefError::DivisionByZero));
+        assert!(same(
+            &w,
+            &-D::from_parts(nines(67) * IBig::from(2) / IBig::from(3), -67)
+        ));
+        assert_eq!(
+            want_div(&Dec::new(1, 0), &Dec::zero()),
+            Err(RefError::DivisionByZero)
+        );
     }
 
     /// The transcendental oracle against published constants: sqrt 2, log10 2
@@ -1209,12 +1448,27 @@ mod oracle {
         let below_one = D::from_parts(nines(41), -41);
         assert!(same(&want_sqrt(&below_one), &below_one));
         let root2 = want_sqrt(&dec("2"));
-        assert!(same(&root2, &dec("1.4142135623730950488016887242096980785697")));
+        assert!(same(
+            &root2,
+            &dec("1.4142135623730950488016887242096980785697")
+        ));
         let within = |x: &D, s: &str| distance(x, &dec(s)) < dec("1e-49");
-        assert!(within(&log10_of(&dec("2"), 100), "0.30102999566398119521373889472449302676818988146211"));
-        assert!(within(&log10_of(&dec("2e-5"), 100), "-4.69897000433601880478626110527550697323181011853789"));
-        assert!(within(&ten_to(&dec("0.5")), "3.16227766016837933199889354443271853371955513932521"));
-        assert!(within(&ten_to(&dec("-1.5")), "0.0316227766016837933199889354443271853371955513932521"));
+        assert!(within(
+            &log10_of(&dec("2"), 100),
+            "0.30102999566398119521373889472449302676818988146211"
+        ));
+        assert!(within(
+            &log10_of(&dec("2e-5"), 100),
+            "-4.69897000433601880478626110527550697323181011853789"
+        ));
+        assert!(within(
+            &ten_to(&dec("0.5")),
+            "3.16227766016837933199889354443271853371955513932521"
+        ));
+        assert!(within(
+            &ten_to(&dec("-1.5")),
+            "0.0316227766016837933199889354443271853371955513932521"
+        ));
         assert!(same(&log10_of(&dec("1000"), 100), &dec("3")));
         assert!(same(&ten_to(&dec("-7")), &dec("1e-7")));
     }
@@ -1223,7 +1477,10 @@ mod oracle {
     /// dashu's coefficient with its trailing zeros removed.
     #[test]
     fn coefficients_are_stripped() {
-        assert_eq!(D::from_parts(IBig::from(1000), 4).repr().significand(), &IBig::ONE);
+        assert_eq!(
+            D::from_parts(IBig::from(1000), 4).repr().significand(),
+            &IBig::ONE
+        );
         assert_eq!(D::from_parts(IBig::from(1200), 0).repr().digits(), 2);
     }
 
@@ -1231,15 +1488,27 @@ mod oracle {
     /// exactly a^p.
     #[test]
     fn exact_powers() {
-        let t = |a: &D, b: &D| ten_to(&rounded(Context::<Zero>::new(120).mul(b.repr(), log10_of(a, 130).repr()).unwrap()));
+        let t = |a: &D, b: &D| {
+            ten_to(&rounded(
+                Context::<Zero>::new(120)
+                    .mul(b.repr(), log10_of(a, 130).repr())
+                    .unwrap(),
+            ))
+        };
         let (a, b) = (dec("4"), dec("0.5"));
         assert!(same(&exact_power(&a, &b, &t(&a, &b)).unwrap(), &dec("2")));
-        let (a, b) = (dec("0.008"), dec("-0.3333333333333333333333333333333333333333"));
+        let (a, b) = (
+            dec("0.008"),
+            dec("-0.3333333333333333333333333333333333333333"),
+        );
         assert!(exact_power(&a, &b, &t(&a, &b)).is_none());
         let (a, b) = (dec("1.5"), dec("-3"));
         assert!(exact_power(&a, &b, &t(&a, &b)).is_none());
         let (a, b) = (dec("2"), dec("-3"));
-        assert!(same(&exact_power(&a, &b, &t(&a, &b)).unwrap(), &dec("0.125")));
+        assert!(same(
+            &exact_power(&a, &b, &t(&a, &b)).unwrap(),
+            &dec("0.125")
+        ));
         let (a, b) = (dec("3"), dec("100"));
         assert!(exact_power(&a, &b, &t(&a, &b)).is_none());
     }
@@ -1251,12 +1520,19 @@ mod oracle {
         let below = distance_from_one(&D::from_parts(nines(66), -66));
         // 1e-66 + 1e-132 + ..., truncated at 60 digits.
         assert!(same(&below, &dec("1e-66")));
-        assert!(same(&distance_from_one(&D::from_parts(IBig::from(10).pow(66) + IBig::ONE, -66)), &dec("1e-66")));
+        assert!(same(
+            &distance_from_one(&D::from_parts(IBig::from(10).pow(66) + IBig::ONE, -66)),
+            &dec("1e-66")
+        ));
         assert!(same(&distance_from_one(&dec("0.5")), &D::ONE));
     }
 
     fn extremes() -> [D; 3] {
-        [largest_float(false), D::from_parts(IBig::ONE, I32_MIN), D::from_parts(int224_max(), I32_MIN)]
+        [
+            largest_float(false),
+            D::from_parts(IBig::ONE, I32_MIN),
+            D::from_parts(int224_max(), I32_MIN),
+        ]
     }
 
     /// Inputs at both exponent ends stay cheap for the transcendental oracle.
