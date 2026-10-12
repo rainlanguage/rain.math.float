@@ -84,6 +84,36 @@ contract LibDecimalFloatImplementationLog10ReduceTest is Test {
         assertReducedInRange(reduced);
     }
 
+    /// Just above 1e75 10^(2^-i) the step for i is taken alone, so the
+    /// reduced x is the high word of x K for K = 2^256 / 10^(2^-i) rounded to
+    /// nearest. Expected values are from `bc -l` at scale 150, which also
+    /// gives K. Each x leaves the fraction of x K / 2^256 within x / 2^256 of
+    /// an integer, so a K one off or a dropped borrow moves the floor.
+    function testLog10ReduceSingleStepExactSteps5To10() external pure {
+        uint256[16] memory t = thresholds();
+        // [step, offset above the threshold, reduced minus 1e75]
+        uint256[3][12] memory cases = [
+            [uint256(5), 53, 50],
+            [uint256(5), 82, 76],
+            [uint256(6), 196, 190],
+            [uint256(6), 83, 80],
+            [uint256(7), 212, 209],
+            [uint256(7), 44, 43],
+            [uint256(8), 104, 104],
+            [uint256(8), 105, 104],
+            [uint256(9), 55, 55],
+            [uint256(9), 57, 56],
+            [uint256(10), 428, 428],
+            [uint256(10), 432, 431]
+        ];
+        for (uint256 c = 0; c < cases.length; c++) {
+            uint256 i = cases[c][0];
+            (uint256 reduced, uint256 seed) = LibDecimalFloatImplementation.log10Reduce(t[i - 1] + cases[c][1]);
+            assertEq(seed, POW_FIXED_ONE >> i, "seed");
+            assertEq(reduced, 1e75 + cases[c][2], "reduced");
+        }
+    }
+
     /// #422: log10Reduce(5e76) broke its postcondition. Either side of
     /// [1e75, 1e76) reverts with the input.
     function testLog10ReduceOutOfRange() external {
