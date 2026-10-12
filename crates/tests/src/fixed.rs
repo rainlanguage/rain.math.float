@@ -507,9 +507,12 @@ fn wraps(p: &BigInt, w: u32) -> bool {
     p.mod_floor(&(&word - 1)) < p.mod_floor(&word)
 }
 
+/// A product of x, non-decreasing in x.
+type Product = dyn Fn(&BigInt) -> BigInt;
+
 /// The largest x in [0, max] with p(x) below `bound`, for p non-decreasing
 /// with p(0) below it.
-fn largest_below(p: &dyn Fn(&BigInt) -> BigInt, bound: &BigInt, max: &BigInt) -> BigInt {
+fn largest_below(p: &Product, bound: &BigInt, max: &BigInt) -> BigInt {
     if p(max) < *bound {
         return max.clone();
     }
@@ -531,7 +534,7 @@ fn largest_below(p: &dyn Fn(&BigInt) -> BigInt, bound: &BigInt, max: &BigInt) ->
 /// lo grows with x, so if any x there wraps the largest does, and that is
 /// the largest x with p(x) below k 2^w. That x is in an earlier word when p
 /// steps over word k - 1, so the word it wraps in is the one returned.
-fn wrapping_words(p: &dyn Fn(&BigInt) -> BigInt, max: &BigInt, w: u32) -> Vec<BigInt> {
+fn wrapping_words(p: &Product, max: &BigInt, w: u32) -> Vec<BigInt> {
     let word = BigInt::from(1) << w;
     let top = p(max) >> w;
     let mut found = vec![];
@@ -551,7 +554,7 @@ fn wrapping_words(p: &dyn Fn(&BigInt) -> BigInt, max: &BigInt, w: u32) -> Vec<Bi
 /// for z^4 and z^6 shaped products over small words where some do.
 #[test]
 fn wrapping_words_finds_every_wrap() {
-    let shapes: [(&dyn Fn(&BigInt) -> BigInt, u32, u64); 4] = [
+    let shapes: [(&Product, u32, u64); 4] = [
         (&|x| x * x, 16, 1 << 14),
         (&|x| x * x, 20, 1 << 15),
         (&|x| x * x / 256 * x, 16, 3_000),
