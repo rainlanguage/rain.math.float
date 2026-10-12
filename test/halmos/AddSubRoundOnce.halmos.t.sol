@@ -36,6 +36,11 @@ import {LibHalmosExact} from "test/halmos/LibHalmosExact.sol";
 /// - PACK (`PackArithmeticResult.halmos.t.sol`): `packArithmeticResult(c, e)`
 ///   is T(c 10^e) with T's reverts.
 ///
+/// MAX and MINUS take one digit count per path. The lemmas return early when
+/// a hint filter (`divHint`, `maximizeHints`) is false, and
+/// `LibHalmosExact.halmos.t.sol` proves those filters true for every input
+/// they are given, so the early returns exclude nothing.
+///
 /// Composition: by MAX and IDEM, NEAR/FAR apply to S. They put c 10^e at or
 /// below |S| and S below the next multiple of 10^e. A grid member above
 /// |c| 10^e and at most |S| would be m 10^f with either f >= e, a multiple of
@@ -80,11 +85,28 @@ contract AddSubRoundOnceHalmosTest {
         }
     }
 
-    /// MINUS.
-    function check_subIsAddNegated(int224 cb, int256 ca, int256 ea, int256 eb) external view {
+    /// 10^j <= |c| < 10^(j + 1), or c zero for j = 77.
+    function hasDigits(int256 c, uint256 j) internal pure returns (bool) {
+        if (j == 77) return c == 0;
+        uint256 x = LibHalmosExact.abs(c);
+        return c != 0 && x >= 10 ** j && x < 10 ** (j + 1);
+    }
+
+    /// MINUS, split by the digit counts of ca and -cb (j = 77 for zero), one
+    /// pair per path. Every int256 has one j in [0, 77].
+    function check_subIsAddNegated(int224 cb, int256 ca, int256 ea, int256 eb, uint256 jaBits, uint256 jbBits)
+        external
+        view
+    {
+        uint256 ja = LibHalmosExact.concrete(jaBits, 7);
+        uint256 jb = LibHalmosExact.concrete(jbBits, 7);
+        if (ja > 77 || jb > 77) return;
+        int256 nb = -int256(cb);
+        if (!hasDigits(ca, ja) || !hasDigits(nb, jb)) return;
+        if (ja < 77 && !LibHalmosExact.maximizeHints(ca, ja)) return;
+        if (jb < 77 && !LibHalmosExact.maximizeHints(nb, jb)) return;
         (bool subOk, bytes memory subOut) = address(this).staticcall(abi.encodeCall(this.implSub, (ca, ea, cb, eb)));
-        (bool addOk, bytes memory addOut) =
-            address(this).staticcall(abi.encodeCall(this.implAdd, (ca, ea, -int256(cb), eb)));
+        (bool addOk, bytes memory addOut) = address(this).staticcall(abi.encodeCall(this.implAdd, (ca, ea, nb, eb)));
         assert(subOk == addOk);
         assert(subOut.length == addOut.length);
         for (uint256 i = 0; i < subOut.length; i++) {
@@ -92,19 +114,29 @@ contract AddSubRoundOnceHalmosTest {
         }
     }
 
-    /// MAX, one shift k per path.
-    function check_maximizeFloat(int256 c, int32 e) external view {
+    /// MAX, split by |c|'s digit count: 10^j <= |c| < 10^(j + 1), one j per
+    /// path. Every nonzero |c| <= 2^223 < 10^68 has one j in [0, 67].
+    function check_maximizeFloat(int256 c, int32 e, uint256 jBits) external view {
+        uint256 j = LibHalmosExact.concrete(jBits, 7);
+        if (j > 67) return;
         if (c == 0 || c > 2 ** 223 || c < -(2 ** 223)) return;
+        uint256 x = LibHalmosExact.abs(c);
+        if (x < 10 ** j || x >= 10 ** (j + 1)) return;
+        if (!LibHalmosExact.maximizeHints(c, j)) return;
         try this.maximize(c, e) returns (int256 m, int256 me, int256 shortfall) {
             assert(shortfall == 0);
             int256 k = int256(e) - me;
-            assert(k >= 0 && k <= 76);
+            assert(k >= 8 && k <= 76);
             // forge-lint: disable-next-line(unsafe-typecast)
-            (uint256 hi, uint256 lo) = LibHalmosExact.mul(LibHalmosExact.abs(c), 10 ** uint256(k));
-            assert(hi == 0 && lo == LibHalmosExact.abs(m));
-            assert((m < 0) == (c < 0));
-            assert(isMaximized(m));
-            assert(m % 1e8 == 0);
+            uint256 scale = 10 ** uint256(k);
+            unchecked {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                assert(m == c * int256(scale));
+            }
+            // T10 < |c| 10^k <= 10 T10 <= int256.max, so c 10^k does not
+            // wrap: m is c 10^k exactly (so of c's sign, and 10^8 | m as
+            // k >= 8) and maximized.
+            assert(x > T10 / scale && x <= (10 * T10) / scale);
         } catch {
             assert(false);
         }
@@ -112,7 +144,7 @@ contract AddSubRoundOnceHalmosTest {
 
     /// IDEM.
     function check_maximizeIdempotent(int256 m, int256 e) external view {
-        if (!isMaximized(m)) return;
+        if (!isMaximized(m) || !LibHalmosExact.divHint(m, 1e75)) return;
         try this.maximize(m, e) returns (int256 rm, int256 re, int256 shortfall) {
             assert(rm == m && re == e && shortfall == 0);
         } catch {
@@ -121,36 +153,49 @@ contract AddSubRoundOnceHalmosTest {
     }
 
     /// The add result against the exact sum S = A 10^D + B, in units of
-    /// 10^eB. `t` is the result's exponent less eB.
+    /// 10^eB. `t` is the result's exponent less eB, D or D + 1, so the bounds
+    /// need only F = floor(|S| / 10^D) and whether 10^D | S. With
+    /// Q = trunc(B / 10^D) and R = B - Q 10^D (|R| < 10^D, B's sign),
+    /// S / 10^D = A + Q + R / 10^D.
     function checkSum(int256 a, int256 b, uint256 d, int256 c, uint256 t) internal pure {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 p = int256(10 ** d);
+        int256 q = b / p;
+        int256 r = b % p;
         uint256 ma = LibHalmosExact.abs(a);
-        uint256 mb = LibHalmosExact.abs(b);
-        // |S| / 10^eB as 512 bits, and S's sign.
-        (uint256 vh, uint256 vl) = LibHalmosExact.mul(ma, 10 ** d);
-        bool negative;
+        uint256 f;
+        bool exact = r == 0;
+        bool negative = a < 0;
         if ((a < 0) == (b < 0)) {
-            (vh, vl) = LibHalmosExact.add(vh, vl, mb);
-            negative = a < 0;
-        } else if (LibHalmosExact.lt(vh, vl, 0, mb)) {
-            (vh, vl) = LibHalmosExact.rsub(mb, vh, vl);
-            negative = b < 0;
+            // |S| / 10^D = |A| + |Q| + |R| / 10^D.
+            f = ma + LibHalmosExact.abs(q);
+        } else if (d > 0) {
+            // |S| / 10^D = |A| - |Q| - |R| / 10^D, and |Q| <= |B| / 10 <= T10
+            // < |A|, so S has A's sign.
+            f = ma - LibHalmosExact.abs(q) - (exact ? 0 : 1);
         } else {
-            (vh, vl) = LibHalmosExact.sub(vh, vl, mb);
-            negative = a < 0;
+            // D = 0: S = A + B.
+            uint256 mb = LibHalmosExact.abs(b);
+            if (ma >= mb) {
+                f = ma - mb;
+            } else {
+                f = mb - ma;
+                negative = b < 0;
+            }
         }
-        uint256 mc = LibHalmosExact.abs(c);
-        if (vh == 0 && vl == 0) {
+        if (f == 0 && exact) {
             assert(c == 0);
             return;
         }
         assert(c != 0 && (c < 0) == negative);
-        (uint256 lh, uint256 ll) = LibHalmosExact.mul(mc, 10 ** t);
-        (uint256 uh, uint256 ul) = LibHalmosExact.add(lh, ll, 10 ** t);
-        // |c| 10^t <= |S| < (|c| + 1) 10^t.
-        assert(!LibHalmosExact.lt(vh, vl, lh, ll));
-        assert(LibHalmosExact.lt(vh, vl, uh, ul));
+        uint256 mc = LibHalmosExact.abs(c);
+        uint256 u = t == d ? 1 : 10;
+        // |c| 10^t <= |S| < (|c| + 1) 10^t, as |c| u <= F < (|c| + 1) u.
+        uint256 lower = mc * u;
+        assert(lower <= f);
+        assert(f < lower + u);
         // Exact, or no grid member below 10^t lies above |c| 10^t.
-        assert((vh == lh && vl == ll) || mc >= TWO_223 / 10 + 1);
+        assert((exact && f == lower) || mc >= TWO_223 / 10 + 1);
     }
 
     /// NEAR: gap D in [0, 76], one D per path.
@@ -158,6 +203,7 @@ contract AddSubRoundOnceHalmosTest {
         uint256 d = LibHalmosExact.concrete(dBits, 7);
         if (d > 76) return;
         if (!isMaximized(a) || !isMaximized(b) || a % 1e8 != 0 || b % 1e8 != 0) return;
+        if (!LibHalmosExact.divHint(a, 1e75) || !LibHalmosExact.divHint(b, 1e75)) return;
         if (eB < FMIN - 76 || eB > FMAX - 8) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 eA = eB + int256(d);
@@ -179,6 +225,7 @@ contract AddSubRoundOnceHalmosTest {
     function check_addFar(int256 a, int256 b, int256 eB, uint256 d, bool swap) external view {
         if (d <= 76 || d > 2 ** 40) return;
         if (!isMaximized(a) || !isMaximized(b) || a % 1e8 != 0 || b % 1e8 != 0) return;
+        if (!LibHalmosExact.divHint(a, 1e75) || !LibHalmosExact.divHint(b, 1e75)) return;
         if (eB < FMIN - 76 || eB > FMAX - 8) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 eA = eB + int256(d);

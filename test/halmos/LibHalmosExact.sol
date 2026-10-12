@@ -7,6 +7,8 @@ pragma solidity ^0.8.25;
 /// and a symbolic operand only ever meets a constant one.
 library LibHalmosExact {
     uint256 internal constant MASK128 = type(uint128).max;
+    /// floor(int256.max / 10).
+    uint256 internal constant T10 = uint256(type(int256).max) / 10;
 
     /// x * y as 512 bits.
     function mul(uint256 x, uint256 y) internal pure returns (uint256 hi, uint256 lo) {
@@ -25,37 +27,81 @@ library LibHalmosExact {
         }
     }
 
-    /// (hi, lo) + y; the callers' sums are under 2^512.
-    function add(uint256 hi, uint256 lo, uint256 y) internal pure returns (uint256, uint256) {
-        unchecked {
-            uint256 sum = lo + y;
-            return (hi + (sum < lo ? 1 : 0), sum);
-        }
-    }
-
-    /// (hi, lo) - y for y at most (hi, lo).
-    function sub(uint256 hi, uint256 lo, uint256 y) internal pure returns (uint256, uint256) {
-        unchecked {
-            return (hi - (y > lo ? 1 : 0), lo - y);
-        }
-    }
-
-    /// y - (hi, lo) for (hi, lo) at most y, so hi is zero.
-    function rsub(uint256 y, uint256, uint256 lo) internal pure returns (uint256, uint256) {
-        unchecked {
-            return (0, y - lo);
-        }
-    }
-
-    function lt(uint256 ah, uint256 al, uint256 bh, uint256 bl) internal pure returns (bool) {
-        return ah < bh || (ah == bh && al < bl);
-    }
-
     function abs(int256 x) internal pure returns (uint256) {
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
             return x < 0 ? uint256(-x) : uint256(x);
         }
+    }
+
+    /// True for every int256 x and positive d: x / d is zero iff |x| < d.
+    /// Halmos branches on division as an uninterpreted function, so a lemma
+    /// that returns when this is false excludes no input and gives the branch
+    /// solver the fact for the term x / d.
+    function divHint(int256 x, int256 d) internal pure returns (bool) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (x / d == 0) == (abs(x) < uint256(d));
+    }
+
+    /// For 10^j <= |c| < 10^(j + 1) and s = 0 or s + j < 76, |c| 10^s lies in
+    /// [10^(s + j), 10^(s + j + 1)) inside int256, so c 10^s / 10^t is zero
+    /// iff s + j < t. True for every such c.
+    function shiftHint(int256 c, uint256 s, uint256 j, uint256 t) internal pure returns (bool) {
+        int256 p = c;
+        if (s > 0) {
+            unchecked {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                p = c * int256(10 ** s);
+            }
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (p / int256(10 ** t) == 0) == (s + j < t);
+    }
+
+    /// For 10^j <= |c| < 10^(j + 1) and s = 0 or s + j < 76, c 10^s is in
+    /// [-T10, T10] iff |c| <= floor(T10 / 10^s), and adding T10 maps that
+    /// range onto [0, 2 T10] without wrapping. True for every such c.
+    function timesTenHint(int256 c, uint256 s, uint256) internal pure returns (bool) {
+        int256 p = c;
+        if (s > 0) {
+            unchecked {
+                // forge-lint: disable-next-line(unsafe-typecast)
+                p = c * int256(10 ** s);
+            }
+        }
+        bool fits;
+        unchecked {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            fits = uint256(p) + T10 < 2 * T10 + 1;
+        }
+        return fits == (abs(c) <= T10 / 10 ** s);
+    }
+
+    /// `shiftHint` for each division `maximize` makes on a c with
+    /// 10^j <= |c| < 10^(j + 1): by 10^75, then 10^38, 10^57, 10^66, 10^74
+    /// (repeated) and 10^75 on c times the shift so far, and `timesTenHint`
+    /// for its final fits-times-ten test. True for every such c, so a lemma
+    /// that returns when it is false excludes no input; the tracked shift
+    /// only picks which terms get the fact, and a wrong pick costs
+    /// completeness (a loop-bound warning or extra paths), never soundness.
+    function maximizeHints(int256 c, uint256 j) internal pure returns (bool) {
+        if (!shiftHint(c, 0, j, 75)) return false;
+        if (j >= 75) return timesTenHint(c, 0, j);
+        uint256 s = 0;
+        if (!shiftHint(c, s, j, 38)) return false;
+        if (s + j < 38) s += 38;
+        if (!shiftHint(c, s, j, 57)) return false;
+        if (s + j < 57) s += 19;
+        if (!shiftHint(c, s, j, 66)) return false;
+        if (s + j < 66) s += 10;
+        while (true) {
+            if (!shiftHint(c, s, j, 74)) return false;
+            if (s + j >= 74) break;
+            s += 2;
+        }
+        if (!shiftHint(c, s, j, 75)) return false;
+        if (s + j < 75) s += 1;
+        return timesTenHint(c, s, j);
     }
 
     /// Rebuilds x's low `bits` bits one branch per bit, so the result is a
