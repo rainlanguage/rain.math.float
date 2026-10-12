@@ -40,15 +40,24 @@ library LibExactFloat {
     /// The 512 bit product by schoolbook multiplication of 128 bit limbs,
     /// independent of the CRT trick `mul512` uses.
     function mul(uint256 a, uint256 b) internal pure returns (U512 memory) {
-        uint256 mask = type(uint128).max;
-        uint256 lowLow = (a & mask) * (b & mask);
-        uint256 lowHigh = (a & mask) * (b >> 128);
-        uint256 highLow = (a >> 128) * (b & mask);
-        uint256 highHigh = (a >> 128) * (b >> 128);
-        uint256 middle = (lowLow >> 128) + (lowHigh & mask) + (highLow & mask);
-        return U512(
-            highHigh + (lowHigh >> 128) + (highLow >> 128) + (middle >> 128), (lowLow & mask) | ((middle & mask) << 128)
-        );
+        (uint256 hi, uint256 lo) = mulWords(a, b);
+        return U512(hi, lo);
+    }
+
+    /// `mul` as its two words, without allocating.
+    function mulWords(uint256 a, uint256 b) internal pure returns (uint256 hi, uint256 lo) {
+        // Limb products are below 2^256 and the full product below 2^512, so
+        // no step wraps.
+        unchecked {
+            uint256 mask = type(uint128).max;
+            uint256 lowLow = (a & mask) * (b & mask);
+            uint256 lowHigh = (a & mask) * (b >> 128);
+            uint256 highLow = (a >> 128) * (b & mask);
+            uint256 highHigh = (a >> 128) * (b >> 128);
+            uint256 middle = (lowLow >> 128) + (lowHigh & mask) + (highLow & mask);
+            hi = highHigh + (lowHigh >> 128) + (highLow >> 128) + (middle >> 128);
+            lo = (lowLow & mask) | ((middle & mask) << 128);
+        }
     }
 
     function words(U512 memory x) internal pure returns (uint256, uint256) {
@@ -57,7 +66,7 @@ library LibExactFloat {
 
     /// Checked: a product at or above 2^512 panics rather than wrapping.
     function mulSmall(U512 memory x, uint256 m) internal pure returns (U512 memory) {
-        (uint256 carry, uint256 lo) = words(mul(x.lo, m));
+        (uint256 carry, uint256 lo) = mulWords(x.lo, m);
         return U512(x.hi * m + carry, lo);
     }
 
@@ -95,9 +104,17 @@ library LibExactFloat {
 
     /// The number of decimal digits of a non-zero `x` below 10^154.
     function digits(U512 memory x) internal pure returns (int256 n) {
-        U512 memory p = u512(1);
-        while (cmp(p, x) <= 0) {
-            p = mulSmall(p, 10);
+        if (x.hi == 0) {
+            for (uint256 rest = x.lo; rest > 0; rest /= 10) {
+                n++;
+            }
+            return n;
+        }
+        uint256 pHi = 0;
+        uint256 pLo = 1;
+        while (pHi < x.hi || (pHi == x.hi && pLo <= x.lo)) {
+            (uint256 carry, uint256 lo) = mulWords(pLo, 10);
+            (pHi, pLo) = (pHi * 10 + carry, lo);
             n++;
         }
     }
@@ -253,7 +270,7 @@ library LibExactFloat {
             if (!tooLarge && coefficient != 0) {
                 uint256 high;
                 // forge-lint: disable-next-line(unsafe-typecast)
-                (high, value) = words(mul(coefficient, 10 ** uint256(finalExponent)));
+                (high, value) = mulWords(coefficient, 10 ** uint256(finalExponent));
                 tooLarge = high != 0;
             }
             if (tooLarge) {
@@ -852,12 +869,12 @@ library LibExactFloat {
     /// leave it in int256 of the product's sign, and the number shed.
     function productInt256(int256 ca, int256 cb) internal pure returns (int256, int256) {
         bool negative = (ca < 0) != (cb < 0);
-        (uint256 productHi, uint256 productLo) = words(mul(abs(ca), abs(cb)));
+        (uint256 productHi, uint256 productLo) = mulWords(abs(ca), abs(cb));
         // floor(product / 10^k) is within the bound iff product < (bound + 1) × 10^k.
         uint256 aboveBound = negative ? 2 ** 255 + 1 : 2 ** 255;
         uint256 dropped = 0;
         while (true) {
-            (uint256 hi, uint256 lo) = words(mul(aboveBound, 10 ** dropped));
+            (uint256 hi, uint256 lo) = mulWords(aboveBound, 10 ** dropped);
             if (productHi < hi || (productHi == hi && productLo < lo)) {
                 break;
             }
