@@ -237,6 +237,33 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         }
     }
 
+    /// Every count of trailing zeros a coefficient can carry, 0 through 67,
+    /// under significands of 1, 2 and 9 digits, both signs, exponents that
+    /// place the point before, inside and after the digits, both modes,
+    /// against `expectedFormat`.
+    function testFormatEveryTrailingZeroCount() external pure {
+        uint256[3] memory significands = [uint256(1), 75, 123456789];
+        int256[5] memory offsets = [int256(0), 5, -1, -2, -9];
+        for (uint256 k = 0; k <= 67; k++) {
+            for (uint256 i = 0; i < significands.length; i++) {
+                uint256 magnitude = significands[i] * 10 ** k;
+                if (magnitude > uint256(int256(type(int224).max))) {
+                    continue;
+                }
+                // forge-lint: disable-next-line(unsafe-typecast)
+                int256 c = int256(magnitude);
+                for (uint256 j = 0; j < offsets.length; j++) {
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    int256 e = offsets[j] - (j == 0 ? int256(0) : int256(k));
+                    checkFormat(c, e, false, expectedFormat(c, e, false));
+                    checkFormat(-c, e, false, expectedFormat(-c, e, false));
+                    checkFormat(c, e, true, expectedFormat(c, e, true));
+                    checkFormat(-c, e, true, expectedFormat(-c, e, true));
+                }
+            }
+        }
+    }
+
     /// Test some specific examples.
     function testFormatDecimalExamples() external pure {
         // pos decs
