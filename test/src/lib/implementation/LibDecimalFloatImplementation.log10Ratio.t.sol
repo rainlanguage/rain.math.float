@@ -5,7 +5,8 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {
     LibDecimalFloatImplementation,
-    LOG10_RATIO_Z_MAX
+    LOG10_RATIO_Z_MAX,
+    POW_FIXED_LN10
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibExactFloat, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
@@ -198,6 +199,28 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     function testLog10RatioRelativeZeroSum() external {
         vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, 0, 0));
         this.ratio(0, 0, true);
+    }
+
+    /// #456: b of zero reverts `Log10RatioOutOfRange`, but relative with a
+    /// below 1e50 the sum guard comes first and reverts
+    /// `Log10RatioRelativeSumTooSmall`.
+    function testLog10RatioZeroDenominator() external {
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, 1, 0));
+        this.ratio(1, 0, true);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, 1e50 - 1, 0));
+        this.ratio(1e50 - 1, 0, true);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, 1e50, 0));
+        this.ratio(1e50, 0, true);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, 1, 0));
+        this.ratio(1, 0, false);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, 1e50 - 1, 0));
+        this.ratio(1e50 - 1, 0, false);
+    }
+
+    /// #476: `POW_FIXED_LN10` is ln 10 at 1e50 rounded down, `ORACLE_LN10`
+    /// from `bc -l` at 1e70 truncated to 1e50.
+    function testPowFixedLn10() external pure {
+        assertEq(POW_FIXED_LN10, ORACLE_LN10 / 1e20);
     }
 
     /// Every relative a + b below 1e50 reverts with its inputs, including 0,

@@ -484,3 +484,194 @@ proptest! {
         }
     }
 }
+
+// ------------------------------------------- log10Ratio in-place multiplies
+
+/// What log10Ratio's z^4 and z^6 multiplies take as zSquared: floor(z^2 /
+/// 1e50), at most this for z at most `LOG10_RATIO_Z_MAX`, and every integer
+/// up to it.
+fn z_squared_max() -> BigInt {
+    let z = literal_after(IMPL, "uint256 constant LOG10_RATIO_Z_MAX = ");
+    &z * &z / pow10(50)
+}
+
+/// The z^6 product: floor(x^2 / 1e50), the z^4 term, times x.
+fn sixth(x: &BigInt) -> BigInt {
+    x * x / pow10(50) * x
+}
+
+/// `lt(mm, prod0)` over words of `w` bits for the product p: mm is p mod
+/// (2^w - 1) and prod0 is p mod 2^w.
+fn wraps(p: &BigInt, w: u32) -> bool {
+    let word = BigInt::from(1) << w;
+    p.mod_floor(&(&word - 1)) < p.mod_floor(&word)
+}
+
+/// The largest x in [0, max] with p(x) below `bound`, for p non-decreasing
+/// with p(0) below it.
+fn largest_below(p: &dyn Fn(&BigInt) -> BigInt, bound: &BigInt, max: &BigInt) -> BigInt {
+    if p(max) < *bound {
+        return max.clone();
+    }
+    let (mut lo, mut hi) = (BigInt::zero(), max.clone());
+    while &hi - &lo > BigInt::from(1) {
+        let mid = (&lo + &hi) >> 1;
+        if p(&mid) < *bound {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    lo
+}
+
+/// Every k for which some x in [0, max] has p(x) in the high word k - 1 and
+/// `wraps`, for p non-decreasing. mm = hi + lo mod (2^w - 1), so `wraps` is
+/// hi + lo of at least 2^w - 1: lo of at least 2^w - k. Within one high word
+/// lo grows with x, so if any x there wraps the largest does, and that is
+/// the largest x with p(x) below k 2^w. That x is in an earlier word when p
+/// steps over word k - 1, so the word it wraps in is the one returned.
+fn wrapping_words(p: &dyn Fn(&BigInt) -> BigInt, max: &BigInt, w: u32) -> Vec<BigInt> {
+    let word = BigInt::from(1) << w;
+    let top = p(max) >> w;
+    let mut found = vec![];
+    let mut k = BigInt::from(1);
+    while k <= &top + 1 {
+        let product = p(&largest_below(p, &(&k * &word), max));
+        if wraps(&product, w) {
+            found.push((product >> w) + 1);
+        }
+        k += 1;
+    }
+    found.dedup();
+    found
+}
+
+/// `wrapping_words` is every high word some x wraps in, against every x,
+/// for z^4 and z^6 shaped products over small words where some do.
+#[test]
+fn wrapping_words_finds_every_wrap() {
+    let shapes: [(&dyn Fn(&BigInt) -> BigInt, u32, u64); 4] = [
+        (&|x| x * x, 16, 1 << 14),
+        (&|x| x * x, 20, 1 << 15),
+        (&|x| x * x / 256 * x, 16, 3_000),
+        (&|x| x * x / 1_000 * x, 20, 20_000),
+    ];
+    for (p, w, max) in shapes {
+        let mut every: Vec<BigInt> = (0..=max)
+            .map(BigInt::from)
+            .map(|x| p(&x))
+            .filter(|q| wraps(q, w))
+            .map(|q| (q >> w) + 1)
+            .collect();
+        every.dedup();
+        assert!(!every.is_empty(), "no wrap at w = {w}");
+        assert_eq!(wrapping_words(p, &BigInt::from(max), w), every, "w = {w}");
+    }
+}
+
+/// log10Ratio's z^6 multiply never wraps, for every zSquared, so its high
+/// word takes no `lt(mm, prod0)` borrow.
+#[test]
+fn log10_ratio_z6_never_wraps() {
+    let max = z_squared_max();
+    assert_eq!(sixth(&max) >> 256u32, BigInt::from(15_357));
+    assert_eq!(wrapping_words(&sixth, &max, 256), Vec::<BigInt>::new());
+}
+
+/// floor(sqrt(k 2^256 - 1)), with whether its square wraps: its words
+/// summing to at least 2^256 - 1. k is below 2^40. The root starts from
+/// k's in two f64 words, 2^-104 relative, and one Newton step on the exact
+/// residual, then is checked exactly: x^2 below k 2^256 at most (x + 1)^2.
+fn root_word(k: u64) -> (U256, bool) {
+    use alloy::primitives::U512;
+    let kf = k as f64;
+    let s = kf.sqrt();
+    let s_low = (-s).mul_add(s, kf) / (2.0 * s);
+    let bits = s.to_bits();
+    let mantissa = (bits & ((1 << 52) - 1)) | (1 << 52);
+    let shift = ((bits >> 52) & 0x7ff) as usize + 128 - 1075;
+    let low = (s_low * 2f64.powi(128)).round() as i128;
+    let mut x = (U256::from(mantissa) << shift).wrapping_add_signed(low);
+    let target = U512::from(k) << 256;
+    let square: U512 = x.widening_mul(x);
+    let step = if target >= square {
+        (f64::from(target - square) / (2.0 * f64::from(x))).round()
+    } else {
+        -(f64::from(square - target) / (2.0 * f64::from(x))).round()
+    };
+    x = x.wrapping_add_signed(step as i128);
+    for _ in 0..4 {
+        let square: U512 = x.widening_mul(x);
+        if square >= target {
+            x -= U256::from(1);
+        } else if square + (U512::from(x) << 1) + U512::from(1) < target {
+            x += U256::from(1);
+        } else {
+            let mask = (U512::from(1) << 256) - U512::from(1);
+            return (x, (square >> 256) + (square & mask) >= mask);
+        }
+    }
+    panic!("root of k = {k} not found");
+}
+
+trait AddSigned {
+    fn wrapping_add_signed(self, d: i128) -> Self;
+}
+
+impl AddSigned for U256 {
+    fn wrapping_add_signed(self, d: i128) -> Self {
+        if d >= 0 {
+            self + U256::from(d as u128)
+        } else {
+            self - U256::from(d.unsigned_abs())
+        }
+    }
+}
+
+/// `root_word` against bisection and `wraps` in big integers at both ends of
+/// the z^4 range.
+#[test]
+fn root_word_is_exact() {
+    let max = z_squared_max();
+    let top: u64 = ((&max * &max) >> 256u32).to_string().parse().unwrap();
+    let square = |x: &BigInt| x * x;
+    for k in (1..=2_000).chain(top - 2_000..=top) {
+        let (x, wrapped) = root_word(k);
+        let expected = largest_below(&square, &(BigInt::from(k) << 256), &max);
+        assert_eq!(x.to_string(), expected.to_string(), "k = {k}");
+        assert_eq!(wrapped, wraps(&(&expected * &expected), 256), "k = {k}");
+    }
+}
+
+/// log10Ratio's z^4 multiply never wraps, for every zSquared, so its high
+/// word takes no `lt(mm, prod0)` borrow: `wrapping_words` over all 2.7e10
+/// high words. Too slow for CI: run with
+/// `cargo test --release -- --ignored log10_ratio_z4_never_wraps`.
+#[test]
+#[ignore]
+fn log10_ratio_z4_never_wraps() {
+    let max = z_squared_max();
+    let top: u64 = ((&max * &max) >> 256u32).to_string().parse().unwrap();
+    assert_eq!(top, 27_309_962_891);
+    // The last high word is capped at max.
+    assert!(!wraps(&(&max * &max), 256));
+    let threads = std::thread::available_parallelism().map_or(1, |n| n.get()) as u64;
+    let chunk = top.div_ceil(threads);
+    let wrapped: Vec<u64> = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..threads)
+            .map(|t| {
+                scope.spawn(move || {
+                    (1 + t * chunk..=top.min((t + 1) * chunk))
+                        .filter(|&k| root_word(k).1)
+                        .collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|h| h.join().unwrap())
+            .collect()
+    });
+    assert_eq!(wrapped, Vec::<u64>::new());
+}

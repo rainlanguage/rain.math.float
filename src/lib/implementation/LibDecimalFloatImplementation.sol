@@ -1210,9 +1210,10 @@ library LibDecimalFloatImplementation {
     ///
     /// Error, in units of 1e-50 unless stated, for z = |a - b| / (a + b) at
     /// most `LOG10_RATIO_Z_MAX`, 7.499e-4. A larger z, a + b past 2^256 or b
-    /// of zero reverts `Log10RatioOutOfRange`. `log10Unrounded` passes z at
-    /// most 5.1e-4: a / b within a factor 1.001 at a power of ten and within
-    /// 10^(2^-16) after `log10Reduce`.
+    /// of zero reverts `Log10RatioOutOfRange`, but relative a + b below 1e50
+    /// reverts `Log10RatioRelativeSumTooSmall` first, b of zero included.
+    /// `log10Unrounded` passes z at most 5.1e-4: a / b within a factor 1.001
+    /// at a power of ten and within 10^(2^-16) after `log10Reduce`.
     /// - Flooring z moves atanh(z) / z by under 2z / 3, 5e-4, or 3.5e-4 for
     ///   z at most 5.1e-4.
     /// - z^2 floors under a unit, and each term's multiply under one more
@@ -1325,7 +1326,10 @@ library LibDecimalFloatImplementation {
             series := add(POW_FIXED_ONE, div(zSquared, 3))
             // z^4 and z^6 times zSquared can pass 2^256, so these two are
             // `mulDivFixed` in place: mm and prod0 give the product's high
-            // word (with borrow) and low word. Subtracting
+            // word and low word. Up to `LOG10_RATIO_Z_MAX` the two words sum
+            // below 2^256 - 1, so mm - prod0 takes no borrow: crates/tests
+            // fixed.rs log10_ratio_z4_never_wraps and
+            // log10_ratio_z6_never_wraps check every high word. Subtracting
             // the remainder mod 1e50 makes it an exact multiple of 1e50 =
             // 2^50 5^50, so shifting 50 bits across both words divides by
             // 2^50 and multiplying by 5^50's inverse mod 2^256 divides by
@@ -1334,22 +1338,13 @@ library LibDecimalFloatImplementation {
             let prod0 := mul(zSquared, zSquared)
             let remainder := mulmod(zSquared, zSquared, POW_FIXED_ONE)
             let term :=
-                mul(
-                    or(
-                        shr(50, sub(prod0, remainder)),
-                        shl(206, sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0)))
-                    ),
-                    inverse
-                )
+                mul(or(shr(50, sub(prod0, remainder)), shl(206, sub(sub(mm, prod0), gt(remainder, prod0)))), inverse)
             series := add(series, div(term, 5))
             mm := mulmod(term, zSquared, not(0))
             prod0 := mul(term, zSquared)
             remainder := mulmod(term, zSquared, POW_FIXED_ONE)
             term := mul(
-                or(
-                    shr(50, sub(prod0, remainder)),
-                    shl(206, sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0)))
-                ),
+                or(shr(50, sub(prod0, remainder)), shl(206, sub(sub(mm, prod0), gt(remainder, prod0)))),
                 inverse
             )
             series := add(series, div(term, 7))
