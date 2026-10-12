@@ -1326,19 +1326,25 @@ library LibDecimalFloatImplementation {
             series := add(POW_FIXED_ONE, div(zSquared, 3))
             // z^4 and z^6 times zSquared can pass 2^256, so these two are
             // `mulDivFixed` in place: mm and prod0 give the product's high
-            // word and low word. Up to `LOG10_RATIO_Z_MAX` the two words sum
-            // below 2^256 - 1, so mm - prod0 takes no borrow: crates/tests
-            // fixed.rs log10_ratio_z4_never_wraps and
-            // log10_ratio_z6_never_wraps check every high word. Subtracting
-            // the remainder mod 1e50 makes it an exact multiple of 1e50 =
-            // 2^50 5^50, so shifting 50 bits across both words divides by
-            // 2^50 and multiplying by 5^50's inverse mod 2^256 divides by
-            // 5^50 exactly.
+            // word (with borrow for z^4) and low word. Up to
+            // `LOG10_RATIO_Z_MAX` the z^6 product's two words sum below
+            // 2^256 - 1, so its mm - prod0 takes no borrow: crates/tests
+            // fixed.rs log10_ratio_z6_never_wraps checks every high word.
+            // Subtracting the remainder mod 1e50 makes it an exact multiple
+            // of 1e50 = 2^50 5^50, so shifting 50 bits across both words
+            // divides by 2^50 and multiplying by 5^50's inverse mod 2^256
+            // divides by 5^50 exactly.
             let mm := mulmod(zSquared, zSquared, not(0))
             let prod0 := mul(zSquared, zSquared)
             let remainder := mulmod(zSquared, zSquared, POW_FIXED_ONE)
             let term :=
-                mul(or(shr(50, sub(prod0, remainder)), shl(206, sub(sub(mm, prod0), gt(remainder, prod0)))), inverse)
+                mul(
+                    or(
+                        shr(50, sub(prod0, remainder)),
+                        shl(206, sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0)))
+                    ),
+                    inverse
+                )
             series := add(series, div(term, 5))
             mm := mulmod(term, zSquared, not(0))
             prod0 := mul(term, zSquared)
