@@ -16,28 +16,18 @@ contract LibDecimalFloatImplementationSubTest is Test {
         return LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
-    /// `a - b` is `add(a, -b)` from the exact sum, for any int256 parts. `-b`
-    /// is exact but for int256.min, whose negation 2^255 is no int256 and
-    /// sheds a digit to `(2^255 / 10, e + 1)`, which is past int256 at
-    /// `e = type(int256).max`. Past int256 is `ExponentOverflow`.
+    /// `a - b` is the exact difference rounded once as `add` rounds a sum, for
+    /// any int256 parts: `-b` is exact at `b`'s int256 unit, so
+    /// `-type(int256).min` is `2^255` at 77 digits. Past int256 at
+    /// `type(int256).max` is `ExponentOverflow`.
     function checkSubMatchesRule(
         int256 signedCoefficientA,
         int256 exponentA,
         int256 signedCoefficientB,
         int256 exponentB
     ) internal view {
-        if (signedCoefficientB == type(int256).min && exponentB == type(int256).max) {
-            try this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) {
-                revert("-int256.min at int256.max returns");
-            } catch (bytes memory err) {
-                assertEq(err, abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficientB, exponentB));
-            }
-            return;
-        }
-        (int256 negatedCoefficientB, int256 negatedExponentB) =
-            LibExactFloat.signedParts(signedCoefficientB > 0, LibExactFloat.abs(signedCoefficientB), exponentB);
         (bool overflows, int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibExactFloat.addPartsWide(signedCoefficientA, exponentA, negatedCoefficientB, negatedExponentB);
+            LibExactFloat.subPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         try this.subExternal(signedCoefficientA, exponentA, signedCoefficientB, exponentB) returns (
             int256 signedCoefficient, int256 exponent
         ) {
@@ -90,6 +80,64 @@ contract LibDecimalFloatImplementationSubTest is Test {
         checkSubMatchesRule(a, ea, type(int256).min, type(int256).min);
         checkSubMatchesRule(type(int256).max, type(int256).max, type(int256).min, type(int256).max - 1);
         checkSubMatchesRule(type(int256).min, type(int256).max - 1, type(int256).min, type(int256).max - 1);
+        checkSubMatchesRule(type(int256).min, type(int256).max, type(int256).min, type(int256).max);
+        checkSubMatchesRule(-1, type(int256).max, type(int256).min, type(int256).max);
+        checkSubMatchesRule(0, ea, type(int256).min, type(int256).max);
+    }
+
+    /// Both operands int256.min, at any two exponents.
+    function testSubMinFromMin(int256 ea, int256 eb) external view {
+        checkSubMatchesRule(type(int256).min, ea, type(int256).min, eb);
+    }
+
+    /// As `testSubMinFromMin`, with exponents within 80 of each other, where
+    /// the smaller operand keeps digits.
+    function testSubMinFromMinNearby(int256 ea, int256 gap) external view {
+        ea = bound(ea, type(int256).min + 80, type(int256).max - 80);
+        checkSubMatchesRule(type(int256).min, ea, type(int256).min, ea + bound(gap, -80, 80));
+    }
+
+    /// #459: `-1e M - (-2^255)e M` is `(2^255 - 1)e M`, int256.max at
+    /// `M = type(int256).max`, so it returns exactly.
+    function testSubMinAtMaxExact() external pure {
+        checkSub(-1, type(int256).max, type(int256).min, type(int256).max, type(int256).max, type(int256).max);
+    }
+
+    /// #461: `3 - (-2^255)` is `2^255 + 3`, past int256, so it truncates once
+    /// to `floor((2^255 + 3) / 10)` at exponent 1 (bc: `(2^255 + 3) / 10`).
+    function testSubMinRoundsOnce() external pure {
+        checkSub(
+            3, 0, type(int256).min, 0, 5789604461865809771178549250434395392663499233282028201972879200395656481997, 1
+        );
+        checkSub(
+            -3, 0, type(int256).min, 0, 57896044618658097711785492504343953926634992332820282019728792003956564819965, 0
+        );
+    }
+
+    /// #462: `x - x` is zero for `x = type(int256).min` at any exponent, and
+    /// `0 - x` past int256 at `type(int256).max` is `ExponentOverflow`.
+    function testSubMinFromItself() external {
+        int256 min = type(int256).min;
+        int256 max = type(int256).max;
+        checkSub(min, max, min, max, 0, max);
+        checkSub(min, max - 1, min, max - 1, 0, max - 1);
+        checkSub(min, min, min, min, 0, min);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, max));
+        this.subExternal(0, 0, min, max);
+    }
+
+    /// `min e d - min e 0` is `-2^255 (1 - 10^-d)` units of `10^d`, which
+    /// truncates to `-(2^255 - 1 - floor(2^255 / 10^d))` (bc), and the mirror.
+    function testSubMinFromMinExamples() external pure {
+        int256 min = type(int256).min;
+        int256 nines = 52106440156792287940606943253909558533971493099538253817755912803560908337971;
+        checkSub(min, 1, min, 0, -nines, 1);
+        checkSub(min, 0, min, 1, nines, 1);
+        int256 d76 = 57896044618658097711785492504343953926634992332820282019728792003956564819962;
+        checkSub(min, 76, min, 0, -d76, 76);
+        checkSub(min, 0, min, 76, d76, 76);
+        checkSub(min, 77, min, 0, -type(int256).max, 77);
+        checkSub(min, 0, min, 77, type(int256).max, 77);
     }
 
     /// As `testSubMatchesRuleNearby`, with `a` within two of `b`'s leading
@@ -151,10 +199,9 @@ contract LibDecimalFloatImplementationSubTest is Test {
         checkSub(1, min, 1, min + 76, 1 - 1e76, min);
     }
 
-    /// Near the floor, the difference is the exact sum with the negated
-    /// subtrahend, rounded as `add` states it, with the digits below
-    /// `10^type(int256).min` truncated towards zero. Negating
-    /// `type(int256).min` sheds a digit, as any magnitude past int256 does.
+    /// Near the floor, the difference is the exact difference rounded as
+    /// `add` states it, with the digits below `10^type(int256).min` truncated
+    /// towards zero.
     function testSubNearFloorExact(
         int256 signedCoefficientA,
         int256 signedCoefficientB,
@@ -165,10 +212,8 @@ contract LibDecimalFloatImplementationSubTest is Test {
         int256 exponentA = type(int256).min + int256(bound(headroomA, 0, 80));
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = type(int256).min + int256(bound(headroomB, 0, 80));
-        (int256 negatedCoefficientB, int256 negatedExponentB) =
-            LibExactFloat.signedParts(signedCoefficientB > 0, LibExactFloat.abs(signedCoefficientB), exponentB);
         (bool overflowed, int256 expectedCoefficient, int256 expectedExponent) =
-            LibExactFloat.addPartsWide(signedCoefficientA, exponentA, negatedCoefficientB, negatedExponentB);
+            LibExactFloat.subPartsWide(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
         assertFalse(overflowed, "exact difference overflows");
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.sub(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
