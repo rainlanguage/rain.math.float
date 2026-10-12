@@ -708,11 +708,13 @@ library LibDecimalFloat {
 
     /// Multiplies `a` by `b`. The result is the exact product rounded once
     /// towards zero: the Float closest to it that does not exceed its
-    /// magnitude, as every arithmetic result packs. A product past every Float
-    /// reverts `ExponentOverflow`, and a non-zero one below every non-zero
-    /// Float `ExponentUnderflow`. Unlike `div`, both errors report the parts
-    /// handed to packing: the exact product truncated towards zero to fit
-    /// int256, at the exponent sum plus the digits dropped.
+    /// magnitude, as every arithmetic result packs. A product `packLossy`
+    /// cannot bring to an exponent at most `int32.max` reverts
+    /// `ExponentOverflow`; one just past the largest Float, such as
+    /// `2^223 × 10^int32.max`, packs to it. A non-zero product below every
+    /// non-zero Float reverts `ExponentUnderflow`. Unlike `div`, both errors
+    /// report the parts handed to packing: the exact product truncated towards
+    /// zero to fit int256, at the exponent sum plus the digits dropped.
     /// @param a The first factor.
     /// @param b The second factor.
     /// @return The product of the two floats.

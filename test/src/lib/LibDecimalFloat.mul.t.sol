@@ -41,6 +41,16 @@ contract LibDecimalFloatMulTest is Test {
         assertEq(e, 1);
     }
 
+    /// int224.min × -1 at int32.max is 2^223 × 10^int32.max, one unit past
+    /// the largest Float, int224.max × 10^int32.max = (2^223 - 1) ×
+    /// 10^int32.max. It packs to that Float rather than reverting.
+    function testMulJustPastLargestFloatPacksToIt() external pure {
+        Float largest = LibDecimalFloat.packLossless(type(int224).max, type(int32).max);
+        Float p =
+            LibDecimalFloat.packLossless(type(int224).min, type(int32).max).mul(LibDecimalFloat.packLossless(-1, 0));
+        assertEq(Float.unwrap(p), Float.unwrap(largest));
+    }
+
     /// `mul` of two operands whose exponents sum below `int32.min` reverts
     /// instead of silently producing `FLOAT_ZERO`. Without this, downstream
     /// code that branches on `result == 0` would mistake a tiny magnitude
