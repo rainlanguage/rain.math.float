@@ -889,6 +889,22 @@ contract LibParseDecimalFloatTest is Test {
         }
     }
 
+    /// A nonzero integer part with a fraction ending 10^-76 rescales by 10^76
+    /// to `10^76 + 1`, inside int256. Ending 10^-77 it is `10^77 + 1`, past
+    /// int256 and 78 significant digits, so no Float, and its magnitude near 1
+    /// is not past every Float.
+    function testParseFractionRescaleBound() external view {
+        string memory atBound = string.concat("1.", zeros(75), "1");
+        string memory pastBound = string.concat("1.", zeros(76), "1");
+        checkParseDecimalFloat(atBound, 1e76 + 1, -76, 78);
+        checkParseDecimalFloat(string.concat("-", atBound), -(1e76 + 1), -76, 79);
+        checkParseDecimalFloatFail(pastBound, ParseDecimalPrecisionLoss.selector, 79);
+        checkParseDecimalFloatFail(string.concat("-", pastBound), ParseDecimalPrecisionLoss.selector, 80);
+        checkAgainstRule(atBound);
+        checkAgainstRule(pastBound);
+        checkAgainstRule(string.concat("-", pastBound));
+    }
+
     function digitRunString(uint256 n) internal pure returns (string memory s) {
         s = new string(n);
         for (uint256 i = 0; i < n; i++) {
