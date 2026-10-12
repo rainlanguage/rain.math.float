@@ -27,16 +27,22 @@ contract LibFormatDecimalFloatMemoryTest is Test {
         bytes32 sentinelHash = keccak256(sentinel);
 
         string memory first = LibFormatDecimalFloat.toDecimalString(f, scientific);
-        assertEq(keccak256(sentinel), sentinelHash, "memory before the call");
-        assertEq(keccak256(bytes(first)), expectedHash, "result");
-
+        uint256 freePointer;
+        uint256 end;
         bytes32 padding;
         assembly ("memory-safe") {
+            freePointer := mload(0x40)
             let length := mload(first)
-            // The high bytes of this word up to the next word boundary.
-            padding := shr(mul(8, and(length, 0x1f)), mload(add(add(first, 0x20), length)))
+            end := add(add(first, 0x20), length)
+            // The bytes past the length up to the next word boundary, none
+            // when the length is a whole number of words.
+            if and(length, 0x1f) { padding := shr(mul(8, and(length, 0x1f)), mload(end)) }
         }
+        assertEq(keccak256(sentinel), sentinelHash, "memory before the call");
+        assertEq(keccak256(bytes(first)), expectedHash, "result");
         assertEq(padding, bytes32(0), "padding");
+        // #453: the allocation ends at the string's last word, no spare word.
+        assertEq(freePointer, (end + 0x1f) / 0x20 * 0x20, "free pointer");
 
         // A second string is allocated after the first, not over it.
         string memory second = LibFormatDecimalFloat.toDecimalString(f, scientific);
@@ -52,6 +58,15 @@ contract LibFormatDecimalFloatMemoryTest is Test {
     function testFormatMemoryNonScientificFraction() external pure {
         int256 third = 3333333333333333333333333333333333333333333333333333333333333333333;
         checkMemory(-third, -67, false, bytes.concat("-0.", repeat("3", 67)));
+    }
+
+    /// Lengths that end on a word boundary, where a spare word would lie
+    /// wholly past the string.
+    function testFormatMemoryWordAligned() external pure {
+        checkMemory(12345678901234567890123456789012, 0, false, "12345678901234567890123456789012");
+        checkMemory(1234567890123456789012345678901, -30, true, "1.234567890123456789012345678901");
+        checkMemory(1, 63, false, bytes.concat("1", repeat("0", 63)));
+        checkMemory(-123456789012345678901234567891, -29, true, "-1.23456789012345678901234567891");
     }
 
     function testFormatMemoryNonScientificInteger() external pure {

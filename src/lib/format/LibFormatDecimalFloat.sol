@@ -10,11 +10,14 @@ import {UnformatableExponent} from "../../error/ErrFormat.sol";
 /// Not particularly efficient as it is intended for offchain use that doesn't
 /// cost gas.
 library LibFormatDecimalFloat {
-    /// Maximum `|exponent|` supported by non-scientific formatting. Exponents
+    /// Maximum `|exponent|` supported by non-scientific formatting, applied to
+    /// the value's canonical form: the coefficient without its trailing
+    /// decimal zeros, the exponent raised by as many. Canonical exponents
     /// outside `[-MAX_NON_SCIENTIFIC_EXPONENT, MAX_NON_SCIENTIFIC_EXPONENT]`
-    /// revert with `UnformatableExponent`. The cap exists to prevent unbounded
-    /// memory use when building the output string; callers that need to render
-    /// such values should use scientific mode.
+    /// revert with `UnformatableExponent`, so equal Floats format alike. The
+    /// cap bounds the output string to at most 69 bytes more than it: a sign,
+    /// 68 digits and the zeros. Callers that need to render such values
+    /// should use scientific mode.
     int256 internal constant MAX_NON_SCIENTIFIC_EXPONENT = 1000;
 
     /// Inline assembly takes only literal constants.
@@ -110,22 +113,20 @@ library LibFormatDecimalFloat {
                 cursor := add(cursor, n)
             }
             mstore(out, sub(cursor, add(out, 0x20)))
+            // The zero word may reach past the free pointer, which only needs
+            // to cover the string's last word.
             mstore(cursor, 0)
-            mstore(0x40, and(add(cursor, 0x3f), not(0x1f)))
+            mstore(0x40, and(add(cursor, 0x1f), not(0x1f)))
         }
     }
 
     /// Non-scientific notation: render by placing a decimal point inside the
     /// coefficient's digit string according to the exponent. Does not compute
-    /// `10^exponent` as an integer, so the output is valid for any
+    /// `10^exponent` as an integer, so the output is valid for any canonical
     /// `|exponent| <= MAX_NON_SCIENTIFIC_EXPONENT` — including exponents below
     /// `-76` that arise from near-cancellation add/sub.
     //slither-disable-next-line cyclomatic-complexity
     function _toNonScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory out) {
-        if (exponent > MAX_NON_SCIENTIFIC_EXPONENT || exponent < -MAX_NON_SCIENTIFIC_EXPONENT) {
-            revert UnformatableExponent(exponent);
-        }
-
         bool isNeg = signedCoefficient < 0;
         uint256 absCoef;
         unchecked {
@@ -141,6 +142,9 @@ library LibFormatDecimalFloat {
         // trailingZeros < 68.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 effExp = exponent + int256(trailingZeros);
+        if (effExp > MAX_NON_SCIENTIFIC_EXPONENT || effExp < -MAX_NON_SCIENTIFIC_EXPONENT) {
+            revert UnformatableExponent(effExp);
+        }
 
         assembly ("memory-safe") {
             // The digits end at `out`, at most 68 of them.
@@ -204,8 +208,10 @@ library LibFormatDecimalFloat {
                 }
             }
             mstore(out, sub(cursor, add(out, 0x20)))
+            // The zero word may reach past the free pointer, which only needs
+            // to cover the string's last word.
             mstore(cursor, 0)
-            mstore(0x40, and(add(cursor, 0x3f), not(0x1f)))
+            mstore(0x40, and(add(cursor, 0x1f), not(0x1f)))
         }
     }
 

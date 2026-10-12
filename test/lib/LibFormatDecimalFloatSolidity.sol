@@ -109,10 +109,6 @@ library LibFormatDecimalFloatSolidity {
     }
 
     function _toNonScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
-        if (exponent > MAX_NON_SCIENTIFIC_EXPONENT || exponent < -MAX_NON_SCIENTIFIC_EXPONENT) {
-            revert UnformatableExponent(exponent);
-        }
-
         bool isNeg = signedCoefficient < 0;
         uint256 absCoef;
         unchecked {
@@ -123,6 +119,9 @@ library LibFormatDecimalFloatSolidity {
         (uint256 significand, uint256 trailingZeros) = stripTrailingZeros(absCoef);
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 effExp = exponent + int256(trailingZeros);
+        if (effExp > MAX_NON_SCIENTIFIC_EXPONENT || effExp < -MAX_NON_SCIENTIFIC_EXPONENT) {
+            revert UnformatableExponent(effExp);
+        }
 
         unchecked {
             (bytes memory digitBuffer, uint256 start) = _digits(significand);
@@ -131,7 +130,7 @@ library LibFormatDecimalFloatSolidity {
             bytes memory out;
             uint256 cursor = sign;
             if (effExp >= 0) {
-                // effExp <= 1000 + 67.
+                // effExp <= 1000.
                 // forge-lint: disable-next-line(unsafe-typecast)
                 uint256 zeros = uint256(effExp);
                 out = new bytes(sign + digits + zeros);
