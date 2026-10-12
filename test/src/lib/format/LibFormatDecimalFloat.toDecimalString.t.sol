@@ -588,13 +588,23 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
         uint256 shift,
         bool scientific
     ) external {
-        // Safe: 10^67 fits int224.
+        // A magnitude of at least two digits, divided by at most its digit
+        // count less one, stays non-zero, so no input is rejected (#448).
+        // Safe: int224.max fits int256 and uint256.
         // forge-lint: disable-next-line(unsafe-typecast)
-        base /= int224(int256(10 ** bound(drop, 1, 67)));
+        uint256 magnitude =
+            bound(uint256(int256(base < 0 ? -int256(base) : int256(base))), 10, uint256(int256(type(int224).max)));
+        uint256 digits = 0;
+        for (uint256 rest = magnitude; rest > 0; rest /= 10) {
+            digits++;
+        }
+        magnitude /= 10 ** bound(drop, 1, digits - 1);
+        // Safe: magnitude is below int224.max.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        base = int224(base < 0 ? -int256(magnitude) : int256(magnitude));
         int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
         exponent =
             scientific ? bound(exponent, int256(type(int32).min) + 1, type(int32).max) : bound(exponent, -cap, cap);
-        vm.assume(base != 0);
         assertGe(maxShift(base, exponent), 1, "room to shift");
         checkCanonicalAcrossRepresentations(base, exponent, shift, scientific);
     }
