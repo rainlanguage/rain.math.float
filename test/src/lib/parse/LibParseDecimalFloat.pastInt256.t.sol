@@ -12,6 +12,7 @@ import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
+    MalformedExponentDigits,
     ParseDecimalFloatExcessCharacters
 } from "src/error/ErrParse.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
@@ -234,5 +235,52 @@ contract LibParseDecimalFloatPastInt256Test is Test {
             (int256 actualC, int256 actualE) = float.unpack();
             assertTrue(LibExactFloat.eq(actualC, actualE, c, int256(uint256(z))), "value");
         }
+    }
+
+    /// 78 significant digits, past int256: `head` then 0000000001, so
+    /// `head` + 10^-10 times 10^int32.max, past every Float iff `head` is at
+    /// least 2^223 + 2. Each literal writes that value with the point placed
+    /// differently: after leading zeros, inside the digits, or before a zero
+    /// fraction.
+    function checkThresholdPointPositions(uint256 head, bytes4 expected) internal view {
+        string memory digits = string.concat(head.toString(), "0000000001");
+        uint256 int32Max = uint256(int256(type(int32).max));
+        string[6] memory literals = [
+            // digits × 10^(-79 + int32.max + 69)
+            string.concat("0.0", digits, "e", (int32Max + 69).toString()),
+            // digits × 10^(-81 + int32.max + 71)
+            string.concat("000.000", digits, "e", (int32Max + 71).toString()),
+            // digits × 10^(-78 + int32.max + 68)
+            string.concat("0.", digits, "e", (int32Max + 68).toString()),
+            // digits × 10^(-10 + int32.max)
+            string.concat(head.toString(), ".0000000001e", int32Max.toString()),
+            // digits × 10^(int32.max - 10)
+            string.concat(digits, ".0e", (int32Max - 10).toString()),
+            // digits × 10^(int32.max - 10)
+            string.concat(digits, ".000e", (int32Max - 10).toString())
+        ];
+        for (uint256 i = 0; i < literals.length; i++) {
+            checkFail(literals[i], expected, bytes(literals[i]).length);
+            string memory negative = string.concat("-", literals[i]);
+            checkFail(negative, expected, bytes(negative).length);
+        }
+    }
+
+    /// Just below the threshold is no Float, at it is past every Float.
+    function testParseOverflowThresholdPointPositions() external view {
+        checkThresholdPointPositions(2 ** 223 + 1, ParseDecimalPrecisionLoss.selector);
+        checkThresholdPointPositions(2 ** 223 + 2, ExponentOverflow.selector);
+    }
+
+    /// An exponent marker without digits after a mantissa past int256 is
+    /// `MalformedExponentDigits`, the cursor after the marker and any sign.
+    function testParseIntegerPastInt256MalformedExponent() external view {
+        string memory e77 = string.concat("1", zeros(77));
+        checkFail(string.concat(e77, "e"), MalformedExponentDigits.selector, 79);
+        checkFail(string.concat(e77, "E+"), MalformedExponentDigits.selector, 80);
+        checkFail(string.concat(e77, "e-"), MalformedExponentDigits.selector, 80);
+        checkFail(string.concat(e77, "e+-1"), MalformedExponentDigits.selector, 80);
+        checkFail(string.concat(e77, "e-+1"), MalformedExponentDigits.selector, 80);
+        checkFail(string.concat(e77, ".5e"), MalformedExponentDigits.selector, 81);
     }
 }
