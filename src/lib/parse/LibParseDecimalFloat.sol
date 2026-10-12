@@ -16,7 +16,8 @@ import {
     MalformedExponentDigits,
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
-    ParseDecimalFloatExcessCharacters
+    ParseDecimalFloatExcessCharacters,
+    ParseDecimalNoSignificantDigits
 } from "../../error/ErrParse.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
@@ -215,6 +216,9 @@ library LibParseDecimalFloat {
     /// returns them when both fit int256. Otherwise the literal has more than
     /// 68 significant digits or an exponent past int256, so is no Float, and
     /// the error is chosen by its value as `parseDecimalFloatInline` documents.
+    /// Each caller has seen a nonzero digit in the mantissa: integer digits
+    /// past int256, a fraction with a nonzero digit, or a nonzero integer
+    /// part. Zero literals all return from `parseDecimalFloatInline`.
     /// @param start The start of the literal, at its sign if any, before
     /// integer digits.
     /// @param end The end of the whole string.
@@ -241,9 +245,6 @@ library LibParseDecimalFloat {
             (errorSelector, cursor, eValue) = scanExponent(cursor, end);
             if (errorSelector == MalformedExponentDigits.selector) {
                 return (errorSelector, cursor, 0, 0);
-            }
-            if (digitCount == 0) {
-                return (0, cursor, 0, 0);
             }
             if (errorSelector != 0) {
                 return (errorSelector, cursor, 0, 0);
@@ -308,7 +309,10 @@ library LibParseDecimalFloat {
     }
 
     /// @notice The significant digits of a well formed mantissa, from its
-    /// first nonzero digit to its last.
+    /// first nonzero digit to its last. A mantissa without a nonzero digit,
+    /// which `parseDecimalFloatPastInt256` never passes, reverts
+    /// `ParseDecimalNoSignificantDigits`, as the strip back from its end would
+    /// have no nonzero digit to stop at.
     /// @param start The start of the literal, at its sign if any.
     /// @param intEnd The end of the integer digits.
     /// @param fracStart The start of the fraction digits, or `intEnd`.
@@ -317,7 +321,7 @@ library LibParseDecimalFloat {
     /// @return magnitude The first 77 significant digits, which fit uint256.
     /// @return leading The first 68 significant digits: the floor at
     /// 10^int32.max of a value whose leading digit is at 10^(int32.max + 67).
-    /// @return digitCount The number of significant digits, zero for zero.
+    /// @return digitCount The number of significant digits, at least one.
     /// @return lastExponent The exponent of the last significant digit.
     function readSignificantDigits(uint256 start, uint256 intEnd, uint256 fracStart, uint256 digitsEnd, uint256 end)
         private
@@ -330,7 +334,7 @@ library LibParseDecimalFloat {
                 sigStart = LibParseChar.skipMask(fracStart, digitsEnd, CMASK_ZERO);
             }
             if (sigStart == digitsEnd) {
-                return (0, 0, 0, 0);
+                revert ParseDecimalNoSignificantDigits(start);
             }
             // sigStart holds a nonzero digit, so stepping back over zeros and
             // the point stops at or after it.

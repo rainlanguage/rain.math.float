@@ -1444,9 +1444,8 @@ library LibDecimalFloatImplementation {
     /// The square root of a positive float, rounded to nearest at 41
     /// significant digits. There is never a tie: the root is taken of an
     /// integer N, and r + 1/2 squared is r^2 + r + 1/4, never an integer.
-    /// A coefficient outside (0, 1e76), or an exponent that scaling the
-    /// coefficient into [1e75, 1e76) and evening would take past
-    /// `type(int256).min`, reverts `SqrtOutOfRange`.
+    /// A coefficient outside (0, 1e76) reverts `SqrtOutOfRange`. Every
+    /// exponent has a root, whose exponent is at least int256.min / 2 - 40.
     ///
     /// Four Newton steps over E = N / 1e6 floored suffice from the seed
     /// a + E / b, (a, b) being (26e36, 12e37) for E in [1e75, 1e76) and
@@ -1460,7 +1459,6 @@ library LibDecimalFloatImplementation {
     /// @return signedCoefficient The root's coefficient, in [1e40, 1e41].
     /// @return exponent The root's exponent.
     function sqrt(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        int256 inputCoefficient = signedCoefficient;
         int256 inputExponent = exponent;
         unchecked {
             // A coefficient below 1 wraps to at least 2^255 - 1.
@@ -1496,12 +1494,11 @@ library LibDecimalFloatImplementation {
             // forge-lint: disable-next-line(unsafe-typecast)
             exponent -= scale == 1e5 ? int256(5) : int256(6);
             // The scale and s take off at most 81, so exponent is above the
-            // input's only by wrapping past int256.min.
-            if (exponent > inputExponent) {
-                revert SqrtOutOfRange(inputCoefficient, inputExponent);
-            }
-            exponent /= 2;
+            // input's only by wrapping past int256.min, and then is the even
+            // e - s plus 2^256. Halved, that is (e - s) / 2 plus 2^255: the
+            // sign bit flipped.
             assembly ("memory-safe") {
+                exponent := xor(sar(1, exponent), shl(255, sgt(exponent, inputExponent)))
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))

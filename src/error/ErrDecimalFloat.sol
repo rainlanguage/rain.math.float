@@ -90,9 +90,7 @@ error AgreeNoPositiveTolerance(Float absolute, Float proportional);
 /// @param b The denominator.
 error Log10RatioOutOfRange(uint256 a, uint256 b);
 
-/// @dev Thrown when `sqrt` is given a coefficient outside (0, 1e76), or an
-/// exponent so close to `int256.min` that scaling the coefficient and
-/// evening the exponent would pass it.
+/// @dev Thrown when `sqrt` is given a coefficient outside (0, 1e76).
 /// @param signedCoefficient The coefficient as given.
 /// @param exponent The exponent as given.
 error SqrtOutOfRange(int256 signedCoefficient, int256 exponent);
