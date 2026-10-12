@@ -200,6 +200,8 @@ def agree(absolute, proportional, lowest, highest):
         return {"err": "AgreeToleranceNegative"}
     if not absolute > 0 and not proportional > 0:
         return {"err": "AgreeNoPositiveTolerance"}
+    if lowest > highest:
+        return {"err": "AgreeUnordered"}
     spread = rounded_sum(highest, EXACT.minus(lowest))
     anchor = max(EXACT.abs(lowest), EXACT.abs(highest))
     limit = max(absolute, EXACT.multiply(proportional, anchor))

@@ -83,6 +83,14 @@ error AgreeToleranceNegative(Float absolute, Float proportional);
 /// @param proportional The proportional tolerance as given.
 error AgreeNoPositiveTolerance(Float absolute, Float proportional);
 
+/// @dev Thrown when `agree` is given a `lowest` above its `highest`. The
+/// spread `highest - lowest` is then negative, so it is within every valid
+/// limit. Without this revert every reversed pair would agree, however far
+/// apart.
+/// @param lowest The lowest value as given.
+/// @param highest The highest value as given.
+error AgreeUnordered(Float lowest, Float highest);
+
 /// @dev Thrown when `log10Ratio` is given a + b past `uint256.max`, b of zero,
 /// or z = |a - b| / (a + b) at 1e-50 with z^16 of at least 1e-50, past which
 /// its series is not proven.

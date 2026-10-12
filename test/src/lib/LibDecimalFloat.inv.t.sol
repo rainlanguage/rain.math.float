@@ -76,8 +76,9 @@ contract LibDecimalFloatInvTest is Test {
     /// Reverts only on zero, or where the exact inverse is below the smallest
     /// positive Float, with the input as the range error's payload. Otherwise
     /// the inverse is the Float closest to the exact one that does not exceed
-    /// its magnitude: the exact inverse to 75 or 76 digits, packed, and agrees with
-    /// the unpacked path. No inverse overflows: the smallest magnitude is
+    /// its magnitude: the exact inverse to 75 or 76 digits, past int224,
+    /// packed by the general rule, and agrees with the unpacked path. No
+    /// inverse overflows: the smallest magnitude is
     /// `1e-2147483648`, whose inverse is `10 × 10^int32.max`.
     function testInvMem(Float float) external {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
@@ -106,7 +107,10 @@ contract LibDecimalFloatInvTest is Test {
             ),
             "nearest Float towards zero"
         );
-        (Float expected,) = LibDecimalFloat.packLossy(q, exponentExact);
-        assertEq(Float.unwrap(floatInv), Float.unwrap(expected), "inverse");
+        assertEq(
+            Float.unwrap(floatInv),
+            LibExactFloat.packedNearestTowardZero(signedCoefficient < 0, LibExactFloat.abs(q), exponentExact),
+            "inverse"
+        );
     }
 }

@@ -13,7 +13,8 @@ import {
     ZeroNegativePower,
     PowNegativeBase,
     AgreeToleranceNegative,
-    AgreeNoPositiveTolerance
+    AgreeNoPositiveTolerance,
+    AgreeUnordered
 } from "../error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImplementation.sol";
 
@@ -865,7 +866,10 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Fractional component of a float.
+    /// Fractional component of a float: `x - trunc(x)`, the part `integer`
+    /// truncates away. It has the sign of the float and lies in (-1, 1), so it
+    /// is negative for a negative non-integer: `frac(-1.5)` is `-0.5`, not the
+    /// `x - floor(x)` of `0.5`. `integer(x) + frac(x) == x`.
     /// @param float The float to return the fractional part of.
     /// @return The fractional component of the float.
     function frac(Float float) internal pure returns (Float) {
@@ -876,7 +880,7 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Smallest integer value less than or equal to the float.
+    /// Greatest integer value less than or equal to the float.
     /// @param float The float to floor.
     /// @return The floored float.
     function floor(Float float) internal pure returns (Float) {
@@ -1422,6 +1426,13 @@ library LibDecimalFloat {
     /// guard. See `AgreeToleranceNegative` and `AgreeNoPositiveTolerance` for
     /// what each would otherwise silently do. Either tolerance ALONE may be
     /// zero, which is how a caller asks for only the other one.
+    ///
+    /// `lowest` MAY NOT BE ABOVE `highest`. Reversed, the spread is negative
+    /// and so within any valid limit, so every reversed pair would agree
+    /// however far apart. Rejected rather than reordered, because a caller
+    /// that passed its extremes reversed did not find them, and reordering
+    /// would answer for a set it never computed. See `AgreeUnordered`. Equal
+    /// values are ordered.
     /// @param absolute The absolute tolerance, in the same units as the values.
     /// @param proportional The proportional tolerance, as a fraction.
     /// @param lowest The lowest value in the set.
@@ -1467,7 +1478,8 @@ library LibDecimalFloat {
         }
     }
 
-    /// The distance between the two extremes, unpacked.
+    /// The distance between the two extremes, unpacked. Reverts
+    /// `AgreeUnordered` where `lowest > highest`.
     ///
     /// Split out of `agree` because holding the four unpacked values and the
     /// intermediates in one frame exceeds the stack.
@@ -1482,6 +1494,14 @@ library LibDecimalFloat {
         // `return f(...)` on a tuple-returning call as an ignored return.
         (int256 spreadCoefficient, int256 spreadExponent) =
             LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
+        // `sub` truncates toward zero once, at the larger operand's int256
+        // unit `u`, so the sign is exact unless a nonzero difference is under
+        // `u`. None is: the larger is at least 1e75 u, so a smaller operand
+        // within `u` of it needs an exponent above `u` (an int224 holds under
+        // 1.4e67), making the difference a nonzero multiple of at least `u`.
+        if (spreadCoefficient < 0) {
+            revert AgreeUnordered(lowest, highest);
+        }
         return (spreadCoefficient, spreadExponent);
     }
 

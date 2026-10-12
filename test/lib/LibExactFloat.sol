@@ -753,6 +753,48 @@ library LibExactFloat {
         return none || cmpScaled(magnitude, exponent, u512(next), nextExponent) < 0;
     }
 
+    /// The packed bytes of the Float the general rule packs the exact
+    /// `±magnitude × 10^exponent` to, for a magnitude past the int224 bound of
+    /// its sign. `packLossy`'s NatSpec puts such a value at the lowest exponent
+    /// its truncated coefficient fits int224, or at the int224 bound one
+    /// exponent lower where the bound is the closer of the two, and never
+    /// below the int32 floor. The caller rules out values that `overflows` or
+    /// `underflows`.
+    function packedNearestTowardZero(bool negative, uint256 magnitude, int256 exponent)
+        internal
+        pure
+        returns (bytes32)
+    {
+        uint256 limit = coefficientLimit(negative);
+        require(magnitude > limit, "fits int224");
+        uint256 shift = 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        while (magnitude / 10 ** shift > limit) {
+            ++shift;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 floorShift = int256(type(int32).min) - exponent;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (floorShift > int256(shift)) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            shift = uint256(floorShift);
+        }
+        uint256 truncated = shift > 77 ? 0 : magnitude / 10 ** shift;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 truncatedExponent = exponent + int256(shift);
+        // At `truncatedExponent - 1` the truncation did not fit, so the bound
+        // there is at most the value.
+        bool boundIsCloser = truncatedExponent - 1 >= type(int32).min && limit > truncated * 10;
+        uint256 resultMagnitude = boundIsCloser ? limit : truncated;
+        int256 resultExponent = boundIsCloser ? truncatedExponent - 1 : truncatedExponent;
+        require(resultMagnitude != 0, "underflows");
+        require(resultExponent <= type(int32).max, "overflows");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signed = negative ? -int256(resultMagnitude) : int256(resultMagnitude);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return bytes32((uint256(uint32(int32(resultExponent))) << 224) | uint256(uint224(int224(signed))));
+    }
+
     /// The magnitude of the Float of the sign one step further from zero than
     /// the non-zero `(rc, re)`, or `none` past the largest.
     function nextFloat(bool negative, int256 rc, int256 re)

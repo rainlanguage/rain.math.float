@@ -861,6 +861,52 @@ fn library_agree_tolerance_errors() {
     }
 }
 
+/// A reversed pair is `AgreeUnordered` whatever its spread, after the
+/// tolerance errors, and equal values in either representation are ordered.
+#[test]
+fn library_agree_unordered() {
+    let tiny = Dec::new(1, -18);
+    let million = Dec::new(1_000_000, 0);
+    assert_eq!(
+        r::agree(&tiny, &Dec::zero(), &million, &million.neg()),
+        Err(RefError::AgreeUnordered)
+    );
+    assert_eq!(
+        r::agree(
+            &Dec::new(1, 0),
+            &Dec::zero(),
+            &Dec::new(101, 0),
+            &Dec::new(100, 0)
+        ),
+        Err(RefError::AgreeUnordered)
+    );
+    assert_eq!(
+        r::agree(
+            &Dec::new(-1, 0),
+            &Dec::zero(),
+            &Dec::new(101, 0),
+            &Dec::new(100, 0)
+        ),
+        Err(RefError::AgreeToleranceNegative)
+    );
+    assert_eq!(
+        r::agree(&tiny, &Dec::zero(), &Dec::new(10, -1), &Dec::new(1, 0)),
+        Ok(true)
+    );
+    let pairs = [
+        (million.clone(), million.neg()),
+        (Dec::new(101, 0), Dec::new(100, 0)),
+        (Dec::new(1, 0), Dec::new(10i64.pow(17) - 1, -17)),
+        (Dec::new(10, -1), Dec::new(1, 0)),
+        (Dec::new(1, 0), Dec::new(10, -1)),
+        (Dec::new(0, 5), Dec::new(0, -5)),
+    ];
+    for (l, h) in &pairs {
+        run(check_agree(&tiny, &Dec::new(1, -2), l, h));
+        run(check_agree(&Dec::new(-1, 0), &Dec::zero(), l, h));
+    }
+}
+
 /// The unpacked `toFixedDecimalLossy` where `exponent + decimals` passes
 /// int256.max, which no packed Float reaches.
 #[test]
