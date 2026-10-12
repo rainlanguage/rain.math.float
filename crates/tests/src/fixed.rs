@@ -1,6 +1,7 @@
 //! `exp10Fixed` and `log10Ratio`, the fixed point cores of pow10 and log10,
 //! against the bounds their NatSpec proves:
 //! - the series coefficients and step constants are exact floors;
+//! - no multiply of steps 2 to 16 ever borrows, over all 2^16 products;
 //! - every one of exp10Fixed's 2^16 step products is enumerated against
 //!   astro-float, so the bound over every cell holds and is tight;
 //! - the worst inputs found sit inside the bounds and near them;
@@ -226,6 +227,40 @@ fn step_constants_are_exact_floors() {
         let x = pow10(50) >> i;
         let t = precise::pow10_true(&Dec::new(x.clone(), -50));
         assert_eq!(exp10_fixed(&x), floor_at(&t, 50), "10^(2^-{i})");
+    }
+}
+
+/// Every multiply of steps 2 to 16 in exp10Fixed, over all 2^16 step
+/// products, has a 512-bit product p whose low word is at least
+/// p mod 1e50 and whose words sum below 2^256 - 1. So neither the
+/// remainder borrow nor the mulmod wrap borrow is ever taken there.
+#[test]
+fn step_multiplies_never_borrow() {
+    let one = pow10(50);
+    let word = BigInt::from(1) << 256;
+    let steps: Vec<BigInt> = (1..=16)
+        .map(|i| literal_after(IMPL, &format!("uint256 constant EXP10_STEP_{i} = ")))
+        .collect();
+    for k in 0..1u32 << 16 {
+        let mut result = one.clone();
+        for i in 1..=16u32 {
+            if k >> (16 - i) & 1 == 0 {
+                continue;
+            }
+            let step = &steps[i as usize - 1];
+            if i == 1 {
+                result = step.clone();
+                continue;
+            }
+            let p = &result * step;
+            let (high, low) = p.div_mod_floor(&word);
+            assert!(
+                low >= p.mod_floor(&one),
+                "remainder borrow at k = {k}, step {i}"
+            );
+            assert!(&high + &low < &word - 1, "mulmod wrap at k = {k}, step {i}");
+            result = p / &one;
+        }
     }
 }
 
