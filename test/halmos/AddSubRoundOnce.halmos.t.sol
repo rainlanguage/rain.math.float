@@ -68,8 +68,11 @@ contract AddSubRoundOnceHalmosTest {
 
     /// ZERO.
     function check_addZeroOperand(int256 c, int256 e, int256 ez, bool zeroFirst) external view {
-        try this.implAdd(zeroFirst ? int256(0) : c, zeroFirst ? ez : e, zeroFirst ? c : int256(0), zeroFirst ? e : ez)
-        returns (int256 rc, int256 re) {
+        try this.implAdd(
+            zeroFirst ? int256(0) : c, zeroFirst ? ez : e, zeroFirst ? c : int256(0), zeroFirst ? e : ez
+        ) returns (
+            int256 rc, int256 re
+        ) {
             assert(rc == c);
             assert(c == 0 || re == e);
         } catch {
