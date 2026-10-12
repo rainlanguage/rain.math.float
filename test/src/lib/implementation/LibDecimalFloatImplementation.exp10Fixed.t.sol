@@ -3,7 +3,18 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation, POW_FIXED_ONE} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    POW_FIXED_ONE,
+    EXP10_HORNER_2,
+    EXP10_HORNER_3,
+    EXP10_HORNER_4,
+    EXP10_HORNER_5,
+    EXP10_HORNER_6,
+    EXP10_HORNER_7,
+    EXP10_HORNER_8,
+    EXP10_HORNER_9
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {Exp10FixedOutOfRange} from "src/error/ErrDecimalFloat.sol";
 
@@ -107,5 +118,112 @@ contract LibDecimalFloatImplementationExp10FixedTest is Test {
         x = bound(x, POW_FIXED_ONE, type(uint256).max);
         vm.expectRevert(abi.encodeWithSelector(Exp10FixedOutOfRange.selector, x));
         this.exp10FixedExternal(x);
+    }
+
+    /// The value the multiply after adding (ln 10)^step / step! takes times r,
+    /// as the documented Horner rule floors it.
+    function hornerFactor(uint256 r, uint256 step) internal pure returns (uint256 factor) {
+        uint256[8] memory coefficients = [
+            EXP10_HORNER_2,
+            EXP10_HORNER_3,
+            EXP10_HORNER_4,
+            EXP10_HORNER_5,
+            EXP10_HORNER_6,
+            EXP10_HORNER_7,
+            EXP10_HORNER_8,
+            EXP10_HORNER_9
+        ];
+        factor = EXP10_HORNER_9;
+        for (uint256 k = 8; k >= step; k--) {
+            factor = coefficients[k - 2] + Math.mulDiv(factor, r, POW_FIXED_ONE);
+        }
+    }
+
+    /// The low word of a * b is below a b mod 1e50.
+    function lowWordBelowRemainder(uint256 a, uint256 b) internal pure returns (bool) {
+        uint256 low;
+        unchecked {
+            low = a * b;
+        }
+        return low < mulmod(a, b, POW_FIXED_ONE);
+    }
+
+    /// x below 2^-16 whose multiply after adding (ln 10)^step / step!, for
+    /// step 8 down to 2, has a low word below its remainder mod 1e50, so
+    /// subtracting the remainder borrows from the high word. References are
+    /// 10^x truncated to 50 places from `bc -l` at scale 200.
+    function testExp10FixedHornerMultiplyRemainderBorrows() external pure {
+        uint256[3][13] memory cases = [
+            [
+                uint256(8),
+                762940942320212121346300472980936507770876579,
+                100001756751871326318313412630848020413772097696325
+            ],
+            [
+                uint256(8),
+                508627625814133283966100736957054540933761976,
+                100001171165247171211367533024862294197188937236630
+            ],
+            [
+                uint256(7),
+                762941128478606530888775983110234293147290216,
+                100001756752299979392456063802066758513917291318075
+            ],
+            [
+                uint256(7),
+                508627791287750329703429612494245112952342259,
+                100001171165628192757601251437659585372979822334652
+            ],
+            [
+                uint256(6),
+                762941367815036310745078012683917445721738015,
+                100001756752851081569209183982705444674272458760978
+            ],
+            [
+                uint256(6),
+                508628004031633991451072542368952413579770704,
+                100001171166118059389830080800768966236323180024699
+            ],
+            [
+                uint256(5),
+                762941686930275944371049105618478268881614943,
+                100001756753585884471383657713278870259907461331726
+            ],
+            [
+                uint256(5),
+                508628287690237783991637131006414028007567499,
+                100001171166771215111873348971325335583079328207055
+            ],
+            [
+                uint256(4),
+                762942133691555367663066349924066535396032431,
+                100001756754614608405343089783236578275876030213830
+            ],
+            [
+                uint256(4),
+                305177496816814754944306844366986248933302412,
+                100000702699623809875931178672353195502267833005752
+            ],
+            [
+                uint256(3),
+                117376252165447036455505654530596961595237084,
+                100000270269173734141712308142315110290330419046444
+            ],
+            [
+                uint256(2),
+                508630273301571623514985782118028471512034183,
+                100001171171343307715958989543746160062945412514778
+            ],
+            [
+                uint256(2),
+                138717741109131768047353978597871383874358790,
+                100000319409912924070264117940886962149664776203160
+            ]
+        ];
+        for (uint256 i = 0; i < cases.length; i++) {
+            uint256 x = cases[i][1];
+            assertTrue(lowWordBelowRemainder(hornerFactor(x, cases[i][0]), x), "borrows");
+            assertProvenBound(LibDecimalFloatImplementation.exp10Fixed(x), cases[i][2]);
+        }
     }
 }
