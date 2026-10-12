@@ -352,3 +352,13 @@ returned.
    operands, plus every pair of the four extreme constants and
    `±int224 extremes × 10^int32.min`, reverted only `ExponentOverflow`,
    `ExponentUnderflow` or `DivisionByZero`; no other error was reached.
+8. "Past every Float" is one threshold for both signs, `(2^223 + 2) × 10^int32.max`
+   (the definition above), but the largest Floats are not symmetric:
+   `(2^223 - 1) × 10^int32.max` and `-2^223 × 10^int32.max`. A positive value
+   packs to `FLOAT_MAX_POSITIVE_VALUE` up to 3 units past it; a negative value
+   packs to `FLOAT_MIN_NEGATIVE_VALUE` up to 2 units past it (#452). The NatSpec
+   on `packLossy` and the README disagree on which values in that band revert.
+   Option: a threshold per sign, reverting once the whole part at
+   `10^int32.max` is past that sign's bound (`>= 2^223` positive,
+   `>= 2^223 + 1` negative), so only a sub-unit fraction is ever truncated
+   into the largest Float.
