@@ -905,6 +905,44 @@ contract LibParseDecimalFloatTest is Test {
         checkAgainstRule(string.concat("-", pastBound));
     }
 
+    /// Signs, zeros and the int256 bounds of the integer and fraction digits,
+    /// against the rule.
+    function testParseRuleMantissaEdges() external view {
+        string memory max = Strings.toStringSigned(type(int256).max);
+        string memory past = (uint256(1) << 255).toString();
+        // 2^255 with the point after its first digit.
+        string memory pastPointed = string.concat("5.", string(LibTestDecimalLiteral.slice(bytes(past), 1, 77)));
+        string[24] memory literals = [
+            "-0",
+            "-0.0",
+            "-00.000e5",
+            "-0.5",
+            "-00.10",
+            "-1.05",
+            string.concat("-", past),
+            string.concat("-", past, ".0"),
+            string.concat("-", past, ".5"),
+            string.concat("-", past, "e-1"),
+            string.concat("-", past, "e1"),
+            string.concat(max, ".0"),
+            string.concat("-", max, ".5"),
+            string.concat("0.", max),
+            string.concat("-0.", max),
+            string.concat("0.", past),
+            string.concat("-0.", past),
+            string.concat("0.", max, "000"),
+            pastPointed,
+            string.concat("-", pastPointed),
+            string.concat("9.", zeros(75), "9"),
+            string.concat("-9.", zeros(75), "9"),
+            string.concat("1.", zeros(76), "0"),
+            string.concat("1.", zeros(300), "1")
+        ];
+        for (uint256 i = 0; i < literals.length; i++) {
+            checkAgainstRule(literals[i]);
+        }
+    }
+
     function digitRunString(uint256 n) internal pure returns (string memory s) {
         s = new string(n);
         for (uint256 i = 0; i < n; i++) {
