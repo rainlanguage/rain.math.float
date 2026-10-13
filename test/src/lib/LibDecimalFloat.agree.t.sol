@@ -658,4 +658,17 @@ contract LibDecimalFloatAgreeTest is Test {
         vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, f(0, 0), f(0, 0)));
         this.agreeExternal(f(0, 0), f(0, 0), f(100, 0), f(101, 0));
     }
+
+    /// SPEC.md states a spread accepted at the boundary exceeds the limit by
+    /// under `1e-76` of its magnitude. A spread that keeps 76 digits misses
+    /// that: `5.8` maximizes to `58e74 × 10^-75`, so `9.999e-76` is under one
+    /// unit and dropped. The exact spread is `5.8 + 9.999e-76` against a limit
+    /// of `5.8`, an excess of `9.999e-76`, which is about `1.72e-76` of the
+    /// spread: scaled by 1e76 and counted in thousandths, the excess is 9999
+    /// and the spread is under 5801. Pinned as today's behaviour; the SPEC
+    /// bound is open.
+    function testAgreeBoundaryExcessPastOneE76() external pure {
+        assertTrue(LibDecimalFloat.agree(f(58, -1), f(0, 0), f(-9999, -79), f(58, -1)), "sorted");
+        assertTrue(LibDecimalFloat.agree(f(58, -1), f(0, 0), f(58, -1), f(-9999, -79)), "reversed");
+    }
 }
