@@ -113,12 +113,17 @@ When the exponent _underflows_ this means that the float is `Xe-Y` where `Y` is
 some very large negative number, which means the float represents a number
 extremely close to zero.
 
-In these cases we chose to _lose precision_ by rounding towards zero rather than
-erroring.
+In these cases we chose to _lose precision_ by shedding digits to lift the
+exponent to `int32.min`, rounding towards zero.
 
 This is because in _absolute_ terms, no matter how much the exponent is
 underflowing by, the numerical value is changing by increasingly negligible
 amounts.
+
+Once every digit is shed the result is zero and the magnitude is gone. Lossy
+packing returns `FLOAT_ZERO` with `lossless` false there; every arithmetic
+operation instead reverts `ExponentUnderflow`, so a non-zero result is never
+silently replaced by zero.
 
 This contrasts with the overflow case (error) where the size of the exponent
 overflow is losing exponentially more information if it is allowed to decapitate
@@ -222,14 +227,6 @@ This is _different to how floats usually work_ where a sufficiently large number
 would be converted to the special `Infinity` or `-Infinity` values. We DO NOT do
 this, better to error than start talking infinities when money is being handled.
 
-#### Other overflows
-
-Other values than the exponent can also overflow in more niche/situational
-scenarios, such as the intermediate calculations moving between 512 and 256 bits
-for multiplication and division. These will also error rather than
-truncate/round because information loss from overflow doesn't converge to a
-predictable value.
-
 #### Uncalculable values (no NaN)
 
 There are many cases where mathematical operations cannot produce a meaningful
@@ -245,15 +242,15 @@ Other examples include:
 - Taking the log of `0`
 - Taking the log of a negative number
 - Raising `0` to a negative number
-- Internal overflows during intermediate calculations
 
 #### Unimplemented math
 
 There are some situations where certain operations on some numeric ranges has
 not been implemented and here we error.
 
-Most notable is that we do not currently support powers of negative number bases
-as this often results in complex numbers rather than real numbers.
+Most notable is that a negative base is supported in `pow` only for a whole
+exponent, where the result is real. A negative base with a fractional exponent
+reverts `PowNegativeBase`, as the result is often a complex number.
 
 [rainlanguage/rain.math.float#88](https://github.com/rainlanguage/rain.math.float/issues/88)
 

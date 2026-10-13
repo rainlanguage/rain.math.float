@@ -550,8 +550,10 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Variant of `packLossy` used as the finaliser of every arithmetic
-    /// operation but `minus` and `abs`, which cannot underflow. Tolerates
+    /// Variant of `packLossy` used as the finaliser of `add`, `sub`, `mul`,
+    /// `integer`, `frac`, `floor`, `ceil`, `log10` and `sqrt`. `minus` and
+    /// `abs` cannot underflow; `div`, `inv`, `pow` and `pow10` pack inline so
+    /// their range errors report their input. Tolerates
     /// coefficient truncation (which preserves the order
     /// of magnitude) but reverts on exponent underflow (which silently
     /// replaces the value by `FLOAT_ZERO`, losing the magnitude entirely).

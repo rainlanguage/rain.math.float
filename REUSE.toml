@@ -15,6 +15,7 @@ path = [
   ".cargo/**/",
   "CLAUDE.md",
   "README.md",
+  "SPEC.md",
   "flake.lock",
   "flake.nix",
   "foundry.toml",
