@@ -12,9 +12,9 @@ contract LibHalmosExactHalmosTest {
     }
 
     /// Every nonzero int256 has one digit count j + 1 in [1, 77].
-    function check_maximizeHintsHold(int256 c, uint256 jBits) external pure {
+    function check_maximizeHintsHold(int256 c, uint256 jBits) external view {
         uint256 j = LibHalmosExact.concrete(jBits, 7);
-        if (j > 76) return;
+        if (j > 76 || !LibHalmosExact.inSlice(j)) return;
         uint256 x = LibHalmosExact.abs(c);
         if (x < 10 ** j || x >= 10 ** (j + 1)) return;
         assert(LibHalmosExact.maximizeHints(c, j));

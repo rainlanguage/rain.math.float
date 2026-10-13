@@ -1,9 +1,10 @@
 name: halmos
 on:
+  push:
   workflow_dispatch:
     inputs:
       lemma:
-        description: Run only this lemma (all runs every lemma)
+        description: Run only this lemma and its slices (all runs every lemma)
         type: choice
         default: all
         options:
@@ -17,19 +18,24 @@ on:
           - far
           - log10ratio
           - exp10
-          - fixedfrom
-          - fixedtoedges
-          - fixedtomidlossypair
-          - fixedtomidlosslesspair
-          - fixedtomidlossyfloat
-          - fixedtomidlosslessfloat
-          - wteshrinknear
-          - wtegrownear
-          - wtefar
+          - fixed
+          - fixed-from
+          - fixed-to
+          - fixed-to-mid-lossy
+          - fixed-to-mid-lossless
+          - wte
+concurrency:
+  # A push supersedes the previous push's run on its ref; dispatches never
+  # cancel each other.
+  group: halmos-${{ github.ref }}-${{ github.event_name == 'push' && 'push' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
 env:
   HALMOS_VERSION: 0.3.3
   # Solver versions: yices 2.7.0, cvc5 1.4.0, bitwuzla 0.9.1.
   SOLVER_NIXPKGS: github:NixOS/nixpkgs/8edc0c72e3a38faf5434e40d1f19431125fe4b30
+  # Every halmos run must prove in this many seconds; a slice that reaches it
+  # fails and is cut smaller.
+  HALMOS_RUN_SECONDS: 300
 defaults:
   run:
     shell: bash
@@ -41,30 +47,55 @@ jobs:
     steps:
       - id: select
         env:
-          LEMMA: ${{ inputs.lemma }}
+          LEMMA: ${{ inputs.lemma || 'all' }}
         # expect: tests the contract/function filter must match; a filter
         # that silently matches fewer fails the job.
+        # A sliced lemma has `range`, its case indices, and `starts`: slice i
+        # is [starts[i], starts[i + 1] - 1], the last one ending at range[1],
+        # so the slices tile the range. Each slice runs with
+        # HALMOS_SLICE_LO/HI (`LibHalmosExact.inSlice`), so its --function
+        # filter must match that one lemma.
         run: |
-          lemmas=$(jq -c --arg lemma "$LEMMA" '[.[] | select($lemma == "all" or .name == $lemma)]' <<'JSON'
+          lemmas=$(jq -c --arg lemma "$LEMMA" '
+            [.[]
+             | select($lemma == "all" or .name == $lemma or (.name | startswith($lemma + "-")))
+             | if has("starts") then
+                 . as $l
+                 | if ($l.starts[0] != $l.range[0]) or ($l.starts[-1] > $l.range[1])
+                      or ([$l.starts | range(1; length) as $i | $l.starts[$i] > $l.starts[$i - 1]] | all | not)
+                   then error("\($l.name): starts do not tile \($l.range)") else . end
+                 | ($l.starts + [$l.range[1] + 1]) as $b
+                 | range(0; $l.starts | length) as $i
+                 | $l + {name: "\($l.name)-\($b[$i])-\($b[$i + 1] - 1)", lo: $b[$i], hi: ($b[$i + 1] - 1)}
+                 | del(.starts, .range)
+               else . end]' <<'JSON'
           [
             {"name": "quick", "solver": "bitwuzla", "expect": 3, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_(addZeroOperand|maximizeFloat|maximizeIdempotent)"]},
             {"name": "divhint", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_divHintHolds"]},
-            {"name": "hints", "solver": "yices", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_maximizeHintsHold"]},
-            {"name": "pack", "solver": "hybrid", "expect": 3, "args": ["--contract", "PackArithmeticResultHalmosTest", "--solver-timeout-assertion", "0"]},
-            {"name": "near", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_addNear", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "minus", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_subIsAddNegated", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "hints", "solver": "yices", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_maximizeHintsHold"], "range": [0, 76], "starts": [0, 10, 20, 30, 40, 50, 60, 70]},
+            {"name": "pack-middle", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packMiddle", "--solver-timeout-assertion", "0"]},
+            {"name": "pack-low", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packLow", "--solver-timeout-assertion", "0"], "range": [0, 127], "starts": [0, 16, 32, 48, 64, 80, 96, 112]},
+            {"name": "pack-high", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packHigh", "--solver-timeout-assertion", "0"], "range": [0, 127], "starts": [0, 16, 32, 48, 64, 80, 96, 112]},
+            {"name": "near", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_addNear", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"], "range": [0, 76], "starts": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76]},
+            {"name": "minus", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_subIsAddNegated", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"], "range": [0, 6083], "starts": [0, 468, 936, 1404, 1872, 2340, 2808, 3276, 3744, 4212, 4680, 5148, 5616]},
             {"name": "far", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_addFar", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
             {"name": "log10ratio", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_log10RatioEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
             {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "fixedfrom", "solver": "hybrid", "expect": 2, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_fromFixedDecimal", "--solver-timeout-assertion", "0"]},
-            {"name": "fixedtoedges", "solver": "hybrid", "expect": 8, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimal.*(Low|High)$", "--solver-timeout-assertion", "0"]},
-            {"name": "fixedtomidlossypair", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLossyPairMid", "--solver-timeout-assertion", "0"]},
-            {"name": "fixedtomidlosslesspair", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLosslessPairMid", "--solver-timeout-assertion", "0"]},
-            {"name": "fixedtomidlossyfloat", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLossyFloatMid", "--solver-timeout-assertion", "0"]},
-            {"name": "fixedtomidlosslessfloat", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLosslessFloatMid", "--solver-timeout-assertion", "0"]},
-            {"name": "wteshrinknear", "solver": "hybrid", "expect": 1, "args": ["--contract", "WithTargetExponentHalmosTest", "--function", "check_withTargetExponentShrinkNear", "--solver-timeout-assertion", "0"]},
-            {"name": "wtegrownear", "solver": "hybrid", "expect": 1, "args": ["--contract", "WithTargetExponentHalmosTest", "--function", "check_withTargetExponentGrowNear", "--solver-timeout-assertion", "0"]},
-            {"name": "wtefar", "solver": "hybrid", "expect": 2, "args": ["--contract", "WithTargetExponentHalmosTest", "--function", "check_withTargetExponent.*Far$", "--solver-timeout-assertion", "0"]}
+            {"name": "fixed-from-small", "solver": "hybrid", "expect": 2, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_fromFixedDecimal(LossySmall|LosslessAll)", "--solver-timeout-assertion", "0"]},
+            {"name": "fixed-from-large", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_fromFixedDecimalLossyLarge", "--solver-timeout-assertion", "0"]},
+            {"name": "fixed-from-packed-lossy-small", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_fromFixedDecimalLossyPackedSmall", "--solver-timeout-assertion", "0"]},
+            {"name": "fixed-from-packed-lossy-large", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_fromFixedDecimalLossyPackedLarge", "--solver-timeout-assertion", "0"]},
+            {"name": "fixed-from-packed-lossless-small", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_fromFixedDecimalLosslessPackedSmall", "--solver-timeout-assertion", "0"]},
+            {"name": "fixed-from-packed-lossless-large", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_fromFixedDecimalLosslessPackedLarge", "--solver-timeout-assertion", "0"]},
+            {"name": "fixed-to-edges-pair", "solver": "hybrid", "expect": 4, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimal(Lossy|Lossless)Pair(Low|High)", "--solver-timeout-assertion", "0"]},
+            {"name": "fixed-to-edges-float", "solver": "hybrid", "expect": 4, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimal(Lossy|Lossless)Float(Low|High)", "--solver-timeout-assertion", "0"]},
+            {"name": "fixed-to-float-is-pair-lossy", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLossyFloatIsPair", "--solver-timeout-assertion", "0"]},
+            {"name": "fixed-to-float-is-pair-lossless", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLosslessFloatIsPair", "--solver-timeout-assertion", "0"]},
+            {"name": "fixed-to-mid-lossy", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLossyPairMid", "--solver-timeout-assertion", "0"], "range": [0, 154], "starts": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150]},
+            {"name": "fixed-to-mid-lossless", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLosslessPairMid", "--solver-timeout-assertion", "0"], "range": [0, 154], "starts": [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150]},
+            {"name": "wte-shrink-near", "solver": "hybrid", "expect": 1, "args": ["--contract", "WithTargetExponentHalmosTest", "--function", "check_withTargetExponentShrinkNear", "--solver-timeout-assertion", "0"], "range": [0, 76], "starts": [0, 26, 52]},
+            {"name": "wte-grow-near", "solver": "hybrid", "expect": 1, "args": ["--contract", "WithTargetExponentHalmosTest", "--function", "check_withTargetExponentGrowNear", "--solver-timeout-assertion", "0"], "range": [1, 76], "starts": [1, 20, 39, 58]},
+            {"name": "wte-far", "solver": "hybrid", "expect": 2, "args": ["--contract", "WithTargetExponentHalmosTest", "--function", "check_withTargetExponent(Shrink|Grow)Far", "--solver-timeout-assertion", "0"]}
           ]
           JSON
           )
@@ -73,8 +104,7 @@ jobs:
     needs: matrix
     name: halmos (${{ matrix.lemma.name }})
     runs-on: ubuntu-latest
-    # GitHub-hosted runner maximum.
-    timeout-minutes: 360
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -91,13 +121,16 @@ jobs:
           done
       - name: Install soldeer dependencies
         run: nix develop -c forge soldeer install
+      # halmos's own build (same flags) is then a no-op inside the time limit.
+      - name: Build
+        run: nix develop -c forge build --ast --root . --extra-output storageLayout metadata
       - name: Run ${{ matrix.lemma.name }}
-        # Leaves time inside the job limit for the log upload.
-        timeout-minutes: 345
         env:
           SOLVER: ${{ matrix.lemma.solver }}
           EXPECT: ${{ matrix.lemma.expect }}
           ARGS_JSON: ${{ toJSON(matrix.lemma.args) }}
+          SLICE_LO: ${{ matrix.lemma.lo }}
+          SLICE_HI: ${{ matrix.lemma.hi }}
           LOG: halmos-${{ matrix.lemma.name }}.log
           PYTHONUNBUFFERED: 1
         run: |
@@ -106,13 +139,26 @@ jobs:
             yices) solver=yices-smt2 ;;
             hybrid) solver="$GITHUB_WORKSPACE/script/halmos/hybrid-solver.sh" ;;
           esac
+          if [ -n "$SLICE_LO" ]; then
+            export HALMOS_SLICE_LO="$SLICE_LO" HALMOS_SLICE_HI="$SLICE_HI"
+          fi
           mapfile -t args < <(jq -r '.[]' <<<"$ARGS_JSON")
-          nix develop -c halmos --panic-error-codes '*' --solver-threads 4 --loop 16 \
+          start=$(date +%s)
+          set +e
+          nix develop -c timeout "$HALMOS_RUN_SECONDS" halmos --panic-error-codes '*' --solver-threads 4 --loop 16 \
             --solver-command "$solver" "${args[@]}" 2>&1 | tee "$LOG"
+          code=${PIPESTATUS[0]}
+          set -e
+          seconds=$(($(date +%s) - start))
+          echo "| ${{ matrix.lemma.name }} | exit $code | ${seconds}s |" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" = 124 ]; then
+            echo "over ${HALMOS_RUN_SECONDS}s: cut this slice smaller"
+            exit 1
+          fi
           # halmos exits non-zero on any counterexample, timeout or error.
           passed=$(awk '/^Symbolic test result: [0-9]+ passed; 0 failed;/ { n += $4 } END { print n + 0 }' "$LOG")
-          if [ "$passed" != "$EXPECT" ]; then
-            echo "expected $EXPECT passing tests, got $passed"
+          if [ "$code" != 0 ] || [ "$passed" != "$EXPECT" ]; then
+            echo "exit $code; expected $EXPECT passing tests, got $passed"
             exit 1
           fi
       - name: Upload log

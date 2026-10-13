@@ -100,7 +100,7 @@ contract AddSubRoundOnceHalmosTest {
     {
         uint256 ja = LibHalmosExact.concrete(jaBits, 7);
         uint256 jb = LibHalmosExact.concrete(jbBits, 7);
-        if (ja > 77 || jb > 77) return;
+        if (ja > 77 || jb > 77 || !LibHalmosExact.inSlice(ja * 78 + jb)) return;
         int256 nb = -int256(cb);
         if (!hasDigits(ca, ja) || !hasDigits(nb, jb)) return;
         if (ja < 77 && !LibHalmosExact.maximizeHints(ca, ja)) return;
@@ -118,7 +118,7 @@ contract AddSubRoundOnceHalmosTest {
     /// path. Every nonzero |c| <= 2^223 < 10^68 has one j in [0, 67].
     function check_maximizeFloat(int256 c, int32 e, uint256 jBits) external view {
         uint256 j = LibHalmosExact.concrete(jBits, 7);
-        if (j > 67) return;
+        if (j > 67 || !LibHalmosExact.inSlice(j)) return;
         if (c == 0 || c > 2 ** 223 || c < -(2 ** 223)) return;
         uint256 x = LibHalmosExact.abs(c);
         if (x < 10 ** j || x >= 10 ** (j + 1)) return;
@@ -204,7 +204,7 @@ contract AddSubRoundOnceHalmosTest {
     /// B mod 10^8 == 0).
     function check_addNear(int256 a, int256 yb, int256 eB, uint256 dBits, bool swap) external view {
         uint256 d = LibHalmosExact.concrete(dBits, 7);
-        if (d > 76) return;
+        if (d > 76 || !LibHalmosExact.inSlice(d)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         if (yb < -int256(T10) || yb > int256(T10)) return;
         int256 b = yb * 10;
