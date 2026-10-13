@@ -1,0 +1,106 @@
+name: halmos
+on:
+  workflow_dispatch:
+    inputs:
+      lemma:
+        description: Run only this lemma (all runs every lemma)
+        type: choice
+        default: all
+        options:
+          - all
+          - quick
+          - divhint
+          - hints
+          - pack
+          - near
+          - minus
+          - far
+          - log10ratio
+          - exp10
+env:
+  HALMOS_VERSION: 0.3.3
+  # Solver versions: yices 2.7.0, cvc5 1.4.0, bitwuzla 0.9.1.
+  SOLVER_NIXPKGS: github:NixOS/nixpkgs/8edc0c72e3a38faf5434e40d1f19431125fe4b30
+defaults:
+  run:
+    shell: bash
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      lemmas: ${{ steps.select.outputs.lemmas }}
+    steps:
+      - id: select
+        env:
+          LEMMA: ${{ inputs.lemma }}
+        # expect: tests the contract/function filter must match; a filter
+        # that silently matches fewer fails the job.
+        run: |
+          lemmas=$(jq -c --arg lemma "$LEMMA" '[.[] | select($lemma == "all" or .name == $lemma)]' <<'JSON'
+          [
+            {"name": "quick", "solver": "bitwuzla", "expect": 3, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_(addZeroOperand|maximizeFloat|maximizeIdempotent)"]},
+            {"name": "divhint", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_divHintHolds"]},
+            {"name": "hints", "solver": "yices", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_maximizeHintsHold"]},
+            {"name": "pack", "solver": "hybrid", "expect": 3, "args": ["--contract", "PackArithmeticResultHalmosTest", "--solver-timeout-assertion", "0"]},
+            {"name": "near", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_addNear", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "minus", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_subIsAddNegated", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "far", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_addFar", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "log10ratio", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_log10RatioEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]}
+          ]
+          JSON
+          )
+          echo "lemmas=$lemmas" >> "$GITHUB_OUTPUT"
+  halmos:
+    needs: matrix
+    name: halmos (${{ matrix.lemma.name }})
+    runs-on: ubuntu-latest
+    # GitHub-hosted runner maximum.
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        lemma: ${{ fromJSON(needs.matrix.outputs.lemmas) }}
+    steps:
+      - uses: rainlanguage/rainix/.github/actions/nix-cachix-setup@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - name: Install halmos and solvers
+        run: |
+          pipx install "halmos==$HALMOS_VERSION"
+          for s in yices cvc5 bitwuzla; do
+            echo "$(nix build --no-link --print-out-paths "$SOLVER_NIXPKGS#$s" | head -1)/bin" >> "$GITHUB_PATH"
+          done
+      - name: Build dev shell
+        run: nix develop -c forge --version
+      - name: Run ${{ matrix.lemma.name }}
+        # Leaves time inside the job limit for the log upload.
+        timeout-minutes: 345
+        env:
+          SOLVER: ${{ matrix.lemma.solver }}
+          EXPECT: ${{ matrix.lemma.expect }}
+          ARGS_JSON: ${{ toJSON(matrix.lemma.args) }}
+          LOG: halmos-${{ matrix.lemma.name }}.log
+          PYTHONUNBUFFERED: 1
+        run: |
+          case "$SOLVER" in
+            bitwuzla) solver="bitwuzla --produce-models" ;;
+            yices) solver=yices-smt2 ;;
+            hybrid) solver="$GITHUB_WORKSPACE/script/halmos/hybrid-solver.sh" ;;
+          esac
+          mapfile -t args < <(jq -r '.[]' <<<"$ARGS_JSON")
+          nix develop -c halmos --panic-error-codes '*' --solver-threads 4 --loop 16 \
+            --solver-command "$solver" "${args[@]}" 2>&1 | tee "$LOG"
+          # halmos exits non-zero on any counterexample, timeout or error.
+          passed=$(awk '/^Symbolic test result: [0-9]+ passed; 0 failed;/ { n += $4 } END { print n + 0 }' "$LOG")
+          if [ "$passed" != "$EXPECT" ]; then
+            echo "expected $EXPECT passing tests, got $passed"
+            exit 1
+          fi
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: halmos-${{ matrix.lemma.name }}
+          path: halmos-${{ matrix.lemma.name }}.log
+          if-no-files-found: warn
