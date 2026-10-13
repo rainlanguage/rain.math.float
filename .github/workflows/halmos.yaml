@@ -17,6 +17,15 @@ on:
           - far
           - log10ratio
           - exp10
+          - divzero
+          - divq-pp
+          - divq-pn
+          - divq-np
+          - divq-nn
+          - divspill
+          - divfin-mid
+          - invfin-mid
+          - muldivrev
 env:
   HALMOS_VERSION: 0.3.3
   # Solver versions: yices 2.7.0, cvc5 1.4.0, bitwuzla 0.9.1.
@@ -46,7 +55,16 @@ jobs:
             {"name": "minus", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_subIsAddNegated", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
             {"name": "far", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_addFar", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
             {"name": "log10ratio", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_log10RatioEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]}
+            {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "divzero", "solver": "bitwuzla", "expect": 4, "args": ["--contract", "DivRoundOnceHalmosTest", "--function", "check_(divByZero|zeroDividend|invZero|mulDivZeroDenominator)$"]},
+            {"name": "divq-pp", "solver": "hybrid", "expect": 1, "args": ["--contract", "DivRoundOnceHalmosTest", "--function", "check_divQuotientPosPos", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "divq-pn", "solver": "hybrid", "expect": 1, "args": ["--contract", "DivRoundOnceHalmosTest", "--function", "check_divQuotientPosNeg", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "divq-np", "solver": "hybrid", "expect": 1, "args": ["--contract", "DivRoundOnceHalmosTest", "--function", "check_divQuotientNegPos", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "divq-nn", "solver": "hybrid", "expect": 1, "args": ["--contract", "DivRoundOnceHalmosTest", "--function", "check_divQuotientNegNeg", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "divspill", "solver": "hybrid", "expect": 1, "args": ["--contract", "DivRoundOnceHalmosTest", "--function", "check_divSpill", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "divfin-mid", "solver": "hybrid", "expect": 1, "args": ["--contract", "DivRoundOnceHalmosTest", "--function", "check_divFinishMid", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "invfin-mid", "solver": "hybrid", "expect": 1, "args": ["--contract", "DivRoundOnceHalmosTest", "--function", "check_invFinishMid", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "muldivrev", "solver": "hybrid", "expect": 1, "args": ["--contract", "DivRoundOnceHalmosTest", "--function", "check_mulDivRevert", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]}
           ]
           JSON
           )
