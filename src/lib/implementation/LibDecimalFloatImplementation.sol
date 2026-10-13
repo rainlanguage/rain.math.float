@@ -784,7 +784,8 @@ library LibDecimalFloatImplementation {
     /// agree, and away from zero when they differ, which takes the cancelling
     /// sum towards zero. `1e100 + -1` returns `(1e76 - 1)e24`. Packing
     /// truncates again, which composes, so `LibDecimalFloat.add` is the exact
-    /// sum rounded once towards zero.
+    /// sum rounded once towards zero. A zero sum returns
+    /// `(MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT)`.
     ///
     /// https://speleotrove.com/decimal/daops.html#refaddsub
     /// > add and subtract both take two operands. If either operand is a special
@@ -839,6 +840,9 @@ library LibDecimalFloatImplementation {
         }
         if (eitherZero) {
             if (signedCoefficientA == 0) {
+                if (signedCoefficientB == 0) {
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                }
                 return (signedCoefficientB, exponentB);
             } else {
                 return (signedCoefficientA, exponentA);
@@ -952,14 +956,24 @@ library LibDecimalFloatImplementation {
                 signedCoefficientA = c;
             }
 
-            // The sum's true exponent is below the floor, so shed the digits
-            // the floor cannot hold. exponentA is the floor, or one above it
-            // after an overflow.
-            if (shortfallA != 0) {
-                // The shed is in [0, 76].
-                // forge-lint: disable-next-line(unsafe-typecast)
-                signedCoefficientA /= int256(10 ** uint256(shortfallA - (exponentA - type(int256).min)));
-                exponentA = type(int256).min;
+            // One jump on the common path for both a shortfall and a zero sum.
+            bool shortfallOrZero;
+            assembly ("memory-safe") {
+                shortfallOrZero := or(shortfallA, iszero(signedCoefficientA))
+            }
+            if (shortfallOrZero) {
+                // The sum's true exponent is below the floor, so shed the
+                // digits the floor cannot hold. exponentA is the floor, or one
+                // above it after an overflow.
+                if (shortfallA != 0) {
+                    // The shed is in [0, 76].
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    signedCoefficientA /= int256(10 ** uint256(shortfallA - (exponentA - type(int256).min)));
+                    exponentA = type(int256).min;
+                }
+                if (signedCoefficientA == 0) {
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                }
             }
         }
         return (signedCoefficientA, exponentA);

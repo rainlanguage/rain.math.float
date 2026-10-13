@@ -565,13 +565,14 @@ library LibExactFloat {
     /// The int256 unit is the last digit's place when written with as many
     /// digits as an int256 coefficient of its sign holds, so
     /// `type(int256).min` holds 77. Below `type(int256).min` the sum then
-    /// truncates towards zero to that exponent.
+    /// truncates towards zero to that exponent. A zero sum is `(0, 0)`.
     function addPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
         returns (bool overflowed, int256 c, int256 e)
     {
         (overflowed, c, e,) = addPartsInexact(ca, ea, cb, eb);
+        e = c == 0 ? int256(0) : e;
     }
 
     /// `addPartsWide` with the magnitude rounded up instead, so never below
@@ -604,13 +605,15 @@ library LibExactFloat {
     /// The parts `sub` of any two int256 coefficients hands to packing, or
     /// `overflowed` past `type(int256).max`: `addPartsWide`'s rule for the
     /// exact `a + (-b)`, where `-b` keeps `b`'s int256 unit, so the negation
-    /// of `type(int256).min` is `2^255` at 77 digits.
+    /// of `type(int256).min` is `2^255` at 77 digits. A zero difference is
+    /// `(0, 0)`.
     function subPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
         returns (bool overflowed, int256 c, int256 e)
     {
         (overflowed, c, e,) = sumPartsInexact(operand(false, ca, ea), operand(true, cb, eb));
+        e = c == 0 ? int256(0) : e;
     }
 
     /// `signedCoefficient × 10^exponent`, negated if `negate`, at the int256

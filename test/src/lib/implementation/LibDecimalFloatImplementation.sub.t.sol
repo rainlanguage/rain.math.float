@@ -194,7 +194,7 @@ contract LibDecimalFloatImplementationSubTest is Test {
     function testSubAtFloor() external pure {
         int256 min = type(int256).min;
         checkSub(1, min, -1, min, 2, min);
-        checkSub(1, min, 1, min, 0, min);
+        checkSub(1, min, 1, min, 0, 0);
         checkSub(1, min + 1, 1, min, 9, min);
         checkSub(1, min, 1, min + 76, 1 - 1e76, min);
     }

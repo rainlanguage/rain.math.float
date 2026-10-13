@@ -423,6 +423,13 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         if (mOk) {
             (int256 mc, int256 me) = pair(m);
             (int256 pc, int256 pe) = pair(p);
+            // By design (#495): a zero sum is the zero constants, main keeps
+            // an exponent.
+            if (pc == 0) {
+                assertEq(pe, 0, "zero exponent");
+                if (mc == 0) return;
+                pe = me;
+            }
             if (a != 0 && b != 0 && (a < 0) != (isSub ? b > 0 : b < 0)) {
                 // By design (#350): the magnitudes cancel, main truncates the
                 // smaller operand towards zero, so the sum one unit away from
