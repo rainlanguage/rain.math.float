@@ -260,8 +260,10 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         string memory str = "5789604461865809771178549250434395392663499233282028201972879200395656481996.8e";
         bytes4 loss = ParseDecimalPrecisionLoss.selector;
         bytes4 malformed = MalformedExponentDigits.selector;
-        (, bytes memory baseRet) = address(this).staticcall(abi.encodeCall(this.baseParse, (str)));
-        (, bytes memory prRet) = address(this).staticcall(abi.encodeCall(this.prParse, (str)));
+        (bool baseOk, bytes memory baseRet) = address(this).staticcall(abi.encodeCall(this.baseParse, (str)));
+        assertTrue(baseOk, "base success");
+        (bool prOk, bytes memory prRet) = address(this).staticcall(abi.encodeCall(this.prParse, (str)));
+        assertTrue(prOk, "pr success");
         assertEq(baseRet, abi.encode(loss, Float.wrap(0), loss, uint256(78), int256(0), int256(0)));
         assertEq(prRet, abi.encode(malformed, Float.wrap(0), malformed, uint256(79), int256(0), int256(0)));
         checkParse(str);
@@ -275,8 +277,10 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         string memory str = "99999999999999999999999999999999999999999999999999999999999999999999999999999999e";
         bytes4 overflow = ParseDecimalOverflow.selector;
         bytes4 malformed = MalformedExponentDigits.selector;
-        (, bytes memory baseRet) = address(this).staticcall(abi.encodeCall(this.baseParse, (str)));
-        (, bytes memory prRet) = address(this).staticcall(abi.encodeCall(this.prParse, (str)));
+        (bool baseOk, bytes memory baseRet) = address(this).staticcall(abi.encodeCall(this.baseParse, (str)));
+        assertTrue(baseOk, "base success");
+        (bool prOk, bytes memory prRet) = address(this).staticcall(abi.encodeCall(this.prParse, (str)));
+        assertTrue(prOk, "pr success");
         assertEq(baseRet, abi.encode(overflow, Float.wrap(0), overflow, uint256(80), int256(0), int256(0)));
         assertEq(prRet, abi.encode(malformed, Float.wrap(0), malformed, uint256(81), int256(0), int256(0)));
         checkParse(str);
@@ -290,8 +294,10 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         string memory str = "99999999999999999999999999999999999999999999999999999999999999999999999999999999.";
         bytes4 overflow = ParseDecimalOverflow.selector;
         bytes4 malformed = MalformedDecimalPoint.selector;
-        (, bytes memory baseRet) = address(this).staticcall(abi.encodeCall(this.baseParse, (str)));
-        (, bytes memory prRet) = address(this).staticcall(abi.encodeCall(this.prParse, (str)));
+        (bool baseOk, bytes memory baseRet) = address(this).staticcall(abi.encodeCall(this.baseParse, (str)));
+        assertTrue(baseOk, "base success");
+        (bool prOk, bytes memory prRet) = address(this).staticcall(abi.encodeCall(this.prParse, (str)));
+        assertTrue(prOk, "pr success");
         assertEq(baseRet, abi.encode(overflow, Float.wrap(0), overflow, uint256(80), int256(0), int256(0)));
         assertEq(prRet, abi.encode(malformed, Float.wrap(0), malformed, uint256(81), int256(0), int256(0)));
         checkParse(str);
