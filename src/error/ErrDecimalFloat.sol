@@ -49,7 +49,8 @@ error Log10RatioRelativeSumTooSmall(uint256 a, uint256 b);
 /// @dev Thrown when attempting to exponentiate 0^b where b is negative.
 error ZeroNegativePower(Float b);
 
-/// @dev Thrown when mulDiv internal to division overflows.
+/// @dev Thrown when the quotient of mulDiv internal to division is 2^256 or
+/// more, or its denominator is zero.
 error MulDivOverflow(uint256 x, uint256 y, uint256 denominator);
 
 /// @dev Thrown when a maximize overflows where it is not appropriate.

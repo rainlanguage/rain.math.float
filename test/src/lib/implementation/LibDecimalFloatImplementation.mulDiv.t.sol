@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test, stdError} from "forge-std-1.17.0/src/Test.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
 import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
@@ -79,11 +79,20 @@ contract LibDecimalFloatImplementationMulDivTest is Test {
         this.mulDivExternal(1 << 255, 6, 3);
     }
 
+    /// A zero denominator has no quotient, so it reverts `MulDivOverflow`
+    /// with the inputs whether or not x y fits one word.
     function testMulDivZeroDenominator() external {
-        vm.expectRevert(stdError.divisionError);
+        vm.expectRevert(abi.encodeWithSelector(MulDivOverflow.selector, 3, 5, 0));
         this.mulDivExternal(3, 5, 0);
+        vm.expectRevert(abi.encodeWithSelector(MulDivOverflow.selector, 0, 0, 0));
+        this.mulDivExternal(0, 0, 0);
         vm.expectRevert(abi.encodeWithSelector(MulDivOverflow.selector, type(uint256).max, 2, 0));
         this.mulDivExternal(type(uint256).max, 2, 0);
+    }
+
+    function testMulDivZeroDenominatorFuzz(uint256 x, uint256 y) external {
+        vm.expectRevert(abi.encodeWithSelector(MulDivOverflow.selector, x, y, 0));
+        this.mulDivExternal(x, y, 0);
     }
 
     function testMulDivSchoolbook(uint256 x, uint256 y, uint256 denominator) external pure {
