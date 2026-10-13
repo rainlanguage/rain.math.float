@@ -1060,7 +1060,12 @@ library LibDecimalFloat {
     /// order by exactly one unit in the last place, only when both true
     /// values lie within the larger raw error, 1.1343e-48 + N min(K1, K2 d)
     /// relative, of the same rounding tie, and never by more. Callers must
-    /// not rely on strict ordering at one-ulp resolution.
+    /// not rely on strict ordering at one-ulp resolution. The two paths meet
+    /// at every b = N + 1/2: the half takes the root, whose raw error has no
+    /// 1.1343e-48 term, and a fraction either side takes the leg. So when
+    /// the true values there lie within the leg's raw error of a tie, a^b at
+    /// the half can be one unit out of order with both neighbours at once,
+    /// above both or below both, within the same rule.
     /// Exact results stay exact: a power with at most 41 significant digits,
     /// integer or fractional such as 4^0.5.
     ///

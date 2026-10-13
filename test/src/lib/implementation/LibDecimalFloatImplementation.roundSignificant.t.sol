@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationRoundSignificantTest is Test {
     /// 41 significant digits, half away from zero, by a digit loop, so
@@ -137,6 +138,69 @@ contract LibDecimalFloatImplementationRoundSignificantTest is Test {
         this.roundSignificantExternal(type(int256).max, type(int256).max);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, 1e41, type(int256).max));
         this.roundSignificantExternal(1e41, type(int256).max);
+    }
+
+    /// Issue #507: a kept prefix of 41 nines that rounds up carries to +-1e41,
+    /// 42 digits, which is left as is. Rounding that again sheds its trailing
+    /// zero, the same value one exponent up.
+    function testRoundSignificantCarryLeaves1e41() external pure {
+        check(999999999999999999999999999999999999999995, 0, 1e41, 1);
+        check(1e41, 1, 1e40, 2);
+        check(-999999999999999999999999999999999999999995, 0, -1e41, 1);
+        check(-1e41, 1, -1e40, 2);
+        // 76 digits: 41 nines, then a remainder of exactly half.
+        check(9999999999999999999999999999999999999999950000000000000000000000000000000000, -3, 1e41, 32);
+        // Under half does not carry.
+        check(999999999999999999999999999999999999999994, 0, 1e41 - 1, 1);
+    }
+
+    /// Whether the 41-digit prefix of |c| is all nines and its remainder is at
+    /// least half, by the digit loop: the only way to round to 1e41.
+    function carries(int256 signedCoefficient) internal pure returns (bool) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 magnitude = signedCoefficient < 0 ? uint256(-(signedCoefficient + 1)) + 1 : uint256(signedCoefficient);
+        uint256 digits = 0;
+        for (uint256 rest = magnitude; rest > 0; rest /= 10) {
+            digits++;
+        }
+        if (digits <= 41) {
+            return false;
+        }
+        uint256 unit = 10 ** (digits - 41);
+        return magnitude / unit == 1e41 - 1 && 2 * (magnitude % unit) >= unit;
+    }
+
+    /// The coefficient is at most 1e41 in magnitude and equal only on a carry.
+    /// Rounding it again keeps the value, moving the exponent only after a
+    /// carry, with a coefficient below 1e41.
+    function checkCoefficientBound(int256 signedCoefficient, int256 exponent) internal pure {
+        (int256 c1, int256 e1) = LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
+        uint256 m1 = LibExactFloat.abs(c1);
+        assertLe(m1, 1e41, "at most 1e41");
+        assertEq(m1 == 1e41, carries(signedCoefficient), "1e41 only on a carry");
+        (int256 c2, int256 e2) = LibDecimalFloatImplementation.roundSignificant(c1, e1);
+        assertLt(LibExactFloat.abs(c2), 1e41, "again below 1e41");
+        assertTrue(LibExactFloat.eq(c1, e1, c2, e2), "again the same value");
+        assertEq(e2, m1 == 1e41 ? e1 + 1 : e1, "again moves only a carry");
+    }
+
+    function testRoundSignificantCoefficientBound(int256 signedCoefficient, int256 exponent) external pure {
+        exponent = bound(exponent, type(int256).min, type(int256).max - 37);
+        checkCoefficientBound(signedCoefficient, exponent);
+    }
+
+    /// The same, onto a prefix of 41 nines with remainders at the tie.
+    function testRoundSignificantCoefficientBoundNearCarry(uint256 digits, int8 offset, bool negative, int256 exponent)
+        external
+        pure
+    {
+        digits = bound(digits, 42, 76);
+        exponent = bound(exponent, type(int256).min, type(int256).max - 37);
+        uint256 unit = 10 ** (digits - 41);
+        // Below 1e76, so it fits.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signedCoefficient = int256((1e41 - 1) * unit + unit / 2) + offset;
+        checkCoefficientBound(negative ? -signedCoefficient : signedCoefficient, exponent);
     }
 
     function roundSignificantExternal(int256 signedCoefficient, int256 exponent)
