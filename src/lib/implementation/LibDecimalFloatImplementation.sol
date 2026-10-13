@@ -163,6 +163,13 @@ uint256 constant EXP10_HORNER_3 = 2034678592293476196830991191713810530241055026
 /// @dev (ln 10)^2 / 2! 1e50, rounded down.
 uint256 constant EXP10_HORNER_2 = 265094905523919900528083319429700884579872503956640;
 
+/// @dev 5^50, the odd factor of `POW_FIXED_ONE` = 2^50 5^50.
+uint256 constant POW_FIXED_ONE_ODD = 88817841970012523233890533447265625;
+
+/// @dev 2^50 - 1, which keeps the remainder of a value over 2^50, the even
+/// factor of `POW_FIXED_ONE`.
+uint256 constant POW_FIXED_ONE_TWOS_MASK = 1125899906842623;
+
 /// @dev The inverse of 5^50 modulo 2^256, which divides a multiple of
 /// `POW_FIXED_ONE` by it once the factor 2^50 is shifted out.
 uint256 constant POW_FIXED_ONE_ODD_INVERSE =
@@ -1315,7 +1322,6 @@ library LibDecimalFloatImplementation {
         // multiply in once at the end, so the sum keeps 50 digits however
         // small z is.
         uint256 series;
-        uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
         assembly ("memory-safe") {
             // floor(z^2 / 1e50) exactly, as u^2 + floor((2 u v 1e25 + v^2) /
             // 1e50) for z = u 1e25 + v. z is at most 1e50, so u is at most 1e25
@@ -1330,21 +1336,14 @@ library LibDecimalFloatImplementation {
             v := mod(zSquared, POW_FIXED_SQRT_ONE)
             let term := add(mul(u, u), div(add(mul(mul(u, v), POW_FIXED_TWO_SQRT_ONE), mul(v, v)), POW_FIXED_ONE))
             series := add(series, div(term, 5))
-            // term times zSquared can pass 2^256, so this is `mulDivFixed`
-            // in place: mm and prod0 give the product's high and low words.
-            // Up to `LOG10_RATIO_Z_MAX` the two words sum below 2^256 - 1, so
-            // mm - prod0 takes no borrow: crates/tests fixed.rs
-            // log10_ratio_z6_never_wraps checks every high word. Subtracting
-            // the remainder mod 1e50 makes the product an exact multiple of
-            // 1e50 = 2^50 5^50, so shifting 50 bits across both words divides
-            // by 2^50 and multiplying by 5^50's inverse mod 2^256 divides by
-            // 5^50 exactly.
-            let mm := mulmod(term, zSquared, not(0))
-            let prod0 := mul(term, zSquared)
-            let remainder := mulmod(term, zSquared, POW_FIXED_ONE)
-            term := mul(
-                or(shr(50, sub(prod0, remainder)), shl(206, sub(sub(mm, prod0), gt(remainder, prod0)))),
-                inverse
+            // floor(term zSquared / 1e50) for zSquared = u 2^50 + v, v below
+            // 2^50: term zSquared is term u 2^50 + term v, so its floor over
+            // 2^50 is term u + floor(term v / 2^50), and that floored over
+            // 5^50 is the floor over 1e50. zSquared is at most 5.7e43, so term
+            // is at most 3.3e37, term u under 1.7e66 and term v under 3.8e52.
+            term := div(
+                add(mul(term, shr(50, zSquared)), shr(50, mul(term, and(zSquared, POW_FIXED_ONE_TWOS_MASK)))),
+                POW_FIXED_ONE_ODD
             )
             series := add(series, div(term, 7))
             // term is now below z^6, so term * zSquared fits a word.

@@ -494,93 +494,6 @@ fn z_squared_max() -> BigInt {
     &z * &z / pow10(50)
 }
 
-/// The z^6 product: floor(x^2 / 1e50), the z^4 term, times x.
-fn sixth(x: &BigInt) -> BigInt {
-    x * x / pow10(50) * x
-}
-
-/// `lt(mm, prod0)` over words of `w` bits for the product p: mm is p mod
-/// (2^w - 1) and prod0 is p mod 2^w.
-fn wraps(p: &BigInt, w: u32) -> bool {
-    let word = BigInt::from(1) << w;
-    p.mod_floor(&(&word - 1)) < p.mod_floor(&word)
-}
-
-/// A product of x, non-decreasing in x.
-type Product = dyn Fn(&BigInt) -> BigInt;
-
-/// The largest x in [0, max] with p(x) below `bound`, for p non-decreasing
-/// with p(0) below it.
-fn largest_below(p: &Product, bound: &BigInt, max: &BigInt) -> BigInt {
-    if p(max) < *bound {
-        return max.clone();
-    }
-    let (mut lo, mut hi) = (BigInt::zero(), max.clone());
-    while &hi - &lo > BigInt::from(1) {
-        let mid = (&lo + &hi) >> 1;
-        if p(&mid) < *bound {
-            lo = mid;
-        } else {
-            hi = mid;
-        }
-    }
-    lo
-}
-
-/// Every k for which some x in [0, max] has p(x) in the high word k - 1 and
-/// `wraps`, for p non-decreasing. mm = hi + lo mod (2^w - 1), so `wraps` is
-/// hi + lo of at least 2^w - 1: lo of at least 2^w - k. Within one high word
-/// lo grows with x, so if any x there wraps the largest does, and that is
-/// the largest x with p(x) below k 2^w. That x is in an earlier word when p
-/// steps over word k - 1, so the word it wraps in is the one returned.
-fn wrapping_words(p: &Product, max: &BigInt, w: u32) -> Vec<BigInt> {
-    let word = BigInt::from(1) << w;
-    let top = p(max) >> w;
-    let mut found = vec![];
-    let mut k = BigInt::from(1);
-    while k <= &top + 1 {
-        let product = p(&largest_below(p, &(&k * &word), max));
-        if wraps(&product, w) {
-            found.push((product >> w) + 1);
-        }
-        k += 1;
-    }
-    found.dedup();
-    found
-}
-
-/// `wrapping_words` is every high word some x wraps in, against every x,
-/// for z^4 and z^6 shaped products over small words where some do.
-#[test]
-fn wrapping_words_finds_every_wrap() {
-    let shapes: [(&Product, u32, u64); 4] = [
-        (&|x| x * x, 16, 1 << 14),
-        (&|x| x * x, 20, 1 << 15),
-        (&|x| x * x / 256 * x, 16, 3_000),
-        (&|x| x * x / 1_000 * x, 20, 20_000),
-    ];
-    for (p, w, max) in shapes {
-        let mut every: Vec<BigInt> = (0..=max)
-            .map(BigInt::from)
-            .map(|x| p(&x))
-            .filter(|q| wraps(q, w))
-            .map(|q| (q >> w) + 1)
-            .collect();
-        every.dedup();
-        assert!(!every.is_empty(), "no wrap at w = {w}");
-        assert_eq!(wrapping_words(p, &BigInt::from(max), w), every, "w = {w}");
-    }
-}
-
-/// log10Ratio's z^6 multiply never wraps, for every zSquared, so its high
-/// word takes no `lt(mm, prod0)` borrow.
-#[test]
-fn log10_ratio_z6_never_wraps() {
-    let max = z_squared_max();
-    assert_eq!(sixth(&max) >> 256u32, BigInt::from(15_357));
-    assert_eq!(wrapping_words(&sixth, &max, 256), Vec::<BigInt>::new());
-}
-
 /// log10Ratio squares z, then zSquared, as u^2 + floor((2 u v 1e25 + v^2) /
 /// 1e50) for x = u 1e25 + v, v below 1e25. That is floor(x^2 / 1e50)
 /// exactly, as x^2 less 2 u v 1e25 + v^2 is u^2 1e50, so neither square
@@ -600,4 +513,29 @@ fn log10_ratio_square_splits_fit_a_word() {
         assert!(dividend < word);
         assert!(&u * &u + dividend / pow10(50) < word);
     }
+}
+
+/// log10Ratio takes z^6 as floor(t (u 2^50 + v) / 1e50) = floor((t u +
+/// floor(t v / 2^50)) / 5^50) for zSquared = u 2^50 + v, v below 2^50, and t
+/// = floor(zSquared^2 / 1e50). Both floors are exact for any split, so only
+/// the word bounds need checking: t u and t v grow with zSquared and v, so
+/// the largest zSquared and v of 2^50 - 1 bound them.
+#[test]
+fn log10_ratio_sixth_split_fits_a_word() {
+    let word = BigInt::from(1) << 256u32;
+    let twos = BigInt::from(1) << 50u32;
+    assert_eq!(
+        literal_after(IMPL, "uint256 constant POW_FIXED_ONE_ODD = "),
+        num_traits::pow(BigInt::from(5), 50)
+    );
+    assert_eq!(
+        literal_after(IMPL, "uint256 constant POW_FIXED_ONE_TWOS_MASK = "),
+        &twos - 1
+    );
+    let x = z_squared_max();
+    let t = &x * &x / pow10(50);
+    let high = &t * (&x >> 50u32);
+    let low = &t * (&twos - 1);
+    assert!(low < word);
+    assert!(&high + (low >> 50u32) < word);
 }
