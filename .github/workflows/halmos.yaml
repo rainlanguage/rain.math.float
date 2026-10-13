@@ -1,10 +1,5 @@
 name: halmos
 on:
-  # Temporary: one push run registers the workflow so it can be
-  # dispatched before it reaches the default branch. Jobs skip on push.
-  push:
-    paths:
-      - .github/workflows/halmos.yaml
   workflow_dispatch:
     inputs:
       lemma:
@@ -31,7 +26,6 @@ defaults:
     shell: bash
 jobs:
   matrix:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     outputs:
       lemmas: ${{ steps.select.outputs.lemmas }}
