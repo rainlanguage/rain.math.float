@@ -4,7 +4,8 @@ pragma solidity =0.8.25;
 
 import {
     LibDecimalFloatImplementation,
-    LOG10_RATIO_Z_MAX
+    LOG10_RATIO_Z_MAX,
+    LOG10_SKIP_BELOW
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Exp10FixedOutOfRange, Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementationSeriesMain} from "test/lib/LibDecimalFloatImplementationSeriesMain.sol";
@@ -87,8 +88,11 @@ contract LibDecimalFloatImplementationSeriesMainEquivalenceTest is Test {
         checkRatio(500255e70, 499745e70);
         checkRatio(499745e70, 500255e70);
         // The 1.001 edges log10Unrounded hands over.
-        checkRatio(1001e72 - 1, 1e75);
-        checkRatio(9999e72, 1e76);
+        checkRatio(1001e72, 1e75);
+        // Positive constant.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkRatio(uint256(LOG10_SKIP_BELOW), 1e76);
+        checkRatio(1001e73, 1e76);
         checkRatio(1e75 + 1, 1e75);
         checkRatio(1e75, 1e75);
         // z at the guard and one past it, either side.

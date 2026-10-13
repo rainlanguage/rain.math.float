@@ -186,6 +186,10 @@ uint256 constant POW_GUARD = 1e10;
 /// eighth power of z^2 in `log10Ratio` floors to zero.
 uint256 constant LOG10_RATIO_Z_MAX = 74989420933245582730218427561513643844186791816;
 
+/// @dev The least coefficient c with 1e76 / c at most 1.001, ceil(1e79 / 1001),
+/// so from it to 1.001e76 a coefficient is within a factor 1.001 of 1e76.
+int256 constant LOG10_SKIP_BELOW = 9990009990009990009990009990009990009990009990009990009990009990009990009991;
+
 /// @dev Library implementing core DecimalFloat operations using only stack
 /// variables.
 /// NOT intended for external use, typical use is to treat the `Float` type
@@ -1190,24 +1194,33 @@ library LibDecimalFloatImplementation {
     /// `log10Reduce` divides the coefficient C in [1e75, 1e76) by powers
     /// 10^(2^-i) that sum to an exact seed S, leaving R within 10^(2^-16) of
     /// 1e75, and the atanh series of R / 1e75 closes the remaining gap. A
-    /// coefficient within a factor 1.001 of a power of ten skips the reduction
-    /// and takes S = 0, so a log near zero keeps its relative precision.
+    /// coefficient within a factor 1.001 of a power of ten, either side and
+    /// the factor included, skips the reduction and takes S = 0 against that
+    /// power, so a log near zero keeps its relative precision: C in
+    /// [1e75, 1.001e75], or in [`LOG10_SKIP_BELOW`, 1.001e76] against 1e76. A
+    /// coefficient past 1.001e76, which no Float holds, drops its last digit.
     ///
     /// The error, from the bounds on `log10Reduce` and `log10Ratio`, is within
     /// 1.0037e-50 for a log below 1e25 in magnitude, which includes every
     /// float:
+    /// - Skipped, z is at most 0.001 / 2.001, under 5.1e-4.
     /// - Within a factor 1.001 of 1: the result is the relative coefficient
-    ///   of `log10Ratio`, at least 4.34e48, so within 3.11e-49 relative of a
-    ///   log below log10(1.001), under 1.5e-52.
+    ///   of `log10Ratio`, its difference scaled to at least 1e75 times its
+    ///   scaled series of at least 0.8685e50 over a + b at most 2.001e76, so
+    ///   at least 4.34e48. Its C 8.03e-50 plus a unit is then under
+    ///   8.03e-50 + 1 / 4.34e48, 3.108e-49, so within 3.11e-49 relative of a
+    ///   log at most log10(1.001), under 1.5e-52.
     /// - Otherwise the result is characteristic + S + log10Ratio at 1e-50. R
-    ///   is within 16.7 units of C / 10^S, 1.67e-74 relative, which moves its
-    ///   log by under 1e-24 units. With log10Ratio's 1.0036 units for z at
-    ///   most 5.1e-4 the true log is within 1.0037 units.
+    ///   is within 16.7 units of C / 10^S, 1.67e-74 relative, and a dropped
+    ///   digit takes under 1e-75 more, which moves the log by under 1e-24
+    ///   units. With log10Ratio's 1.0036 units for z at most 5.1e-4 the true
+    ///   log is within 1.0037 units.
     /// - log10(10^k) is exactly k.
     /// A characteristic of 1e25 or more is summed by `add`, which loses under
     /// a unit of the sum's exponent, at least -50. A characteristic past
-    /// `type(int256).max`, the floor of the log or one more from 9.999 of a
-    /// power of ten, reverts `ExponentOverflow` with the input.
+    /// `type(int256).max`, the floor of the log or one more from
+    /// `LOG10_SKIP_BELOW` of a power of ten, reverts `ExponentOverflow` with
+    /// the input.
     ///
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
@@ -1238,14 +1251,20 @@ library LibDecimalFloatImplementation {
 
         // The input is the coefficient at 10^(exponent - shortfall), and its
         // log is at least int256.min, so the characteristic cannot pass it.
-        // shortfall is at most 75, so the characteristic is below exponent
-        // only by wrapping past int256.max.
+        // shortfall is in [0, 76]. Below 76 the characteristic is below
+        // exponent only by wrapping past int256.max. maximize returns 76 only
+        // for a coefficient of at least 1e76, from exponent int256.min, where
+        // exponent + 75 - 76 wraps past int256.min and the + 1 below wraps it
+        // back. From `LOG10_SKIP_BELOW` the characteristic is that of 1e76,
+        // and past 1.001e76 the last digit goes, under 1e-75 relative.
         int256 characteristic;
         unchecked {
             characteristic = exponent + 75 - shortfall;
-            if (signedCoefficient >= 1e76) {
-                signedCoefficient /= 10;
+            if (signedCoefficient >= LOG10_SKIP_BELOW) {
                 characteristic += 1;
+                if (signedCoefficient > 1.001e76) {
+                    signedCoefficient /= 10;
+                }
             }
         }
         if (characteristic < exponent) {
@@ -1258,14 +1277,11 @@ library LibDecimalFloatImplementation {
         // log10(estimate / 1e75) = seed / 1e50
         int256 seed = 0;
         uint256 estimate;
-        if (signedCoefficient < 1.001e75) {
+        if (signedCoefficient <= 1.001e75) {
             estimate = 1e75;
-        } else if (signedCoefficient >= 9.999e75) {
-            if (characteristic == type(int256).max) {
-                revert ExponentOverflow(inputCoefficient, inputExponent);
-            }
-            unchecked {
-                characteristic += 1;
+        } else if (signedCoefficient >= LOG10_SKIP_BELOW) {
+            if (signedCoefficient == 1e76) {
+                return (characteristic, 0);
             }
             estimate = 1e76;
         } else {
@@ -2377,10 +2393,9 @@ library LibDecimalFloatImplementation {
     ///
     /// The packed `LibDecimalFloat.abs` cannot serve callers working below the
     /// public arithmetic surface. It has to fit the magnitude back into an
-    /// int224, so for the most negative coefficient it raises the exponent,
-    /// and reverts `ExponentOverflow` when the exponent is already at its
-    /// maximum. Here the coefficient is already widened to an int256, so
-    /// negating an int224 is exact and cannot overflow. Every int256 but
+    /// int224, so the most negative coefficient packs as int224.max at the
+    /// same exponent, losing a unit. Here the coefficient is already widened
+    /// to an int256, so negating an int224 is exact. Every int256 but
     /// `type(int256).min` negates exactly; that one reverts
     /// `AbsCoefficientOverflow`.
     /// @param signedCoefficient The coefficient.

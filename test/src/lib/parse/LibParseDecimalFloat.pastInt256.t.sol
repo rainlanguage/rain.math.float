@@ -284,4 +284,31 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         checkFail(string.concat(e77, "e-+1"), MalformedExponentDigits.selector, 80);
         checkFail(string.concat(e77, ".5e"), MalformedExponentDigits.selector, 81);
     }
+
+    /// A fraction past int256, 10^77 + 1, then `e` without digits.
+    function testParsePastInt256MalformedExponentFractionOverflow() external view {
+        checkFail(string.concat("0.1", zeros(76), "1e"), MalformedExponentDigits.selector, 81);
+    }
+
+    /// 77 fraction digits after a nonzero integer part, then `e` without
+    /// digits.
+    function testParsePastInt256MalformedExponentScale() external view {
+        checkFail(string.concat("1.", zeros(76), "1e"), MalformedExponentDigits.selector, 80);
+    }
+
+    /// 9 * 10^75 rescaled by 10 is 9 * 10^76, past int256, then `e` without
+    /// digits.
+    function testParsePastInt256MalformedExponentRescale() external view {
+        checkFail(string.concat("9", zeros(75), ".5e"), MalformedExponentDigits.selector, 79);
+    }
+
+    /// floor(int256.max / 10) * 10 + 8 is int256.max + 1, then `e` without
+    /// digits.
+    function testParsePastInt256MalformedExponentSum() external view {
+        checkFail(
+            "5789604461865809771178549250434395392663499233282028201972879200395656481996.8e",
+            MalformedExponentDigits.selector,
+            79
+        );
+    }
 }

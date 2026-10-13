@@ -152,3 +152,13 @@ fn log10_ratio_z_max_is_the_largest_z_with_z16_below_1e_minus_50() {
     assert!(z.pow(16) < bound);
     assert!((z + 1u8).pow(16) >= bound);
 }
+
+/// `LOG10_SKIP_BELOW` is the least c with 1001 c >= 10^79, so
+/// `log10Unrounded` skips reduction exactly for c at least 1e76 / 1.001.
+#[test]
+fn log10_skip_below_is_the_least_c_with_1001c_at_least_1e79() {
+    let c = decimal_constant("LOG10_SKIP_BELOW");
+    let bound = num_bigint::BigUint::from(10u8).pow(79);
+    assert!(&c * 1001u16 >= bound);
+    assert!((c - 1u8) * 1001u16 < bound);
+}

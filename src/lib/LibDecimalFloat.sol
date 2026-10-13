@@ -550,8 +550,10 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Variant of `packLossy` used as the finaliser of every arithmetic
-    /// operation but `minus` and `abs`, which cannot underflow. Tolerates
+    /// Variant of `packLossy` used as the finaliser of `add`, `sub`, `mul`,
+    /// `integer`, `frac`, `floor`, `ceil`, `log10` and `sqrt`. `minus` and
+    /// `abs` cannot underflow; `div`, `inv`, `pow` and `pow10` pack inline so
+    /// their range errors report their input. Tolerates
     /// coefficient truncation (which preserves the order
     /// of magnitude) but reverts on exponent underflow (which silently
     /// replaces the value by `FLOAT_ZERO`, losing the magnitude entirely).
@@ -873,7 +875,10 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Fractional component of a float.
+    /// Fractional component of a float: `x - trunc(x)`, the part `integer`
+    /// truncates away. It has the sign of the float and lies in (-1, 1), so it
+    /// is negative for a negative non-integer: `frac(-1.5)` is `-0.5`, not the
+    /// `x - floor(x)` of `0.5`. `integer(x) + frac(x) == x`.
     /// @param float The float to return the fractional part of.
     /// @return The fractional component of the float.
     function frac(Float float) internal pure returns (Float) {
@@ -884,7 +889,7 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Smallest integer value less than or equal to the float.
+    /// Greatest integer value less than or equal to the float.
     /// @param float The float to floor.
     /// @return The floored float.
     function floor(Float float) internal pure returns (Float) {
@@ -1381,7 +1386,7 @@ library LibDecimalFloat {
     /// Whether the two extremes of a set of values are close enough to each
     /// other, given an absolute and a proportional tolerance.
     ///
-    /// `highest - lowest <= max(absolute, proportional * max(abs(lowest), abs(highest)))`
+    /// `abs(highest - lowest) <= max(absolute, proportional * max(abs(lowest), abs(highest)))`
     ///
     /// BOTH TOLERANCES ARE TAKEN, and the LARGER of the two terms is the
     /// limit. A proportional tolerance alone collapses as the values approach
@@ -1431,10 +1436,14 @@ library LibDecimalFloat {
     /// guard. See `AgreeToleranceNegative` and `AgreeNoPositiveTolerance` for
     /// what each would otherwise silently do. Either tolerance ALONE may be
     /// zero, which is how a caller asks for only the other one.
+    ///
+    /// THE EXTREMES MAY COME IN EITHER ORDER. `agree(a, p, x, y)` and
+    /// `agree(a, p, y, x)` give the same answer: the spread is the distance
+    /// between them, and the anchor is the larger magnitude.
     /// @param absolute The absolute tolerance, in the same units as the values.
     /// @param proportional The proportional tolerance, as a fraction.
-    /// @param lowest The lowest value in the set.
-    /// @param highest The highest value in the set.
+    /// @param lowest One extreme of the set, the lowest by convention.
+    /// @param highest The other extreme, the highest by convention.
     /// @return Whether the spread is within the limit.
     function agree(Float absolute, Float proportional, Float lowest, Float highest) internal pure returns (bool) {
         agreeValidateTolerances(absolute, proportional);
@@ -1476,7 +1485,7 @@ library LibDecimalFloat {
         }
     }
 
-    /// The distance between the two extremes, unpacked.
+    /// The distance between the two extremes, unpacked, in either order.
     ///
     /// Split out of `agree` because holding the four unpacked values and the
     /// intermediates in one frame exceeds the stack.
@@ -1491,6 +1500,13 @@ library LibDecimalFloat {
         // `return f(...)` on a tuple-returning call as an ignored return.
         (int256 spreadCoefficient, int256 spreadExponent) =
             LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
+        // `add` truncates magnitudes toward zero whatever its operands' order
+        // or signs, so `minus` of this is `sub(lowest, highest)`. At
+        // int256.min both shed the same last digit: `minus` divides by 10,
+        // and the positive `add` overflows and does.
+        if (spreadCoefficient < 0) {
+            (spreadCoefficient, spreadExponent) = LibDecimalFloatImplementation.minus(spreadCoefficient, spreadExponent);
+        }
         return (spreadCoefficient, spreadExponent);
     }
 

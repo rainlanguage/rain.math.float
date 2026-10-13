@@ -5,7 +5,8 @@ pragma solidity =0.8.25;
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 import {
     LibDecimalFloatImplementation,
-    LOG10_RATIO_Z_MAX
+    LOG10_RATIO_Z_MAX,
+    LOG10_SKIP_BELOW
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementationSeriesSolidity} from "test/lib/LibDecimalFloatImplementationSeriesSolidity.sol";
@@ -144,8 +145,11 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
     function testLog10RatioSolidityEquivalenceExamples() external view {
         checkRatio(500255e70, 499745e70);
         checkRatio(499745e70, 500255e70);
-        checkRatio(1001e72 - 1, 1e75);
-        checkRatio(9999e72, 1e76);
+        checkRatio(1001e72, 1e75);
+        // Positive constant.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkRatio(uint256(LOG10_SKIP_BELOW), 1e76);
+        checkRatio(1001e73, 1e76);
         checkRatio(1e75 + 1, 1e75);
         checkRatio(1e75, 1e75);
         checkRatio(0, 1e76);
@@ -205,7 +209,7 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
     }
 
     /// The arguments `log10Unrounded` passes `log10Ratio` for a coefficient in
-    /// [1.001e75, 9.999e75).
+    /// (1.001e75, `LOG10_SKIP_BELOW`).
     function benchReduced(string memory label, uint256 coefficient) internal view {
         (uint256 reduced,) = LibDecimalFloatImplementation.log10Reduce(coefficient);
         benchRatio(label, reduced, 1e75, false);
@@ -236,7 +240,7 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
     function testSeriesSolidityGas() external view {
         benchReduced("log10 1.5 (log10 packed)", 1.5e75);
         benchReduced("log10 2", 2e75);
-        benchReduced("log10 worst 9.998", 9.998e75);
+        benchReduced("log10 worst 9.99", 9.99e75);
         benchRatio("log10 1.0001 (relative)", 1.0001e75, 1e75, true);
         benchRatio("log10 0.9999 (relative)", 9.999e75, 1e76, true);
         benchRatio("log10 10.001 (near 10, not relative)", 1.0001e75, 1e75, false);

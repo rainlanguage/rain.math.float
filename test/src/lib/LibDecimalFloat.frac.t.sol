@@ -119,4 +119,13 @@ contract LibDecimalFloatFracTest is Test {
         int256 xe = e;
         assertEq(LibExactFloat.cmpParts(rc, re, xc, xe), 0, "exact frac");
     }
+
+    /// The sign convention the NatSpec states: `x - trunc(x)`, so a negative
+    /// non-integer has a negative fraction. For -1.5, trunc is -1 and floor is
+    /// -2, so `x - trunc(x)` is -0.5 where `x - floor(x)` would be 0.5.
+    function testFracSignConvention() external pure {
+        checkFrac(-15, -1, -5, -1);
+        checkFrac(15, -1, 5, -1);
+        checkFrac(-1, -2, -1, -2);
+    }
 }

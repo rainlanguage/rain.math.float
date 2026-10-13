@@ -32,6 +32,11 @@ contract LibDecimalFloatImplementationLog10RatioGasTest is Test {
         console2.log(string.concat("ratio ", name), this.ratioGas(a, b));
     }
 
+    /// For a coefficient past int224, which no Float holds.
+    function logImpl(string memory name, int256 signedCoefficient, int256 exponent) internal view {
+        console2.log(string.concat("impl  ", name), this.implGas(signedCoefficient, exponent));
+    }
+
     function logLog10(string memory name, int256 signedCoefficient, int256 exponent) internal view {
         console2.log(string.concat("impl  ", name), this.implGas(signedCoefficient, exponent));
         Float a = LibDecimalFloat.packLossless(signedCoefficient, exponent);
@@ -69,6 +74,12 @@ contract LibDecimalFloatImplementationLog10RatioGasTest is Test {
         logLog10("2 (not relative)", 2, 0);
         logLog10("3.14159 (not relative)", 314159, -5);
         logLog10("10.0005 (not relative)", 100005, -4);
-        logLog10("0.9995 (not relative)", 9995, -4);
+        logLog10("0.9995", 9995, -4);
+        logLog10("1.001", 1001, -3);
+        logLog10("0.99901", 99901, -5);
+        logImpl("1 + 1e-76 (77 digits)", 1e76 + 1, -76);
+        logImpl("1.0011 (77 digits, not relative)", 1.0011e76, -76);
+        logLog10("1 (exact)", 1, 0);
+        logLog10("123456789 (not relative)", 123456789, 0);
     }
 }
