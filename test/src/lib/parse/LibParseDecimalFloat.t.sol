@@ -17,6 +17,7 @@ import {
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
 import {LibTestDecimalLiteral, Literal} from "test/lib/LibTestDecimalLiteral.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
@@ -56,14 +57,16 @@ contract LibParseDecimalFloatTest is Test {
     function checkAgainstRule(string memory data) internal view {
         Literal memory lit = LibTestDecimalLiteral.read(bytes(data));
         bool isFloat = LibTestDecimalLiteral.isFloat(lit);
-        bytes4 valueError = LibTestDecimalLiteral.isPast(lit)
-            ? ExponentOverflow.selector
-            : (isFloat ? bytes4(0) : ParseDecimalPrecisionLoss.selector);
+        bool isPast = LibTestDecimalLiteral.isPast(lit);
+        bytes4 valueError =
+            isPast ? ExponentOverflow.selector : (isFloat ? bytes4(0) : ParseDecimalPrecisionLoss.selector);
 
         (bytes4 err, uint256 cursor, int256 c, int256 e) = this.parseDecimalFloatInlineExternal(data);
         assertEq(cursor, lit.cursor, "inline cursor");
         if (lit.malformed != 0) {
             assertEq(err, lit.malformed, "inline malformed");
+        } else if (isPast) {
+            assertEq(err, ExponentOverflow.selector, "inline overflow");
         } else if (err == 0) {
             assertTrue(LibTestDecimalLiteral.isValue(lit, c, e), "inline value");
         } else {
@@ -77,20 +80,70 @@ contract LibParseDecimalFloatTest is Test {
         bytes4 expected = lit.malformed != 0
             ? lit.malformed
             : (lit.cursor != bytes(data).length ? ParseDecimalFloatExcessCharacters.selector : valueError);
-        try this.parseDecimalFloatExternal(data) returns (bytes4 packedErr, Float float) {
-            assertEq(packedErr, expected, "error");
-            if (packedErr == 0) {
-                (int256 packedC, int256 packedE) = float.unpack();
-                assertTrue(LibTestDecimalLiteral.isValue(lit, packedC, packedE), "value");
-            } else {
+        (bytes4 packedErr, Float float) = this.parseDecimalFloatExternal(data);
+        assertEq(packedErr, expected, "error");
+        if (packedErr == 0) {
+            (int256 packedC, int256 packedE) = float.unpack();
+            assertTrue(LibTestDecimalLiteral.isValue(lit, packedC, packedE), "value");
+        } else {
+            assertEq(Float.unwrap(float), bytes32(0), "error float");
+        }
+    }
+
+    /// Any int256 at an exponent around the overflow threshold, written plain
+    /// and with 80 leading zeros, which takes the past-int256 path, against
+    /// the rule. Every value at or past the threshold returns
+    /// `ExponentOverflow` from both entry points, never a revert (#510).
+    function testParseNearOverflowThreshold(int256 c, uint256 offset) external view {
+        int256 e = int256(type(int32).max) - 12 + int256(bound(offset, 0, 84));
+        string memory exponent = string.concat("e", Strings.toStringSigned(e));
+        string memory digits = Strings.toString(LibExactFloat.abs(c));
+        string memory sign = c < 0 ? "-" : "";
+        checkAgainstRule(string.concat(sign, digits, exponent));
+        checkAgainstRule(string.concat(sign, zeros(80), digits, exponent));
+    }
+
+    /// The threshold from either side at every excess the check branches on:
+    /// `(2^223 + 2) × 10^int32.max` written as `m × 10^(int32.max + x)`, and
+    /// one unit of the last digit below it.
+    function testParseOverflowThresholdExcesses() external view {
+        uint256 threshold = 2 ** 223 + 2;
+        int256 int32Max = int256(type(int32).max);
+        // Below the threshold, 2^223 + 1 is past the largest Float of either
+        // sign but packs lossily.
+        for (int256 x = -9; x <= 0; x++) {
+            uint256 m = threshold * 10 ** uint256(-x);
+            checkThresholdSides(m, int32Max + x, ExponentOverflow.selector);
+            checkThresholdSides(m - 1, int32Max + x, ParseDecimalPrecisionLoss.selector);
+        }
+        // Positive excesses: the smallest coefficient at or past it is
+        // ceil(threshold / 10^x), and one below is exactly a Float or a lossy
+        // pack.
+        for (int256 x = 1; x <= 67; x++) {
+            uint256 scale = 10 ** uint256(x);
+            uint256 m = (threshold + scale - 1) / scale;
+            checkThresholdSides(m, int32Max + x, ExponentOverflow.selector);
+            if (m > 1) {
+                string memory below = string.concat((m - 1).toString(), "e", Strings.toStringSigned(int32Max + x));
+                checkAgainstRule(below);
+                (bytes4 err,) = this.parseDecimalFloatExternal(below);
+                assertTrue(err != ExponentOverflow.selector, "below overflows");
+            }
+        }
+        checkThresholdSides(1, int32Max + 68, ExponentOverflow.selector);
+        checkThresholdSides(1, int32Max + 67, bytes4(0));
+    }
+
+    function checkThresholdSides(uint256 m, int256 e, bytes4 expected) internal view {
+        string memory s = string.concat(m.toString(), "e", Strings.toStringSigned(e));
+        string[2] memory literals = [s, string.concat("-", s)];
+        for (uint256 i = 0; i < literals.length; i++) {
+            checkAgainstRule(literals[i]);
+            (bytes4 err, Float float) = this.parseDecimalFloatExternal(literals[i]);
+            assertEq(err, expected, literals[i]);
+            if (expected != 0) {
                 assertEq(Float.unwrap(float), bytes32(0), "error float");
             }
-        } catch (bytes memory revertData) {
-            assertEq(expected, ExponentOverflow.selector, "reverted");
-            assertGe(revertData.length, 4, "revert data");
-            // The first four bytes, checked present above.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            assertEq(bytes4(revertData), ExponentOverflow.selector, "revert selector");
         }
     }
 
@@ -304,14 +357,16 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloat("1e-8", 1, -8, 4);
 
         checkParseDecimalFloat("1e-9912873918273981273918273918739182", 1, -9912873918273981273918273918739182, 37);
-        checkParseDecimalFloat("1e9912873918273981273918273918739182", 1, 9912873918273981273918273918739182, 36);
-        checkParseDecimalFloat(
-            "1e57896044618658097711785492504343953926634992332820282019728792003956564819967", 1, type(int256).max, 79
+        // Past the overflow threshold, so ExponentOverflow by value (#510).
+        checkParseDecimalFloatFail("1e9912873918273981273918273918739182", ExponentOverflow.selector, 36);
+        checkParseDecimalFloatFail(
+            "1e57896044618658097711785492504343953926634992332820282019728792003956564819967",
+            ExponentOverflow.selector,
+            79
         );
-        checkParseDecimalFloat(
+        checkParseDecimalFloatFail(
             "57896044618658097711785492504343953926634992332820282019728792003956564819967e57896044618658097711785492504343953926634992332820282019728792003956564819967",
-            type(int256).max,
-            type(int256).max,
+            ExponentOverflow.selector,
             155
         );
         checkParseDecimalFloat(
@@ -534,12 +589,11 @@ contract LibParseDecimalFloatTest is Test {
             "0.0e-57896044618658097711785492504343953926634992332820282019728792003956564819968", 0, 0, 82
         );
         // exponent = -1 (from ".1") + int256.max (from e-notation) does NOT
-        // overflow — it's a valid large positive exponent.
+        // wrap, but the value is past every Float: ExponentOverflow (#510).
         // "0.1e" = 4 chars + 77 digits = 81
-        checkParseDecimalFloat(
+        checkParseDecimalFloatFail(
             "0.1e57896044618658097711785492504343953926634992332820282019728792003956564819967",
-            1,
-            type(int256).max - 1,
+            ExponentOverflow.selector,
             81
         );
     }
@@ -547,7 +601,7 @@ contract LibParseDecimalFloatTest is Test {
     /// An integer past int256 moves its trailing zeros into the exponent, so
     /// adding a positive e-notation exponent can wrap past int256.max: a value
     /// larger than every Float, so `ExponentOverflow` from both entry points.
-    /// One below, the sum fits and the inline parse returns it.
+    /// One below, the sum fits int256 but is still past every Float.
     function testParseExponentSumAboveInt256() external view {
         // 1e77 written out moves 77 zeros into the exponent; 77 + int256.max
         // wraps. "1" + 77 zeros + "e" + 77 digits = 156.
@@ -561,7 +615,7 @@ contract LibParseDecimalFloatTest is Test {
         // 77 + (int256.max - 77) is int256.max exactly.
         string memory fits =
             "100000000000000000000000000000000000000000000000000000000000000000000000000000e57896044618658097711785492504343953926634992332820282019728792003956564819890";
-        checkParseDecimalFloat(fits, 1, type(int256).max, bytes(fits).length);
+        checkParseDecimalFloatFail(fits, ExponentOverflow.selector, bytes(fits).length);
     }
 
     /// ParseDecimalPrecisionLoss from the wrapper when packLossy returns
@@ -575,10 +629,9 @@ contract LibParseDecimalFloatTest is Test {
         assertEq(err, ParseDecimalPrecisionLoss.selector);
     }
 
-    /// Exponent exceeds int32 range — packLossy reverts with ExponentOverflow
-    /// for positive exponents the coefficient cannot lift, returns soft error
-    /// for negative. (A10-8)
-    function testParseDecimalFloatExponentOverflowFromPackLossy() external {
+    /// Exponent exceeds int32 range: positive exponents the coefficient cannot
+    /// lift return ExponentOverflow, negative ones a soft error. (A10-8)
+    function testParseDecimalFloatExponentOverflowFromPackLossy() external view {
         // Issue #285: 1e2147483648 is 10e2147483647, which is representable.
         (bytes4 liftedErr, Float lifted) = this.parseDecimalFloatExternal("1e2147483648");
         assertEq(liftedErr, bytes4(0));
@@ -586,9 +639,10 @@ contract LibParseDecimalFloatTest is Test {
         assertEq(liftedCoefficient, 10);
         assertEq(liftedExponent, int256(type(int32).max));
 
-        // Past int224 headroom, positive exponent overflow reverts.
-        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(2147483715)));
-        this.parseDecimalFloatExternal("1e2147483715");
+        // Past int224 headroom, positive exponent overflow returns by value
+        // (#510).
+        assertEq(parseOutcome("1e2147483715"), abi.encode("return", ExponentOverflow.selector, Float.wrap(0)));
+        checkParseDecimalFloatFail("1e2147483715", ExponentOverflow.selector, 12);
 
         // Negative exponent overflow is a very small number that rounds to
         // zero in packLossy, so the wrapper returns ParseDecimalPrecisionLoss
@@ -672,16 +726,15 @@ contract LibParseDecimalFloatTest is Test {
     }
 
     /// Issue #327: 68 nines with a zero fraction and a huge exponent overflows
-    /// the exponent exactly as it does without the fraction.
+    /// the exponent exactly as it does without the fraction, returning
+    /// ExponentOverflow by value (#510).
     function testParseZeroFractionNinesExponentOverflow() external view {
         string memory nines = "99999999999999999999999999999999999999999999999999999999999999999999";
-        int256 ninesValue = 99999999999999999999999999999999999999999999999999999999999999999999;
-        bytes memory overflow =
-            abi.encode("revert", abi.encodeWithSelector(ExponentOverflow.selector, ninesValue, int256(2200000000)));
+        bytes memory overflow = abi.encode("return", ExponentOverflow.selector, Float.wrap(0));
         string[3] memory fracs = ["", ".0", ".000"];
         for (uint256 i = 0; i < fracs.length; i++) {
             string memory s = string.concat(nines, fracs[i], "e2200000000");
-            checkParseDecimalFloat(s, ninesValue, 2200000000, bytes(s).length);
+            checkParseDecimalFloatFail(s, ExponentOverflow.selector, bytes(s).length);
             assertEq(parseOutcome(s), overflow, "parse outcome");
             checkAgainstRule(s);
         }

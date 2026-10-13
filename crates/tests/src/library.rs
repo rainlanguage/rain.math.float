@@ -585,7 +585,14 @@ fn check_parse_entry_points_with(
         Err(e) => return Err(TestCaseError::fail(format!("{case}: reverted {e:?}"))),
     };
     prop_assert_eq!(inline._1, U256::from(lit.len()), "{}: cursor", case);
-    if inline._0.0 == [0u8; 4] {
+    if let Err(RefError::ExponentOverflow) = want {
+        prop_assert_eq!(
+            inline._0.0,
+            RefError::ExponentOverflow.selector(),
+            "{}: inline overflow",
+            case
+        );
+    } else if inline._0.0 == [0u8; 4] {
         let (c, e) = (big(inline._2), big(inline._3));
         let (lc, le) = r::literal_exact(lit);
         prop_assert!(
@@ -600,8 +607,8 @@ fn check_parse_entry_points_with(
         );
     }
 
-    // A suffix is excess characters, whatever the literal's value. Only
-    // ExponentOverflow may revert; every other error is a selector.
+    // A suffix is excess characters, whatever the literal's value. Every
+    // error is a selector, ExponentOverflow included (#510).
     let case = format!("parseDecimalFloat({s:?})");
     let want = if suffix.is_empty() {
         want
@@ -630,10 +637,6 @@ fn check_parse_entry_points_with(
             );
             prop_assert!(s._1.is_zero(), "{}: an error returns zero", case);
         }
-        (Err(s), Err(RefError::ExponentOverflow)) => prop_assert!(
-            error_matches(&s, RefError::ExponentOverflow),
-            "{case}: solidity {s:?}, reference ExponentOverflow"
-        ),
         (s, w) => prop_assert!(false, "{case}: solidity {s:?}, reference {w:?}"),
     }
     Ok(())
