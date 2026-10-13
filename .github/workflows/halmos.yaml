@@ -71,8 +71,8 @@ jobs:
           for s in yices cvc5 bitwuzla; do
             echo "$(nix build --no-link --print-out-paths "$SOLVER_NIXPKGS#$s" | head -1)/bin" >> "$GITHUB_PATH"
           done
-      - name: Build dev shell
-        run: nix develop -c forge --version
+      - name: Install soldeer dependencies
+        run: nix develop -c forge soldeer install
       - name: Run ${{ matrix.lemma.name }}
         # Leaves time inside the job limit for the log upload.
         timeout-minutes: 345
