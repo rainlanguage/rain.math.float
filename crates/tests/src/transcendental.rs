@@ -1360,6 +1360,22 @@ mod checker {
         edge(&Dec::new(5, k), &Bound::Pow10(k), &within, &step);
     }
 
+    /// The carve-out is for a result that shed digits, one below
+    /// 1e-2147483608: a true value just above it whose bound reaches below
+    /// grants nothing to a result at or above it.
+    #[test]
+    fn floor_carve_out_needs_a_shed_result() {
+        let k = -2147483608;
+        let truth = near(Dec::new(pow10(41) + 2, k - 41));
+        let s = Dec::new(pow10(40) + 1, I32_MIN);
+        assert!(!accepts(&truth, &Bound::Pow10(k), Ok(s)));
+        // Just below it the result sheds to 40 digits, 9e-2147483649 off:
+        // past the half unit, inside the carve-out.
+        let truth = near(Dec::new(pow10(41) - 1, k - 41));
+        let shed = Dec::new(pow10(40) - 1, I32_MIN);
+        assert!(accepts(&truth, &Bound::Pow10(k - 1), Ok(shed)));
+    }
+
     /// A revert is accepted only where the bound reaches past every Float.
     #[test]
     fn reverts() {
@@ -1602,15 +1618,24 @@ mod checker {
             point(Dec::new(1, 0), mid, Bound::Log10),
         );
         assert!(two.is_err());
-        // The unit is the larger result's: 1 against 1 - 1e-40.
-        let below = Dec::new(pow10(40) - 1, -40);
-        let tie = sum(&Dec::new(1, 0), &Dec::new(-5, -41));
+        // Across a power of ten the unit is the smaller result's: 1 against
+        // 1 - 1e-41 at their tie 1 - 5e-42; 1 against 1 - 1e-40 is ten units.
+        let below = Dec::new(pow10(41) - 1, -41);
+        let tie = sum(&Dec::new(1, 0), &Dec::new(-5, -42));
         let across = check_monotone(
             "m",
             point(Dec::new(1, 0), tie.clone(), Bound::Log10),
             point(below, tie, Bound::Log10),
         );
         assert!(across.is_ok());
+        let ten = Dec::new(pow10(40) - 1, -40);
+        let mid = sum(&Dec::new(1, 0), &Dec::new(-5, -41));
+        let across_ten = check_monotone(
+            "m",
+            point(Dec::new(1, 0), mid.clone(), Bound::Log10),
+            point(ten, mid, Bound::Log10),
+        );
+        assert!(across_ten.is_err());
         // In order is always fine.
         assert!(
             check_monotone(
@@ -1766,6 +1791,11 @@ mod anchors {
             ),
             ("2", "-136", None),
             ("2", "-40", Some("9094947017729282379150390625e-40")),
+            // 3^85 has 41 digits, 3^86 has 42.
+            ("3", "85", Some("35917545547686059365808220080151141317043")),
+            ("9", "42.5", Some("35917545547686059365808220080151141317043")),
+            ("0.3", "85", Some("35917545547686059365808220080151141317043e-85")),
+            ("3", "86", None),
             ("0.04", "0.5", Some("0.2")),
             ("0.04", "-1.5", Some("125")),
             ("1e-10", "0.2", Some("0.01")),
@@ -1817,6 +1847,11 @@ mod anchors {
                 "3",
             ),
             ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
+            // 41 digits exactly: 3^85.
+            ("3", "85", "35917545547686059365808220080151141317043"),
+            ("-3", "85", "-35917545547686059365808220080151141317043"),
+            ("9", "42.5", "35917545547686059365808220080151141317043"),
+            ("0.3", "85", "35917545547686059365808220080151141317043e-85"),
         ] {
             exactly(truth_pow(&d(a), &d(b)), want);
             run(check_pow(&d(a), &d(b)));
