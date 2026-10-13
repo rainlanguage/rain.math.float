@@ -114,16 +114,33 @@ contract AgreeHalmosTest {
     }
 
     /// NEG, split by |c|'s digit count, one j per path. Every nonzero
-    /// |c| <= 2^223 < 10^68 has one j in [0, 67], and -c has the same.
-    function check_maximizeNegates(int256 c, int32 e, uint256 jBits) external view {
+    /// |c| <= 2^223 < 10^68 has one j in [0, 67], and -c has the same. The
+    /// slices take j in [0, 16], [17, 33], [34, 50] and [51, 67].
+    function maximizeNegates(int256 c, int32 e, uint256 jBits, uint256 lo, uint256 hi) internal view {
         uint256 j = LibHalmosExact.concrete(jBits, 7);
-        if (j > 67) return;
+        if (j < lo || j > hi) return;
         if (c == 0 || c > 2 ** 223 || c < -(2 ** 223)) return;
         if (!hasDigits(c, j)) return;
         if (!LibHalmosExact.maximizeHints(c, j) || !LibHalmosExact.maximizeHints(-c, j)) return;
         (int256 m, int256 me, int256 ms) = this.maximize(c, e);
         (int256 n, int256 ne, int256 ns) = this.maximize(-c, e);
         assert(n == -m && ne == me && ns == ms);
+    }
+
+    function check_maximizeNegates0(int256 c, int32 e, uint256 jBits) external view {
+        maximizeNegates(c, e, jBits, 0, 16);
+    }
+
+    function check_maximizeNegates17(int256 c, int32 e, uint256 jBits) external view {
+        maximizeNegates(c, e, jBits, 17, 33);
+    }
+
+    function check_maximizeNegates34(int256 c, int32 e, uint256 jBits) external view {
+        maximizeNegates(c, e, jBits, 34, 50);
+    }
+
+    function check_maximizeNegates51(int256 c, int32 e, uint256 jBits) external view {
+        maximizeNegates(c, e, jBits, 51, 67);
     }
 
     function isMaximized(int256 m) internal pure returns (bool) {
