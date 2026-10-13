@@ -59,6 +59,8 @@ contract LibDecimalFloatImplementationMulGasTest is Test {
         int256 m = type(int256).max;
         logImpl("ceil 1e(max-100) * 1e50", 1, m - 100, 1, 50);
         logImpl("ceil 1e(max-78) * 1e0", 1, m - 78, 1, 0);
+        logImpl("ceil 1e(max-77) * 1e0", 1, m - 77, 1, 0);
+        logImpl("ceil 1e(max-76) * 1e0", 1, m - 76, 1, 0);
         logImpl("ceil 1e(max-1) * 1e-5", 1, m - 1, 1, -5);
         logImpl("ceil int224.max e(max-100) * int224.max e0", type(int224).max, m - 100, type(int224).max, 0);
         logImpl("ceil 1e(max) * 1e1", 1, m, 1, 1);

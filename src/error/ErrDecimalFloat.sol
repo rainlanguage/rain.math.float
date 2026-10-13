@@ -41,7 +41,8 @@ error LossyConversionToFloat(int256 signedCoefficient, int256 exponent);
 error LossyConversionFromFloat(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when `log10Ratio` is asked for a relative log with a + b below
-/// 1e50, where its result is unproven or overflows.
+/// 1e50, where its result is unproven or overflows. A relative b of zero with
+/// a below 1e50 is this error, not `Log10RatioOutOfRange`.
 /// @param a The numerator.
 /// @param b The denominator.
 error Log10RatioRelativeSumTooSmall(uint256 a, uint256 b);
@@ -49,7 +50,8 @@ error Log10RatioRelativeSumTooSmall(uint256 a, uint256 b);
 /// @dev Thrown when attempting to exponentiate 0^b where b is negative.
 error ZeroNegativePower(Float b);
 
-/// @dev Thrown when mulDiv internal to division overflows.
+/// @dev Thrown when the quotient of mulDiv internal to division is 2^256 or
+/// more, or its denominator is zero.
 error MulDivOverflow(uint256 x, uint256 y, uint256 denominator);
 
 /// @dev Thrown when a maximize overflows where it is not appropriate.
@@ -85,14 +87,13 @@ error AgreeNoPositiveTolerance(Float absolute, Float proportional);
 
 /// @dev Thrown when `log10Ratio` is given a + b past `uint256.max`, b of zero,
 /// or z = |a - b| / (a + b) at 1e-50 with z^16 of at least 1e-50, past which
-/// its series is not proven.
+/// its series is not proven. A relative a + b below 1e50 is
+/// `Log10RatioRelativeSumTooSmall` instead, b of zero included.
 /// @param a The numerator.
 /// @param b The denominator.
 error Log10RatioOutOfRange(uint256 a, uint256 b);
 
-/// @dev Thrown when `sqrt` is given a coefficient outside (0, 1e76), or an
-/// exponent so close to `int256.min` that scaling the coefficient and
-/// evening the exponent would pass it.
+/// @dev Thrown when `sqrt` is given a coefficient outside (0, 1e76).
 /// @param signedCoefficient The coefficient as given.
 /// @param exponent The exponent as given.
 error SqrtOutOfRange(int256 signedCoefficient, int256 exponent);

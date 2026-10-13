@@ -121,6 +121,25 @@ contract LibDecimalFloatPow10Test is Test {
         this.pow10External(past);
     }
 
+    /// x whose integer part is at or one past int256's bound on either side.
+    /// 10^x is then past every Float on the side of x's sign, whichever path
+    /// rejects it, and the error reports x.
+    function testPow10IntegerPartAtInt256Edge() external {
+        int256[2] memory exponents = [int256(10), 76];
+        for (uint256 i = 0; i < exponents.length; i++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 scale = int256(10 ** uint256(exponents[i]));
+            int256 top = type(int256).max / scale;
+            int256 bottom = type(int256).min / scale;
+            for (int256 k = 0; k < 2; k++) {
+                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, top + k, exponents[i]));
+                this.pow10External(LibDecimalFloat.packLossless(top + k, exponents[i]));
+                vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, bottom - k, exponents[i]));
+                this.pow10External(LibDecimalFloat.packLossless(bottom - k, exponents[i]));
+            }
+        }
+    }
+
     function checkPow10(Float x) internal view {
         PowRange range = LibTestPowRange.pow10Range(x);
         try this.pow10External(x) returns (Float result) {

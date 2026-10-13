@@ -185,6 +185,17 @@ contract LibDecimalFloatImplementationDivTest is Test {
         this.divExternal(1e76, 76, 1, type(int256).min + 76);
     }
 
+    /// A positive dividend over a negative power of ten divisor, with the
+    /// quotient exponent exactly `type(int256).max`: `1e76 10^(max - 76)` over
+    /// `-1 10^-76` is exactly `-1e76 10^max`, which needs no shed digit, so it
+    /// returns. Only a `type(int256).min` dividend there has a 2^255 quotient.
+    function testDivNegativePowerOfTenDivisorAtMax() external pure {
+        int256 max = type(int256).max;
+        checkDiv(1e76, max - 76, -1, -76, -1e76, max);
+        checkDiv(-1e76, max - 76, -1, -76, 1e76, max);
+        checkDiv(type(int256).max, max - 76, -1, -76, -type(int256).max, max);
+    }
+
     /// An unfull divisor at the floor overflows the quotient exponent for a
     /// numerator with a non-negative maximized exponent.
     function testDivUnfullDivisorExponentOverflow() external {
@@ -437,6 +448,32 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// `type(int256).max`, `div` returns maximized zero.
     function testDivAdjustExponentSpillOverflowReturnsZero() external pure {
         checkDiv(1e76, type(int256).min, 3e75, type(int256).max, 0, 0);
+    }
+
+    /// The spill-overflow return and the `underflowExponentBy > 76` return
+    /// meet at `exponentB = type(int256).max - adjustExponent`, the last
+    /// spill that fits. For 1e76e(min) / 3e75 the adjustment is 75, so
+    /// exponentB above max - 75 takes the early return and max - 75 takes the
+    /// later one. Both sides are the zero the exact quotient truncates to.
+    function testDivSpillOverflowMatchesUnderflowZero() external {
+        int256 max = type(int256).max;
+        int256 min = type(int256).min;
+        for (int256 k = 0; k <= 80; k++) {
+            checkDivExact(1e76, min, 3e75, max - k);
+            checkDivExact(-1e76, min, 3e75, max - k);
+        }
+        checkDiv(1e76, min, 3e75, max - 75, 0, 0);
+        checkDiv(1e76, min, 3e75, max - 74, 0, 0);
+    }
+
+    /// Any coefficients at exponents within 160 of int256.min and int256.max,
+    /// either side of the spill-overflow guard, against the exact quotient.
+    function testDivSpillOverflowExact(int256 a, uint256 ea, int256 b, uint256 eb, uint8 sa, uint8 sb) external {
+        b >>= sb;
+        vm.assume(b != 0);
+        checkDivExact(
+            a >> sa, type(int256).min + int256(bound(ea, 0, 160)), b, type(int256).max - int256(bound(eb, 0, 160))
+        );
     }
 
     /// A division whose true exponent underflows below what a single result can
