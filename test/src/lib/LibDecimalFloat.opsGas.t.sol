@@ -96,6 +96,32 @@ contract LibDecimalFloatOpsGasTest is Test {
         logPack("packLossy bound below floor", two223, int256(type(int32).min) - 1);
     }
 
+    function logAgree(string memory name, Float absolute, Float proportional, Float lowest, Float highest)
+        internal
+        view
+    {
+        uint256 before = gasleft();
+        LibDecimalFloat.agree(absolute, proportional, lowest, highest);
+        uint256 used = before - gasleft();
+        console2.log(name, used);
+    }
+
+    function testGasAgree() external view {
+        logAgree("agree accepts", f(0, 0), f(1, -2), f(99, 0), f(100, 0));
+        logAgree("agree refuses", f(0, 0), f(1, -2), f(98999, -3), f(100, 0));
+        logAgree("agree straddling", f(0, 0), f(101, -2), f(-1, 0), f(100, 0));
+        logAgree(
+            "agree whole range",
+            f(0, 0),
+            f(1, -2),
+            f(type(int224).min, type(int32).max),
+            f(type(int224).max, type(int32).max)
+        );
+        logAgree("agree zero spread", f(1, -20), f(0, 0), f(100, 0), f(100, 0));
+        logAgree("agree reversed accepts", f(0, 0), f(1, -2), f(100, 0), f(99, 0));
+        logAgree("agree reversed refuses", f(0, 0), f(1, -2), f(100, 0), f(98999, -3));
+    }
+
     function testGasTranscendental() external view {
         Float a = f(15, -1);
         log1("log10 packed", LibDecimalFloat.log10, a);

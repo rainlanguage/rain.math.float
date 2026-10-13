@@ -10,11 +10,13 @@ import {LibFormatDecimalFloatPr321} from "test/lib/LibFormatDecimalFloatPr321.so
 import {LibParseDecimalFloatPr321} from "test/lib/LibParseDecimalFloatPr321.sol";
 import {UnformatableExponent} from "src/error/ErrFormat.sol";
 import {LibTestDecimalLiteral, Literal} from "test/lib/LibTestDecimalLiteral.sol";
+import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 /// Every input returns the same bytes, or reverts with the same bytes, as
 /// `toDecimalString`, `parseDecimalFloat` and `parseDecimalFloatInline` before
 /// #310's format and parse changes, except a Float formatted that only a guard
-/// #376 deleted refused and a well formed literal that is no Float.
+/// #376 deleted or the raw exponent cap #449 moved refused, a Float past the
+/// cap on its canonical exponent, and a well formed literal that is no Float.
 contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
     function baseFormat(Float f, bool scientific) external pure returns (string memory) {
         return LibFormatDecimalFloatPr321.toDecimalString(f, scientific);
@@ -54,21 +56,28 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         assertEq(prRet, baseRet, "bytes");
     }
 
-    /// Where the base refused a Float only by a guard #376 deleted, the
-    /// library formats it, as the format tests check against the oracle.
+    /// Where the base refused a Float only by a guard #376 deleted, or by the
+    /// cap on its raw exponent that #449 moved to the canonical exponent, the
+    /// library formats it, as the format tests check against the oracle. Past
+    /// the cap on the canonical exponent the library reverts with it.
     function checkFormat(Float f) internal view {
         (int256 c, int256 e) = LibDecimalFloat.unpack(f);
+        int256 canonical = LibExactFloat.canonicalExponent(c, e);
         int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
         for (uint256 i = 0; i < 2; i++) {
             bool scientific = i == 1;
             bytes memory baseCall = abi.encodeCall(this.baseFormat, (f, scientific));
             bytes memory prCall = abi.encodeCall(this.prFormat, (f, scientific));
             (bool baseOk, bytes memory baseRet) = address(this).staticcall(baseCall);
-            bool pastCap = !scientific && c != 0 && (e > cap || e < -cap);
-            if (!baseOk && !pastCap) {
+            bool pastCap = !scientific && c != 0 && (canonical > cap || canonical < -cap);
+            if (pastCap) {
+                (bool prOk, bytes memory prRet) = address(this).staticcall(prCall);
+                assertFalse(prOk, "past the canonical cap");
+                assertEq(prRet, abi.encodeWithSelector(UnformatableExponent.selector, canonical), "pr error");
+            } else if (!baseOk) {
                 assertEq(baseRet, abi.encodeWithSelector(UnformatableExponent.selector, e), "base error");
                 (bool prOk,) = address(this).staticcall(prCall);
-                assertTrue(prOk, "guard deleted by #376");
+                assertTrue(prOk, "guard deleted by #376 or #449");
             } else {
                 same(baseCall, prCall);
             }
@@ -166,14 +175,15 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
     }
 
     /// The string the library formats `c × 10^e` to parses the same. Past the
-    /// exponent cap, non-scientific mode reverts and the scientific string is
-    /// parsed instead.
+    /// cap on the canonical exponent, non-scientific mode reverts and the
+    /// scientific string is parsed instead.
     function checkFormattedParse(uint256 kind, uint256 d, uint256 x, bool negative, int256 e, bool sci) internal {
         int256 c = kind % 2 == 0 ? ofDigits(d, x, negative) : withTrailingZeros(d, x, negative);
         Float f = LibDecimalFloat.packLossless(c, e);
+        int256 canonical = LibExactFloat.canonicalExponent(c, e);
         int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
-        if (!sci && (e > cap || e < -cap)) {
-            vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, e));
+        if (!sci && (canonical > cap || canonical < -cap)) {
+            vm.expectRevert(abi.encodeWithSelector(UnformatableExponent.selector, canonical));
             this.prFormat(f, false);
             sci = true;
         }

@@ -113,12 +113,17 @@ When the exponent _underflows_ this means that the float is `Xe-Y` where `Y` is
 some very large negative number, which means the float represents a number
 extremely close to zero.
 
-In these cases we chose to _lose precision_ by rounding towards zero rather than
-erroring.
+In these cases we chose to _lose precision_ by shedding digits to lift the
+exponent to `int32.min`, rounding towards zero.
 
 This is because in _absolute_ terms, no matter how much the exponent is
 underflowing by, the numerical value is changing by increasingly negligible
 amounts.
+
+Once every digit is shed the result is zero and the magnitude is gone. Lossy
+packing returns `FLOAT_ZERO` with `lossless` false there; every arithmetic
+operation instead reverts `ExponentUnderflow`, so a non-zero result is never
+silently replaced by zero.
 
 This contrasts with the overflow case (error) where the size of the exponent
 overflow is losing exponentially more information if it is allowed to decapitate
@@ -140,7 +145,8 @@ the same size results in loss of information.
 The information loss follows the rules explained here. A value that does not fit
 packs to the Float closest to it that does not exceed its magnitude, for every
 operation, so `2^223` packs as int224.max rather than `2^223 - 8` at the next
-exponent. Exponents may underflow and exponent overflows will error.
+exponent. Exponents may underflow and exponent overflows will error, from the
+threshold under "Exponent overflow" below.
 
 There is a "lossless" version of packing provided in the library interface that
 doesn't magically resolve the information loss but converts all precision loss
@@ -177,7 +183,11 @@ last place, only when both true values lie within the larger raw error of the
 same rounding tie, and never by more. The raw error, before rounding, is 1.12e-8
 of a unit for `pow10`, 1.0037e-50 for `log10`, and 1.1343e-48 + N·min(K1, K2·d)
 relative for `pow`, with N, d, K1 and K2 as above. Callers must not rely on
-strict ordering at one-ulp resolution.
+strict ordering at one-ulp resolution. For `pow` a fraction of exactly a half
+takes the root of a^(2N+1), without the 1.1343e-48 term, and any other fraction
+takes the log10 and pow10 leg. So at b = N + 1/2, when the true values lie
+within the leg's raw error of a tie, a^b can be one unit out of order with both
+neighbours at once, above both or below both, within the same rule.
 
 Exact results stay exact: powers of ten (`pow10(k)` is `10^k`, `log10(10^k)` is
 `k`), and integer and fractional powers, roots included, with at most 41
@@ -204,6 +214,15 @@ represent cannot fit into the binary represenation that we have (assuming the
 coefficient is also maximized and so we cannot shift magnitude from exponent
 space to coefficient space).
 
+Lossy packing overflows from `(2^223 + 2) × 10^int32.max` in magnitude, for both
+signs: that is where the coefficient at exponent `int32.max + 1` exceeds
+`int224.max / 10`. Below it the value packs to the largest Float of its sign
+with `lossless` false. As the largest Float is `(2^223 - 1) × 10^int32.max` and
+the most negative is `-2^223 × 10^int32.max`, a positive value up to three units
+of `10^int32.max` past the largest truncates into it, and a negative value up to
+two units past the most negative. Lossless packing reverts `ExponentOverflow`
+for any value past either one, that band included.
+
 In this case we error because decapitating the coefficient is an extreme loss of
 information that doesn't converge on any particular value that we could round
 towards.
@@ -211,14 +230,6 @@ towards.
 This is _different to how floats usually work_ where a sufficiently large number
 would be converted to the special `Infinity` or `-Infinity` values. We DO NOT do
 this, better to error than start talking infinities when money is being handled.
-
-#### Other overflows
-
-Other values than the exponent can also overflow in more niche/situational
-scenarios, such as the intermediate calculations moving between 512 and 256 bits
-for multiplication and division. These will also error rather than
-truncate/round because information loss from overflow doesn't converge to a
-predictable value.
 
 #### Uncalculable values (no NaN)
 
@@ -235,15 +246,15 @@ Other examples include:
 - Taking the log of `0`
 - Taking the log of a negative number
 - Raising `0` to a negative number
-- Internal overflows during intermediate calculations
 
 #### Unimplemented math
 
 There are some situations where certain operations on some numeric ranges has
 not been implemented and here we error.
 
-Most notable is that we do not currently support powers of negative number bases
-as this often results in complex numbers rather than real numbers.
+Most notable is that a negative base is supported in `pow` only for a whole
+exponent, where the result is real. A negative base with a fractional exponent
+reverts `PowNegativeBase`, as the result is often a complex number.
 
 [rainlanguage/rain.math.float#88](https://github.com/rainlanguage/rain.math.float/issues/88)
 
@@ -274,9 +285,10 @@ inherently approximations in many cases.
 `log10` divides the input by powers 10^(2^-i) down to within 10^(2^-16) of a
 power of ten and closes the gap with a fixed point series. Before rounding it is
 within 1.0037e-50 of the true value, and within 3.11e-49 relative of it for an
-input within a factor 1.001 of a power of ten, so a log near zero keeps its
-precision. The result is rounded to 41 significant digits, so it is within half
-a unit in the 41st digit plus 1.0037e-50. A power of ten has an exact log.
+input within a factor 1.001 of a power of ten, either side and the factor
+included, so a log near zero keeps its precision. The result is rounded to 41
+significant digits, so it is within half a unit in the 41st digit plus
+1.0037e-50. A power of ten has an exact log.
 
 `pow10` computes the power in fixed point and rounds it to 41 significant
 digits, so it is within half a unit in the 41st digit plus 1.12e-8 of a unit,
@@ -292,3 +304,44 @@ part of |b|.
 `sqrt` takes the integer square root of the coefficient scaled to 81 or 82
 digits and rounds it to nearest, so it is correctly rounded and a root such as
 `sqrt(4)` is exact.
+
+## Consumer guidance
+
+Rules for protocols built on the library. Each example is a test in
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`.
+
+1. **Round up at the fixed-decimal boundary yourself.** `toFixedDecimalLossy`
+   only truncates. For an amount a user owes, add 1 when `lossless` is false.
+   With integer inputs and `a × b` below about 1e66 of the floored unit, the
+   floor never exceeds the exact floor and that ceiling never falls below the
+   exact ceiling, in any of the orders `a × b / c`, `a / (c / b)` and
+   `a × (b / c)`; on an exact integer either can miss by 1 toward the safe side.
+   Past about 1e66 a rounded divisor lifts the floor: `(7e66 + 2) / (7 / 3)`
+   floors to `3e66 + 1` where the exact result is `3e66 + 6/7`. Keep amounts as
+   Floats through a calculation: converting to wei on every step of a loop
+   reintroduces Balancer/Bunni-style amplification. Eight round trips of 8 wei
+   through a rate of `1.112500000000000001`, converted to wei each step, empty
+   it; as a Float it stays exactly 8.
+2. **Toward zero applies per operation, not per expression.** A rounded divisor
+   biases the quotient upward: `inv(inv(6))` is `6.` then 65 zeros and a `2`. A
+   negative result rounds toward +∞: `-1 / 3` is `-0.` then 67 threes. Get
+   protocol-favourable rounding from operand order (for positive values
+   `a × b / c` truncates down, `a / (c / b)` can land above) or from a margin.
+3. **`pow`, `log10` and `pow10` round to nearest at 41 digits.** `pow(a, 1)` can
+   exceed `a`: a 42-digit `a` ending in 5 rounds up. For `r = 1 + 4e-45`,
+   `pow(r, 0.5)` and `pow(r, 0.7)` are exactly 1, so `pow(r, w) - 1` charges
+   nothing. Never charge `approx - 1` without a minimum size and a margin taken
+   from the bounds under "log10, pow10, pow and sqrt".
+4. **Any `bytes32` is a Float.** An untrusted extreme makes ordinary arithmetic
+   revert: `mul(FLOAT_MIN_POSITIVE_VALUE, 0.5)` reverts `ExponentUnderflow` and
+   `add(FLOAT_MAX_POSITIVE_VALUE, FLOAT_MAX_POSITIVE_VALUE)` reverts
+   `ExponentOverflow`.
+5. **Equal values can have different bytes.** `1` and `10e-1` are `eq` but
+   differ as `bytes32`. Compare with `eq`, and `canonicalize` before hashing.
+6. **A sub-ulp add is absorbed, and a sub-ulp subtract removes a whole ulp.**
+   `1e76 + 1` is `1e76`, and `1e76 - 1` is `1e76 - 1e9`: repaying 1 wei of a
+   1e76 wei debt clears 1e9 wei.
+7. **An empty market makes `div` revert `DivisionByZero`.** Inflation protection
+   holds only while shares stay Floats. Against 1 share and `1e24 + 1` assets, a
+   `1e18` deposit gets just under `1e-6` shares and redeems exactly `1e18`; as
+   an integer share count it gets 0.

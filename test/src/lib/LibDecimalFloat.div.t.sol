@@ -69,11 +69,13 @@ contract LibDecimalFloatDivTest is Test {
     }
 
     /// The Float closest to the exact `a / b` that does not exceed its
-    /// magnitude: the exact quotient to 75 or 76 digits, packed.
+    /// magnitude: the exact quotient to 75 or 76 digits, past int224, packed
+    /// by the general rule.
     function expectedQuotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = LibExactFloat.quotient(ca, ea, cb, eb);
-        (Float expected,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-        return expected;
+        return Float.wrap(
+            LibExactFloat.packedNearestTowardZero(signedCoefficient < 0, LibExactFloat.abs(signedCoefficient), exponent)
+        );
     }
 
     /// Reverts only on a zero divisor, or where the exact quotient is beyond

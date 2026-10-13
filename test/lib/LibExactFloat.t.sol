@@ -197,4 +197,55 @@ contract LibExactFloatTest is Test {
         assertTrue(LibExactFloat.cmpScaled(LibExactFloat.u512(magnitude), t, exact, e) <= 0, "floor");
         assertTrue(LibExactFloat.cmpScaled(LibExactFloat.u512(magnitude + 1), t, exact, e) > 0, "next");
     }
+
+    function checkPacked(bool negative, uint256 magnitude, int256 exponent, int256 c, int256 e) private pure {
+        uint256 packed = uint256(LibExactFloat.packedNearestTowardZero(negative, magnitude, exponent));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(int256(int224(uint224(packed))), c, "coefficient");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(int256(int32(uint32(packed >> 224))), e, "exponent");
+    }
+
+    /// Fixed examples, each expected from `packLossy`'s NatSpec rule: truncate
+    /// at the lowest exponent the coefficient fits, unless the int224 bound
+    /// one exponent lower is closer, and never below the int32 floor.
+    function testPackedNearestTowardZeroExamples() external pure {
+        // 2^223 packs as int224.max at the same exponent: 2^223 / 10 at 1 is
+        // further from it.
+        checkPacked(false, 2 ** 223, 0, type(int224).max, 0);
+        checkPacked(true, 2 ** 223 + 1, 0, type(int224).min, 0);
+        // 2^223 × 1e9 + 7 truncates past int224 at 9 and to 2^223 / 10 at 10,
+        // so the bound at 9 is closer.
+        checkPacked(false, 2 ** 223 * 1e9 + 7, 0, type(int224).max, 9);
+        // 1e67 fits and 1e68 does not, so there is no closer bound.
+        checkPacked(false, 1e75, 0, 1e67, 8);
+        checkPacked(true, 1e75 + 1, 0, -1e67, 8);
+        checkPacked(false, 2e67, 5, 2e66, 6);
+        // The floor stops the exponent at int32.min, shedding past the fit.
+        checkPacked(false, 1e75, int256(type(int32).min) - 10, 1e65, type(int32).min);
+        // At the floor the bound one exponent lower does not exist.
+        checkPacked(false, 2 ** 223, int256(type(int32).min) - 1, int256(2 ** 223) / 10, type(int32).min);
+    }
+
+    /// Whatever the magnitude past int224, the result is the nearest Float
+    /// towards zero by `isNearestTowardZero`, at an exponent no lower one
+    /// would hold.
+    function testPackedNearestTowardZeroIsNearestAtLowestExponent(bool negative, uint256 magnitude, int256 exponent)
+        external
+        pure
+    {
+        magnitude = bound(magnitude, LibExactFloat.coefficientLimit(negative) + 1, type(uint256).max);
+        exponent = bound(exponent, int256(type(int32).min) - 10, int256(type(int32).max) - 80);
+        uint256 packed = uint256(LibExactFloat.packedNearestTowardZero(negative, magnitude, exponent));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 c = int256(int224(uint224(packed)));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 e = int256(int32(uint32(packed >> 224)));
+        assertTrue(
+            LibExactFloat.isNearestTowardZero(negative, LibExactFloat.u512(magnitude), exponent, c, e), "nearest"
+        );
+        assertTrue(
+            e == type(int32).min || LibExactFloat.abs(c) * 10 > LibExactFloat.coefficientLimit(negative), "lowest"
+        );
+    }
 }

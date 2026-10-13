@@ -661,6 +661,11 @@ proptest! {
     }
 
     #[test]
+    fn library_agree_reversed((absolute, proportional, lowest, highest) in agree_args()) {
+        check_agree(&absolute, &proportional, &highest, &lowest)?;
+    }
+
+    #[test]
     fn library_is_odd(a in x::float()) { check_is_odd(&a)?; }
 
     #[test]
@@ -801,6 +806,41 @@ fn library_pack_nearest_bound() {
     }
 }
 
+/// #450: `packLossless` of a value past every Float is `ExponentOverflow`,
+/// the band `packLossy` truncates into the largest Float of a sign included;
+/// the largest Floats themselves pack.
+#[test]
+fn library_pack_lossless_past_every_float() {
+    let two223 = -r::int224_min();
+    let m = I32_MAX;
+    for (c, e, over) in [
+        (two223.clone(), m, true),
+        (two223.clone() + 1, m, true),
+        (two223.clone() + 2, m, true),
+        (-two223.clone() - 1, m, true),
+        (-two223.clone() - 2, m, true),
+        (two223.clone() * 10, m - 1, true),
+        (two223.clone() * 10 - 9, m - 1, true),
+        (two223.clone() * 10 + 19, m - 1, true),
+        (-two223.clone() * 10 - 1, m - 1, true),
+        (-two223.clone() * 10 - 19, m - 1, true),
+        (two223.clone() * 100 - 99, m - 2, true),
+        (two223.clone() - 1, m, false),
+        (-two223.clone(), m, false),
+        (two223.clone() * 10 - 10, m - 1, false),
+        (-two223.clone() * 10, m - 1, false),
+    ] {
+        let e = BigInt::from(e);
+        let got = r::pack_lossless(&c, &e);
+        if over {
+            assert_eq!(got.unwrap_err(), r::RefError::ExponentOverflow, "{c}e{e}");
+        } else {
+            assert!(got.is_ok(), "{c}e{e}: {got:?}");
+        }
+        run(check_pack_lossless(&c, &e));
+    }
+}
+
 /// Every whole number in each representation down to 68 digits, and its
 /// neighbours, which are not whole.
 #[test]
@@ -858,6 +898,46 @@ fn library_agree_tolerance_errors() {
         for p in &values {
             run(check_agree(a, p, &Dec::new(1, 0), &Dec::new(2, 0)));
         }
+    }
+}
+
+/// The extremes in either order give the same answer, the tolerance errors
+/// still first. The expected verdicts are exact spreads against the limit:
+/// 2e6 > 1e-18, 1 <= 1, 1.001 > 1 and 0 <= 1e-18.
+#[test]
+fn library_agree_either_order() {
+    let tiny = Dec::new(1, -18);
+    let million = Dec::new(1_000_000, 0);
+    let one = Dec::new(1, 0);
+    let cases = [
+        (tiny.clone(), million.clone(), million.neg(), Ok(false)),
+        (one.clone(), Dec::new(101, 0), Dec::new(100, 0), Ok(true)),
+        (
+            one.clone(),
+            Dec::new(101001, -3),
+            Dec::new(100, 0),
+            Ok(false),
+        ),
+        (tiny.clone(), Dec::new(10, -1), one.clone(), Ok(true)),
+        (tiny.clone(), Dec::new(0, 5), Dec::new(0, -5), Ok(true)),
+        (
+            Dec::new(-1, 0),
+            Dec::new(101, 0),
+            Dec::new(100, 0),
+            Err(RefError::AgreeToleranceNegative),
+        ),
+        (
+            Dec::zero(),
+            Dec::new(101, 0),
+            Dec::new(100, 0),
+            Err(RefError::AgreeNoPositiveTolerance),
+        ),
+    ];
+    for (absolute, a, b, want) in &cases {
+        assert_eq!(&r::agree(absolute, &Dec::zero(), a, b), want);
+        assert_eq!(&r::agree(absolute, &Dec::zero(), b, a), want);
+        run(check_agree(absolute, &Dec::zero(), a, b));
+        run(check_agree(absolute, &Dec::zero(), b, a));
     }
 }
 

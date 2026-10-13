@@ -12,7 +12,7 @@ const LIB: &str = include_str!("../../../src/lib/LibDecimalFloat.sol");
 /// Decimal places the library packs the constants at.
 const PLACES: u32 = 66;
 
-/// Extra digits carried through the series so rounding at `PLACES` is
+/// Extra digits carried through the series so truncation at `PLACES` is
 /// exact.
 const GUARD: u32 = 12;
 
@@ -45,9 +45,13 @@ fn ten_pow(n: u32) -> U512 {
     U512::from(10u64).pow(U512::from(n))
 }
 
-/// `atan(1/x) * 10^scale` by the alternating series, truncated once a term
-/// underflows the scale. Every intermediate is an integer.
-fn atan_inv(x: u64, scale: u32) -> U512 {
+/// `atan(1/x) * 10^scale` by the alternating series, stopped at the first
+/// term that floors to zero, with the number of terms summed. Repeated floor
+/// division is the floor of the full quotient, so each summed term is short
+/// of its exact value by less than 1, and the dropped alternating tail is
+/// below the exact value of the first dropped term, itself below 1: the
+/// result is within `terms + 1` of the exact value.
+fn atan_inv(x: u64, scale: u32) -> (U512, u64) {
     let x = U512::from(x);
     let x2 = x * x;
     let mut power = ten_pow(scale) / x;
@@ -66,16 +70,26 @@ fn atan_inv(x: u64, scale: u32) -> U512 {
         power /= x2;
         k += 1;
     }
-    sum
+    (sum, k)
 }
 
-/// `pi * 10^scale` by Machin's formula.
-fn pi_scaled(scale: u32) -> U512 {
-    U512::from(16u64) * atan_inv(5, scale) - U512::from(4u64) * atan_inv(239, scale)
+/// `pi * 10^scale` by Machin's formula, with a bound the exact value is
+/// strictly within.
+fn pi_scaled(scale: u32) -> (U512, U512) {
+    let (a5, n5) = atan_inv(5, scale);
+    let (a239, n239) = atan_inv(239, scale);
+    let error = 16 * (n5 + 1) + 4 * (n239 + 1);
+    (
+        U512::from(16u64) * a5 - U512::from(4u64) * a239,
+        U512::from(error),
+    )
 }
 
-/// `e * 10^scale` by the series sum of 1/k!.
-fn e_scaled(scale: u32) -> U512 {
+/// `e * 10^scale` by the series sum of 1/k!, with a bound the exact value is
+/// strictly within. Each summed term is `floor(10^scale / k!)`, short by less
+/// than 1, and the dropped tail starts at a term below 1 whose successors
+/// shrink by at least half each step, so it is below 2.
+fn e_scaled(scale: u32) -> (U512, U512) {
     let mut term = ten_pow(scale);
     let mut sum = U512::ZERO;
     let mut k = 1u64;
@@ -84,47 +98,77 @@ fn e_scaled(scale: u32) -> U512 {
         term /= U512::from(k);
         k += 1;
     }
-    sum
+    (sum, U512::from(k + 2))
 }
 
-/// Drops `GUARD` digits, rounding to nearest.
-fn round_to_places(scaled: U512) -> I224 {
+/// Drops `GUARD` digits toward zero. The exact value lies strictly within
+/// `error` of `scaled`, so the floor is exact when the dropped digits are at
+/// least `error` from both ends of their range.
+fn truncate_to_places((scaled, error): (U512, U512)) -> I224 {
     let divisor = ten_pow(GUARD);
     let (q, r) = (scaled / divisor, scaled % divisor);
-    let rounded = if r * U512::from(2u64) >= divisor {
-        q + U512::from(1u64)
-    } else {
-        q
-    };
-    I224::from_dec_str(&rounded.to_string()).unwrap()
+    assert!(
+        r >= error && r + error <= divisor,
+        "guard digits too close to a boundary"
+    );
+    I224::from_dec_str(&q.to_string()).unwrap()
 }
 
-#[test]
-fn float_pi_is_pi_rounded_to_nearest() {
-    let (coefficient, exponent) = unpack(packed_constant("FLOAT_PI"));
+/// The largest coefficient the packing fits, `type(int224).max`.
+fn int224_max() -> U512 {
+    (U512::from(1u8) << 223usize) - U512::from(1u8)
+}
+
+/// `name` is the closest Float not above the value `derived` brackets, at
+/// exponent `-PLACES`, and the next finer exponent does not fit.
+fn assert_closest_float_not_above(name: &str, derived: (U512, U512)) {
+    let (coefficient, exponent) = unpack(packed_constant(name));
     assert_eq!(exponent, -(PLACES as i32));
-    assert_eq!(coefficient, round_to_places(pi_scaled(PLACES + GUARD)));
+    assert_eq!(coefficient, truncate_to_places(derived));
+    let (scaled, error) = derived;
+    assert!((scaled - error) / ten_pow(GUARD - 1) > int224_max());
 }
 
 #[test]
-fn float_e_is_e_rounded_to_nearest() {
-    let (coefficient, exponent) = unpack(packed_constant("FLOAT_E"));
-    assert_eq!(exponent, -(PLACES as i32));
-    assert_eq!(coefficient, round_to_places(e_scaled(PLACES + GUARD)));
+fn float_pi_is_the_closest_float_not_above_pi() {
+    assert_closest_float_not_above("FLOAT_PI", pi_scaled(PLACES + GUARD));
 }
 
 #[test]
-fn derivations_start_with_the_known_digits() {
+fn float_e_is_the_closest_float_not_above_e() {
+    assert_closest_float_not_above("FLOAT_E", e_scaled(PLACES + GUARD));
+}
+
+/// The first 72 significant digits of pi (OEIS A000796,
+/// https://oeis.org/A000796/b000796.txt) and of e (OEIS A001113,
+/// https://oeis.org/A001113/b001113.txt).
+const PI_72_DIGITS: &str =
+    "314159265358979323846264338327950288419716939937510582097494459230781640";
+const E_72_DIGITS: &str =
+    "271828182845904523536028747135266249775724709369995957496696762772407663";
+
+#[test]
+fn derivations_start_with_the_published_digits() {
     assert!(
         pi_scaled(PLACES + GUARD)
+            .0
             .to_string()
-            .starts_with("314159265358979323846264338327950288")
+            .starts_with(PI_72_DIGITS)
     );
     assert!(
         e_scaled(PLACES + GUARD)
+            .0
             .to_string()
-            .starts_with("271828182845904523536028747135266249")
+            .starts_with(E_72_DIGITS)
     );
+}
+
+#[test]
+fn constants_are_the_published_digits_truncated() {
+    let (pi, _) = unpack(packed_constant("FLOAT_PI"));
+    let (e, _) = unpack(packed_constant("FLOAT_E"));
+    assert_eq!(pi.to_string(), PI_72_DIGITS[..67]);
+    assert_eq!(e.to_string(), E_72_DIGITS[..67]);
 }
 
 /// The implementation library source, as committed.
@@ -151,4 +195,14 @@ fn log10_ratio_z_max_is_the_largest_z_with_z16_below_1e_minus_50() {
     let bound = num_bigint::BigUint::from(10u8).pow(750);
     assert!(z.pow(16) < bound);
     assert!((z + 1u8).pow(16) >= bound);
+}
+
+/// `LOG10_SKIP_BELOW` is the least c with 1001 c >= 10^79, so
+/// `log10Unrounded` skips reduction exactly for c at least 1e76 / 1.001.
+#[test]
+fn log10_skip_below_is_the_least_c_with_1001c_at_least_1e79() {
+    let c = decimal_constant("LOG10_SKIP_BELOW");
+    let bound = num_bigint::BigUint::from(10u8).pow(79);
+    assert!(&c * 1001u16 >= bound);
+    assert!((c - 1u8) * 1001u16 < bound);
 }

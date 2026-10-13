@@ -16,7 +16,8 @@ import {
     MalformedExponentDigits,
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
-    ParseDecimalFloatExcessCharacters
+    ParseDecimalFloatExcessCharacters,
+    ParseDecimalNoSignificantDigits
 } from "../../error/ErrParse.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
@@ -34,11 +35,11 @@ library LibParseDecimalFloat {
     /// Returns the literal's exact value as `signedCoefficient × 10^exponent`,
     /// in no particular representation. A literal that is not exactly a Float
     /// may instead return, with zeros and the cursor after the literal,
-    /// `ExponentOverflow` when it is past every Float, at least
-    /// `(2^223 + 2) × 10^int32.max` in magnitude so packing has no Float to
-    /// round it to, and `ParseDecimalPrecisionLoss` otherwise. A literal
-    /// without integer digits is `ParseEmptyDecimalString`, a `.` without
-    /// digits `MalformedDecimalPoint` and an `e` without digits
+    /// `ExponentOverflow` when it is at least `(2^223 + 2) × 10^int32.max` in
+    /// magnitude, where `packLossy` overflows, and `ParseDecimalPrecisionLoss`
+    /// otherwise, the band below that past the largest Float of a sign
+    /// included. A literal without integer digits is `ParseEmptyDecimalString`,
+    /// a `.` without digits `MalformedDecimalPoint` and an `e` without digits
     /// `MalformedExponentDigits`, each with the cursor where it stopped.
     /// @param start The starting index of the substring (inclusive).
     /// @param end The ending index of the substring (exclusive).
@@ -215,6 +216,9 @@ library LibParseDecimalFloat {
     /// returns them when both fit int256. Otherwise the literal has more than
     /// 68 significant digits or an exponent past int256, so is no Float, and
     /// the error is chosen by its value as `parseDecimalFloatInline` documents.
+    /// Each caller has seen a nonzero digit in the mantissa: integer digits
+    /// past int256, a fraction with a nonzero digit, or a nonzero integer
+    /// part. Zero literals all return from `parseDecimalFloatInline`.
     /// @param start The start of the literal, at its sign if any, before
     /// integer digits.
     /// @param end The end of the whole string.
@@ -239,12 +243,6 @@ library LibParseDecimalFloat {
                 readSignificantDigits(start, intEnd, fracStart, cursor, end);
             int256 eValue;
             (errorSelector, cursor, eValue) = scanExponent(cursor, end);
-            if (errorSelector == MalformedExponentDigits.selector) {
-                return (errorSelector, cursor, 0, 0);
-            }
-            if (digitCount == 0) {
-                return (0, cursor, 0, 0);
-            }
             if (errorSelector != 0) {
                 return (errorSelector, cursor, 0, 0);
             }
@@ -264,9 +262,10 @@ library LibParseDecimalFloat {
                 return (0, cursor, isNegative ? -signedCoefficient : signedCoefficient, exponent);
             }
 
-            // At least 77 significant digits, past every Float iff the floor
-            // at 10^int32.max is at least 2^223 + 2: the leading digit is
-            // above 10^(int32.max + 67), or at it with those 68 digits.
+            // At least 77 significant digits, where packLossy overflows iff
+            // the floor at 10^int32.max is at least 2^223 + 2: the leading
+            // digit is above 10^(int32.max + 67), or at it with those 68
+            // digits.
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 leadingAtCeiling = int256(type(int32).max) + 68 - int256(digitCount);
             if (exponent > leadingAtCeiling || (exponent == leadingAtCeiling && leading >= 2 ** 223 + 2)) {
@@ -308,7 +307,10 @@ library LibParseDecimalFloat {
     }
 
     /// @notice The significant digits of a well formed mantissa, from its
-    /// first nonzero digit to its last.
+    /// first nonzero digit to its last. A mantissa without a nonzero digit,
+    /// which `parseDecimalFloatPastInt256` never passes, reverts
+    /// `ParseDecimalNoSignificantDigits`, as the strip back from its end would
+    /// have no nonzero digit to stop at.
     /// @param start The start of the literal, at its sign if any.
     /// @param intEnd The end of the integer digits.
     /// @param fracStart The start of the fraction digits, or `intEnd`.
@@ -317,7 +319,7 @@ library LibParseDecimalFloat {
     /// @return magnitude The first 77 significant digits, which fit uint256.
     /// @return leading The first 68 significant digits: the floor at
     /// 10^int32.max of a value whose leading digit is at 10^(int32.max + 67).
-    /// @return digitCount The number of significant digits, zero for zero.
+    /// @return digitCount The number of significant digits, at least one.
     /// @return lastExponent The exponent of the last significant digit.
     function readSignificantDigits(uint256 start, uint256 intEnd, uint256 fracStart, uint256 digitsEnd, uint256 end)
         private
@@ -330,7 +332,7 @@ library LibParseDecimalFloat {
                 sigStart = LibParseChar.skipMask(fracStart, digitsEnd, CMASK_ZERO);
             }
             if (sigStart == digitsEnd) {
-                return (0, 0, 0, 0);
+                revert ParseDecimalNoSignificantDigits(start);
             }
             // sigStart holds a nonzero digit, so stepping back over zeros and
             // the point stops at or after it.
@@ -407,10 +409,11 @@ library LibParseDecimalFloat {
     /// returns a packed `Float` amenable to subsequent operations with
     /// `LibDecimalFloat`. A malformed literal returns its
     /// `parseDecimalFloatInline` error, and a well formed one followed by more
-    /// characters `ParseDecimalFloatExcessCharacters`. A literal past every
-    /// Float, as `parseDecimalFloatInline` defines it, is `ExponentOverflow`:
-    /// a revert from packing or the returned selector. Any other literal that
-    /// is not exactly a Float returns `ParseDecimalPrecisionLoss`.
+    /// characters `ParseDecimalFloatExcessCharacters`. A literal at or
+    /// past the overflow threshold `parseDecimalFloatInline` states is
+    /// `ExponentOverflow`, returned by value and never a revert. Any
+    /// other literal that is not exactly a Float returns
+    /// `ParseDecimalPrecisionLoss`.
     /// @param str The string to parse.
     /// @return errorSelector The error selector if an error occurred, otherwise
     /// 0.

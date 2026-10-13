@@ -62,8 +62,8 @@ contract LibDecimalFloatGasTest is Test {
         logLog10("int224 max", f(type(int224).max, 0));
         logLog10("near 1 1.000001", f(1000001, -6));
         logLog10("power of ten 1e5", f(1, 5));
-        logLog10("worst 9.998", f(9998, -3));
-        logLog10("worst 9.9989999", f(99989999, -7));
+        logLog10("worst 9.99", f(999, -2));
+        logLog10("worst 9.9900099", f(99900099, -7));
     }
 
     function testGasPow10() external view {

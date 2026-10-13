@@ -238,10 +238,10 @@ contract LibParseDecimalFloatPastInt256Test is Test {
     }
 
     /// 78 significant digits, past int256: `head` then 0000000001, so
-    /// `head` + 10^-10 times 10^int32.max, past every Float iff `head` is at
-    /// least 2^223 + 2. Each literal writes that value with the point placed
-    /// differently: after leading zeros, inside the digits, or before a zero
-    /// fraction.
+    /// `head` + 10^-10 times 10^int32.max, which packLossy overflows on iff
+    /// `head` is at least 2^223 + 2 (#452). Each literal writes that value
+    /// with the point placed differently: after leading zeros, inside the
+    /// digits, or before a zero fraction.
     function checkThresholdPointPositions(uint256 head, bytes4 expected) internal view {
         string memory digits = string.concat(head.toString(), "0000000001");
         uint256 int32Max = uint256(int256(type(int32).max));
@@ -266,7 +266,8 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         }
     }
 
-    /// Just below the threshold is no Float, at it is past every Float.
+    /// Just below the threshold is a lossy pack, past the largest Float of
+    /// either sign though it is; at it packLossy overflows.
     function testParseOverflowThresholdPointPositions() external view {
         checkThresholdPointPositions(2 ** 223 + 1, ParseDecimalPrecisionLoss.selector);
         checkThresholdPointPositions(2 ** 223 + 2, ExponentOverflow.selector);
@@ -282,5 +283,32 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         checkFail(string.concat(e77, "e+-1"), MalformedExponentDigits.selector, 80);
         checkFail(string.concat(e77, "e-+1"), MalformedExponentDigits.selector, 80);
         checkFail(string.concat(e77, ".5e"), MalformedExponentDigits.selector, 81);
+    }
+
+    /// A fraction past int256, 10^77 + 1, then `e` without digits.
+    function testParsePastInt256MalformedExponentFractionOverflow() external view {
+        checkFail(string.concat("0.1", zeros(76), "1e"), MalformedExponentDigits.selector, 81);
+    }
+
+    /// 77 fraction digits after a nonzero integer part, then `e` without
+    /// digits.
+    function testParsePastInt256MalformedExponentScale() external view {
+        checkFail(string.concat("1.", zeros(76), "1e"), MalformedExponentDigits.selector, 80);
+    }
+
+    /// 9 * 10^75 rescaled by 10 is 9 * 10^76, past int256, then `e` without
+    /// digits.
+    function testParsePastInt256MalformedExponentRescale() external view {
+        checkFail(string.concat("9", zeros(75), ".5e"), MalformedExponentDigits.selector, 79);
+    }
+
+    /// floor(int256.max / 10) * 10 + 8 is int256.max + 1, then `e` without
+    /// digits.
+    function testParsePastInt256MalformedExponentSum() external view {
+        checkFail(
+            "5789604461865809771178549250434395392663499233282028201972879200395656481996.8e",
+            MalformedExponentDigits.selector,
+            79
+        );
     }
 }

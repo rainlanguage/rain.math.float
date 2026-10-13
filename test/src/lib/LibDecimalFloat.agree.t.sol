@@ -393,6 +393,7 @@ contract LibDecimalFloatAgreeTest is Test {
 
         bool accepted = LibDecimalFloat.agree(limit, f(0, 0), lowest, highest);
         assertEq(accepted, expectedAgree(limit, lowest, highest), "diverged from add's documented rule");
+        assertEq(LibDecimalFloat.agree(limit, f(0, 0), highest, lowest), accepted, "reversed differs");
         if (limitCoefficient == coefficient) {
             assertEq(LibDecimalFloat.agree(f(0, 0), f(1, 0), lowest, highest), accepted, "proportional limit differs");
         }
@@ -562,14 +563,99 @@ contract LibDecimalFloatAgreeTest is Test {
 
     /// The exact counterexample `testSubPacked` fails on, driven through
     /// `agree`. Pinned as a case in its own right so a future change to the
-    /// packing path cannot quietly make `agree` revert.
+    /// packing path cannot quietly make `agree` revert on the spread. In units
+    /// of 1e-2147483648 the spread is 6 either way round and the limit
+    /// 0.01 * 9 = 0.09, so both orders are refused, not the reversed `-6` that
+    /// every valid limit used to admit.
     function testAgreeSurvivesTheSubUnderflowCounterexample() external pure {
         Float a = Float.wrap(0x8000000000000000000000000000000000000000000000000000000000000009);
         Float b = Float.wrap(0x8000000000000000000000000000000000000000000000000000000000000003);
-        bool forward = LibDecimalFloat.agree(f(0, 0), f(1, -2), a, b);
-        bool backward = LibDecimalFloat.agree(f(0, 0), f(1, -2), b, a);
-        // In units of 1e-2147483648 the spreads are -6 and 6, the limit 0.09.
-        assertTrue(forward, "forward");
-        assertFalse(backward, "backward");
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(1, -2), b, a), "sorted");
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(1, -2), a, b), "reversed");
+    }
+
+    /// THE EXTREMES MAY COME IN EITHER ORDER. Each pair below is given both
+    /// ways round and the verdict is its exact spread against the limit, so a
+    /// reversed pair that read as a negative spread would accept the refusals.
+    function testAgreeEitherOrder() external pure {
+        Float[2][6] memory pairs = [
+            // 2e6 against max(1e-18, 0) = 1e-18.
+            [f(-1000000, 0), f(1000000, 0)],
+            // The widest representable set against 1e-18.
+            [minNegative(), maxPositive()],
+            // 1 against 1.
+            [f(100, 0), f(101, 0)],
+            // 1.001 against 1.
+            [f(100, 0), f(101001, -3)],
+            // 0.999...9 with 66 nines against 1: 1e-66 against 1e-66.
+            [f(1e66 - 1, -66), f(1, 0)],
+            // 0.999...9 with 66 nines against 1: 1e-66 against 1e-67.
+            [f(1e66 - 1, -66), f(1, 0)]
+        ];
+        Float[6] memory absolutes = [f(1, -18), f(1, -18), f(1, 0), f(1, 0), f(1, -66), f(1, -67)];
+        bool[6] memory expected = [false, false, true, false, true, false];
+        for (uint256 i = 0; i < pairs.length; i++) {
+            assertEq(LibDecimalFloat.agree(absolutes[i], f(0, 0), pairs[i][0], pairs[i][1]), expected[i], "sorted");
+            assertEq(LibDecimalFloat.agree(absolutes[i], f(0, 0), pairs[i][1], pairs[i][0]), expected[i], "reversed");
+        }
+    }
+
+    /// Equal values agree, whichever representation each end has.
+    function testAgreeAcceptsEqualValuesInEitherRepresentation() external pure {
+        assertTrue(LibDecimalFloat.agree(f(1, -18), f(0, 0), f(1, 0), f(10, -1)));
+        assertTrue(LibDecimalFloat.agree(f(1, -18), f(0, 0), f(10, -1), f(1, 0)));
+        assertTrue(LibDecimalFloat.agree(f(1, -18), f(0, 0), f(0, 5), f(0, -5)));
+        assertTrue(LibDecimalFloat.agree(f(1, -18), f(0, 0), f(0, -5), f(0, 5)));
+    }
+
+    /// BOTH ORDERS AGREE, STATED AS A LAW over arbitrary packed values and an
+    /// arbitrary positive absolute tolerance: each order answers as `add`'s
+    /// documented spread of the pair sorted by exact comparison
+    /// (`LibExactFloat.cmpParts`), compared exactly with the tolerance. Neither
+    /// reverts. A proportional tolerance gives the same answer both ways.
+    /// forge-config: default.fuzz.runs = 5000
+    function testAgreeEitherOrderForArbitraryValues(
+        bytes32 xRaw,
+        bytes32 yRaw,
+        int224 absoluteCoefficient,
+        int32 absoluteExponent,
+        int224 proportionalCoefficient,
+        int32 proportionalExponent
+    ) external pure {
+        Float x = Float.wrap(xRaw);
+        Float y = Float.wrap(yRaw);
+        Float absolute = f(bound(absoluteCoefficient, 1, type(int224).max), absoluteExponent);
+        bool expected = expectedAgreeSorted(absolute, x, y);
+        assertEq(LibDecimalFloat.agree(absolute, f(0, 0), x, y), expected, "x, y");
+        assertEq(LibDecimalFloat.agree(absolute, f(0, 0), y, x), expected, "y, x");
+
+        Float proportional = f(bound(proportionalCoefficient, 0, type(int224).max), proportionalExponent);
+        assertEq(
+            LibDecimalFloat.agree(absolute, proportional, x, y),
+            LibDecimalFloat.agree(absolute, proportional, y, x),
+            "proportional"
+        );
+    }
+
+    /// `expectedAgree` of `x` and `y` sorted by `LibExactFloat.cmpParts`.
+    function expectedAgreeSorted(Float limit, Float x, Float y) internal pure returns (bool) {
+        (int256 xCoefficient, int256 xExponent) = x.unpack();
+        (int256 yCoefficient, int256 yExponent) = y.unpack();
+        return LibExactFloat.cmpParts(xCoefficient, xExponent, yCoefficient, yExponent) > 0
+            ? expectedAgree(limit, y, x)
+            : expectedAgree(limit, x, y);
+    }
+
+    /// The tolerance errors still come first, with the extremes either way
+    /// round.
+    function testAgreeToleranceErrorsInEitherOrder() external {
+        vm.expectRevert(abi.encodeWithSelector(AgreeToleranceNegative.selector, f(-1, 0), f(0, 0)));
+        this.agreeExternal(f(-1, 0), f(0, 0), f(101, 0), f(100, 0));
+        vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, f(0, 0), f(0, 0)));
+        this.agreeExternal(f(0, 0), f(0, 0), f(101, 0), f(100, 0));
+        vm.expectRevert(abi.encodeWithSelector(AgreeToleranceNegative.selector, f(-1, 0), f(0, 0)));
+        this.agreeExternal(f(-1, 0), f(0, 0), f(100, 0), f(101, 0));
+        vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, f(0, 0), f(0, 0)));
+        this.agreeExternal(f(0, 0), f(0, 0), f(100, 0), f(101, 0));
     }
 }
