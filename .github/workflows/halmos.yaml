@@ -17,6 +17,16 @@ on:
           - far
           - log10ratio
           - exp10
+          - agree-tolerance
+          - agree-zero
+          - agree-neg
+          - agree-near0
+          - agree-near20
+          - agree-near40
+          - agree-near60
+          - agree-far
+          - agree-probe-norevert
+          - agree-probe-order
 env:
   HALMOS_VERSION: 0.3.3
   # Solver versions: yices 2.7.0, cvc5 1.4.0, bitwuzla 0.9.1.
@@ -46,7 +56,17 @@ jobs:
             {"name": "minus", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_subIsAddNegated", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
             {"name": "far", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_addFar", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
             {"name": "log10ratio", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_log10RatioEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]}
+            {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "agree-tolerance", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_agreeToleranceErrors"]},
+            {"name": "agree-zero", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadZeroEitherOrder"]},
+            {"name": "agree-neg", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_maximizeNegates"]},
+            {"name": "agree-near0", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymNear0$", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "agree-near20", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymNear20", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "agree-near40", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymNear40", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "agree-near60", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymNear60", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "agree-far", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymFar", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "agree-probe-norevert", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeProbeHalmosTest", "--function", "check_probeNoRevert", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "agree-probe-order", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeProbeHalmosTest", "--function", "check_probeEitherOrder", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]}
           ]
           JSON
           )
