@@ -9,7 +9,7 @@ use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
 use crate::exact::{self, Fail, Sol, config, error_matches, pair, show};
 use crate::reference::{Dec, RefError};
 use crate::transcendental::{self, revert_data};
-use alloy::primitives::{B256, I256, U256};
+use alloy::primitives::{B256, I256, U256, keccak256};
 use core::cmp::Ordering;
 use dashu_base::Abs;
 use dashu_float::round::mode::{Away, HalfAway, Zero};
@@ -163,6 +163,86 @@ fn packed(v: D) -> Result<D, RefError> {
     toward_zero(&v).map_err(Range::error)
 }
 
+/// An int256 as its ABI word.
+fn word(x: &IBig) -> [u8; 32] {
+    I256::from_dec_str(&x.to_string())
+        .unwrap()
+        .to_be_bytes::<32>()
+}
+
+fn word_of(x: &num_bigint::BigInt) -> [u8; 32] {
+    word(&ibig(x))
+}
+
+/// The ABI word as an int256.
+fn int_of(w: &[u8]) -> IBig {
+    I256::from_be_bytes::<32>(w.try_into().unwrap())
+        .to_string()
+        .parse()
+        .unwrap()
+}
+
+/// The revert data of `e` with `words` as its arguments.
+fn revert_with(e: RefError, words: &[[u8; 32]]) -> Vec<u8> {
+    let mut out = e.selector().to_vec();
+    for w in words {
+        out.extend_from_slice(w);
+    }
+    out
+}
+
+/// A range error of add, sub or mul reports the unpacked result passed to
+/// packing (SPEC "add, sub" and "mul"). That pair has the same range error
+/// under the rule and the exact result's sign, and is the exact result
+/// truncated toward zero on a grid at least as fine as the 67 digits a
+/// Float holds there, as that truncation composes with packing (PR #434).
+fn check_reported(
+    case: &str,
+    sol: Sol<Dec>,
+    want: Result<D, RefError>,
+    exact: impl FnOnce() -> D,
+) -> Result<(), TestCaseError> {
+    if let (Err(Fail::Revert(out)), Err(w)) = (&sol, &want) {
+        let range = match w {
+            RefError::ExponentOverflow => Range::Over,
+            _ => Range::Under,
+        };
+        prop_assert!(
+            out.len() == 68 && out[..4] == w.selector(),
+            "{case}: revert data {out:?}, dashu {w:?}"
+        );
+        let e = isize::try_from(int_of(&out[36..68]));
+        prop_assert!(e.is_ok(), "{case}: reported exponent {:?}", e);
+        let v = D::from_parts(int_of(&out[4..36]), e.unwrap());
+        let x = exact();
+        prop_assert_eq!(toward_zero(&v).err(), Some(range), "{}: reported {}", case, v);
+        prop_assert!(
+            (v < D::ZERO) == (x < D::ZERO) && magnitude(&v) <= magnitude(&x),
+            "{case}: reported {v}, exact {x}"
+        );
+        prop_assert!(
+            distance(&x, &v) < D::from_parts(IBig::ONE, lead(&x) - 66),
+            "{case}: reported {v}, exact {x}"
+        );
+    }
+    check(case, sol, want, None)
+}
+
+/// The exact sum, difference or product, unrounded: only asked for where the
+/// result is past or below every Float, so the operands are close in
+/// exponent and the sum is short.
+fn exact_add(a: &Dec, b: &Dec) -> D {
+    rounded(Context::<Zero>::new(0).add(d(a).repr(), d(b).repr()).unwrap())
+}
+
+fn exact_sub(a: &Dec, b: &Dec) -> D {
+    rounded(Context::<Zero>::new(0).sub(d(a).repr(), d(b).repr()).unwrap())
+}
+
+fn exact_mul(a: &Dec, b: &Dec) -> D {
+    rounded(Context::<Zero>::new(0).mul(d(a).repr(), d(b).repr()).unwrap())
+}
+
 fn rounded(r: dashu_float::round::Rounded<D>) -> D {
     r.value()
 }
@@ -199,33 +279,33 @@ fn bin(a: &Dec, b: &Dec) -> (B256, B256) {
 fn check_add(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let (fa, fb) = bin(a, b);
     let case = format!("add({}, {})", show(a), show(b));
-    check(
+    check_reported(
         &case,
         sol_float(T::addCall { a: fa, b: fb }),
         want_add(a, b),
-        None,
+        || exact_add(a, b),
     )
 }
 
 fn check_sub(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let (fa, fb) = bin(a, b);
     let case = format!("sub({}, {})", show(a), show(b));
-    check(
+    check_reported(
         &case,
         sol_float(T::subCall { a: fa, b: fb }),
         want_sub(a, b),
-        None,
+        || exact_sub(a, b),
     )
 }
 
 fn check_mul(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let (fa, fb) = bin(a, b);
     let case = format!("mul({}, {})", show(a), show(b));
-    check(
+    check_reported(
         &case,
         sol_float(T::mulCall { a: fa, b: fb }),
         want_mul(a, b),
-        None,
+        || exact_mul(a, b),
     )
 }
 
@@ -407,12 +487,24 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
         let v: U256 = t.to_int().value().to_string().parse().unwrap();
         Ok((v, same(&t, &scaled)))
     };
+    // Every error reports the Float unpacked, and `FixedDecimalOverflow`
+    // `decimals` too.
+    let data = |e: RefError| {
+        let mut words = vec![word_of(&a.c), word(&IBig::from(a.e))];
+        if e == RefError::FixedDecimalOverflow {
+            words.push(U256::from(decimals).to_be_bytes::<32>());
+        }
+        revert_with(e, &words)
+    };
     let lossy = evm::concrete(T::toFixedDecimalLossyCall { float, decimals });
     match (lossy, want) {
         (Ok(r), Ok(w)) => prop_assert_eq!((r._0, r._1), w, "{}", case),
-        (Err(s), Err(w)) => prop_assert!(
-            error_matches(&Fail::Revert(s.clone()), w),
-            "{case}: solidity {s:?}, dashu {w:?}"
+        (Err(s), Err(w)) => prop_assert_eq!(
+            s.to_vec(),
+            data(w),
+            "{}: revert data, dashu {:?}",
+            case,
+            w
         ),
         (s, w) => prop_assert!(false, "{case}: solidity {s:?}, dashu {w:?}"),
     }
@@ -426,9 +518,12 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
         want,
     ) {
         (Ok(s), Ok(w)) => prop_assert_eq!(s, w, "{} lossless", case),
-        (Err(s), Err(w)) => prop_assert!(
-            error_matches(&Fail::Revert(s.clone()), w),
-            "{case} lossless: solidity {s:?}, dashu {w:?}"
+        (Err(s), Err(w)) => prop_assert_eq!(
+            s.to_vec(),
+            data(w),
+            "{} lossless: revert data, dashu {:?}",
+            case,
+            w
         ),
         (s, w) => prop_assert!(false, "{case} lossless: solidity {s:?}, dashu {w:?}"),
     }
@@ -479,8 +574,7 @@ fn check_harness_unary(a: &Dec) -> Result<(), TestCaseError> {
             s
         );
     } else {
-        let zero = evm::harness(H::canonicalizeCall { float: B256::ZERO }).unwrap();
-        prop_assert_eq!(c, zero, "canonicalize({}): zero", s);
+        prop_assert_eq!(c, B256::ZERO, "canonicalize({}): FLOAT_ZERO", s);
     }
     Ok(())
 }
@@ -490,11 +584,13 @@ fn check_harness_unary(a: &Dec) -> Result<(), TestCaseError> {
 /// for a non-zero value below every Float; `ExponentOverflow` past them all.
 /// `packLossless` reverts `ExponentOverflow` on any value past the largest
 /// Float of its sign, the band `packLossy` truncates into it included (#509,
-/// NatSpec), and `LossyConversionToFloat` on any other inexact value.
+/// NatSpec), and `LossyConversionToFloat` on any other inexact value. Every
+/// error reports the inputs (SPEC "Packing").
 fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
     let case = format!("pack({c}, {e})");
     let to_i256 = |x: &IBig| alloy::primitives::I256::from_dec_str(&x.to_string()).unwrap();
     let (sc, se) = (to_i256(c), to_i256(e));
+    let data = |w: RefError| revert_with(w, &[word(c), word(e)]);
     // An exponent past isize leaves a non-zero value past or below every
     // Float without arithmetic.
     let mut past = false;
@@ -525,9 +621,12 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
             prop_assert!(same(&s, w), "{case}: solidity {s}, dashu {w}");
             prop_assert_eq!(r._1, *l, "{}: lossless flag", case);
         }
-        (Err(s), Err(w)) => prop_assert!(
-            error_matches(&Fail::Harness(s.clone()), *w),
-            "{case}: solidity {s:?}, dashu {w:?}"
+        (Err(s), Err(w)) => prop_assert_eq!(
+            s.to_vec(),
+            data(*w),
+            "{}: revert data, dashu {:?}",
+            case,
+            w
         ),
         (s, w) => prop_assert!(false, "{case}: solidity {s:?}, dashu {w:?}"),
     }
@@ -546,9 +645,12 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
             let s = d(&Dec::from_bytes(r));
             prop_assert!(same(&s, &w), "{case} lossless: solidity {s}, dashu {w}");
         }
-        (Err(s), Err(w)) => prop_assert!(
-            error_matches(&Fail::Harness(s.clone()), w),
-            "{case} lossless: solidity {s:?}, dashu {w:?}"
+        (Err(s), Err(w)) => prop_assert_eq!(
+            s.to_vec(),
+            data(w),
+            "{} lossless: revert data, dashu {:?}",
+            case,
+            w
         ),
         (s, w) => prop_assert!(false, "{case} lossless: solidity {s:?}, dashu {w:?}"),
     }
@@ -569,6 +671,8 @@ fn int256() -> BoxedStrategy<IBig> {
         }),
         1 => (-80i64..=80).prop_map(|k| (IBig::ONE << 223) + IBig::from(k)),
         1 => (-80i64..=80).prop_map(|k| -(IBig::ONE << 223) + IBig::from(k)),
+        1 => (0i64..=80).prop_map(|k| -(IBig::ONE << 255) + IBig::from(k)),
+        1 => (0i64..=80).prop_map(|k| (IBig::ONE << 255) - IBig::ONE - IBig::from(k)),
     ]
     .boxed()
 }
@@ -578,6 +682,8 @@ fn exponent256() -> BoxedStrategy<IBig> {
         3 => exact::exponent().prop_map(IBig::from),
         1 => (-200i64..=200).prop_map(|k| IBig::from(I32_MAX as i64 + k)),
         1 => (-200i64..=200).prop_map(|k| IBig::from(I32_MIN as i64 + k)),
+        1 => (0i64..=200).prop_map(|k| (IBig::ONE << 255) - IBig::ONE - IBig::from(k)),
+        1 => (0i64..=200).prop_map(|k| -(IBig::ONE << 255) + IBig::from(k)),
         1 => int256(),
     ]
     .boxed()
@@ -585,27 +691,56 @@ fn exponent256() -> BoxedStrategy<IBig> {
 
 // ------------------------------------------------------------ parse, format
 
+/// A run of up to `max` digits, weighted to repeats and to zeros then nines.
+fn digits(max: usize) -> BoxedStrategy<String> {
+    prop_oneof![
+        3 => proptest::collection::vec(0u8..=9, 1..=max),
+        1 => (1usize..=max, 0u8..=9).prop_map(|(n, d)| vec![d; n]),
+        1 => (0usize..=max.min(80), 1usize..=4).prop_map(|(z, n)| {
+            let mut v = vec![0; z];
+            v.extend(std::iter::repeat_n(9, n));
+            v
+        }),
+    ]
+    .prop_map(|v| {
+        v.into_iter()
+            .map(|d| char::from(b'0' + d))
+            .collect::<String>()
+    })
+    .boxed()
+}
+
+/// An optional `-`, digits, optionally `.` and digits.
+fn mantissa() -> BoxedStrategy<String> {
+    (any::<bool>(), digits(90), proptest::option::of(digits(90)))
+        .prop_map(|(neg, int, frac)| {
+            let sign = if neg { "-" } else { "" };
+            match frac {
+                Some(f) => format!("{sign}{int}.{f}"),
+                None => format!("{sign}{int}"),
+            }
+        })
+        .boxed()
+}
+
+/// `e` or `E`, an optional sign, `zeros` leading zeros and `|e|`.
+fn exponent_part(upper: bool, sign: u8, e: i64, zeros: usize) -> String {
+    let mut s = String::from(if upper { 'E' } else { 'e' });
+    match (sign, e < 0) {
+        (_, true) => s.push('-'),
+        (1, false) => s.push('+'),
+        _ => {}
+    }
+    s.push_str(&"0".repeat(zeros));
+    s.push_str(&e.unsigned_abs().to_string());
+    s
+}
+
 /// A literal the parser documents as well formed: an optional `-`, digits,
 /// optionally `.` and digits, optionally `e` or `E`, an optional sign and
 /// digits. Every part may carry leading or trailing zeros, and the exponent
 /// reaches past both int32 ends.
 fn literal() -> BoxedStrategy<String> {
-    let digits = |max: usize| {
-        prop_oneof![
-            3 => proptest::collection::vec(0u8..=9, 1..=max),
-            1 => (1usize..=max, 0u8..=9).prop_map(|(n, d)| vec![d; n]),
-            1 => (0usize..=max.min(80), 1usize..=4).prop_map(|(z, n)| {
-                let mut v = vec![0; z];
-                v.extend(std::iter::repeat_n(9, n));
-                v
-            }),
-        ]
-        .prop_map(|v| {
-            v.into_iter()
-                .map(|d| char::from(b'0' + d))
-                .collect::<String>()
-        })
-    };
     let exp = prop_oneof![
         2 => -100i64..=100,
         2 => (-140i64..=140).prop_map(|k| I32_MAX as i64 + k),
@@ -614,65 +749,166 @@ fn literal() -> BoxedStrategy<String> {
         1 => any::<i64>().prop_map(|e| e / 4),
     ];
     (
-        any::<bool>(),
-        digits(90),
-        proptest::option::of(digits(90)),
+        mantissa(),
         proptest::option::of((any::<bool>(), 0u8..3, exp, 0usize..3)),
     )
-        .prop_map(|(neg, int, frac, exp)| {
-            let mut s = String::new();
-            if neg {
-                s.push('-');
-            }
-            s.push_str(&int);
-            if let Some(f) = frac {
-                s.push('.');
-                s.push_str(&f);
-            }
-            if let Some((upper, sign, e, zeros)) = exp {
-                s.push(if upper { 'E' } else { 'e' });
-                match (sign, e < 0) {
-                    (_, true) => s.push('-'),
-                    (1, false) => s.push('+'),
-                    _ => {}
-                }
-                s.push_str(&"0".repeat(zeros));
-                s.push_str(&e.unsigned_abs().to_string());
-            }
-            s
+        .prop_map(|(m, exp)| match exp {
+            Some((upper, sign, e, zeros)) => m + &exponent_part(upper, sign, e, zeros),
+            None => m,
         })
         .boxed()
 }
 
-/// A well formed literal is its exact value when that is a Float,
-/// `ExponentOverflow` (returned or reverted) when it is past every Float, and
-/// `ParseDecimalPrecisionLoss` otherwise, with a zero Float on any error
-/// (#433, `parseDecimalFloat` NatSpec). dashu reads the literal.
-fn check_parse(s: &str) -> Result<(), TestCaseError> {
-    let case = format!("parse({s:?})");
-    let v: D = s
+/// What `parse` must return for an input, by how it is built.
+#[derive(Debug, Clone, Copy)]
+enum Shape {
+    /// A literal alone: its value decides.
+    WellFormed,
+    /// A literal then a character that cannot continue it.
+    Excess,
+    /// No integer digits, a `.` without digits or an `e` without digits:
+    /// the error's signature.
+    Malformed(&'static str),
+}
+
+const EMPTY: &str = "ParseEmptyDecimalString(uint256)";
+const DECIMAL_POINT: &str = "MalformedDecimalPoint(uint256)";
+const EXPONENT_DIGITS: &str = "MalformedExponentDigits(uint256)";
+
+fn selector(signature: &str) -> [u8; 4] {
+    keccak256(signature.as_bytes())[..4].try_into().unwrap()
+}
+
+/// Up to five characters after a first one drawn from `first`.
+fn tail(first: &'static [u8]) -> BoxedStrategy<String> {
+    let any_char = proptest::sample::select(b" x.eE+-_a09\t,".to_vec());
+    (
+        proptest::sample::select(first.to_vec()),
+        proptest::collection::vec(any_char, 0..5),
+    )
+        .prop_map(|(f, rest)| {
+            std::iter::once(f)
+                .chain(rest)
+                .map(char::from)
+                .collect::<String>()
+        })
+        .boxed()
+}
+
+/// Inputs to `parse`: well formed literals; exponents past int256 of either
+/// sign; malformed literals, each with its error; literals with characters
+/// after them; and literals at the largest Float of each sign ± 4 units of
+/// 10^int32.max, written at up to two lower exponents.
+fn parse_input() -> BoxedStrategy<(String, Shape)> {
+    let past_int256 = (mantissa(), any::<bool>(), 0u8..3, any::<bool>(), 1u8..=9, proptest::collection::vec(0u8..=9, 77..=90))
+        .prop_map(|(m, upper, sign, neg, first, rest)| {
+            let mut s = m + if upper { "E" } else { "e" };
+            match (sign, neg) {
+                (_, true) => s.push('-'),
+                (1, false) => s.push('+'),
+                _ => {}
+            }
+            s.extend(std::iter::once(first).chain(rest).map(|d| char::from(b'0' + d)));
+            (s, Shape::WellFormed)
+        });
+    let sign = || prop_oneof![Just(""), Just("-")];
+    fn end(first: &'static [u8]) -> impl Strategy<Value = String> {
+        proptest::option::of(tail(first)).prop_map(Option::unwrap_or_default)
+    }
+    let empty = (sign(), end(b" x.eE+_a\t,")).prop_map(|(s, t)| (format!("{s}{t}"), Shape::Malformed(EMPTY)));
+    let empty_after_minus = end(b" x.eE+-_a\t,").prop_map(|t| (format!("-{t}"), Shape::Malformed(EMPTY)));
+    let point = (sign(), digits(20), end(b" x.eE+-_a\t,"))
+        .prop_map(|(s, i, t)| (format!("{s}{i}.{t}"), Shape::Malformed(DECIMAL_POINT)));
+    let exponent = (mantissa(), any::<bool>(), prop_oneof![Just(""), Just("+"), Just("-")])
+        .prop_flat_map(|(m, upper, sign)| {
+            let first: &'static [u8] = if sign.is_empty() { b" x.eE_a\t," } else { b" x.eE+-_a\t," };
+            end(first).prop_map(move |t| {
+                (format!("{m}{}{sign}{t}", if upper { "E" } else { "e" }), Shape::Malformed(EXPONENT_DIGITS))
+            })
+        });
+    let excess = (literal(), tail(b" x+-_a\t,")).prop_map(|(l, t)| (l + &t, Shape::Excess));
+    let largest = (any::<bool>(), -4i64..=4, 0usize..=2).prop_map(|(neg, k, shift)| {
+        let c = cap(neg) + IBig::from(k);
+        let sign = if neg { "-" } else { "" };
+        (
+            format!("{sign}{c}{}e{}", "0".repeat(shift), I32_MAX - shift as isize),
+            Shape::WellFormed,
+        )
+    });
+    prop_oneof![
+        8 => literal().prop_map(|s| (s, Shape::WellFormed)),
+        1 => past_int256,
+        1 => empty,
+        1 => empty_after_minus,
+        1 => point,
+        1 => exponent,
+        2 => excess,
+        2 => largest,
+    ]
+    .boxed()
+}
+
+/// The value of a well formed literal: dashu reads the mantissa and the
+/// exponent is added. A zero literal is zero at any exponent; a non-zero one
+/// whose exponent is past 2^40 is past or below every Float by that alone.
+fn literal_value(s: &str) -> Result<D, RefError> {
+    let (m, e) = match s.find(['e', 'E']) {
+        Some(i) => (&s[..i], &s[i + 1..]),
+        None => (s, "0"),
+    };
+    let m: D = m
         .parse()
-        .unwrap_or_else(|e| panic!("dashu parse {s:?}: {e:?}"));
-    let want = match toward_zero(&v) {
-        Ok(w) if same(&w, &v) => Ok(v.clone()),
+        .unwrap_or_else(|err| panic!("dashu parse {m:?}: {err:?}"));
+    let e: IBig = e.strip_prefix('+').unwrap_or(e).parse().unwrap();
+    if m == D::ZERO {
+        return Ok(D::ZERO);
+    }
+    let e = match isize::try_from(e.clone()) {
+        Ok(e) if e.unsigned_abs() < 1 << 40 => e,
+        _ if e > IBig::ZERO => return Err(RefError::ExponentOverflow),
+        _ => return Err(RefError::ParseDecimalPrecisionLoss),
+    };
+    let v = D::from_parts(m.repr().significand().clone(), m.repr().exponent() + e);
+    match toward_zero(&v) {
+        Ok(w) if same(&w, &v) => Ok(v),
         Err(Range::Over) => Err(RefError::ExponentOverflow),
         _ => Err(RefError::ParseDecimalPrecisionLoss),
+    }
+}
+
+/// `parse` returns every error by value, never a revert (#375, #510), with a
+/// zero Float. A well formed literal is its exact value when that is a
+/// Float, `ExponentOverflow` at or past (2^223 + 2) 10^int32.max in
+/// magnitude, an exponent past int256 included, and
+/// `ParseDecimalPrecisionLoss` for any other inexact value; with characters
+/// after it, `ParseDecimalFloatExcessCharacters` whatever its value. A
+/// malformed literal returns its own error, characters after it or not
+/// (SPEC "Parsing", `parseDecimalFloat` NatSpec).
+fn check_parse(s: &str, shape: Shape) -> Result<(), TestCaseError> {
+    let case = format!("parse({s:?}) {shape:?}");
+    let want: Result<D, [u8; 4]> = match shape {
+        Shape::WellFormed => literal_value(s).map_err(RefError::selector),
+        Shape::Excess => Err(RefError::ParseDecimalFloatExcessCharacters.selector()),
+        Shape::Malformed(signature) => Err(selector(signature)),
     };
-    match (evm::concrete(T::parseCall { str: s.to_string() }), want) {
-        (Ok(r), Ok(w)) => {
-            prop_assert_eq!(r._0.0, [0u8; 4], "{}: selector", case);
-            let got = d(&Dec::from_bytes(r._1));
-            prop_assert!(same(&got, &w), "{case}: solidity {got}, dashu {w}");
+    let got = match evm::concrete(T::parseCall { str: s.to_string() }) {
+        Ok(r) => r,
+        Err(out) => {
+            return Err(TestCaseError::fail(format!(
+                "{case}: solidity reverted {out:?}, want {want:?} by value"
+            )));
         }
-        (Ok(r), Err(w)) => {
-            prop_assert_eq!(r._0.0, w.selector(), "{}: selector, dashu {:?}", case, w);
-            prop_assert_eq!(r._1, B256::ZERO, "{}: float on error", case);
+    };
+    match want {
+        Ok(w) => {
+            prop_assert_eq!(got._0.0, [0u8; 4], "{}: selector", case);
+            let v = d(&Dec::from_bytes(got._1));
+            prop_assert!(same(&v, &w), "{case}: solidity {v}, dashu {w}");
         }
-        (Err(out), Err(w)) => prop_assert!(
-            w == RefError::ExponentOverflow && error_matches(&Fail::Revert(out.clone()), w),
-            "{case}: solidity revert {out:?}, dashu {w:?}"
-        ),
-        (Err(out), Ok(w)) => prop_assert!(false, "{case}: solidity revert {out:?}, dashu {w}"),
+        Err(w) => {
+            prop_assert_eq!(got._0.0, w, "{}: selector", case);
+            prop_assert_eq!(got._1, B256::ZERO, "{}: float on error", case);
+        }
     }
     Ok(())
 }
@@ -781,13 +1017,24 @@ fn max_of(x: D, y: D) -> D {
     if x > y { x } else { y }
 }
 
+fn min_of(x: D, y: D) -> D {
+    if x < y { x } else { y }
+}
+
 /// `k 10^-j` units in the 41st significant digit of a non-zero `x`.
 fn ulp41(x: &D, k: u64, j: isize) -> D {
     D::from_parts(IBig::from(k), lead(x) - 40 - j)
 }
 
-/// |x - y|, rounded away from zero at 200 digits: never under the exact
-/// distance, so a check against it is never looser than the bound.
+/// |x - y|, rounded away from zero at 200 digits: never under the distance
+/// between the two values given, and bound terms round toward zero, so this
+/// arithmetic never loosens a check. The reference values themselves carry
+/// dashu's truncation error, which a check inherits: `log10_of` under 1e-98
+/// absolute (log10 of a coefficient under 1e68 at 100 digits); `ten_to` under
+/// 1e-99 relative (10^f at 100 digits, f at 120); pow's under 3e-51 relative
+/// (|b| at most 2e77, as |z| <= 2^33 and |log10 a| >= 4.3e-68, times
+/// log10_of's 6e-129 at 130 digits). Each is at least ten orders under the
+/// bound it meets.
 fn distance(x: &D, y: &D) -> D {
     let s = Context::<Away>::new(200)
         .sub(x.repr(), y.repr())
@@ -862,17 +1109,53 @@ fn ten_to(y: &D) -> D {
     D::from_parts(p.repr().significand().clone(), p.repr().exponent() + n)
 }
 
-/// What a rounded transcendental may return. `t` is the true value (None
-/// when it is past every Float), `exact` demands it exactly, `bound(r, t)`
-/// is the admissible |r - t| otherwise; `over` and `under` are the range
-/// errors its band reaches, which report `input` unpacked.
+/// The true value a rounded transcendental is checked against.
+enum Truth {
+    /// `t`, and `top`, the largest magnitude the band reaches.
+    Value { t: D, top: D },
+    /// Past or below every Float: only a range error may result.
+    Past,
+    /// The band reaches from zero past every Float: any result of the sign
+    /// may (#424's bound at rel >= 1).
+    Anywhere,
+}
+
+/// What a rounded transcendental may return. `exact` demands `t` exactly,
+/// `bound(r, t)` is the admissible |r - t| otherwise. `signed` demands a
+/// non-zero result of the true value's sign, as a result below every Float
+/// reverts. `over` and `under` are the range errors its band reaches, which
+/// report `input` unpacked.
 struct Band<'a, F: Fn(&D, &D) -> D> {
-    t: Option<D>,
+    truth: Truth,
     exact: bool,
     bound: F,
+    negative: bool,
+    signed: bool,
     over: bool,
     under: bool,
     input: &'a Dec,
+}
+
+/// The least magnitude whose 41-digit rounding, half away from zero, is past
+/// the largest Float of the sign: the midpoint above its first 41 digits.
+/// Its 68-digit coefficient keeps 41 digits above 10^27.
+fn carry_threshold(negative: bool) -> D {
+    let head = cap(negative) / IBig::from(10).pow(27);
+    D::from_parts(head * IBig::from(10) + IBig::from(5), I32_MAX + 26)
+}
+
+/// A rounding past the largest Float is instead truncated to int224 (SPEC
+/// "pow"): the result is over 41 digits only when the band reaches the
+/// carry threshold and the result is within one unit of 10^int32.max below
+/// it, the truncation of a value at or past it.
+fn truncated_from_past(r: &D, top: Option<&D>, negative: bool) -> bool {
+    let carry = carry_threshold(negative);
+    let c = carry.repr();
+    let floor = D::from_parts(
+        c.significand() * IBig::from(10).pow((c.exponent() - I32_MAX) as usize) - IBig::ONE,
+        I32_MAX,
+    );
+    top.is_none_or(|t| *t >= carry) && magnitude(r) >= floor
 }
 
 fn check_band<F: Fn(&D, &D) -> D>(
@@ -883,27 +1166,40 @@ fn check_band<F: Fn(&D, &D) -> D>(
     match sol {
         Ok(r) => {
             let r = d(&r);
-            let Some(t) = band.t else {
-                return Err(TestCaseError::fail(format!(
-                    "{case}: solidity {r}, dashu past every Float"
-                )));
+            let top = match &band.truth {
+                Truth::Past => {
+                    return Err(TestCaseError::fail(format!(
+                        "{case}: solidity {r}, dashu past every Float"
+                    )));
+                }
+                Truth::Anywhere => None,
+                Truth::Value { t, top } => {
+                    if band.exact {
+                        prop_assert!(same(&r, t), "{case}: solidity {r}, exact {t}");
+                    } else {
+                        let b = (band.bound)(&r, t);
+                        let gap = distance(&r, t);
+                        prop_assert!(
+                            gap <= b,
+                            "{case}: solidity {r}, dashu {t}, |r - t| {gap} past {b}"
+                        );
+                    }
+                    Some(top)
+                }
             };
-            if band.exact {
-                prop_assert!(same(&r, &t), "{case}: solidity {r}, exact {t}");
-            } else {
-                let b = (band.bound)(&r, &t);
-                let gap = distance(&r, &t);
+            if band.signed {
                 prop_assert!(
-                    gap <= b,
-                    "{case}: solidity {r}, dashu {t}, |r - t| {gap} past {b}"
+                    r != D::ZERO && (r < D::ZERO) == band.negative,
+                    "{case}: solidity {r}, true value negative {}",
+                    band.negative
                 );
             }
-            // Rounded at 41 significant digits, but for a product truncated to
-            // int224 below the largest Float.
-            let top = D::from_parts(int224_max(), I32_MAX - 1);
-            if magnitude(&r) <= top {
-                prop_assert!(r.repr().digits() <= 41, "{case}: {r} has over 41 digits");
-            }
+            // Rounded at 41 significant digits, but for a rounding past the
+            // largest Float, truncated to int224.
+            prop_assert!(
+                r.repr().digits() <= 41 || truncated_from_past(&r, top, band.negative),
+                "{case}: {r} has over 41 digits"
+            );
         }
         Err(f) => {
             let hit = [
@@ -914,8 +1210,12 @@ fn check_band<F: Fn(&D, &D) -> D>(
             .find(|(ok, e)| *ok && error_matches(&f, *e));
             let Some((_, e)) = hit else {
                 return Err(TestCaseError::fail(format!(
-                    "{case}: solidity {f:?}, dashu {:?} (overflow allowed {}, underflow allowed {})",
-                    band.t.map(|t| t.to_string()),
+                    "{case}: solidity {f:?}, dashu {} (overflow allowed {}, underflow allowed {})",
+                    match &band.truth {
+                        Truth::Value { t, .. } => t.to_string(),
+                        Truth::Past => "past every Float".into(),
+                        Truth::Anywhere => "anywhere".into(),
+                    },
                     band.over,
                     band.under
                 )));
@@ -933,7 +1233,7 @@ fn check_band<F: Fn(&D, &D) -> D>(
 /// absolute term below 1e-2147483608): overflow when the band reaches past
 /// the largest Float of the sign, underflow when it reaches below the
 /// smallest.
-fn reach(t: &D, rel: &D, negative: bool) -> (D, bool, bool) {
+fn reach(t: &D, rel: &D, negative: bool) -> (D, D, bool, bool) {
     let mut tb = bound_mul(t, rel);
     if sheds(t) {
         tb = bound_sum(&tb, &smallest());
@@ -944,7 +1244,8 @@ fn reach(t: &D, rel: &D, negative: bool) -> (D, bool, bool) {
         .unwrap()
         .value()
         .with_rounding::<Zero>();
-    (tb, hi > largest_float(negative), lo < smallest())
+    let (over, under) = (hi > largest_float(negative), lo < smallest());
+    (tb, hi, over, under)
 }
 
 /// The root of a non-negative value correctly rounded to nearest at 41
@@ -978,9 +1279,14 @@ fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
 /// at most 41 digits, exact for a power of ten; zero reverts `Log10Zero`,
 /// negative `Log10Negative(a)` (NatSpec, README).
 fn check_log10(a: &Dec) -> Result<(), TestCaseError> {
+    check_log10_with(a, sol_float(T::log10Call { a: a.to_bytes() }))
+}
+
+/// The half unit is of the result's 41st digit: a rounding to nearest is
+/// within half the spacing above its result's leading digit.
+fn check_log10_with(a: &Dec, sol: Sol<Dec>) -> Result<(), TestCaseError> {
     let x = d(a);
     let case = format!("log10({})", show(a));
-    let sol = sol_float(T::log10Call { a: a.to_bytes() });
     if x == D::ZERO {
         return check(&case, sol, Err(RefError::Log10Zero), Some(a));
     }
@@ -990,16 +1296,20 @@ fn check_log10(a: &Dec) -> Result<(), TestCaseError> {
     let t = log10_of(&x, 100);
     let band = Band {
         exact: x.repr().significand() == &IBig::ONE,
-        t: Some(t),
-        bound: |r: &D, t: &D| {
-            let m = max_of(magnitude(r), magnitude(t));
+        truth: Truth::Value {
+            top: magnitude(&t),
+            t: t.clone(),
+        },
+        bound: |r: &D, _: &D| {
             let abs = D::from_parts(IBig::from(10037), -54);
-            if m == D::ZERO {
+            if *r == D::ZERO {
                 abs
             } else {
-                bound_sum(&ulp41(&m, 5, 1), &abs)
+                bound_sum(&ulp41(&magnitude(r), 5, 1), &abs)
             }
         },
+        negative: t < D::ZERO,
+        signed: false,
         over: false,
         under: false,
         input: a,
@@ -1013,11 +1323,22 @@ fn check_log10(a: &Dec) -> Result<(), TestCaseError> {
 /// either allowed where the 5.00000012e-41 relative band reaches the
 /// threshold (NatSpec, README).
 fn check_pow10(a: &Dec) -> Result<(), TestCaseError> {
+    check_pow10_with(a, sol_float(T::pow10Call { a: a.to_bytes() }))
+}
+
+/// The unit is of the smaller of the result and the true value: rounding
+/// to nearest across a power of ten is within half the spacing below it,
+/// and the 1.12e-8 units of raw error are of the true value's digit.
+fn check_pow10_with(a: &Dec, sol: Sol<Dec>) -> Result<(), TestCaseError> {
     let x = d(a);
     let case = format!("pow10({})", show(a));
-    let sol = sol_float(T::pow10Call { a: a.to_bytes() });
     let value = |r: &D, t: &D| {
-        let b = ulp41(&max_of(magnitude(r), t.clone()), 5000000112, 10);
+        let m = if *r == D::ZERO {
+            t.clone()
+        } else {
+            min_of(magnitude(r), t.clone())
+        };
+        let b = ulp41(&m, 5000000112, 10);
         if sheds(t) {
             bound_sum(&b, &smallest())
         } else {
@@ -1027,9 +1348,11 @@ fn check_pow10(a: &Dec) -> Result<(), TestCaseError> {
     if magnitude(&x) > huge() {
         let rising = x > D::ZERO;
         let band = Band {
-            t: None,
+            truth: Truth::Past,
             exact: false,
             bound: value,
+            negative: false,
+            signed: true,
             over: rising,
             under: !rising,
             input: a,
@@ -1038,19 +1361,21 @@ fn check_pow10(a: &Dec) -> Result<(), TestCaseError> {
     }
     let t = ten_to(&x);
     let exact = same(&x.trunc(), &x);
-    let (over, under) = if exact {
-        (t > largest_float(false), t < smallest())
+    let (top, over, under) = if exact {
+        (t.clone(), t > largest_float(false), t < smallest())
     } else {
-        let (_, over, under) = reach(&t, &D::from_parts(IBig::from(500000012), -49), false);
-        (over, under)
+        let (_, hi, over, under) = reach(&t, &D::from_parts(IBig::from(500000012), -49), false);
+        (hi, over, under)
     };
     check_band(
         &case,
         sol,
         Band {
-            t: Some(t),
+            truth: Truth::Value { t, top },
             exact,
             bound: value,
+            negative: false,
+            signed: true,
             over,
             under,
             input: a,
@@ -1121,20 +1446,30 @@ fn distance_from_one(ax: &D) -> D {
     }
 }
 
-/// pow (NatSpec, README): b = 0 is 1, a = 0 is 0 for b > 0 and reverts
-/// `ZeroNegativePower(b)` for b < 0, a negative a needs a whole b and takes
-/// its sign when b is odd, else `PowNegativeBase(a)`; |a| = 1 is exact.
-/// Otherwise within 5.00000012e-41 + N min(K1, K2 d) relative of the true
-/// value, N = floor|b|, d = max(|a|, 1/|a|) - 1, plus 1e-2147483648 below
-/// 1e-2147483608; exact when the true value has at most 41 digits; range
-/// errors report a, either allowed where the band reaches the threshold.
+/// pow (NatSpec, README): `0^0 = 1`, `a^0 = 1`, `0^b = 0` for b > 0 and
+/// `ZeroNegativePower(b)` for b < 0 (SPEC "pow", #86). A negative a needs a
+/// whole b and takes its sign when b is odd, else `PowNegativeBase(a)`;
+/// |a| = 1 is exact. Otherwise within 5.00000012e-41 + N min(K1, K2 d)
+/// relative of the true value, N = floor|b|, d = max(|a|, 1/|a|) - 1, plus
+/// 1e-2147483648 below 1e-2147483608; exact when the true value has at most
+/// 41 digits, `10^(k b)` for |a| = 10^k and k b whole included at any b;
+/// range errors report a, either allowed where the band reaches the
+/// threshold. A non-zero true value never results in zero or the wrong sign:
+/// below every Float reverts.
 fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
+    check_pow_with(
+        a,
+        b,
+        sol_float(T::powCall {
+            a: a.to_bytes(),
+            b: b.to_bytes(),
+        }),
+    )
+}
+
+fn check_pow_with(a: &Dec, b: &Dec, sol: Sol<Dec>) -> Result<(), TestCaseError> {
     let (x, y) = (d(a), d(b));
     let case = format!("pow({}, {})", show(a), show(b));
-    let sol = sol_float(T::powCall {
-        a: a.to_bytes(),
-        b: b.to_bytes(),
-    });
     if y == D::ZERO {
         return check(&case, sol, Ok(D::ONE), None);
     }
@@ -1166,6 +1501,44 @@ fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     if ax == D::ONE {
         return check(&case, sol, Ok(sign(D::ONE)), None);
     }
+    let range = |rising: bool, truth: Truth| Band {
+        truth,
+        exact: false,
+        bound: |_: &D, _: &D| D::ZERO,
+        negative,
+        signed: true,
+        over: rising,
+        under: !rising,
+        input: a,
+    };
+    if ax.repr().significand() == &IBig::ONE {
+        // |a| = 10^k: k b whole is 10^(k b) exactly. Past 1e12, |k b| is
+        // past every Float whatever its fraction.
+        let k = D::from_parts(IBig::from(ax.repr().exponent()), 0);
+        let rising = (k > D::ZERO) == (y > D::ZERO);
+        if lead(&y) >= 12 {
+            return check_band(&case, sol, range(rising, Truth::Past));
+        }
+        let kb = rounded(Context::<Zero>::new(0).mul(k.repr(), y.repr()).unwrap());
+        if same(&kb.trunc(), &kb) {
+            let n = isize::try_from(kb.to_int().value()).unwrap();
+            let e = D::from_parts(IBig::ONE, n);
+            let band = Band {
+                truth: Truth::Value {
+                    t: sign(e.clone()),
+                    top: e.clone(),
+                },
+                exact: true,
+                bound: |_: &D, _: &D| D::ZERO,
+                negative,
+                signed: true,
+                over: e > largest_float(negative),
+                under: e < smallest(),
+                input: a,
+            };
+            return check_band(&case, sol, band);
+        }
+    }
     let z = rounded(
         Context::<Zero>::new(120)
             .mul(y.repr(), log10_of(&ax, 130).repr())
@@ -1191,52 +1564,38 @@ fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     );
     if magnitude(&z) > huge() {
         let rising = z > D::ZERO;
-        if rising && rel >= D::ONE {
-            // The band reaches from zero past every Float.
-            return match sol {
-                Ok(_) => Ok(()),
-                Err(f) => check_band(
-                    &case,
-                    Err(f),
-                    Band {
-                        t: None,
-                        exact: false,
-                        bound: |_: &D, _: &D| D::ZERO,
-                        over: true,
-                        under: false,
-                        input: a,
-                    },
-                ),
-            };
-        }
-        let band = Band {
-            t: None,
-            exact: false,
-            bound: |_: &D, _: &D| D::ZERO,
-            over: rising,
-            under: !rising,
-            input: a,
+        let truth = if rising && rel >= D::ONE {
+            Truth::Anywhere
+        } else {
+            Truth::Past
         };
-        return check_band(&case, sol, band);
+        return check_band(&case, sol, range(rising, truth));
     }
     let t = ten_to(&z);
     if let Some(e) = exact_power(&ax, &y, &t) {
         let (over, under) = (e > largest_float(negative), e < smallest());
         let band = Band {
-            t: Some(sign(e)),
+            truth: Truth::Value {
+                t: sign(e.clone()),
+                top: e,
+            },
             exact: true,
             bound: |_: &D, _: &D| D::ZERO,
+            negative,
+            signed: true,
             over,
             under,
             input: a,
         };
         return check_band(&case, sol, band);
     }
-    let (tb, over, under) = reach(&t, &rel, negative);
+    let (tb, top, over, under) = reach(&t, &rel, negative);
     let band = Band {
-        t: Some(sign(t)),
+        truth: Truth::Value { t: sign(t), top },
         exact: false,
         bound: move |_: &D, _: &D| tb.clone(),
+        negative,
+        signed: true,
         over,
         under,
         input: a,
@@ -1244,11 +1603,181 @@ fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     check_band(&case, sol, band)
 }
 
+/// A 67-digit coefficient a with |a - t^2| at most one unit of t^2's last
+/// kept digit, t a 42-digit tie (41 digits then 5): roots as near a 41-digit
+/// rounding tie as a Float allows.
+fn sqrt_near_tie() -> BoxedStrategy<Dec> {
+    (any::<[u8; 18]>(), any::<bool>(), -1000i64..1000)
+        .prop_map(|(b, up, e)| {
+            let ten = dashu_int::UBig::from(10u8);
+            let t = (dashu_int::UBig::from_be_bytes(&b) % ten.pow(40) + ten.pow(40)) * &ten
+                + dashu_int::UBig::from(5u8);
+            let sq = &t * &t;
+            let cut = sq.to_string().len() - 67;
+            let a = &sq / ten.pow(cut) + if up { dashu_int::UBig::ONE } else { dashu_int::UBig::ZERO };
+            Dec::new(a.to_string().parse::<num_bigint::BigInt>().unwrap(), e * 2 + cut as i64)
+        })
+        .boxed()
+}
+
+fn sqrt_input() -> BoxedStrategy<Dec> {
+    prop_oneof![3 => transcendental::a_sqrt(), 1 => sqrt_near_tie()].boxed()
+}
+
+/// Floats whose canonical exponent, trailing zeros stripped, sits at the
+/// plain notation cap of ±1000 and across ±1100 (#496).
+fn format_input() -> BoxedStrategy<Dec> {
+    let near_cap = (
+        exact::coefficient(),
+        prop_oneof![-1003i64..=-995, 995i64..=1003, -1100i64..=1100],
+    )
+        .prop_map(|(c, canonical)| {
+            let s = c.to_string();
+            let zeros = (s.len() - s.trim_end_matches('0').len()) as i64;
+            Dec::new(c, canonical - zeros)
+        });
+    prop_oneof![2 => exact::float(), 1 => near_cap].boxed()
+}
+
+/// A dashu value as a Float's fields: its stripped coefficient, lifted back
+/// to int32.max where stripping took the exponent past it.
+fn to_dec(x: &D) -> Dec {
+    let r = x.repr();
+    let mut c: num_bigint::BigInt = r.significand().to_string().parse().unwrap();
+    let mut e = r.exponent();
+    while e > I32_MAX {
+        c *= 10;
+        e -= 1;
+    }
+    Dec::new(c, e as i64)
+}
+
+/// `agree` (NatSpec, SPEC "agree"): a negative tolerance reverts
+/// `AgreeToleranceNegative(absolute, proportional)` and neither positive
+/// `AgreeNoPositiveTolerance(absolute, proportional)`. Otherwise it is
+/// `|x - y| <= max(absolute, proportional × max(|x|, |y|))` with the
+/// extremes in either order, but that a spread past the limit by under
+/// 1e-76 of the spread may be accepted, the spread being a truncating `sub`.
+/// dashu bounds the spread at 200 digits each way; within that of the
+/// boundary either answer passes.
+/// What `agree` must answer: an error, or `Some` answer, or `None` where
+/// either is allowed.
+fn want_agree(absolute: &Dec, proportional: &Dec, x: &Dec, y: &Dec) -> Result<Option<bool>, RefError> {
+    let (ta, tp) = (d(absolute), d(proportional));
+    if ta < D::ZERO || tp < D::ZERO {
+        return Err(RefError::AgreeToleranceNegative);
+    }
+    if ta == D::ZERO && tp == D::ZERO {
+        return Err(RefError::AgreeNoPositiveTolerance);
+    }
+    let (dx, dy) = (d(x), d(y));
+    let spread_hi = distance(&dx, &dy);
+    let spread_lo = magnitude(&rounded(
+        Context::<Zero>::new(200).sub(dx.repr(), dy.repr()).unwrap(),
+    ));
+    let anchor = max_of(magnitude(&dx), magnitude(&dy));
+    let scaled = rounded(Context::<Zero>::new(0).mul(tp.repr(), anchor.repr()).unwrap());
+    let limit = max_of(ta, scaled);
+    let within = D::from_parts(IBig::from(10).pow(76) - IBig::ONE, -76);
+    Ok(if spread_hi <= limit {
+        Some(true)
+    } else if bound_mul(&spread_lo, &within) >= limit {
+        Some(false)
+    } else {
+        None
+    })
+}
+
+fn check_agree(absolute: &Dec, proportional: &Dec, x: &Dec, y: &Dec) -> Result<(), TestCaseError> {
+    let (fa, fp) = (absolute.to_bytes(), proportional.to_bytes());
+    let want = want_agree(absolute, proportional, x, y);
+    for (lowest, highest) in [(x, y), (y, x)] {
+        let case = format!(
+            "agree({}, {}, {}, {})",
+            show(absolute),
+            show(proportional),
+            show(lowest),
+            show(highest)
+        );
+        let got = evm::harness(H::agreeCall {
+            absolute: fa,
+            proportional: fp,
+            lowest: lowest.to_bytes(),
+            highest: highest.to_bytes(),
+        });
+        match (got, want) {
+            (Err(out), Err(e)) => prop_assert_eq!(
+                out.to_vec(),
+                revert_with(e, &[fa.0, fp.0]),
+                "{}: revert data, want {:?}",
+                case,
+                e
+            ),
+            (Ok(g), Ok(w)) => prop_assert!(
+                w.is_none_or(|w| w == g),
+                "{case}: solidity {g}, dashu {w:?}"
+            ),
+            (g, w) => prop_assert!(false, "{case}: solidity {g:?}, dashu {w:?}"),
+        }
+    }
+    Ok(())
+}
+
+/// A tolerance: mostly non-negative, sometimes zero at any exponent, sometimes
+/// any Float.
+fn tolerance() -> BoxedStrategy<Dec> {
+    let non_negative = exact::float().prop_map(|f| {
+        if f.c < num_bigint::BigInt::from(0) {
+            let c = -f.c;
+            let max: num_bigint::BigInt = int224_max().to_string().parse().unwrap();
+            Dec::new(if c > max { max } else { c }, f.e)
+        } else {
+            f
+        }
+    });
+    prop_oneof![
+        3 => non_negative,
+        1 => exact::exponent().prop_map(|e| Dec::new(0, e)),
+        1 => exact::float(),
+        1 => (1u32..=1000, -80i64..=2).prop_map(|(c, e)| Dec::new(c, e)),
+    ]
+    .boxed()
+}
+
+/// Tolerances and extremes: at random, and with one tolerance zero and the
+/// other on the spread as `sub` gives it (absolute) or on the spread over
+/// the anchor as `div` gives it (proportional), nudged by -1..=1 in its last
+/// digit.
+fn agree_input() -> BoxedStrategy<(Dec, Dec, Dec, Dec)> {
+    let nudge = |v: &D, k: i64| {
+        let f = to_dec(v);
+        let c = f.c + k;
+        let max: num_bigint::BigInt = int224_max().to_string().parse().unwrap();
+        (c >= num_bigint::BigInt::from(0) && c <= max).then(|| Dec::new(c, f.e))
+    };
+    let on_absolute = (pair(), -1i64..=1).prop_filter_map("spread past every Float", move |((x, y), k)| {
+        let s = magnitude(&want_sub(&y, &x).ok()?);
+        Some((nudge(&s, k)?, Dec::zero(), x, y))
+    });
+    let on_proportional = (pair(), -1i64..=1).prop_filter_map("spread or ratio not a Float", move |((x, y), k)| {
+        let s = to_dec(&magnitude(&want_sub(&y, &x).ok()?));
+        let anchor = to_dec(&max_of(magnitude(&d(&x)), magnitude(&d(&y))));
+        let p = want_div(&s, &anchor).ok()?;
+        Some((Dec::zero(), nudge(&p, k)?, x, y))
+    });
+    prop_oneof![
+        2 => (tolerance(), tolerance(), pair()).prop_map(|(a, p, (x, y))| (a, p, x, y)),
+        1 => on_absolute,
+        1 => on_proportional,
+    ]
+    .boxed()
+}
+
 proptest! {
     #![proptest_config(config())]
 
     #[test]
-    fn differential_sqrt(a in transcendental::a_sqrt()) { check_sqrt(&a)?; }
+    fn differential_sqrt(a in sqrt_input()) { check_sqrt(&a)?; }
 
     #[test]
     fn differential_log10(a in transcendental::a_log10()) { check_log10(&a)?; }
@@ -1267,10 +1796,10 @@ proptest! {
     #![proptest_config(config())]
 
     #[test]
-    fn differential_parse(s in literal()) { check_parse(&s)?; }
+    fn differential_parse((s, shape) in parse_input()) { check_parse(&s, shape)?; }
 
     #[test]
-    fn differential_format(a in exact::float()) { check_format(&a)?; }
+    fn differential_format(a in format_input()) { check_format(&a)?; }
 }
 
 proptest! {
@@ -1309,6 +1838,11 @@ proptest! {
 
     #[test]
     fn differential_unary(a in exact::float()) { check_unary(&a)?; }
+
+    #[test]
+    fn differential_agree((absolute, proportional, x, y) in agree_input()) {
+        check_agree(&absolute, &proportional, &x, &y)?;
+    }
 }
 
 /// The oracle on fixed examples whose values are the README's and #333's,
@@ -1566,5 +2100,179 @@ mod oracle {
         let _ = ten_to(&D::from_parts(IBig::from(7), I32_MIN));
         let _ = ten_to(&-D::from_parts(IBig::from(7), I32_MIN));
         let _ = ten_to(&D::from_parts(int224_max(), I32_MIN + 60));
+    }
+}
+
+/// The checks reject wrong results the bounds once let through, and the
+/// oracle's own rounding agrees with exact integer arithmetic.
+#[cfg(test)]
+mod oracle_checks {
+    use super::*;
+    use dashu_base::SquareRoot;
+    use dashu_int::UBig;
+    use num_bigint::BigInt;
+
+    fn p10(n: u32) -> BigInt {
+        BigInt::from(10).pow(n)
+    }
+
+    /// x = 5 + 1e-50: 10^x = 1e5 (1 + 2.3e-50). 1e5 - 4e-36 is 4 units of
+    /// its own 41st digit off, inside half a unit of 1e5's.
+    #[test]
+    fn pow10_unit_is_the_smaller_values() {
+        let x = Dec::new(p10(50) * 5 + 1, -50);
+        assert!(check_pow10_with(&x, Ok(Dec::new(1, 5))).is_ok());
+        let wrong = Dec::new(p10(41) - 4, 5 - 41);
+        assert!(check_pow10_with(&x, Ok(wrong)).is_err());
+    }
+
+    /// a = 10 + 1e-66: log10 a = 1 + 4.3e-68. 1 - 4e-41 is 4 units of its
+    /// own 41st digit off, inside half a unit of 1's.
+    #[test]
+    fn log10_unit_is_the_results() {
+        let a = Dec::new(p10(67) + 1, -66);
+        assert!(check_log10_with(&a, Ok(Dec::new(1, 0))).is_ok());
+        let wrong = Dec::new(p10(41) - 4, -41);
+        assert!(check_log10_with(&a, Ok(wrong)).is_err());
+    }
+
+    /// 0.1^5000 is exactly 1e-5000 though |b| is past exact_power's 1000.
+    #[test]
+    fn pow_of_a_power_of_ten_is_exact() {
+        let (a, b) = (Dec::new(1, -1), Dec::new(5000, 0));
+        assert!(check_pow_with(&a, &b, Ok(Dec::new(1, -5000))).is_ok());
+        let wrong = Dec::new(p10(41) - 4, -5041);
+        assert!(check_pow_with(&a, &b, Ok(wrong)).is_err());
+        let (a, b) = (Dec::new(-1, 2), Dec::new(3001, 0));
+        assert!(check_pow_with(&a, &b, Ok(Dec::new(-1, 6002))).is_ok());
+        assert!(check_pow_with(&a, &b, Ok(Dec::new(1, 6002))).is_err());
+    }
+
+    /// pow(2, 1e76) is past every Float, but its band at rel >= 1 reaches
+    /// zero: any result passes but zero, the wrong sign or over 41 digits.
+    #[test]
+    fn pow_unbounded_band_keeps_sign_and_digits() {
+        let (a, b) = (Dec::new(2, 0), Dec::new(1, 76));
+        assert!(check_pow_with(&a, &b, Ok(Dec::new(7, 5))).is_ok());
+        assert!(check_pow_with(&a, &b, Ok(Dec::zero())).is_err());
+        assert!(check_pow_with(&a, &b, Ok(Dec::new(-7, 5))).is_err());
+        assert!(check_pow_with(&a, &b, Ok(Dec::new(p10(41) + 1, 5))).is_err());
+    }
+
+    /// The carry threshold rounds past the largest Float at 41 digits, half
+    /// away from zero, and the value one unit of its 100th digit below does
+    /// not.
+    #[test]
+    fn carry_threshold_is_the_rounding_midpoint() {
+        let round41 = |v: &D| {
+            v.clone()
+                .with_rounding::<HalfAway>()
+                .with_precision(41)
+                .value()
+                .with_rounding::<Zero>()
+        };
+        for negative in [false, true] {
+            let t = carry_threshold(negative);
+            let below = rounded(
+                Context::<Zero>::new(200)
+                    .sub(t.repr(), D::from_parts(IBig::ONE, lead(&t) - 99).repr())
+                    .unwrap(),
+            );
+            assert!(round41(&t) > largest_float(negative), "{negative}");
+            assert!(round41(&below) <= largest_float(negative), "{negative}");
+        }
+    }
+
+    #[test]
+    fn literal_values() {
+        let ok = |s: &str, v: D| assert!(same(&literal_value(s).unwrap(), &v), "{s}");
+        let err = |s: &str, e: RefError| assert_eq!(literal_value(s).map(|_| ()), Err(e), "{s}");
+        ok("0.5", D::from_parts(IBig::from(5), -1));
+        ok("1e2147483647", D::from_parts(IBig::ONE, I32_MAX));
+        ok("1e2147483714", D::from_parts(IBig::ONE, I32_MAX + 67));
+        ok(&format!("0e{}", "9".repeat(80)), D::ZERO);
+        ok(&format!("-{}e2147483647", IBig::ONE << 223), -largest_float(true));
+        ok(&format!("{}e2147483647", int224_max()), largest_float(false));
+        err("1e2147483715", RefError::ExponentOverflow);
+        err(&format!("1e{}", "9".repeat(80)), RefError::ExponentOverflow);
+        err(&format!("{}e2147483647", (IBig::ONE << 223) + IBig::from(2)), RefError::ExponentOverflow);
+        err(&format!("{}e2147483647", (IBig::ONE << 223) + IBig::ONE), RefError::ParseDecimalPrecisionLoss);
+        err(&format!("1e-{}", "9".repeat(80)), RefError::ParseDecimalPrecisionLoss);
+        err("1e-2147483649", RefError::ParseDecimalPrecisionLoss);
+        err("1.5e-2147483648", RefError::ParseDecimalPrecisionLoss);
+    }
+
+    #[test]
+    fn agree_rules() {
+        let n = |c: i64, e: i64| Dec::new(c, e);
+        let z = Dec::zero();
+        let want = |a: &Dec, p: &Dec, x: &Dec, y: &Dec| {
+            let w = want_agree(a, p, x, y);
+            assert_eq!(w, want_agree(a, p, y, x), "order");
+            w
+        };
+        assert_eq!(want(&n(-1, 0), &n(1, 0), &z, &z), Err(RefError::AgreeToleranceNegative));
+        assert_eq!(want(&n(1, 0), &n(-1, -80), &z, &z), Err(RefError::AgreeToleranceNegative));
+        assert_eq!(want(&z, &n(0, 9), &z, &z), Err(RefError::AgreeNoPositiveTolerance));
+        assert_eq!(want(&n(1, 0), &z, &z, &n(1, 0)), Ok(Some(true)));
+        assert_eq!(want(&n(1, 0), &z, &z, &n(10000000001, -10)), Ok(Some(false)));
+        // proportional against the larger magnitude: 0.1 * 11 >= 1, 0.1 * 12 < 2.
+        assert_eq!(want(&z, &n(1, -1), &n(10, 0), &n(11, 0)), Ok(Some(true)));
+        assert_eq!(want(&z, &n(1, -1), &n(-10, 0), &n(-11, 0)), Ok(Some(true)));
+        assert_eq!(want(&z, &n(1, -1), &n(10, 0), &n(12, 0)), Ok(Some(false)));
+        // the larger tolerance applies.
+        assert_eq!(want(&n(2, 0), &n(1, -1), &n(10, 0), &n(12, 0)), Ok(Some(true)));
+        // a spread past the limit by under 1e-76 of itself may go either way.
+        let close = Dec::new(p10(78) - 1, -78);
+        assert_eq!(want(&close, &z, &z, &n(1, 0)), Ok(None));
+        let far = Dec::new(p10(70) - 1, -70);
+        assert_eq!(want(&far, &z, &z, &n(1, 0)), Ok(Some(false)));
+    }
+
+    /// sqrt(c 10^e) correctly rounded half away at 41 digits, by integer
+    /// square root of c 10^m at about 200 digits, e - m even.
+    fn isqrt_round41(c: &UBig, e: isize) -> D {
+        let digits = c.to_string().len() as isize;
+        let mut m = 200 - digits;
+        if (e - m).rem_euclid(2) != 0 {
+            m += 1;
+        }
+        let root = (c * UBig::from(10u8).pow(m as usize)).sqrt();
+        let drop = root.to_string().len() - 41;
+        let p = UBig::from(10u8).pow(drop);
+        let head = &root / &p;
+        let half = UBig::from(5u8) * UBig::from(10u8).pow(drop - 1);
+        let head = if &root % &p >= half { head + UBig::ONE } else { head };
+        D::from_parts(IBig::from(head), (e - m) / 2 + drop as isize)
+    }
+
+    fn sig() -> impl Strategy<Value = IBig> {
+        (any::<[u8; 28]>(), 1usize..=28).prop_map(|(b, n)| IBig::from_be_bytes(&b[..n]))
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(20000))]
+
+        /// dashu's division at P digits is the exact quotient truncated at
+        /// P digits.
+        #[test]
+        fn dashu_div_truncates(a in sig(), b in sig()) {
+            prop_assume!(b != IBig::ZERO);
+            let got = rounded(ctx().div(D::from_parts(a.clone(), 0).repr(), D::from_parts(b.clone(), 0).repr()).unwrap());
+            // floor(|a| 10^200 / |b|), signed: exact to 200 places.
+            let q = a.clone().abs() * IBig::from(10).pow(200) / b.clone().abs();
+            let q = if (a < IBig::ZERO) != (b < IBig::ZERO) { -q } else { q };
+            let exact = D::from_parts(q, -200);
+            let want = rounded(Context::<Zero>::new(P).add(exact.repr(), D::ZERO.repr()).unwrap());
+            prop_assert!(same(&got, &want), "{a}/{b}: dashu {got}, exact {want}");
+        }
+
+        #[test]
+        fn want_sqrt_is_correctly_rounded(x in sqrt_near_tie()) {
+            let c: UBig = x.c.to_string().parse().unwrap();
+            let want = isqrt_round41(&c, x.e as isize);
+            let got = want_sqrt(&d(&x));
+            prop_assert!(same(&got, &want), "sqrt({c}e{}): oracle {got}, isqrt {want}", x.e);
+        }
     }
 }
