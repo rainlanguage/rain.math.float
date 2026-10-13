@@ -2393,10 +2393,9 @@ library LibDecimalFloatImplementation {
     ///
     /// The packed `LibDecimalFloat.abs` cannot serve callers working below the
     /// public arithmetic surface. It has to fit the magnitude back into an
-    /// int224, so for the most negative coefficient it raises the exponent,
-    /// and reverts `ExponentOverflow` when the exponent is already at its
-    /// maximum. Here the coefficient is already widened to an int256, so
-    /// negating an int224 is exact and cannot overflow. Every int256 but
+    /// int224, so the most negative coefficient packs as int224.max at the
+    /// same exponent, losing a unit. Here the coefficient is already widened
+    /// to an int256, so negating an int224 is exact. Every int256 but
     /// `type(int256).min` negates exactly; that one reverts
     /// `AbsCoefficientOverflow`.
     /// @param signedCoefficient The coefficient.

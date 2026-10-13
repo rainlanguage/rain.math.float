@@ -113,12 +113,17 @@ When the exponent _underflows_ this means that the float is `Xe-Y` where `Y` is
 some very large negative number, which means the float represents a number
 extremely close to zero.
 
-In these cases we chose to _lose precision_ by rounding towards zero rather than
-erroring.
+In these cases we chose to _lose precision_ by shedding digits to lift the
+exponent to `int32.min`, rounding towards zero.
 
 This is because in _absolute_ terms, no matter how much the exponent is
 underflowing by, the numerical value is changing by increasingly negligible
 amounts.
+
+Once every digit is shed the result is zero and the magnitude is gone. Lossy
+packing returns `FLOAT_ZERO` with `lossless` false there; every arithmetic
+operation instead reverts `ExponentUnderflow`, so a non-zero result is never
+silently replaced by zero.
 
 This contrasts with the overflow case (error) where the size of the exponent
 overflow is losing exponentially more information if it is allowed to decapitate
@@ -222,14 +227,6 @@ This is _different to how floats usually work_ where a sufficiently large number
 would be converted to the special `Infinity` or `-Infinity` values. We DO NOT do
 this, better to error than start talking infinities when money is being handled.
 
-#### Other overflows
-
-Other values than the exponent can also overflow in more niche/situational
-scenarios, such as the intermediate calculations moving between 512 and 256 bits
-for multiplication and division. These will also error rather than
-truncate/round because information loss from overflow doesn't converge to a
-predictable value.
-
 #### Uncalculable values (no NaN)
 
 There are many cases where mathematical operations cannot produce a meaningful
@@ -245,15 +242,15 @@ Other examples include:
 - Taking the log of `0`
 - Taking the log of a negative number
 - Raising `0` to a negative number
-- Internal overflows during intermediate calculations
 
 #### Unimplemented math
 
 There are some situations where certain operations on some numeric ranges has
 not been implemented and here we error.
 
-Most notable is that we do not currently support powers of negative number bases
-as this often results in complex numbers rather than real numbers.
+Most notable is that a negative base is supported in `pow` only for a whole
+exponent, where the result is real. A negative base with a fractional exponent
+reverts `PowNegativeBase`, as the result is often a complex number.
 
 [rainlanguage/rain.math.float#88](https://github.com/rainlanguage/rain.math.float/issues/88)
 
@@ -303,3 +300,44 @@ part of |b|.
 `sqrt` takes the integer square root of the coefficient scaled to 81 or 82
 digits and rounds it to nearest, so it is correctly rounded and a root such as
 `sqrt(4)` is exact.
+
+## Consumer guidance
+
+Rules for protocols built on the library. Each example is a test in
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`.
+
+1. **Round up at the fixed-decimal boundary yourself.** `toFixedDecimalLossy`
+   only truncates. For an amount a user owes, add 1 when `lossless` is false.
+   With integer inputs and `a × b` below about 1e66 of the floored unit, the
+   floor never exceeds the exact floor and that ceiling never falls below the
+   exact ceiling, in any of the orders `a × b / c`, `a / (c / b)` and
+   `a × (b / c)`; on an exact integer either can miss by 1 toward the safe side.
+   Past about 1e66 a rounded divisor lifts the floor: `(7e66 + 2) / (7 / 3)`
+   floors to `3e66 + 1` where the exact result is `3e66 + 6/7`. Keep amounts as
+   Floats through a calculation: converting to wei on every step of a loop
+   reintroduces Balancer/Bunni-style amplification. Eight round trips of 8 wei
+   through a rate of `1.112500000000000001`, converted to wei each step, empty
+   it; as a Float it stays exactly 8.
+2. **Toward zero applies per operation, not per expression.** A rounded divisor
+   biases the quotient upward: `inv(inv(6))` is `6.` then 65 zeros and a `2`. A
+   negative result rounds toward +∞: `-1 / 3` is `-0.` then 67 threes. Get
+   protocol-favourable rounding from operand order (for positive values
+   `a × b / c` truncates down, `a / (c / b)` can land above) or from a margin.
+3. **`pow`, `log10` and `pow10` round to nearest at 41 digits.** `pow(a, 1)` can
+   exceed `a`: a 42-digit `a` ending in 5 rounds up. For `r = 1 + 4e-45`,
+   `pow(r, 0.5)` and `pow(r, 0.7)` are exactly 1, so `pow(r, w) - 1` charges
+   nothing. Never charge `approx - 1` without a minimum size and a margin taken
+   from the bounds under "log10, pow10, pow and sqrt".
+4. **Any `bytes32` is a Float.** An untrusted extreme makes ordinary arithmetic
+   revert: `mul(FLOAT_MIN_POSITIVE_VALUE, 0.5)` reverts `ExponentUnderflow` and
+   `add(FLOAT_MAX_POSITIVE_VALUE, FLOAT_MAX_POSITIVE_VALUE)` reverts
+   `ExponentOverflow`.
+5. **Equal values can have different bytes.** `1` and `10e-1` are `eq` but
+   differ as `bytes32`. Compare with `eq`, and `canonicalize` before hashing.
+6. **A sub-ulp add is absorbed, and a sub-ulp subtract removes a whole ulp.**
+   `1e76 + 1` is `1e76`, and `1e76 - 1` is `1e76 - 1e9`: repaying 1 wei of a
+   1e76 wei debt clears 1e9 wei.
+7. **An empty market makes `div` revert `DivisionByZero`.** Inflation protection
+   holds only while shares stay Floats. Against 1 share and `1e24 + 1` assets, a
+   `1e18` deposit gets just under `1e-6` shares and redeems exactly `1e18`; as
+   an integer share count it gets 0.

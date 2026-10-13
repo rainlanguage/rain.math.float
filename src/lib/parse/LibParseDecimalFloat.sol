@@ -280,9 +280,6 @@ library LibParseDecimalFloat {
                 readSignificantDigits(start, intEnd, fracStart, cursor, end);
             int256 eValue;
             (errorSelector, cursor, eValue) = scanExponent(cursor, end);
-            if (errorSelector == MalformedExponentDigits.selector) {
-                return (errorSelector, cursor, 0, 0);
-            }
             if (errorSelector != 0) {
                 return (errorSelector, cursor, 0, 0);
             }
@@ -453,9 +450,10 @@ library LibParseDecimalFloat {
     /// `LibDecimalFloat`. A malformed literal returns its
     /// `parseDecimalFloatInline` error, and a well formed one followed by more
     /// characters `ParseDecimalFloatExcessCharacters`. A literal at or
-    /// past the overflow threshold `parseDecimalFloatInline` states returns
-    /// `ExponentOverflow`. Any other literal that is not exactly a Float
-    /// returns `ParseDecimalPrecisionLoss`.
+    /// past the overflow threshold `parseDecimalFloatInline` states is
+    /// `ExponentOverflow`, returned by value and never a revert. Any
+    /// other literal that is not exactly a Float returns
+    /// `ParseDecimalPrecisionLoss`.
     /// @param str The string to parse.
     /// @return errorSelector The error selector if an error occurred, otherwise
     /// 0.
