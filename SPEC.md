@@ -19,9 +19,17 @@ body of a merged PR. A rule marked **UNRULED** describes what the code does at
   `(int224.max / 10 + 1) × 10^(int32.max + 1)`, where the closest Float toward
   zero would be above `int224.max × 10^int32.max`.
 - **Below every Float**: non-zero with magnitude under `1 × 10^int32.min`.
+- The largest Floats are not symmetric: `(2^223 - 1) × 10^int32.max` and
+  `-2^223 × 10^int32.max`. "Past every Float" is one threshold for both signs,
+  so a positive value up to three units of `10^int32.max` past
+  `FLOAT_MAX_POSITIVE_VALUE`, and a negative value up to two units past
+  `FLOAT_MIN_NEGATIVE_VALUE`, truncates into it (#452, PR #509).
 - **Range errors**: `ExponentOverflow(c, e)` for a result past every Float,
   `ExponentUnderflow(c, e)` for a non-zero result below every Float. Neither
   saturates; nothing returns an infinity, NaN or negative zero (#333).
+- Every arithmetic operation reverts `ExponentUnderflow` when its non-zero
+  result rounds to zero; only `packLossy` returns that as `FLOAT_ZERO` with
+  `lossless` false (#202, #149).
 - Representations are not canonical; equality is numeric, never byte-level
   (#182).
 
@@ -40,14 +48,17 @@ body of a merged PR. A rule marked **UNRULED** describes what the code does at
   int224 has no headroom, which is exactly past every Float (#304, #333).
 - Zero packs as `FLOAT_ZERO` (all bits zero), lossless true, for any `e`
   (**UNRULED**).
-- `packLossless(c, e)`: as `packLossy`; reverts `ExponentOverflow(c, e)` past
-  every Float and `LossyConversionToFloat(c, e)` for any other value that is not
-  exactly a Float, below every Float included (**UNRULED**: which of the two
-  errors a value past every Float gets).
+- `packLossless(c, e)`: as `packLossy`; reverts `ExponentOverflow(c, e)` for any
+  value past `FLOAT_MAX_POSITIVE_VALUE` or `FLOAT_MIN_NEGATIVE_VALUE`, the band
+  `packLossy` truncates into them included, and `LossyConversionToFloat(c, e)`
+  for any other value that is not exactly a Float, below every Float included
+  (#450, PR #509).
 - `packArithmeticResult(c, e)`: as `packLossy`; reverts
   `ExponentUnderflow(c, e)` with its own inputs when a non-zero value packs to
   `FLOAT_ZERO` (#202). It finalises `add`, `sub`, `mul`, `integer`, `frac`,
-  `floor`, `ceil`, `log10` and `sqrt`.
+  `floor`, `ceil`, `log10` and `sqrt`. `div`, `inv`, `pow` and `pow10` pack
+  inline and their range errors report their input; `minus` and `abs` never
+  revert (#333, #421).
 - `unpack(f)` returns `(c, e)` sign-extended; never reverts (**UNRULED**).
 - `canonicalize(f)`: the representative with the largest `|c|` that fits int224
   while `e >= int32.min`; `FLOAT_ZERO` for zero; `eq` to the input, idempotent,
@@ -98,6 +109,9 @@ binary path (#306).
   `int256.max` (PR #307, #325); `ExponentUnderflow` below every Float (#202).
   Each reports the unpacked product passed to packing, except the int256-ceiling
   case, which reports `a`.
+- No 512-bit or 256-bit intermediate of `mul`, `div` or `inv` overflows for any
+  pair of Floats: their only errors are `ExponentOverflow`, `ExponentUnderflow`
+  and `DivisionByZero` (PR #443).
 
 ### div, inv
 
@@ -235,7 +249,8 @@ digits (#306).
   `ZeroNegativePower(b)` (#86).
 - `1^b = 1` for every `b` (**UNRULED**).
 - A negative `a` with a whole `b` is `(-a)^b`, negated for odd `b`; with a
-  fractional `b` reverts `PowNegativeBase(c_a, e_a)` (#88, PR #289).
+  fractional `b` reverts `PowNegativeBase(c_a, e_a)`, reporting `a` unpacked
+  (#88, PR #289, PR #443).
 - Range errors report `a`, unpacked (#421, #338, #329).
 - The squaring loop reverts `ExponentOverflow` / `ExponentUnderflow` once the
   base exponent passes `±int128.max` (#244, #276).
@@ -262,15 +277,19 @@ digits (#306).
 ## Parsing
 
 - `parseDecimalFloat(str)` returns `(selector, Float)`; errors are returned by
-  value, chosen by the literal's value (#375, PR #433).
+  value, chosen by the literal's value; a well-formed literal never reverts
+  (#375, PR #433, #510).
 - Grammar: optional `-`, integer digits, optional `.` and digits, optional `e`
   or `E` with optional `+` or `-` and digits (PR #248). At most one `-` on each
   of coefficient and exponent (PR #290). No thousands separators (#151).
 - A literal exactly a Float returns `(0, f)`.
-- `ExponentOverflow` for a literal at least `(2^223 + 2) × 10^int32.max` in
-  magnitude (PR #433).
-- `ParseDecimalPrecisionLoss` for any other literal not exactly a Float,
-  underflow to zero included (PR #433). `ParseDecimalOverflow` is gone (#375).
+- `ExponentOverflow`, by value and never as a revert from packing, for every
+  literal at least `(2^223 + 2) × 10^int32.max` in magnitude, an exponent past
+  int256 included (PR #433, #510).
+- `ParseDecimalPrecisionLoss` for any other literal not exactly a Float: the
+  band below that threshold past the largest Float of its sign, a coefficient
+  past int256, and underflow to zero (PR #433, #510). `ParseDecimalOverflow` is
+  gone (#375).
 - `ParseDecimalFloatExcessCharacters` for a well-formed literal followed by more
   input (PR #433).
 - Malformed literals keep their own selector: `ParseEmptyDecimalString` (no
@@ -285,8 +304,10 @@ digits (#306).
 - Every Float whose string parses back exactly is formatted (#376, PR #427).
 - Scientific: `d.ddd` then `eN` from the most significant digit; `e0` is omitted
   (**UNRULED**: the exact shape).
-- Plain: the only cap is `|e| <= 1000` (`MAX_NON_SCIENTIFIC_EXPONENT`); outside
-  it reverts `UnformatableExponent(e)` (#376, PR #427). See open question 6.
+- Plain: the only cap is `|e| <= 1000` (`MAX_NON_SCIENTIFIC_EXPONENT`) on the
+  canonical exponent, after the coefficient's trailing zeros are stripped, so
+  equal Floats format alike; outside it reverts `UnformatableExponent(e)` with
+  the canonical exponent (#376, PR #427, #449, PR #496).
 
 ## Range guards
 
@@ -310,55 +331,3 @@ Named errors at the internal guards (#429, closes #422; #336):
 - `log10Ratio` within `1.0036` units (fixed) or `C × 8.03e-50 + 1` (relative)
   for `z <= 5.1e-4` (#435).
 - `MaximizeOverflow(c, e)` from `maximizeFull` (**UNRULED**).
-
-## Open questions
-
-Each repro was run as a throwaway forge test at 886ca07; the result is what it
-returned.
-
-1. README "Unimplemented math" says negative-base powers are unsupported (#88);
-   the code and PR #289 support a whole `b`. `pow(-2, 3)` returns `(-8, 0)`,
-   i.e. `-8`.
-2. `absCoefficient` NatSpec says `abs` of `int224.min` at the maximum exponent
-   reverts `ExponentOverflow`. `abs(int224.min × 10^int32.max)` returns
-   `(int224.max, int32.max)`, no revert.
-3. `packArithmeticResult` NatSpec says it finalises every operation but `minus`
-   and `abs`; `div`, `inv`, `pow` and `pow10` pack inline and report their
-   input. `div(1e-2147483648, 1e10)` reverts `ExponentUnderflow(1, -2147483648)`
-   (its `a`); `pow10(-3e9)` reverts `ExponentUnderflow(-3000000000, 0)`;
-   `pow(1e-1000000000, 3)` reverts `ExponentUnderflow(1, -1000000000)`;
-   `packArithmeticResult(1, int32.min - 10)` reverts
-   `ExponentUnderflow(1, -2147483658)` (its own inputs).
-4. README "Exponent underflow" says results round toward zero "rather than
-   erroring"; arithmetic reverts `ExponentUnderflow` when the rounded result is
-   zero (#202). The per-class ruling #149 asked for is not recorded.
-   `mul(1e-2147483648, 1e-2147483648)` reverts
-   `ExponentUnderflow(1, -4294967296)`.
-5. `parseDecimalFloat` NatSpec allows `ExponentOverflow` as "a revert from
-   packing or the returned selector"; #375 says parse errors are returned by
-   value. `parseDecimalFloat("1e2147483715")` reverts
-   `ExponentOverflow(1, 2147483715)` from packing. `"1e2147483714"` returns
-   `(0, 1e67 × 10^int32.max)`. `"1e"` followed by 80 nines (exponent past
-   int256) returns the `ExponentOverflow` selector by value. 80 nines
-   (coefficient past int256) and `"1e-"` followed by 80 nines return
-   `ParseDecimalPrecisionLoss` by value.
-6. The plain-notation cap tests the stored exponent before trailing zeros are
-   stripped, against the README's unique canonical string per value.
-   `toDecimalString(Float(1000, -1001), false)` reverts
-   `UnformatableExponent(-1001)`; `Float(1, -998)`, the same value, formats as
-   `0.` then 997 zeros then `1`. `Float(1, 1000)` and `Float(10, 1000)` format.
-7. README "Other overflows" says 512/256-bit `mul`/`div` intermediate overflow
-   errors. 50,000 fuzz runs of `mul`, `div` and `inv` over arbitrary `bytes32`
-   operands, plus every pair of the four extreme constants and
-   `±int224 extremes × 10^int32.min`, reverted only `ExponentOverflow`,
-   `ExponentUnderflow` or `DivisionByZero`; no other error was reached.
-8. "Past every Float" is one threshold for both signs,
-   `(2^223 + 2) × 10^int32.max` (the definition above), but the largest Floats
-   are not symmetric: `(2^223 - 1) × 10^int32.max` and `-2^223 × 10^int32.max`.
-   A positive value packs to `FLOAT_MAX_POSITIVE_VALUE` up to 3 units past it; a
-   negative value packs to `FLOAT_MIN_NEGATIVE_VALUE` up to 2 units past it
-   (#452). The NatSpec on `packLossy` and the README disagree on which values in
-   that band revert. Option: a threshold per sign, reverting once the whole part
-   at `10^int32.max` is past that sign's bound (`>= 2^223` positive,
-   `>= 2^223 + 1` negative), so only a sub-unit fraction is ever truncated into
-   the largest Float.
