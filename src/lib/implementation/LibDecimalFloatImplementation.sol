@@ -1017,7 +1017,7 @@ library LibDecimalFloatImplementation {
                 return minus(signedCoefficient, exponent);
             }
             if (exponentA == exponentB) {
-                return (0, exponentA);
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
             }
             // |a - b| is 2^255 (1 - 10^-d) units of the larger exponent, for
             // d the exponent gap. 10^d never divides 2^255, so that truncates

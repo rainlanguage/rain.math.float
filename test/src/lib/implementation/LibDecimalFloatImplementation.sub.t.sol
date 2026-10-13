@@ -119,9 +119,9 @@ contract LibDecimalFloatImplementationSubTest is Test {
     function testSubMinFromItself() external {
         int256 min = type(int256).min;
         int256 max = type(int256).max;
-        checkSub(min, max, min, max, 0, max);
-        checkSub(min, max - 1, min, max - 1, 0, max - 1);
-        checkSub(min, min, min, min, 0, min);
+        checkSub(min, max, min, max, 0, 0);
+        checkSub(min, max - 1, min, max - 1, 0, 0);
+        checkSub(min, min, min, min, 0, 0);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, max));
         this.subExternal(0, 0, min, max);
     }
