@@ -2,30 +2,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-/// Exact integer helpers for the Halmos proofs. 512-bit values are `(hi, lo)`
-/// pairs. Products split into 128-bit limbs, so every word multiply is exact
-/// and a symbolic operand only ever meets a constant one.
+/// Exact integer helpers for the Halmos proofs. Every multiply has an operand
+/// that is constant on the path, so halmos never makes it uninterpreted.
 library LibHalmosExact {
-    uint256 internal constant MASK128 = type(uint128).max;
     /// floor(int256.max / 10).
     uint256 internal constant T10 = uint256(type(int256).max) / 10;
-
-    /// x * y as 512 bits.
-    function mul(uint256 x, uint256 y) internal pure returns (uint256 hi, uint256 lo) {
-        unchecked {
-            uint256 xh = x >> 128;
-            uint256 xl = x & MASK128;
-            uint256 yh = y >> 128;
-            uint256 yl = y & MASK128;
-            uint256 ll = xl * yl;
-            uint256 lh = xl * yh;
-            uint256 hl = xh * yl;
-            // Each term is under 2^128, so mid is under 3 * 2^128.
-            uint256 mid = (ll >> 128) + (lh & MASK128) + (hl & MASK128);
-            lo = (ll & MASK128) | (mid << 128);
-            hi = xh * yh + (lh >> 128) + (hl >> 128) + (mid >> 128);
-        }
-    }
 
     function abs(int256 x) internal pure returns (uint256) {
         unchecked {
@@ -114,8 +95,8 @@ library LibHalmosExact {
         }
     }
 
-    /// |rc| 10^re == |sc| 10^se with equal signs, for nonzero rc and sc whose
-    /// exponent difference is a constant on the path.
+    /// |rc| 10^re == |sc| 10^se with equal signs. The exponent difference is
+    /// rebuilt by `concrete`, so `10 ** d` is a constant on every path.
     function eqValue(int256 rc, int256 re, int256 sc, int256 se) internal pure returns (bool) {
         if (rc == 0 || sc == 0) {
             return rc == sc;
@@ -131,14 +112,14 @@ library LibHalmosExact {
                 uint256 d = uint256(re - se);
                 // r >= 1, so r 10^d >= 10^78 > 2^256 > s.
                 if (d > 77) return false;
-                (uint256 hi, uint256 lo) = mul(r, 10 ** d);
-                return hi == 0 && lo == s;
+                uint256 p = 10 ** concrete(d, 7);
+                return r <= type(uint256).max / p && r * p == s;
             } else {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 uint256 d = uint256(se - re);
                 if (d > 77) return false;
-                (uint256 hi, uint256 lo) = mul(s, 10 ** d);
-                return hi == 0 && lo == r;
+                uint256 p = 10 ** concrete(d, 7);
+                return s <= type(uint256).max / p && s * p == r;
             }
         }
     }

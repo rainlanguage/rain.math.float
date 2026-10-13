@@ -78,11 +78,12 @@ contract PackArithmeticResultHalmosTest {
                 if (j > 67) {
                     return (0, 0, 2);
                 }
-                (uint256 hi, uint256 lo) = LibHalmosExact.mul(m, 10 ** j);
-                if (hi != 0 || lo > l) {
+                uint256 p = 10 ** j;
+                // m 10^j <= l iff m <= floor(l / 10^j).
+                if (m > l / p) {
                     return (0, 0, 2);
                 }
-                (m, f) = (lo, FMAX);
+                (m, f) = (m * p, FMAX);
             }
         }
     }
