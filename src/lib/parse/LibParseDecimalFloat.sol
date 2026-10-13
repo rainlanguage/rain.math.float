@@ -243,9 +243,6 @@ library LibParseDecimalFloat {
                 readSignificantDigits(start, intEnd, fracStart, cursor, end);
             int256 eValue;
             (errorSelector, cursor, eValue) = scanExponent(cursor, end);
-            if (errorSelector == MalformedExponentDigits.selector) {
-                return (errorSelector, cursor, 0, 0);
-            }
             if (errorSelector != 0) {
                 return (errorSelector, cursor, 0, 0);
             }
