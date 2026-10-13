@@ -35,11 +35,11 @@ library LibParseDecimalFloat {
     /// Returns the literal's exact value as `signedCoefficient × 10^exponent`,
     /// in no particular representation. A literal that is not exactly a Float
     /// may instead return, with zeros and the cursor after the literal,
-    /// `ExponentOverflow` when it is past every Float, at least
-    /// `(2^223 + 2) × 10^int32.max` in magnitude so packing has no Float to
-    /// round it to, and `ParseDecimalPrecisionLoss` otherwise. A literal
-    /// without integer digits is `ParseEmptyDecimalString`, a `.` without
-    /// digits `MalformedDecimalPoint` and an `e` without digits
+    /// `ExponentOverflow` when it is at least `(2^223 + 2) × 10^int32.max` in
+    /// magnitude, where `packLossy` overflows, and `ParseDecimalPrecisionLoss`
+    /// otherwise, the band below that past the largest Float of a sign
+    /// included. A literal without integer digits is `ParseEmptyDecimalString`,
+    /// a `.` without digits `MalformedDecimalPoint` and an `e` without digits
     /// `MalformedExponentDigits`, each with the cursor where it stopped.
     /// @param start The starting index of the substring (inclusive).
     /// @param end The ending index of the substring (exclusive).
@@ -265,9 +265,10 @@ library LibParseDecimalFloat {
                 return (0, cursor, isNegative ? -signedCoefficient : signedCoefficient, exponent);
             }
 
-            // At least 77 significant digits, past every Float iff the floor
-            // at 10^int32.max is at least 2^223 + 2: the leading digit is
-            // above 10^(int32.max + 67), or at it with those 68 digits.
+            // At least 77 significant digits, where packLossy overflows iff
+            // the floor at 10^int32.max is at least 2^223 + 2: the leading
+            // digit is above 10^(int32.max + 67), or at it with those 68
+            // digits.
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 leadingAtCeiling = int256(type(int32).max) + 68 - int256(digitCount);
             if (exponent > leadingAtCeiling || (exponent == leadingAtCeiling && leading >= 2 ** 223 + 2)) {
@@ -411,10 +412,11 @@ library LibParseDecimalFloat {
     /// returns a packed `Float` amenable to subsequent operations with
     /// `LibDecimalFloat`. A malformed literal returns its
     /// `parseDecimalFloatInline` error, and a well formed one followed by more
-    /// characters `ParseDecimalFloatExcessCharacters`. A literal past every
-    /// Float, as `parseDecimalFloatInline` defines it, is `ExponentOverflow`:
-    /// a revert from packing or the returned selector. Any other literal that
-    /// is not exactly a Float returns `ParseDecimalPrecisionLoss`.
+    /// characters `ParseDecimalFloatExcessCharacters`. A literal at or
+    /// past the overflow threshold `parseDecimalFloatInline` states is
+    /// `ExponentOverflow`: a revert from packing or the returned selector. Any
+    /// other literal that is not exactly a Float returns
+    /// `ParseDecimalPrecisionLoss`.
     /// @param str The string to parse.
     /// @return errorSelector The error selector if an error occurred, otherwise
     /// 0.

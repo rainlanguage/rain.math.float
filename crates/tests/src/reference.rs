@@ -4,9 +4,12 @@
 //!
 //! Every rounding below is the one the library documents: a result becomes
 //! the Float closest to it that does not exceed its magnitude (`packLossy`).
-//! A result no non-zero Float is within is `ExponentUnderflow`; a result
-//! larger in magnitude than every Float is `ExponentOverflow`. Addition is
-//! the exact sum rounded once so, as `LibDecimalFloat.add` documents.
+//! A result no non-zero Float is within is `ExponentUnderflow`; a result at
+//! least `(2^223 + 2) × 10^int32.max` in magnitude is `ExponentOverflow`, so
+//! below that a positive result up to three units of `10^int32.max` past the
+//! largest Float, or a negative one up to two past the smallest, truncates
+//! into it (#452). Addition is the exact sum rounded once so, as
+//! `LibDecimalFloat.add` documents.
 
 use alloy::primitives::{B256, U256};
 use core::cmp::Ordering;
@@ -603,10 +606,17 @@ pub fn pack_lossy(c: &BigInt, e: &BigInt) -> Result<(Dec, bool), RefError> {
     }
 }
 
-/// `packLossless`: past every Float is `ExponentOverflow`, any other value
-/// that is not exactly a Float `LossyConversionToFloat`.
+/// `packLossless`: past every Float is `ExponentOverflow`, the band `pack`
+/// truncates into the largest Float of a sign included (#450); any other
+/// value that is not exactly a Float `LossyConversionToFloat`.
 pub fn pack_lossless(c: &BigInt, e: &BigInt) -> Result<Dec, RefError> {
-    match pack(&Dec::new(c.clone(), pin(e))) {
+    let x = Dec::new(c.clone(), pin(e));
+    if x.cmp_value(&max_positive()) == Ordering::Greater
+        || x.cmp_value(&min_negative()) == Ordering::Less
+    {
+        return Err(RefError::ExponentOverflow);
+    }
+    match pack(&x) {
         Packed::Value(v, true) => Ok(v),
         Packed::Overflow => Err(RefError::ExponentOverflow),
         Packed::Value(_, false) | Packed::Underflow => Err(RefError::LossyConversionToFloat),
@@ -986,7 +996,7 @@ mod tests {
                 .unwrap()
                 .eq_value(&Dec::new(10, I32_MAX))
         );
-        // Past every Float from (2^223 + 2)e2147483647 in magnitude: 2^223
+        // packLossy overflows from (2^223 + 2)e2147483647 in magnitude: 2^223
         // ends in 8, so 2^223 + 2 is a multiple of ten past int224 at the
         // next exponent, and 2^223 + 1 truncates there to below int224.max.
         let two223 = BigInt::from(1) << 223usize;

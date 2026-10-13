@@ -124,7 +124,8 @@ contract LibDecimalFloatPackTest is Test {
 
     /// The overflow rule pow and pow10 check before packing: near int32.max,
     /// packLossy reverts exactly when the value is at least
-    /// (int224.max / 10 + 1) 10^(int32.max + 1) in magnitude.
+    /// (int224.max / 10 + 1) 10^(int32.max + 1), which is
+    /// (2^223 + 2) 10^int32.max, in magnitude (#452).
     function checkPackLossyOverflowThreshold(int256 signedCoefficient, int256 exponent) internal view {
         bool over = LibExactFloat.overflows(LibExactFloat.u512(LibExactFloat.abs(signedCoefficient)), exponent);
         bool reverted;
@@ -249,5 +250,120 @@ contract LibDecimalFloatPackTest is Test {
 
         vm.expectRevert(abi.encodeWithSelector(LossyConversionToFloat.selector, int256(7), int256(type(int32).min) - 1));
         this.packLosslessExternal(7, int256(type(int32).min) - 1);
+    }
+
+    /// #452: `packLossy` overflows from `(2^223 + 2) × 10^int32.max` in
+    /// magnitude for both signs. Below it a value past the largest Float of
+    /// its sign truncates into it, so the band is up to three units of
+    /// `10^int32.max` past `(2^223 - 1) × 10^int32.max` for a positive value
+    /// and up to two past `-2^223 × 10^int32.max` for a negative one. Each
+    /// value is written at `int32.max - k` with `k` trailing digits.
+    function testPackLossyCeilingTruncationBand() external {
+        int256 two223 = int256(1) << 223;
+        int256 max = type(int224).max;
+        int256 min = type(int224).min;
+        int256 m = type(int32).max;
+        for (uint256 k = 0; k <= 9; k++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 scale = int256(10 ** k);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 e = m - int256(k);
+            // The last value below the threshold, and the threshold.
+            int256 below = (two223 + 2) * scale - 1;
+            int256 at = (two223 + 2) * scale;
+            checkPackLossy(below, e, max, m, false);
+            checkPackLossy(-below, e, min, m, false);
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, at, e));
+            this.packLossyExternal(at, e);
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, -at, e));
+            this.packLossyExternal(-at, e);
+            // The largest Floats themselves, exact.
+            checkPackLossy(max * scale, e, max, m, true);
+            checkPackLossy(min * scale, e, min, m, true);
+            // Just past them, lossy.
+            checkPackLossy(max * scale + 1, e, max, m, false);
+            checkPackLossy(min * scale - 1, e, min, m, false);
+        }
+    }
+
+    /// #450: packLossless reverts ExponentOverflow with the inputs for the
+    /// inputs #450 lists, and for the band `packLossy` truncates into the
+    /// largest Float of a sign; the largest Floats themselves pack.
+    function testPackLosslessPastLargestFloat() external {
+        int256 two223 = int256(1) << 223;
+        int256 m = type(int32).max;
+        int256[2][10] memory past = [
+            [two223, m],
+            [two223 + 1, m],
+            [-two223 - 1, m],
+            [two223 * 10, m - 1],
+            [two223 + 2, m],
+            [-two223 - 2, m],
+            [(two223 - 1) * 10 + 1, m - 1],
+            [-two223 * 10 - 1, m - 1],
+            [(two223 + 2) * 1e9 - 1, m - 9],
+            [-(two223 + 2) * 1e9 + 1, m - 9]
+        ];
+        for (uint256 i = 0; i < past.length; i++) {
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, past[i][0], past[i][1]));
+            this.packLosslessExternal(past[i][0], past[i][1]);
+        }
+        checkPackLosslessExact(two223 - 1, m, two223 - 1, m);
+        checkPackLosslessExact(-two223, m, -two223, m);
+        checkPackLosslessExact((two223 - 1) * 10, m - 1, two223 - 1, m);
+        checkPackLosslessExact(-two223 * 1e9, m - 9, -two223, m);
+    }
+
+    function checkPackLosslessExact(int256 c, int256 e, int256 expectedC, int256 expectedE) internal view {
+        (int256 actualC, int256 actualE) = LibDecimalFloat.unpack(this.packLosslessExternal(c, e));
+        assertEq(actualC, expectedC, "coefficient");
+        assertEq(actualE, expectedE, "exponent");
+    }
+
+    /// packLossless against exact maths: past the largest Float of its sign
+    /// is `ExponentOverflow`; otherwise the value packs iff it is a Float,
+    /// that is with its trailing zeros stripped its coefficient is within the
+    /// sign's int224 bound and its exponent at or above int32.min. Either
+    /// error reports the inputs.
+    function checkPackLosslessAgainstExact(int256 c, int256 e) internal view {
+        bool negative = c < 0;
+        uint256 magnitude = LibExactFloat.abs(c);
+        uint256 limit = LibExactFloat.coefficientLimit(negative);
+        bool past =
+            LibExactFloat.cmpScaled(LibExactFloat.u512(magnitude), e, LibExactFloat.u512(limit), type(int32).max) > 0;
+        bool isFloat = true;
+        if (magnitude != 0) {
+            int256 stripped = e;
+            while (magnitude % 10 == 0) {
+                magnitude /= 10;
+                stripped++;
+            }
+            isFloat = magnitude <= limit && stripped >= type(int32).min;
+        }
+        try this.packLosslessExternal(c, e) returns (Float float) {
+            assertFalse(past, "past packed");
+            assertTrue(isFloat, "not a Float packed");
+            (int256 actualC, int256 actualE) = LibDecimalFloat.unpack(float);
+            assertTrue(LibExactFloat.eq(actualC, actualE, c, e), "value");
+        } catch (bytes memory err) {
+            bytes4 expected = past ? ExponentOverflow.selector : isFloat ? bytes4(0) : LossyConversionToFloat.selector;
+            assertEq(err, abi.encodeWithSelector(expected, c, e), "error");
+        }
+    }
+
+    function testPackLosslessAgainstExact(int256 c, int256 e) external view {
+        e = bound(e, int256(type(int32).min) - 80, int256(type(int32).max) + 80);
+        checkPackLosslessAgainstExact(c, e);
+    }
+
+    /// The same, around the largest Floats: `±2^223 × 10^k + delta` at
+    /// `int32.max - k`.
+    function testPackLosslessAgainstExactCeiling(uint256 k, int256 delta, bool negative) external view {
+        k = bound(k, 0, 9);
+        delta = bound(delta, -1e12, 1e12);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 c = (int256(1) << 223) * int256(10 ** k) + delta;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        checkPackLosslessAgainstExact(negative ? -c : c, int256(type(int32).max) - int256(k));
     }
 }
