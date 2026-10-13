@@ -21,6 +21,12 @@ import {
 /// @dev Thrown when attempting to rescale a coefficient to a target exponent
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
+/// @dev Thrown by `unabsUnsignedMulOrDivLossy` when a magnitude that does not
+/// fit int256 at the result's sign must shed a digit at exponent
+/// `type(int256).max`. `mul` and `div` revert `ExponentOverflow` before they
+/// pass it such an input.
+error UnabsExponentOverflow(int256 a, int256 b, uint256 signedCoefficientAbs, int256 exponent);
+
 /// @dev The maximum difference in exponents when adding to rescale.
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
 
@@ -269,7 +275,9 @@ library LibDecimalFloatImplementation {
 
     /// Given the absolute value of the result coefficient, and the signs of
     /// the input coefficients, returns the signed coefficient and exponent of
-    /// the result of a multiplication or division operation.
+    /// the result of a multiplication or division operation. A magnitude that
+    /// does not fit int256 at the result's sign sheds its last digit into the
+    /// exponent, which reverts `UnabsExponentOverflow` at `type(int256).max`.
     /// @param a The signed coefficient of the first operand.
     /// @param b The signed coefficient of the second operand.
     /// @param signedCoefficientAbs The absolute value of the result coefficient.
@@ -289,10 +297,15 @@ library LibDecimalFloatImplementation {
                     // type(int256).min.
                     return (type(int256).min, exponent);
                 } else {
-                    // signedCoefficientAbs divided by 10 so won't truncate when
-                    // cast.
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    return (-int256(signedCoefficientAbs / 10), exponent + 1);
+                    if (exponent == type(int256).max) {
+                        revert UnabsExponentOverflow(a, b, signedCoefficientAbs, exponent);
+                    }
+                    unchecked {
+                        // signedCoefficientAbs divided by 10 so won't truncate
+                        // when cast. exponent < int256.max so + 1 won't wrap.
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        return (-int256(signedCoefficientAbs / 10), exponent + 1);
+                    }
                 }
             } else {
                 // signedCoefficientAbs [0, type(int256).max]
@@ -301,10 +314,15 @@ library LibDecimalFloatImplementation {
             }
         } else {
             if (signedCoefficientAbs > uint256(type(int256).max)) {
-                // signedCoefficientAbs divided by 10 so won't truncate when
-                // cast.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                return (int256(signedCoefficientAbs / 10), exponent + 1);
+                if (exponent == type(int256).max) {
+                    revert UnabsExponentOverflow(a, b, signedCoefficientAbs, exponent);
+                }
+                unchecked {
+                    // signedCoefficientAbs divided by 10 so won't truncate when
+                    // cast. exponent < int256.max so + 1 won't wrap.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    return (int256(signedCoefficientAbs / 10), exponent + 1);
+                }
             } else {
                 // signedCoefficientAbs is bound to the int256 range.
                 // forge-lint: disable-next-line(unsafe-typecast)

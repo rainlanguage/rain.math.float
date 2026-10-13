@@ -19,14 +19,14 @@ use proptest::test_runner::TestCaseError;
 /// errors, or the error selector `parse` returns.
 #[derive(Debug)]
 enum Fail {
-    Revert(Errors),
+    Revert(Box<Errors>),
     Selector(FixedBytes<4>),
 }
 
 type R<V> = Result<V, Fail>;
 
 fn call<C: SolCall>(c: C) -> R<C::Return> {
-    evm::concrete(c).map_err(|out: Bytes| Fail::Revert(Errors::abi_decode(&out).unwrap()))
+    evm::concrete(c).map_err(|out: Bytes| Fail::Revert(Box::new(Errors::abi_decode(&out).unwrap())))
 }
 
 #[derive(Clone, Copy)]
@@ -77,7 +77,7 @@ impl Float {
             exponent: I256::try_from(exponent).unwrap(),
         })
         .map(Float)
-        .map_err(|out| Fail::Revert(Errors::abi_decode(&out).unwrap()))
+        .map_err(|out| Fail::Revert(Box::new(Errors::abi_decode(&out).unwrap())))
     }
 
     fn show_unpacked(self) -> R<String> {
@@ -300,7 +300,7 @@ fn test_parse_empty_string_error() {
 fn test_parse_exponent_overflow_error() {
     // Extremely large exponent expected to overflow (exponent >> i32::MAX).
     let err = Float::parse("1e3000000000".to_string()).unwrap_err();
-    assert!(matches!(err, Fail::Revert(Errors::ExponentOverflow(_))));
+    assert!(matches!(err, Fail::Revert(e) if matches!(*e, Errors::ExponentOverflow(_))));
 }
 
 /// Malformed inputs ("1.2.3", "abc") return specific error selectors.
@@ -399,7 +399,7 @@ fn test_add_exponent_overflow_error() {
 
     let err = (a + a).unwrap_err();
 
-    assert!(matches!(err, Fail::Revert(Errors::ExponentOverflow(_))));
+    assert!(matches!(err, Fail::Revert(e) if matches!(*e, Errors::ExponentOverflow(_))));
 }
 
 /// Subtracting opposite-sign max-exponent floats overflows.
@@ -414,7 +414,7 @@ fn test_sub_exponent_overflow_error() {
 
     let err = (b - a).unwrap_err();
 
-    assert!(matches!(err, Fail::Revert(Errors::ExponentOverflow(_))));
+    assert!(matches!(err, Fail::Revert(e) if matches!(*e, Errors::ExponentOverflow(_))));
 }
 
 proptest! {
@@ -731,7 +731,7 @@ fn test_divide_by_zero_error() {
     let zero = Float::parse("0".to_string()).unwrap();
     let err = (one / zero).unwrap_err();
 
-    assert!(matches!(err, Fail::Revert(Errors::DivisionByZero(_))));
+    assert!(matches!(err, Fail::Revert(e) if matches!(*e, Errors::DivisionByZero(_))));
 }
 
 /// Multiplying near-max exponents overflows.
@@ -741,7 +741,7 @@ fn test_mul_exponent_overflow_error() {
     let one_e_hundred = Float::parse("1e100".to_string()).unwrap();
 
     let err = (near_max_exp * one_e_hundred).unwrap_err();
-    assert!(matches!(err, Fail::Revert(Errors::ExponentOverflow(_))));
+    assert!(matches!(err, Fail::Revert(e) if matches!(*e, Errors::ExponentOverflow(_))));
 }
 
 /// Dividing near-max exponent by small exponent overflows.
@@ -751,7 +751,7 @@ fn test_div_exponent_overflow_error() {
     let one_e_neg_hundred = Float::parse("1e-100".to_string()).unwrap();
 
     let err = (near_max_exp / one_e_neg_hundred).unwrap_err();
-    assert!(matches!(err, Fail::Revert(Errors::ExponentOverflow(_))));
+    assert!(matches!(err, Fail::Revert(e) if matches!(*e, Errors::ExponentOverflow(_))));
 }
 
 /// Multiplying near-min exponents underflows; the public arithmetic
@@ -763,7 +763,7 @@ fn test_mul_exponent_underflow_error() {
     let one_e_neg_three = Float::parse("1e-3".to_string()).unwrap();
 
     let err = (near_min_exp * one_e_neg_three).unwrap_err();
-    assert!(matches!(err, Fail::Revert(Errors::ExponentUnderflow(_))));
+    assert!(matches!(err, Fail::Revert(e) if matches!(*e, Errors::ExponentUnderflow(_))));
 }
 
 /// from_fixed_decimal for known value/decimals pairs matches parsed strings.
@@ -791,7 +791,7 @@ fn test_from_fixed_decimal_err() {
     let err = Float::from_fixed_decimal(U256::MAX, 1).unwrap_err();
     assert!(matches!(
         err,
-        Fail::Revert(Errors::LossyConversionToFloat(_))
+        Fail::Revert(e) if matches!(*e, Errors::LossyConversionToFloat(_))
     ));
 }
 
