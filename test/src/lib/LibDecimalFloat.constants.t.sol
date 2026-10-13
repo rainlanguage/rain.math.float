@@ -79,28 +79,25 @@ contract LibDecimalFloatConstantsTest is Test {
 
     /// The first 72 significant digits of pi, from OEIS A000796
     /// (https://oeis.org/A000796/b000796.txt).
-    uint256 constant PI_72_DIGITS = 314159265358979323846264338327950288419716939937510582097494459230781640;
+    int256 constant PI_72_DIGITS = 314159265358979323846264338327950288419716939937510582097494459230781640;
 
     /// The first 72 significant digits of e, from OEIS A001113
     /// (https://oeis.org/A001113/b001113.txt).
-    uint256 constant E_72_DIGITS = 271828182845904523536028747135266249775724709369995957496696762772407663;
+    int256 constant E_72_DIGITS = 271828182845904523536028747135266249775724709369995957496696762772407663;
 
     /// `float` is the closest Float not above `digits72 × 10^-71 + [0, 10^-71)`,
     /// a value in [1, 10), at the finest exponent whose coefficient fits.
-    function checkClosestFloatNotAbove(Float float, uint256 digits72) internal pure {
-        uint256 word = uint256(Float.unwrap(float));
-        int256 exponent = int32(uint32(word >> 224));
-        int256 coefficient = int224(uint224(word));
+    function checkClosestFloatNotAbove(Float float, int256 digits72) internal pure {
+        (int256 c, int256 exponent) = LibDecimalFloat.unpack(float);
         assertEq(exponent, -66);
-        assertTrue(coefficient > 0);
-        uint256 c = uint256(coefficient);
+        assertTrue(c > 0);
         // c × 10^-66 <= digits72 × 10^-71 <= value.
         assertTrue(c * 1e5 <= digits72);
         // value < (digits72 + 1) × 10^-71 <= (c + 1) × 10^-66.
         assertTrue((c + 1) * 1e5 >= digits72 + 1);
         // At exponent -67 the coefficient floor(value × 10^67) is
         // floor(digits72 / 10^4), which does not fit in int224.
-        assertTrue(digits72 / 1e4 > uint256(int256(type(int224).max)));
+        assertTrue(digits72 / 1e4 > type(int224).max);
     }
 
     function testFloatPiIsTheClosestFloatNotAbovePi() external pure {
