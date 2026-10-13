@@ -687,9 +687,10 @@ contract LibDecimalFloatImplementationLog10Test is Test {
     /// oracle. All in units of 1e-70:
     /// - the oracle is within 265 of the true log L;
     /// - `LOG10_RAW_ERROR_E54` units of 1e-54, absolute;
-    /// - past a characteristic of 1e25 the sum goes through `add`, which
-    ///   loses under a unit of an int256 coefficient's last digit, at most
-    ///   10^(n - 76) for a characteristic below 10^n;
+    /// - unrounded, past a characteristic of 1e25 the sum goes through `add`,
+    ///   which loses under a unit of an int256 coefficient's last digit, at
+    ///   most 10^(n - 76) for a characteristic below 10^n. Rounded, that loss
+    ///   never moves the result (`log10`, #506), so nothing is added;
     /// - the result is floored onto the 1e-70 grid, a unit;
     /// - rounded, half a unit in the 41st digit of L, whose magnitude is
     ///   below the oracle's plus 265.
@@ -722,16 +723,17 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         U512 memory error = signedDistance(resultCoefficient < 0, actual, negativeExpected, expected);
 
         U512 memory bound = LibExactFloat.u512(LOG10_RAW_ERROR_E54 * 1e16 + 265 + 1);
-        uint256 characteristicDigits =
-            uint256(LibExactFloat.digits(LibExactFloat.u512(LibExactFloat.abs(characteristic) + 1)));
-        if (characteristicDigits > 25) {
-            bound = LibExactFloat.add(bound, pow10U512(characteristicDigits - 6));
-        }
         if (rounded) {
             uint256 logDigits = uint256(LibExactFloat.digits(LibExactFloat.add(expected, LibExactFloat.u512(265))));
             bound = LibExactFloat.add(
                 bound, logDigits >= 42 ? LibExactFloat.mulSmall(pow10U512(logDigits - 42), 5) : LibExactFloat.u512(1)
             );
+        } else {
+            uint256 characteristicDigits =
+                uint256(LibExactFloat.digits(LibExactFloat.u512(LibExactFloat.abs(characteristic) + 1)));
+            if (characteristicDigits > 25) {
+                bound = LibExactFloat.add(bound, pow10U512(characteristicDigits - 6));
+            }
         }
         return LibExactFloat.cmp(error, bound) <= 0;
     }
@@ -894,5 +896,128 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         assertTrue(result == nearest || distance <= window + 1, "far neighbour outside the window");
         assertEq(result, below + unit, "rounds to the far neighbour");
         assertGe(distance * 1000, window * 995, "window tight");
+    }
+
+    /// Whether (rc, re) is c + k 1e-50 rounded to 41 significant digits half
+    /// away from zero, by the rule, exactly, in units of 1e-50: the sign of
+    /// c, |rc| in [1e40, 1e41], and the sum's magnitude M in [R - u / 2,
+    /// R + u / 2) for R = |rc| 10^re and the unit u = 10^re. |k| < 1e50 is
+    /// below |c| 1e50, so the sum has c's sign.
+    function isRoundedSum(int256 c, int256 k, int256 rc, int256 re) internal pure returns (bool) {
+        U512 memory cm = LibExactFloat.mulPow10(LibExactFloat.u512(LibExactFloat.abs(c)), 50);
+        U512 memory km = LibExactFloat.u512(LibExactFloat.abs(k));
+        U512 memory m = (c < 0) == (k < 0) ? LibExactFloat.add(cm, km) : LibExactFloat.sub(cm, km);
+        uint256 rm = LibExactFloat.abs(rc);
+        if ((rc < 0) != (c < 0) || rm > 1e41 || re < -49) {
+            return false;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 shift = uint256(re + 50);
+        U512 memory r = LibExactFloat.mulPow10(LibExactFloat.u512(rm), shift);
+        // Under 41 digits only an exact sum rounds to itself.
+        if (rm < 1e40) {
+            return LibExactFloat.cmp(m, r) == 0;
+        }
+        U512 memory half = LibExactFloat.mulSmall(pow10U512(shift - 1), 5);
+        return
+            LibExactFloat.cmp(LibExactFloat.add(m, half), r) >= 0
+                && LibExactFloat.cmp(m, LibExactFloat.add(r, half)) < 0;
+    }
+
+    /// `log10` from a characteristic c of 1e25 or more: `add` truncates c +
+    /// k 1e-50, and `roundSignificant` rounds that.
+    function checkRoundsAsExactSum(int256 c, int256 k) internal pure {
+        (int256 sc, int256 se) = LibDecimalFloatImplementation.add(c, 0, k, -50);
+        (int256 rc, int256 re) = LibDecimalFloatImplementation.roundSignificant(sc, se);
+        assertTrue(isRoundedSum(c, k, rc, re), "rounds as the exact sum");
+        assertFalse(isRoundedSum(c, k, rc + 1, re), "not one unit up");
+        assertFalse(isRoundedSum(c, k, rc - 1, re), "not one unit down");
+    }
+
+    /// #506: past a characteristic of 1e25, `add`'s truncation of the sum
+    /// never moves `log10`'s rounding, for c of 26 to 77 digits and |k| below
+    /// 1e50, either sign. Mode 1 puts the sum at a tie decided by k, moved by
+    /// up to 1000 units of 1e-50; mode 2 puts c at a tie or one below it;
+    /// mode 3 puts c at a power of ten with k cancelling below it.
+    function testLog10LargeCharacteristicRoundsAsExactSum(
+        uint256 n,
+        uint256 cSeed,
+        uint256 kSeed,
+        int256 offset,
+        uint256 mode,
+        bool negativeC,
+        bool negativeK
+    ) external pure {
+        n = bound(n, 26, 77);
+        mode = mode % 4;
+        uint256 low = 10 ** (n - 1);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 high = n == 77 ? uint256(type(int256).max) : 10 ** n - 1;
+        uint256 cm = bound(cSeed, low, high);
+        uint256 km = bound(kSeed, 0, 1e50 - 1);
+        if (mode == 1 && n <= 41) {
+            uint256 unit = 10 ** (n + 9);
+            uint256 tie = bound(kSeed, 0, 1e50 / unit - 1) * unit + unit / 2;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 moved = int256(tie) + bound(offset, -1000, 1000);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            km = moved < 0 || moved >= 1e50 ? tie : uint256(moved);
+        } else if (mode == 2 && n >= 42) {
+            uint256 unit = 10 ** (n - 41);
+            cm = bound(cSeed, 1e40, (high - unit / 2) / unit) * unit + unit / 2 - (kSeed % 2);
+            if (offset % 2 == 0) {
+                km = bound(kSeed, 0, 1000);
+            }
+        } else if (mode == 3) {
+            cm = low;
+            negativeK = !negativeC;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 c = negativeC ? -int256(cm) : int256(cm);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 k = negativeK ? -int256(km) : int256(km);
+        checkRoundsAsExactSum(c, k);
+    }
+
+    /// Fixed examples of the same: ties either side decided by the last
+    /// units of k, and `add` carrying past int256, where its grid is ten
+    /// units.
+    function testLog10LargeCharacteristicRoundsAsExactSumExamples() external pure {
+        // 31 digits: the tie is k = 5e39 mod 1e40.
+        int256 c = 1e30;
+        checkRoundsAsExactSum(c, 5e39);
+        checkRoundsAsExactSum(c, 5e39 - 1);
+        checkRoundsAsExactSum(c, 5e39 + 1);
+        checkRoundsAsExactSum(-c, -5e39);
+        checkRoundsAsExactSum(-c, -(5e39 - 1));
+        checkRoundsAsExactSum(c, -(5e39 - 1));
+        checkRoundsAsExactSum(c, -(5e39 + 1));
+        // 76 digits, maximized to the int256 edge: k past 8e49 carries.
+        c = type(int256).max / 10;
+        checkRoundsAsExactSum(c, 9e49);
+        checkRoundsAsExactSum(c, 1e50 - 1);
+        checkRoundsAsExactSum(-c, -9e49);
+        checkRoundsAsExactSum(-c, -(1e50 - 1));
+    }
+
+    /// #506's report: at 2e(1e30) `log10Unrounded` truncates the log at 1e-46,
+    /// about 6.2e-47 off, past 1.0037e-50, while `log10` is log10(2) + 1e30 at
+    /// 41 digits: 0.30102999566... rounds to 0.3010299957. log10(2) is from
+    /// `bc -l` at scale 90.
+    function testLog10LargeCharacteristicReport() external pure {
+        (int256 uc, int256 ue) = LibDecimalFloatImplementation.log10Unrounded(2, 1e30);
+        assertEq(uc, 10000000000000000000000000000003010299956639811952137388947244930267681898814, "unrounded");
+        assertEq(ue, -46, "unrounded exponent");
+        // In units of 1e-70 the oracle's fraction is within 265 of the log's,
+        // and the unrounded one is past it by more than 1.0037e-50 and that.
+        (int256 characteristic, uint256 fraction) = LibExactFloat.log10(2, 1e30);
+        assertEq(characteristic, 1e30, "characteristic");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 unroundedFraction = (uint256(uc) % 1e46) * 1e24;
+        assertGt(fraction - unroundedFraction, 10037e16 + 265, "unrounded past 1.0037e-50");
+        (int256 rc, int256 re) = LibDecimalFloatImplementation.log10(2, 1e30);
+        assertEq(rc, 10000000000000000000000000000003010299957, "rounded");
+        assertEq(re, -10, "rounded exponent");
+        assertTrue(log10WithinOracle(2, 1e30, rc, re, true), "log10 oracle");
     }
 }

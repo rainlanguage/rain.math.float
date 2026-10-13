@@ -183,7 +183,11 @@ last place, only when both true values lie within the larger raw error of the
 same rounding tie, and never by more. The raw error, before rounding, is 1.12e-8
 of a unit for `pow10`, 1.0037e-50 for `log10`, and 1.1343e-48 + N·min(K1, K2·d)
 relative for `pow`, with N, d, K1 and K2 as above. Callers must not rely on
-strict ordering at one-ulp resolution.
+strict ordering at one-ulp resolution. For `pow` a fraction of exactly a half
+takes the root of a^(2N+1), without the 1.1343e-48 term, and any other fraction
+takes the log10 and pow10 leg. So at b = N + 1/2, when the true values lie
+within the leg's raw error of a tie, a^b can be one unit out of order with both
+neighbours at once, above both or below both, within the same rule.
 
 Exact results stay exact: powers of ten (`pow10(k)` is `10^k`, `log10(10^k)` is
 `k`), and integer and fractional powers, roots included, with at most 41
