@@ -9,7 +9,7 @@ use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
 use crate::exact::{self, Fail, Sol, config, error_matches, pair, show};
 use crate::reference::{Dec, RefError};
 use crate::transcendental::{self, revert_data};
-use alloy::primitives::{B256, U256};
+use alloy::primitives::{B256, I256, U256};
 use core::cmp::Ordering;
 use dashu_base::Abs;
 use dashu_float::round::mode::{Away, HalfAway, Zero};
@@ -488,17 +488,21 @@ fn check_harness_unary(a: &Dec) -> Result<(), TestCaseError> {
 /// `packLossy` and `packLossless` over int256 coefficients and exponents:
 /// the rule's Float with `lossless` iff exact; `FLOAT_ZERO` and not lossless
 /// for a non-zero value below every Float; `ExponentOverflow` past them all.
-/// `packLossless` reverts `LossyConversionToFloat` on any inexact value.
+/// `packLossless` reverts `ExponentOverflow` on any value past the largest
+/// Float of its sign, the band `packLossy` truncates into it included (#509,
+/// NatSpec), and `LossyConversionToFloat` on any other inexact value.
 fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
     let case = format!("pack({c}, {e})");
     let to_i256 = |x: &IBig| alloy::primitives::I256::from_dec_str(&x.to_string()).unwrap();
     let (sc, se) = (to_i256(c), to_i256(e));
     // An exponent past isize leaves a non-zero value past or below every
     // Float without arithmetic.
+    let mut past = false;
     let want: Result<(D, bool), RefError> = match isize::try_from(e.clone()) {
         _ if *c == IBig::ZERO => Ok((D::ZERO, true)),
         Ok(e) if e.unsigned_abs() < (1usize << 60) => {
             let v = D::from_parts(c.clone(), e);
+            past = magnitude(&v) > largest_float(v < D::ZERO);
             match toward_zero(&v) {
                 Ok(w) => {
                     let exact = same(&w, &v);
@@ -528,6 +532,7 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
         (s, w) => prop_assert!(false, "{case}: solidity {s:?}, dashu {w:?}"),
     }
     let want = match want {
+        _ if past => Err(RefError::ExponentOverflow),
         Ok((w, true)) => Ok(w),
         Ok((_, false)) => Err(RefError::LossyConversionToFloat),
         Err(e) => Err(e),
@@ -715,8 +720,10 @@ fn scientific_shape(s: &str) -> bool {
 
 /// `format` writes the value exactly, as dashu reads it back, in the one
 /// string of its documented shape: zero is `0`; plain notation reverts
-/// `UnformatableExponent` for a stored exponent past ±1000; scientific
-/// notation leads with the first significant digit and omits `e0`.
+/// `UnformatableExponent` with the canonical exponent, dashu's with trailing
+/// zeros stripped, when that is past ±1000 (#496,
+/// `MAX_NON_SCIENTIFIC_EXPONENT`); scientific notation leads with the first
+/// significant digit and omits `e0`.
 fn check_format(a: &Dec) -> Result<(), TestCaseError> {
     let x = d(a);
     for scientific in [false, true] {
@@ -729,12 +736,14 @@ fn check_format(a: &Dec) -> Result<(), TestCaseError> {
             prop_assert_eq!(got.ok(), Some("0".to_string()), "{}", case);
             continue;
         }
-        if !scientific && a.e.abs() > 1000 {
-            let want = RefError::UnformatableExponent;
+        let canonical = x.repr().exponent();
+        if !scientific && canonical.abs() > 1000 {
+            let mut want = RefError::UnformatableExponent.selector().to_vec();
+            want.extend_from_slice(&I256::try_from(canonical).unwrap().to_be_bytes::<32>());
             prop_assert!(
                 got.as_ref()
-                    .is_err_and(|out| error_matches(&Fail::Revert(out.clone()), want)),
-                "{case}: solidity {got:?}, want {want:?}"
+                    .is_err_and(|out| out.as_ref() == want.as_slice()),
+                "{case}: solidity {got:?}, want UnformatableExponent({canonical})"
             );
             continue;
         }
