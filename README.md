@@ -300,3 +300,44 @@ part of |b|.
 `sqrt` takes the integer square root of the coefficient scaled to 81 or 82
 digits and rounds it to nearest, so it is correctly rounded and a root such as
 `sqrt(4)` is exact.
+
+## Consumer guidance
+
+Rules for protocols built on the library. Each example is a test in
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`.
+
+1. **Round up at the fixed-decimal boundary yourself.** `toFixedDecimalLossy`
+   only truncates. For an amount a user owes, add 1 when `lossless` is false.
+   With integer inputs and `a × b` below about 1e66 of the floored unit, the
+   floor never exceeds the exact floor and that ceiling never falls below the
+   exact ceiling, in any of the orders `a × b / c`, `a / (c / b)` and
+   `a × (b / c)`; on an exact integer either can miss by 1 toward the safe side.
+   Past about 1e66 a rounded divisor lifts the floor: `(7e66 + 2) / (7 / 3)`
+   floors to `3e66 + 1` where the exact result is `3e66 + 6/7`. Keep amounts as
+   Floats through a calculation: converting to wei on every step of a loop
+   reintroduces Balancer/Bunni-style amplification. Eight round trips of 8 wei
+   through a rate of `1.112500000000000001`, converted to wei each step, empty
+   it; as a Float it stays exactly 8.
+2. **Toward zero applies per operation, not per expression.** A rounded divisor
+   biases the quotient upward: `inv(inv(6))` is `6.` then 65 zeros and a `2`. A
+   negative result rounds toward +∞: `-1 / 3` is `-0.` then 67 threes. Get
+   protocol-favourable rounding from operand order (for positive values
+   `a × b / c` truncates down, `a / (c / b)` can land above) or from a margin.
+3. **`pow`, `log10` and `pow10` round to nearest at 41 digits.** `pow(a, 1)` can
+   exceed `a`: a 42-digit `a` ending in 5 rounds up. For `r = 1 + 4e-45`,
+   `pow(r, 0.5)` and `pow(r, 0.7)` are exactly 1, so `pow(r, w) - 1` charges
+   nothing. Never charge `approx - 1` without a minimum size and a margin taken
+   from the bounds under "log10, pow10, pow and sqrt".
+4. **Any `bytes32` is a Float.** An untrusted extreme makes ordinary arithmetic
+   revert: `mul(FLOAT_MIN_POSITIVE_VALUE, 0.5)` reverts `ExponentUnderflow` and
+   `add(FLOAT_MAX_POSITIVE_VALUE, FLOAT_MAX_POSITIVE_VALUE)` reverts
+   `ExponentOverflow`.
+5. **Equal values can have different bytes.** `1` and `10e-1` are `eq` but
+   differ as `bytes32`. Compare with `eq`, and `canonicalize` before hashing.
+6. **A sub-ulp add is absorbed, and a sub-ulp subtract removes a whole ulp.**
+   `1e76 + 1` is `1e76`, and `1e76 - 1` is `1e76 - 1e9`: repaying 1 wei of a
+   1e76 wei debt clears 1e9 wei.
+7. **An empty market makes `div` revert `DivisionByZero`.** Inflation protection
+   holds only while shares stay Floats. Against 1 share and `1e24 + 1` assets, a
+   `1e18` deposit gets just under `1e-6` shares and redeems exactly `1e18`; as
+   an integer share count it gets 0.
