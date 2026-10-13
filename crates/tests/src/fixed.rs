@@ -519,3 +519,58 @@ proptest! {
         }
     }
 }
+
+// ------------------------------------------- log10Ratio in-place multiplies
+
+/// log10Ratio's zSquared, floor(z^2 / 1e50): at most this for z at most
+/// `LOG10_RATIO_Z_MAX`, and every integer up to it.
+fn z_squared_max() -> BigInt {
+    let z = literal_after(IMPL, "uint256 constant LOG10_RATIO_Z_MAX = ");
+    &z * &z / pow10(50)
+}
+
+/// log10Ratio squares z, then zSquared, as u^2 + floor((2 u v 1e25 + v^2) /
+/// 1e50) for x = u 1e25 + v, v below 1e25. That is floor(x^2 / 1e50)
+/// exactly, as x^2 less 2 u v 1e25 + v^2 is u^2 1e50, so neither square
+/// needs a 512-bit product. Each part grows with u and v, so u from the
+/// largest x and v of 1e25 - 1 bound them, and none reaches 2^256.
+#[test]
+fn log10_ratio_square_splits_fit_a_word() {
+    let word = BigInt::from(1) << 256u32;
+    let root = pow10(25);
+    let z_max = literal_after(IMPL, "uint256 constant LOG10_RATIO_Z_MAX = ");
+    let x_max = z_squared_max();
+    assert!(x_max <= z_max);
+    for max in [z_max, x_max] {
+        let u = &max / &root;
+        let v = &root - 1;
+        let dividend = &u * &v * 2 * &root + &v * &v;
+        assert!(dividend < word);
+        assert!(&u * &u + dividend / pow10(50) < word);
+    }
+}
+
+/// log10Ratio takes z^6 as floor(t (u 2^50 + v) / 1e50) = floor((t u +
+/// floor(t v / 2^50)) / 5^50) for zSquared = u 2^50 + v, v below 2^50, and t
+/// = floor(zSquared^2 / 1e50). Both floors are exact for any split, so only
+/// the word bounds need checking: t u and t v grow with zSquared and v, so
+/// the largest zSquared and v of 2^50 - 1 bound them.
+#[test]
+fn log10_ratio_sixth_split_fits_a_word() {
+    let word = BigInt::from(1) << 256u32;
+    let twos = BigInt::from(1) << 50u32;
+    assert_eq!(
+        literal_after(IMPL, "uint256 constant POW_FIXED_ONE_ODD = "),
+        num_traits::pow(BigInt::from(5), 50)
+    );
+    assert_eq!(
+        literal_after(IMPL, "uint256 constant POW_FIXED_ONE_TWOS_MASK = "),
+        &twos - 1
+    );
+    let x = z_squared_max();
+    let t = &x * &x / pow10(50);
+    let high = &t * (&x >> 50u32);
+    let low = &t * (&twos - 1);
+    assert!(low < word);
+    assert!(&high + (low >> 50u32) < word);
+}
