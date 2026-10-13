@@ -801,6 +801,41 @@ fn library_pack_nearest_bound() {
     }
 }
 
+/// #450: `packLossless` of a value past every Float is `ExponentOverflow`,
+/// the band `packLossy` truncates into the largest Float of a sign included;
+/// the largest Floats themselves pack.
+#[test]
+fn library_pack_lossless_past_every_float() {
+    let two223 = -r::int224_min();
+    let m = I32_MAX;
+    for (c, e, over) in [
+        (two223.clone(), m, true),
+        (two223.clone() + 1, m, true),
+        (two223.clone() + 2, m, true),
+        (-two223.clone() - 1, m, true),
+        (-two223.clone() - 2, m, true),
+        (two223.clone() * 10, m - 1, true),
+        (two223.clone() * 10 - 9, m - 1, true),
+        (two223.clone() * 10 + 19, m - 1, true),
+        (-two223.clone() * 10 - 1, m - 1, true),
+        (-two223.clone() * 10 - 19, m - 1, true),
+        (two223.clone() * 100 - 99, m - 2, true),
+        (two223.clone() - 1, m, false),
+        (-two223.clone(), m, false),
+        (two223.clone() * 10 - 10, m - 1, false),
+        (-two223.clone() * 10, m - 1, false),
+    ] {
+        let e = BigInt::from(e);
+        let got = r::pack_lossless(&c, &e);
+        if over {
+            assert_eq!(got.unwrap_err(), r::RefError::ExponentOverflow, "{c}e{e}");
+        } else {
+            assert!(got.is_ok(), "{c}e{e}: {got:?}");
+        }
+        run(check_pack_lossless(&c, &e));
+    }
+}
+
 /// Every whole number in each representation down to 68 digits, and its
 /// neighbours, which are not whole.
 #[test]

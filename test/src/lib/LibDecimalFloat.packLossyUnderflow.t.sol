@@ -529,9 +529,13 @@ contract LibDecimalFloatPackLossyUnderflowTest is Test {
     }
 
     /// A coefficient just past int224 at the ceiling takes the bound there, as
-    /// it does at any exponent (#332). One whose shed digit leaves a
-    /// coefficient past the bound exceeds the largest Float, so shedding it
-    /// must not be undone by a lift into a smaller in-range value: it reverts.
+    /// it does at any exponent (#332), though the value is past the largest
+    /// Float of its sign. From 2^223 + 2 in magnitude the shed coefficient at
+    /// int32.max + 1 is past int224.max / 10, so there is no bound to take and
+    /// shedding must not be undone by a lift into a smaller in-range value: it
+    /// reverts. The threshold is the same for both signs, so the band that
+    /// truncates is 2^223 - 1 to 2^223 + 1 positive and -2^223 to -2^223 - 1
+    /// negative (#452).
     function testPackLossyPastInt224AtCeiling() external {
         checkAgainstOracle(INT224_MAX + 1, INT32_MAX);
         checkAgainstOracle(INT224_MIN - 1, INT32_MAX);
