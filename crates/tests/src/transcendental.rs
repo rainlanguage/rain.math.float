@@ -874,16 +874,11 @@ pub fn monotone_pow_half(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
 
 /// a^b against a^c for b < c.
 fn monotone_pow_pair(a: &Dec, b: &Dec, c: &Dec) -> Result<(), TestCaseError> {
-    let case = format!(
-        "pow({0}, {1}) and pow({0}, {2})",
-        show(a),
-        show(b),
-        show(&c)
-    );
+    let case = format!("pow({0}, {1}) and pow({0}, {2})", show(a), show(b), show(c));
     if a.cmp_value(&Dec::new(1, 0)).is_gt() {
-        check_monotone(&case, point_pow(a, b), point_pow(a, &c))
+        check_monotone(&case, point_pow(a, b), point_pow(a, c))
     } else {
-        check_monotone(&case, point_pow(a, &c), point_pow(a, b))
+        check_monotone(&case, point_pow(a, c), point_pow(a, b))
     }
 }
 
