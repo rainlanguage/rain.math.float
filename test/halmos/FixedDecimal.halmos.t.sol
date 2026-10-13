@@ -12,19 +12,27 @@ import {
 import {LibHalmosExact} from "test/halmos/LibHalmosExact.sol";
 
 /// Halmos proof of SPEC.md "Fixed-decimal conversions" for
-/// `fromFixedDecimalLossy`, `fromFixedDecimalLossless`, `toFixedDecimalLossy`
-/// and `toFixedDecimalLossless`: values, lossless flags, revert selectors and
-/// revert arguments.
+/// `fromFixedDecimalLossy`, `fromFixedDecimalLossyPacked`,
+/// `fromFixedDecimalLossless`, `fromFixedDecimalLosslessPacked`,
+/// `toFixedDecimalLossy` and `toFixedDecimalLossless`: values, FLOAT_ZERO as
+/// all bits zero, lossless flags, revert selectors and revert arguments.
 ///
-/// from: every uint256 v and uint8 d in one lemma each.
+/// from: every uint256 v and uint8 d. `fromFixedDecimalLossless` in one
+/// lemma; the others in SMALL (v <= int256.max) and LARGE (v > int256.max).
 ///
-/// to: both overloads, the (int256 c, int256 e) pair and the Float (c in the
-/// low 224 bits, e in the high 32). With k = e + d over the integers, the
+/// to, (int256 c, int256 e) pair: with k = e + d over the integers, the
 /// slices LOW (k < -77), MID (k in [-77, 77], one constant k per path) and
-/// HIGH (k > 77) partition every (c, e, d), so the three lemmas of each
-/// overload cover every input. MID's `j` only names k: the j it returns on
-/// (j > 154) name no k, and every (c, e, d) with k in [-77, 77] is reached by
-/// e = k - d.
+/// HIGH (k > 77) partition every (c, e, d). MID's `j` only names k: the j
+/// it returns on (j > 154) name no k, and every (c, e, d) with k in
+/// [-77, 77] is reached by e = k - d. MID cases are j, sliced by `inSlice`.
+///
+/// to, Float overload (c in the low 224 bits, e in the high 32): LOW and HIGH
+/// as for the pair. MID is not proved directly: the overload reads e back
+/// with `sar`, so its `e + d` is no constant on a path and halmos leaves
+/// `10 ** -(e + d)` uninterpreted. `FloatIsPair` proves instead, for every
+/// int224 c, int32 e and uint8 d, that the overload's outcome is byte for
+/// byte the pair overload's at (c, e), which the pair lemmas prove for every
+/// int256 c and e.
 contract FixedDecimalHalmosTest {
     uint256 internal constant OK = 0;
     uint256 internal constant NEGATIVE = 1;
@@ -42,6 +50,14 @@ contract FixedDecimalHalmosTest {
 
     function fromLossless(uint256 v, uint8 d) external pure returns (int256, int256) {
         return LibDecimalFloat.fromFixedDecimalLossless(v, d);
+    }
+
+    function fromLossyPacked(uint256 v, uint8 d) external pure returns (Float, bool) {
+        return LibDecimalFloat.fromFixedDecimalLossyPacked(v, d);
+    }
+
+    function fromLosslessPacked(uint256 v, uint8 d) external pure returns (Float) {
+        return LibDecimalFloat.fromFixedDecimalLosslessPacked(v, d);
     }
 
     function toLossyPair(int256 c, int256 e, uint8 d) external pure returns (uint256, bool) {
@@ -97,7 +113,7 @@ contract FixedDecimalHalmosTest {
         return x * 10 <= v && v - x * 10 < 10 && lossless == (x * 10 == v);
     }
 
-    function check_fromFixedDecimalLossy(uint256 v, uint8 d) external view {
+    function checkFromLossy(uint256 v, uint8 d) internal view {
         (int256 sc, int256 se, bool sl) = fromRule(v, d);
         assert(fromValueHolds(v, d, sc, se, sl));
         try this.fromLossy(v, d) returns (int256 c, int256 e, bool lossless) {
@@ -107,7 +123,19 @@ contract FixedDecimalHalmosTest {
         }
     }
 
-    function check_fromFixedDecimalLossless(uint256 v, uint8 d) external view {
+    /// SMALL: v <= int256.max.
+    function check_fromFixedDecimalLossySmall(uint256 v, uint8 d) external view {
+        if (v > uint256(type(int256).max)) return;
+        checkFromLossy(v, d);
+    }
+
+    /// LARGE: v > int256.max.
+    function check_fromFixedDecimalLossyLarge(uint256 v, uint8 d) external view {
+        if (v <= uint256(type(int256).max)) return;
+        checkFromLossy(v, d);
+    }
+
+    function check_fromFixedDecimalLosslessAll(uint256 v, uint8 d) external view {
         (int256 sc, int256 se, bool sl) = fromRule(v, d);
         try this.fromLossless(v, d) returns (int256 c, int256 e) {
             assert(sl && c == sc && e == se);
@@ -117,6 +145,93 @@ contract FixedDecimalHalmosTest {
             // forge-lint: disable-next-line(unsafe-typecast)
             assert(arg(err, 0) == uint256(sc) && arg(err, 1) == uint256(se));
         }
+    }
+
+    /// SPEC `packLossy` of c >= 0 at e in [-255, 1], far inside int32 on both
+    /// sides: the Float toward zero of c 10^e is the largest m 10^f at most
+    /// c 10^e over 0 <= m <= L = int224.max. With k the fewest digits to shed
+    /// so q = floor(c / 10^k) <= L (k <= 10, as 2^255 < L 10^10), that is
+    /// q 10^(e + k), or L 10^(e + k - 1) when L > 10 q (then
+    /// floor(c / 10^(k - 1)) > L, so L 10^(k - 1) < c and it is never exact).
+    /// `exact`: m 10^f equals c 10^e.
+    function packRule(int256 c, int256 e) internal pure returns (int256 m, int256 f, bool exact) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint256 x = uint256(c);
+        uint256 l = uint256(int256(type(int224).max));
+        if (x <= l) return (c, e, true);
+        uint256 k = 1;
+        for (uint256 i = 0; i < 9; i++) {
+            if (x / 10 ** k > l) k++;
+        }
+        uint256 p = 10 ** k;
+        uint256 q = x / p;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 fk = e + int256(k);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (l > q * 10) return (int256(l), fk - 1, false);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return (int256(q), fk, q * p == x);
+    }
+
+    /// r is FLOAT_ZERO for m = 0, otherwise its low 224 bits (signed) times
+    /// 10^(its high 32 bits, signed) equal m 10^f.
+    function isFloatOf(Float r, int256 m, int256 f) internal pure returns (bool) {
+        uint256 raw = uint256(Float.unwrap(r));
+        if (m == 0) return raw == 0;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 rc = int224(uint224(raw));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 re = int32(uint32(raw >> 224));
+        return LibHalmosExact.eqValue(rc, re, m, f);
+    }
+
+    function checkFromLossyPacked(uint256 v, uint8 d) internal view {
+        (int256 sc, int256 se, bool sl) = fromRule(v, d);
+        (int256 m, int256 f, bool exact) = packRule(sc, se);
+        try this.fromLossyPacked(v, d) returns (Float r, bool lossless) {
+            assert(lossless == (sl && exact));
+            assert(isFloatOf(r, m, f));
+        } catch {
+            assert(false);
+        }
+    }
+
+    function checkFromLosslessPacked(uint256 v, uint8 d) internal view {
+        (int256 sc, int256 se, bool sl) = fromRule(v, d);
+        (int256 m, int256 f, bool exact) = packRule(sc, se);
+        try this.fromLosslessPacked(v, d) returns (Float r) {
+            assert(sl && exact);
+            assert(isFloatOf(r, m, f));
+        } catch (bytes memory err) {
+            assert(!(sl && exact));
+            assert(isError(err, LossyConversionToFloat.selector, 2));
+            // forge-lint: disable-next-line(unsafe-typecast)
+            assert(arg(err, 0) == uint256(sc) && arg(err, 1) == uint256(se));
+        }
+    }
+
+    /// SMALL: v <= int256.max.
+    function check_fromFixedDecimalLossyPackedSmall(uint256 v, uint8 d) external view {
+        if (v > uint256(type(int256).max)) return;
+        checkFromLossyPacked(v, d);
+    }
+
+    /// LARGE: v > int256.max.
+    function check_fromFixedDecimalLossyPackedLarge(uint256 v, uint8 d) external view {
+        if (v <= uint256(type(int256).max)) return;
+        checkFromLossyPacked(v, d);
+    }
+
+    /// SMALL: v <= int256.max.
+    function check_fromFixedDecimalLosslessPackedSmall(uint256 v, uint8 d) external view {
+        if (v > uint256(type(int256).max)) return;
+        checkFromLosslessPacked(v, d);
+    }
+
+    /// LARGE: v > int256.max.
+    function check_fromFixedDecimalLosslessPackedLarge(uint256 v, uint8 d) external view {
+        if (v <= uint256(type(int256).max)) return;
+        checkFromLosslessPacked(v, d);
     }
 
     /// The Float with c in the low 224 bits and e in the high 32.
@@ -197,6 +312,33 @@ contract FixedDecimalHalmosTest {
         }
     }
 
+    /// The Float overload at Float(c, e) has exactly the pair overload's
+    /// outcome at (c, e): success flag and every return or revert byte.
+    function checkFloatIsPair(bool lossless, int224 c, int32 e, uint8 d) internal view {
+        Float f = floatOf(c, e);
+        (bool okF, bytes memory rF) = address(this).staticcall(
+            lossless ? abi.encodeCall(this.toLosslessFloat, (f, d)) : abi.encodeCall(this.toLossyFloat, (f, d))
+        );
+        (bool okP, bytes memory rP) = address(this).staticcall(
+            lossless ? abi.encodeCall(this.toLosslessPair, (c, e, d)) : abi.encodeCall(this.toLossyPair, (c, e, d))
+        );
+        assert(okF == okP && rF.length == rP.length);
+        for (uint256 i = 0; i < rF.length; i += 32) {
+            uint256 a;
+            uint256 b;
+            assembly ("memory-safe") {
+                a := mload(add(add(rF, 32), i))
+                b := mload(add(add(rP, 32), i))
+            }
+            // Only the bytes before rF.length.
+            if (rF.length - i < 32) {
+                uint256 drop = 8 * (32 - (rF.length - i));
+                (a, b) = (a >> drop, b >> drop);
+            }
+            assert(a == b);
+        }
+    }
+
     /// LOW: k < -77. A nonzero |c| 10^k is below 2^255 10^-78 < 1, so it
     /// truncates to 0 and is not exact.
     function checkLow(uint256 mode, int256 c, int256 e, uint8 d) internal view {
@@ -213,12 +355,12 @@ contract FixedDecimalHalmosTest {
         checkTo(mode, c, e, d, 0, false, OVERFLOW);
     }
 
-    /// MID: k = e + d in [-77, 77], one constant k per path, e = k - d.
-    /// c 10^k truncated toward zero, exact iff nothing is dropped; at or above
-    /// 2^256 overflows.
+    /// MID: k = e + d = j - 77 for j in [0, 154], one constant k per path,
+    /// e = k - d. c 10^k truncated toward zero, exact iff nothing is dropped;
+    /// at or above 2^256 overflows.
     function checkMid(uint256 mode, int256 c, uint8 d, uint256 j) internal view {
         j = LibHalmosExact.concrete(j, 8);
-        if (j > 154) return;
+        if (j > 154 || !LibHalmosExact.inSlice(j)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 k = int256(j) - 77;
         int256 e = k - int256(uint256(d));
@@ -266,23 +408,23 @@ contract FixedDecimalHalmosTest {
         checkLow(LOSSY_FLOAT, c, e, d);
     }
 
-    function check_toFixedDecimalLossyFloatMid(int224 c, uint8 d, uint256 j) external view {
-        checkMid(LOSSY_FLOAT, c, d, j);
-    }
-
     function check_toFixedDecimalLossyFloatHigh(int224 c, int32 e, uint8 d) external view {
         checkHigh(LOSSY_FLOAT, c, e, d);
+    }
+
+    function check_toFixedDecimalLossyFloatIsPair(int224 c, int32 e, uint8 d) external view {
+        checkFloatIsPair(false, c, e, d);
     }
 
     function check_toFixedDecimalLosslessFloatLow(int224 c, int32 e, uint8 d) external view {
         checkLow(LOSSLESS_FLOAT, c, e, d);
     }
 
-    function check_toFixedDecimalLosslessFloatMid(int224 c, uint8 d, uint256 j) external view {
-        checkMid(LOSSLESS_FLOAT, c, d, j);
-    }
-
     function check_toFixedDecimalLosslessFloatHigh(int224 c, int32 e, uint8 d) external view {
         checkHigh(LOSSLESS_FLOAT, c, e, d);
+    }
+
+    function check_toFixedDecimalLosslessFloatIsPair(int224 c, int32 e, uint8 d) external view {
+        checkFloatIsPair(true, c, e, d);
     }
 }

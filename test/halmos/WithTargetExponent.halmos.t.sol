@@ -19,7 +19,7 @@ import {LibHalmosExact} from "test/halmos/LibHalmosExact.sol";
 /// (c, e, t). The NEAR lemmas take the gap as `j` and the free end as a
 /// parameter; the j they return on name no gap in their range, and the free
 /// ends they return on would put the other end outside int256, so they are
-/// not inputs.
+/// not inputs. NEAR cases are the gap, sliced by `inSlice`.
 contract WithTargetExponentHalmosTest {
     function withTargetExponent(int256 c, int256 e, int256 t) external pure returns (int256) {
         return LibDecimalFloatImplementation.withTargetExponent(c, e, t);
@@ -59,7 +59,7 @@ contract WithTargetExponentHalmosTest {
     /// SHRINK_NEAR: t = e + s, s in [0, 76].
     function check_withTargetExponentShrinkNear(int256 c, int256 e, uint256 j) external view {
         uint256 s = LibHalmosExact.concrete(j, 7);
-        if (s > 76) return;
+        if (s > 76 || !LibHalmosExact.inSlice(s)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         if (e > type(int256).max - int256(s)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -82,7 +82,7 @@ contract WithTargetExponentHalmosTest {
     /// for c < 0.
     function check_withTargetExponentGrowNear(int256 c, int256 t, uint256 j) external view {
         uint256 g = LibHalmosExact.concrete(j, 7);
-        if (g < 1 || g > 76) return;
+        if (g < 1 || g > 76 || !LibHalmosExact.inSlice(g)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         if (t > type(int256).max - int256(g)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
