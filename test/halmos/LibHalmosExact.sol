@@ -2,11 +2,23 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
+import {Vm} from "forge-std-1.17.0/src/Vm.sol";
+
+Vm constant VM = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
+
 /// Exact integer helpers for the Halmos proofs. Every multiply has an operand
 /// that is constant on the path, so halmos never makes it uninterpreted.
 library LibHalmosExact {
     /// floor(int256.max / 10).
     uint256 internal constant T10 = uint256(type(int256).max) / 10;
+
+    /// Whether case `i` of a lemma's case split is in this run's slice
+    /// [HALMOS_SLICE_LO, HALMOS_SLICE_HI], every case when unset. A lemma
+    /// returns for a case outside it; the CI slices of each lemma
+    /// (`.github/workflows/halmos.yaml`) tile its whole case range.
+    function inSlice(uint256 i) internal view returns (bool) {
+        return i >= VM.envOr("HALMOS_SLICE_LO", uint256(0)) && i <= VM.envOr("HALMOS_SLICE_HI", type(uint256).max);
+    }
 
     function abs(int256 x) internal pure returns (uint256) {
         unchecked {

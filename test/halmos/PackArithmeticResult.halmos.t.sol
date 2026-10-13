@@ -131,6 +131,7 @@ contract PackArithmeticResultHalmosTest {
     /// e in [int32.min - 127, int32.min], one constant e per path.
     function check_packLow(int256 c, uint256 j) external view {
         j = LibHalmosExact.concrete(j, 7);
+        if (!LibHalmosExact.inSlice(j)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         checkPack(c, FMIN - int256(j));
     }
@@ -138,6 +139,7 @@ contract PackArithmeticResultHalmosTest {
     /// e in [int32.max - 10, int32.max + 117], one constant e per path.
     function check_packHigh(int256 c, uint256 j) external view {
         j = LibHalmosExact.concrete(j, 7);
+        if (!LibHalmosExact.inSlice(j)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         checkPack(c, FMAX - 10 + int256(j));
     }
