@@ -1467,10 +1467,11 @@ library LibDecimalFloatImplementation {
                 revert SqrtOutOfRange(signedCoefficient, exponent);
             }
         }
-        // The value is C 10^e with C in [1e75, 1e76). A root halves e, so it
-        // is taken of N 10^(e - s) with N = C 10^s and e - s even: s is 5 for
-        // an odd e and 6 for an even one. N is in [1e80, 1e82), so sqrt N is
-        // in [1e40, 1e41) at exponent (e - s) / 2.
+        // The value is C 10^e with C in [1e75, 1e76). A root halves e, which
+        // must be even to stay a power of ten (an odd e leaves a factor of
+        // sqrt 10). So it is taken of N 10^(e - s) with N = C 10^s and e - s
+        // even: s is 5 for an odd e and 6 for an even one. N is in
+        // [1e80, 1e82), so sqrt N is in [1e40, 1e41) at exponent (e - s) / 2.
         (signedCoefficient, exponent) = scaleUpUnguarded(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
