@@ -739,15 +739,15 @@ pub fn format_scientific(x: &Dec) -> Result<String, RefError> {
 }
 
 /// The documented string of `toDecimalString(x, false)`: plain decimal for
-/// `|exponent| <= 1000`.
+/// a canonical (trailing zeros stripped) `|exponent| <= 1000`.
 pub fn format_plain(x: &Dec) -> Result<String, RefError> {
     if x.is_zero() {
         return Ok("0".to_string());
     }
-    if x.e.abs() > 1000 {
+    let n = x.normalized();
+    if n.e.abs() > 1000 {
         return Err(RefError::UnformatableExponent);
     }
-    let n = x.normalized();
     let d = n.c.abs().to_string();
     let mut out = String::new();
     if n.is_negative() {
@@ -1009,5 +1009,17 @@ mod tests {
         assert_eq!(format_plain(&Dec::new(-12300, -5)).unwrap(), "-0.123");
         assert_eq!(format_plain(&Dec::new(12, 2)).unwrap(), "1200");
         assert_eq!(format_plain(&Dec::new(15, -1)).unwrap(), "1.5");
+        assert_eq!(
+            format_plain(&Dec::new(10, 999)).unwrap(),
+            format!("1{}", "0".repeat(1000))
+        );
+        assert_eq!(
+            format_plain(&Dec::new(BigInt::from(10).pow(66), -1001)).unwrap(),
+            format!("0.{}1", "0".repeat(934))
+        );
+        assert_eq!(
+            format_plain(&Dec::new(10, 1000)).unwrap_err(),
+            RefError::UnformatableExponent
+        );
     }
 }

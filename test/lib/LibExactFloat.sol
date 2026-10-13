@@ -149,6 +149,16 @@ library LibExactFloat {
         return x < 0 ? uint256(-(x + 1)) + 1 : uint256(x);
     }
 
+    /// The exponent of `signedCoefficient × 10^exponent` once the
+    /// coefficient's trailing decimal zeros move into it.
+    function canonicalExponent(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+        while (signedCoefficient != 0 && signedCoefficient % 10 == 0) {
+            signedCoefficient /= 10;
+            exponent++;
+        }
+        return exponent;
+    }
+
     /// Whether the exact non-zero `magnitude × 10^exponent`, of either sign,
     /// packs past every Float.
     /// Exponents far enough from int32.max decide alone, as the magnitude has
