@@ -13,8 +13,7 @@ import {
     ZeroNegativePower,
     PowNegativeBase,
     AgreeToleranceNegative,
-    AgreeNoPositiveTolerance,
-    AgreeUnordered
+    AgreeNoPositiveTolerance
 } from "../error/ErrDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImplementation.sol";
 
@@ -1376,7 +1375,7 @@ library LibDecimalFloat {
     /// Whether the two extremes of a set of values are close enough to each
     /// other, given an absolute and a proportional tolerance.
     ///
-    /// `highest - lowest <= max(absolute, proportional * max(abs(lowest), abs(highest)))`
+    /// `abs(highest - lowest) <= max(absolute, proportional * max(abs(lowest), abs(highest)))`
     ///
     /// BOTH TOLERANCES ARE TAKEN, and the LARGER of the two terms is the
     /// limit. A proportional tolerance alone collapses as the values approach
@@ -1427,16 +1426,13 @@ library LibDecimalFloat {
     /// what each would otherwise silently do. Either tolerance ALONE may be
     /// zero, which is how a caller asks for only the other one.
     ///
-    /// `lowest` MAY NOT BE ABOVE `highest`. Reversed, the spread is negative
-    /// and so within any valid limit, so every reversed pair would agree
-    /// however far apart. Rejected rather than reordered, because a caller
-    /// that passed its extremes reversed did not find them, and reordering
-    /// would answer for a set it never computed. See `AgreeUnordered`. Equal
-    /// values are ordered.
+    /// THE EXTREMES MAY COME IN EITHER ORDER. `agree(a, p, x, y)` and
+    /// `agree(a, p, y, x)` give the same answer: the spread is the distance
+    /// between them, and the anchor is the larger magnitude.
     /// @param absolute The absolute tolerance, in the same units as the values.
     /// @param proportional The proportional tolerance, as a fraction.
-    /// @param lowest The lowest value in the set.
-    /// @param highest The highest value in the set.
+    /// @param lowest One extreme of the set, the lowest by convention.
+    /// @param highest The other extreme, the highest by convention.
     /// @return Whether the spread is within the limit.
     function agree(Float absolute, Float proportional, Float lowest, Float highest) internal pure returns (bool) {
         agreeValidateTolerances(absolute, proportional);
@@ -1478,8 +1474,7 @@ library LibDecimalFloat {
         }
     }
 
-    /// The distance between the two extremes, unpacked. Reverts
-    /// `AgreeUnordered` where `lowest > highest`.
+    /// The distance between the two extremes, unpacked, in either order.
     ///
     /// Split out of `agree` because holding the four unpacked values and the
     /// intermediates in one frame exceeds the stack.
@@ -1494,13 +1489,12 @@ library LibDecimalFloat {
         // `return f(...)` on a tuple-returning call as an ignored return.
         (int256 spreadCoefficient, int256 spreadExponent) =
             LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
-        // `sub` truncates toward zero once, at the larger operand's int256
-        // unit `u`, so the sign is exact unless a nonzero difference is under
-        // `u`. None is: the larger is at least 1e75 u, so a smaller operand
-        // within `u` of it needs an exponent above `u` (an int224 holds under
-        // 1.4e67), making the difference a nonzero multiple of at least `u`.
+        // `add` truncates magnitudes toward zero whatever its operands' order
+        // or signs, so `minus` of this is `sub(lowest, highest)`. At
+        // int256.min both shed the same last digit: `minus` divides by 10,
+        // and the positive `add` overflows and does.
         if (spreadCoefficient < 0) {
-            revert AgreeUnordered(lowest, highest);
+            (spreadCoefficient, spreadExponent) = LibDecimalFloatImplementation.minus(spreadCoefficient, spreadExponent);
         }
         return (spreadCoefficient, spreadExponent);
     }

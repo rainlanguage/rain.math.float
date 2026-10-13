@@ -661,6 +661,11 @@ proptest! {
     }
 
     #[test]
+    fn library_agree_reversed((absolute, proportional, lowest, highest) in agree_args()) {
+        check_agree(&absolute, &proportional, &highest, &lowest)?;
+    }
+
+    #[test]
     fn library_is_odd(a in x::float()) { check_is_odd(&a)?; }
 
     #[test]
@@ -861,49 +866,43 @@ fn library_agree_tolerance_errors() {
     }
 }
 
-/// A reversed pair is `AgreeUnordered` whatever its spread, after the
-/// tolerance errors, and equal values in either representation are ordered.
+/// The extremes in either order give the same answer, the tolerance errors
+/// still first. The expected verdicts are exact spreads against the limit:
+/// 2e6 > 1e-18, 1 <= 1, 1.001 > 1 and 0 <= 1e-18.
 #[test]
-fn library_agree_unordered() {
+fn library_agree_either_order() {
     let tiny = Dec::new(1, -18);
     let million = Dec::new(1_000_000, 0);
-    assert_eq!(
-        r::agree(&tiny, &Dec::zero(), &million, &million.neg()),
-        Err(RefError::AgreeUnordered)
-    );
-    assert_eq!(
-        r::agree(
-            &Dec::new(1, 0),
-            &Dec::zero(),
-            &Dec::new(101, 0),
-            &Dec::new(100, 0)
+    let one = Dec::new(1, 0);
+    let cases = [
+        (tiny.clone(), million.clone(), million.neg(), Ok(false)),
+        (one.clone(), Dec::new(101, 0), Dec::new(100, 0), Ok(true)),
+        (
+            one.clone(),
+            Dec::new(101001, -3),
+            Dec::new(100, 0),
+            Ok(false),
         ),
-        Err(RefError::AgreeUnordered)
-    );
-    assert_eq!(
-        r::agree(
-            &Dec::new(-1, 0),
-            &Dec::zero(),
-            &Dec::new(101, 0),
-            &Dec::new(100, 0)
+        (tiny.clone(), Dec::new(10, -1), one.clone(), Ok(true)),
+        (tiny.clone(), Dec::new(0, 5), Dec::new(0, -5), Ok(true)),
+        (
+            Dec::new(-1, 0),
+            Dec::new(101, 0),
+            Dec::new(100, 0),
+            Err(RefError::AgreeToleranceNegative),
         ),
-        Err(RefError::AgreeToleranceNegative)
-    );
-    assert_eq!(
-        r::agree(&tiny, &Dec::zero(), &Dec::new(10, -1), &Dec::new(1, 0)),
-        Ok(true)
-    );
-    let pairs = [
-        (million.clone(), million.neg()),
-        (Dec::new(101, 0), Dec::new(100, 0)),
-        (Dec::new(1, 0), Dec::new(10i64.pow(17) - 1, -17)),
-        (Dec::new(10, -1), Dec::new(1, 0)),
-        (Dec::new(1, 0), Dec::new(10, -1)),
-        (Dec::new(0, 5), Dec::new(0, -5)),
+        (
+            Dec::zero(),
+            Dec::new(101, 0),
+            Dec::new(100, 0),
+            Err(RefError::AgreeNoPositiveTolerance),
+        ),
     ];
-    for (l, h) in &pairs {
-        run(check_agree(&tiny, &Dec::new(1, -2), l, h));
-        run(check_agree(&Dec::new(-1, 0), &Dec::zero(), l, h));
+    for (absolute, a, b, want) in &cases {
+        assert_eq!(&r::agree(absolute, &Dec::zero(), a, b), want);
+        assert_eq!(&r::agree(absolute, &Dec::zero(), b, a), want);
+        run(check_agree(absolute, &Dec::zero(), a, b));
+        run(check_agree(absolute, &Dec::zero(), b, a));
     }
 }
 
