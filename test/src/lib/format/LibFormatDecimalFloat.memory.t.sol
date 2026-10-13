@@ -57,4 +57,10 @@ contract LibFormatDecimalFloatMemoryTest is Test {
     function testFormatMemoryNonScientificInteger() external pure {
         checkMemory(type(int224).min, 0, false, "-13479973333575319897333507543509815336818572211270286240551805124608");
     }
+
+    /// -15 × 10^2 = -1500. The zero fill writes whole words of `0` past the
+    /// last zero, so the padding must be cleared after it.
+    function testFormatMemoryNonScientificTrailingZeros() external pure {
+        checkMemory(-15, 2, false, "-1500");
+    }
 }
