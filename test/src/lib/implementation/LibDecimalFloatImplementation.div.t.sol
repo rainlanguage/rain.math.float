@@ -185,6 +185,17 @@ contract LibDecimalFloatImplementationDivTest is Test {
         this.divExternal(1e76, 76, 1, type(int256).min + 76);
     }
 
+    /// A positive dividend over a negative power of ten divisor, with the
+    /// quotient exponent exactly `type(int256).max`: `1e76 10^(max - 76)` over
+    /// `-1 10^-76` is exactly `-1e76 10^max`, which needs no shed digit, so it
+    /// returns. Only a `type(int256).min` dividend there has a 2^255 quotient.
+    function testDivNegativePowerOfTenDivisorAtMax() external pure {
+        int256 max = type(int256).max;
+        checkDiv(1e76, max - 76, -1, -76, -1e76, max);
+        checkDiv(-1e76, max - 76, -1, -76, 1e76, max);
+        checkDiv(type(int256).max, max - 76, -1, -76, -type(int256).max, max);
+    }
+
     /// An unfull divisor at the floor overflows the quotient exponent for a
     /// numerator with a non-negative maximized exponent.
     function testDivUnfullDivisorExponentOverflow() external {
