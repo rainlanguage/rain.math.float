@@ -858,16 +858,27 @@ pub fn monotone_pow10(x: &Dec) -> Result<(), TestCaseError> {
 /// so neighbouring b are not ordered.
 pub fn monotone_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let Some(c) = next(b) else { return Ok(()) };
-    let case = format!(
-        "pow({0}, {1}) and pow({0}, {2})",
-        show(a),
-        show(b),
-        show(&c)
-    );
+    monotone_pow_pair(a, b, &c)
+}
+
+/// A half b = N + 1/2 against both neighbours, as the root at the half meets
+/// the log10 and pow10 leg either side.
+pub fn monotone_pow_half(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
+    monotone_pow(a, b)?;
+    let below = Dec::new(&b.c - 1, b.e);
+    if !r::fits_int224(&below.c) {
+        return Ok(());
+    }
+    monotone_pow_pair(a, &below, b)
+}
+
+/// a^b against a^c for b < c.
+fn monotone_pow_pair(a: &Dec, b: &Dec, c: &Dec) -> Result<(), TestCaseError> {
+    let case = format!("pow({0}, {1}) and pow({0}, {2})", show(a), show(b), show(c));
     if a.cmp_value(&Dec::new(1, 0)).is_gt() {
-        check_monotone(&case, point_pow(a, b), point_pow(a, &c))
+        check_monotone(&case, point_pow(a, b), point_pow(a, c))
     } else {
-        check_monotone(&case, point_pow(a, &c), point_pow(a, b))
+        check_monotone(&case, point_pow(a, c), point_pow(a, b))
     }
 }
 
@@ -1129,7 +1140,7 @@ proptest! {
     fn monotone_pow_neighbours((a, b) in (moderate(), small_b())) { monotone_pow(&a, &b)?; }
 
     #[test]
-    fn monotone_pow_half_neighbours((a, b) in (moderate(), half_b())) { monotone_pow(&a, &b)?; }
+    fn monotone_pow_half_neighbours((a, b) in (moderate(), half_b())) { monotone_pow_half(&a, &b)?; }
 
     #[test]
     fn monotone_sqrt_neighbours(a in a_sqrt()) { monotone_sqrt(&a)?; }
@@ -1632,6 +1643,60 @@ mod anchors {
         if let Err(e) = r {
             panic!("{e}");
         }
+    }
+
+    fn int(s: &str) -> BigInt {
+        BigInt::parse_bytes(s.as_bytes(), 10).expect("decimal")
+    }
+
+    /// #505: a just above 100 and b = 6.5 and 6.5 -+ 1e-66. The half takes
+    /// the root and its neighbours the leg, which lands one unit lower on
+    /// both sides, so a^6.5 is one unit above both. Exact integers put all
+    /// three true values above the tie t between the two results and within
+    /// 3e-65 of it relative, inside the leg's 1.1343e-48: the documented rule
+    /// allows it.
+    #[test]
+    fn pow_half_is_one_unit_above_both_neighbours() {
+        let big_a = int("10000000000000000000000000000000011111111");
+        let a = Dec::new(big_a.clone(), -38);
+        let mid = Dec::new(BigInt::from(65) * pow10(65), -66);
+        let below = Dec::new(&mid.c - 1, -66);
+        let above = Dec::new(&mid.c + 1, -66);
+        let lo = int("10000000000000000000000000000000072222221");
+        for (b, want) in [(&below, &lo), (&mid, &(&lo + 1)), (&above, &lo)] {
+            let got = sol_pow(&a, b).expect("pow");
+            let want = Dec::new(want.clone(), -27);
+            assert!(
+                got.eq_value(&want),
+                "pow(a, {}) is {got:?}, want {want:?}",
+                show(b)
+            );
+        }
+        // a = A 1e-38, t = T 1e-28 and eps = 1e-66, so with a^13 = A^13
+        // 1e-494 and t^2 = T^2 1e-56 every comparison of squares is between
+        // integers.
+        let big_t = &lo * 10 + 5;
+        let a13 = big_a.pow(13);
+        let t2 = &big_t * &big_t * pow10(438);
+        // a <= 1.001^4608, so a^eps <= 1.001^(4608 eps). x^y is concave in x
+        // for 0 < y < 1, so below its tangent at one: 1.001^(4608 eps) <= g
+        // = 1 + 4608 eps / 1000 = (1e69 + 4608) / 1e69. a > 1, so
+        // a^(6.5 - eps) < a^6.5 < a^(6.5 + eps).
+        let q: u32 = 4608;
+        assert!(BigInt::from(1001).pow(q) * pow10(38) >= &big_a * BigInt::from(1000).pow(q));
+        let g = pow10(69) + q;
+        // a^(6.5 - eps) >= a^6.5 / g > t.
+        assert!(&a13 * pow10(138) > &t2 * &g * &g);
+        // a^(6.5 + eps) <= a^6.5 g < t (1 + 3e-65) = t (1e65 + 3) / 1e65.
+        let slack = pow10(65) + 3;
+        assert!(&a13 * &g * &g * pow10(130) < &t2 * pow10(138) * &slack * &slack);
+        // 3e-65 is inside the leg's raw error.
+        assert!(
+            Dec::new(3, -65)
+                .cmp_value(&Dec::new(POW_RELATIVE_E52 - POW10_HALF_UNIT_E52, -52))
+                .is_lt()
+        );
+        run(monotone_pow_half(&a, &mid));
     }
 
     fn d(s: &str) -> Dec {

@@ -21,6 +21,12 @@ import {
 /// @dev Thrown when attempting to rescale a coefficient to a target exponent
 error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
 
+/// @dev Thrown by `unabsUnsignedMulOrDivLossy` when a magnitude that does not
+/// fit int256 at the result's sign must shed a digit at exponent
+/// `type(int256).max`. `mul` and `div` revert `ExponentOverflow` before they
+/// pass it such an input.
+error UnabsExponentOverflow(int256 a, int256 b, uint256 signedCoefficientAbs, int256 exponent);
+
 /// @dev The maximum difference in exponents when adding to rescale.
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
 
@@ -269,7 +275,9 @@ library LibDecimalFloatImplementation {
 
     /// Given the absolute value of the result coefficient, and the signs of
     /// the input coefficients, returns the signed coefficient and exponent of
-    /// the result of a multiplication or division operation.
+    /// the result of a multiplication or division operation. A magnitude that
+    /// does not fit int256 at the result's sign sheds its last digit into the
+    /// exponent, which reverts `UnabsExponentOverflow` at `type(int256).max`.
     /// @param a The signed coefficient of the first operand.
     /// @param b The signed coefficient of the second operand.
     /// @param signedCoefficientAbs The absolute value of the result coefficient.
@@ -289,10 +297,15 @@ library LibDecimalFloatImplementation {
                     // type(int256).min.
                     return (type(int256).min, exponent);
                 } else {
-                    // signedCoefficientAbs divided by 10 so won't truncate when
-                    // cast.
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    return (-int256(signedCoefficientAbs / 10), exponent + 1);
+                    if (exponent == type(int256).max) {
+                        revert UnabsExponentOverflow(a, b, signedCoefficientAbs, exponent);
+                    }
+                    unchecked {
+                        // signedCoefficientAbs divided by 10 so won't truncate
+                        // when cast. exponent < int256.max so + 1 won't wrap.
+                        // forge-lint: disable-next-line(unsafe-typecast)
+                        return (-int256(signedCoefficientAbs / 10), exponent + 1);
+                    }
                 }
             } else {
                 // signedCoefficientAbs [0, type(int256).max]
@@ -301,10 +314,15 @@ library LibDecimalFloatImplementation {
             }
         } else {
             if (signedCoefficientAbs > uint256(type(int256).max)) {
-                // signedCoefficientAbs divided by 10 so won't truncate when
-                // cast.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                return (int256(signedCoefficientAbs / 10), exponent + 1);
+                if (exponent == type(int256).max) {
+                    revert UnabsExponentOverflow(a, b, signedCoefficientAbs, exponent);
+                }
+                unchecked {
+                    // signedCoefficientAbs divided by 10 so won't truncate when
+                    // cast. exponent < int256.max so + 1 won't wrap.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    return (int256(signedCoefficientAbs / 10), exponent + 1);
+                }
             } else {
                 // signedCoefficientAbs is bound to the int256 range.
                 // forge-lint: disable-next-line(unsafe-typecast)
@@ -1108,10 +1126,24 @@ library LibDecimalFloatImplementation {
         return div(1e76, -76, signedCoefficient, exponent);
     }
 
-    /// log10(x) for a float x: an internal approximation within
-    /// 1.0037e-50, rounded to nearest at 41 significant digits half away from
-    /// zero, so within half a unit in the 41st digit plus that error. Near a tie either neighbour can result. log10(10^k) is
-    /// exactly k.
+    /// log10(x) for a float x: `log10Unrounded` rounded to nearest at 41
+    /// significant digits half away from zero. That is the rounding of an
+    /// approximation within 1.0037e-50 of the log, so within half a unit in
+    /// the 41st digit plus 1.0037e-50, for every input. Near a tie either
+    /// neighbour can result. log10(10^k) is exactly k.
+    /// - The approximation is the characteristic plus a correction at 1e-50,
+    ///   which `log10Unrounded` returns exactly for a characteristic below
+    ///   1e25 in magnitude. Within a factor 1.001 of a power of ten with
+    ///   characteristic 0 it is the correction alone, within 3.11e-49
+    ///   relative of a log under 1.5e-52.
+    /// - From 1e25 the sum goes through `add`, which truncates it towards
+    ///   zero to a multiple of 10^(n - 75) for a characteristic of n digits,
+    ///   so `log10Unrounded` alone can be off by more than 1.0037e-50. The
+    ///   sum has at least n - 1 integer digits, so each tie of the 41-digit
+    ///   rounding, and each power of ten that sets its digit count, is a
+    ///   multiple of 5 10^(n - 43), and so of 10^(n - 75). Truncation towards
+    ///   zero onto a grid holding all of them never crosses one, so the
+    ///   truncated sum rounds as the exact sum does.
     ///
     /// @param signedCoefficient The signed coefficient of the floating point
     /// number.
@@ -1126,6 +1158,10 @@ library LibDecimalFloatImplementation {
     /// Rounds a float to 41 significant digits, half away from zero. The
     /// exponent rises by the digits shed and never falls, so it reverts only
     /// `ExponentOverflow` when the rounded exponent passes int256.max.
+    /// The returned coefficient is at most 1e41 in magnitude. It is +-1e41
+    /// only when a kept prefix of 41 nines rounds up and carries, and is left
+    /// at 42 digits: rounding it again returns +-1e40 one exponent up, the
+    /// same value.
     /// @param signedCoefficient The signed coefficient of the float.
     /// @param exponent The exponent of the float.
     /// @return signedCoefficient The rounded signed coefficient.

@@ -108,15 +108,15 @@ library LibDecimalFloat {
     Float constant FLOAT_MIN_NEGATIVE_VALUE =
         Float.wrap(bytes32(uint256(0x7fffffff80000000000000000000000000000000000000000000000000000000)));
 
-    /// Euler's number
+    /// Euler's number: the closest Float not above e.
     /// 2.718281828459045235360287471352662497757247093699959574966967627724e66, -66
     Float constant FLOAT_E =
         Float.wrap(bytes32(uint256(0xffffffbe19cfc6ef4f44cf88f14500d013df534fcaad48fca1d5ca47bea26fcc)));
 
-    /// Pi
-    /// 3.141592653589793238462643383279502884197169399375105820974944592308e66, -66
+    /// Pi: the closest Float not above pi.
+    /// 3.141592653589793238462643383279502884197169399375105820974944592307e66, -66
     Float constant FLOAT_PI =
-        Float.wrap(bytes32(uint256(0xffffffbe1dd4c9e873614f593bba9c6007d9a7ac8d03a4b6c700a65cb537a1b4)));
+        Float.wrap(bytes32(uint256(0xffffffbe1dd4c9e873614f593bba9c6007d9a7ac8d03a4b6c700a65cb537a1b3)));
 
     /// Convert a fixed point decimal value to a signed coefficient and exponent.
     /// The conversion can be lossy if the unsigned value is too large to fit in
@@ -1062,7 +1062,12 @@ library LibDecimalFloat {
     /// order by exactly one unit in the last place, only when both true
     /// values lie within the larger raw error, 1.1343e-48 + N min(K1, K2 d)
     /// relative, of the same rounding tie, and never by more. Callers must
-    /// not rely on strict ordering at one-ulp resolution.
+    /// not rely on strict ordering at one-ulp resolution. The two paths meet
+    /// at every b = N + 1/2: the half takes the root, whose raw error has no
+    /// 1.1343e-48 term, and a fraction either side takes the leg. So when
+    /// the true values there lie within the leg's raw error of a tie, a^b at
+    /// the half can be one unit out of order with both neighbours at once,
+    /// above both or below both, within the same rule.
     /// Exact results stay exact: a power with at most 41 significant digits,
     /// integer or fractional such as 4^0.5.
     ///

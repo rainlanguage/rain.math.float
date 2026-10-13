@@ -2,29 +2,60 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test, stdError} from "forge-std-1.17.0/src/Test.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    UnabsExponentOverflow
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
     function unabsExternal(int256 a, int256 b, uint256 c, int256 exponent) external pure returns (int256, int256) {
         return LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(a, b, c, exponent);
     }
 
-    /// exponent + 1 overflows when exponent is type(int256).max and c
-    /// exceeds int256 range (same-sign operands).
-    function testUnabsExponentOverflowSameSign() external {
-        uint256 c = uint256(type(int256).max) + 2;
-        vm.expectRevert(stdError.arithmeticError);
-        this.unabsExternal(1, 1, c, type(int256).max);
+    function expectUnabsExponentOverflow(int256 a, int256 b, uint256 c, int256 exponent) internal {
+        vm.expectRevert(abi.encodeWithSelector(UnabsExponentOverflow.selector, a, b, c, exponent));
     }
 
-    /// exponent + 1 overflows when exponent is type(int256).max and c
-    /// exceeds int256 range (mixed-sign operands).
+    /// c = int256.max + 1 is above int256.max, so same-sign operands shed a
+    /// digit, and int256.max + 1 is not an int256 exponent.
+    function testUnabsExponentOverflowSameSign() external {
+        uint256 c = uint256(type(int256).max) + 1;
+        expectUnabsExponentOverflow(1, 1, c, type(int256).max);
+        this.unabsExternal(1, 1, c, type(int256).max);
+        expectUnabsExponentOverflow(-1, -1, c, type(int256).max);
+        this.unabsExternal(-1, -1, c, type(int256).max);
+    }
+
+    /// c = int256.max + 2 is above |int256.min|, so mixed-sign operands shed a
+    /// digit, and int256.max + 1 is not an int256 exponent.
     function testUnabsExponentOverflowMixedSign() external {
         uint256 c = uint256(type(int256).max) + 2;
-        vm.expectRevert(stdError.arithmeticError);
+        expectUnabsExponentOverflow(-1, 1, c, type(int256).max);
         this.unabsExternal(-1, 1, c, type(int256).max);
+        expectUnabsExponentOverflow(1, -1, c, type(int256).max);
+        this.unabsExternal(1, -1, c, type(int256).max);
+    }
+
+    /// 2^255 negated is int256.min, so mixed-sign operands keep it exact at
+    /// exponent int256.max.
+    function testUnabsMixedSignInt256MinAtExponentMax() external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(
+            -1, 1, uint256(type(int256).max) + 1, type(int256).max
+        );
+        assertEq(signedCoefficient, type(int256).min);
+        assertEq(exponent, type(int256).max);
+    }
+
+    /// Every magnitude that sheds at exponent int256.max reverts with the
+    /// inputs.
+    function testUnabsExponentOverflowAnyShed(int256 a, int256 b, uint256 c) external {
+        bool negative = (a < 0) != (b < 0);
+        uint256 limit = negative ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
+        c = bound(c, limit + 1, type(uint256).max);
+        expectUnabsExponentOverflow(a, b, c, type(int256).max);
+        this.unabsExternal(a, b, c, type(int256).max);
     }
 
     /// a and b are both not negative.
@@ -193,7 +224,7 @@ contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
         uint256 limit = negative ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
         bool shed = c > limit;
         if (shed && exponent == type(int256).max) {
-            vm.expectRevert(stdError.arithmeticError);
+            expectUnabsExponentOverflow(a, b, c, exponent);
             this.unabsExternal(a, b, c, exponent);
             return;
         }
