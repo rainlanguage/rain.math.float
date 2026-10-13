@@ -1124,8 +1124,9 @@ mod found {
             assert!(matches!(&got, Ok(f) if f.eq_value(&want)), "{s}: {got:?}");
             run(check_parse(&s));
         }
-        // No Float: past every Float, at least (2^223 + 2)e2147483647 in
-        // magnitude, is ExponentOverflow; anything else is
+        // No Float: at least (2^223 + 2)e2147483647 in magnitude, where
+        // packLossy overflows, is ExponentOverflow; anything else, the band
+        // past the largest Float of a sign below that included, is
         // ParseDecimalPrecisionLoss.
         let loss = RefError::ParseDecimalPrecisionLoss;
         let over = RefError::ExponentOverflow;

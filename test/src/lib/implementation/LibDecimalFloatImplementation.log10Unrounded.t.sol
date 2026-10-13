@@ -168,6 +168,15 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         checkAbsolute(signedCoefficient, exponent);
     }
 
+    /// Near the floor, and within 75 of it where the exponent cannot take the
+    /// whole shift, any coefficient is within the oracle. The oracle's
+    /// characteristic is negated, so it starts one above int256.min.
+    function testLog10UnroundedOracleAtFloor(int256 signedCoefficient, int256 room) external pure {
+        signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
+        room = bound(room, 1, 160);
+        checkAbsolute(signedCoefficient, type(int256).min + room);
+    }
+
     /// #422: (2e75, int256.max) panicked. The characteristic reaches
     /// int256.max exactly at 10^int256.max, by each of the coefficient's
     /// paths: scaled up, in place, past 1e76, and rounded up to the next

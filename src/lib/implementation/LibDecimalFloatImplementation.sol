@@ -163,6 +163,13 @@ uint256 constant EXP10_HORNER_3 = 2034678592293476196830991191713810530241055026
 /// @dev (ln 10)^2 / 2! 1e50, rounded down.
 uint256 constant EXP10_HORNER_2 = 265094905523919900528083319429700884579872503956640;
 
+/// @dev 5^50, the odd factor of `POW_FIXED_ONE` = 2^50 5^50.
+uint256 constant POW_FIXED_ONE_ODD = 88817841970012523233890533447265625;
+
+/// @dev 2^50 - 1, which keeps the remainder of a value over 2^50, the even
+/// factor of `POW_FIXED_ONE`.
+uint256 constant POW_FIXED_ONE_TWOS_MASK = 1125899906842623;
+
 /// @dev The inverse of 5^50 modulo 2^256, which divides a multiple of
 /// `POW_FIXED_ONE` by it once the factor 2^50 is shifted out.
 uint256 constant POW_FIXED_ONE_ODD_INVERSE =
@@ -341,9 +348,9 @@ library LibDecimalFloatImplementation {
                 } else if (exponent < exponentA) {
                     return mulExponentNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
                 }
-                // The lift below adds at most 77 and
-                // `unabsUnsignedMulOrDivLossy` at most 1.
-                if (exponent > type(int256).max - 78) {
+                // The lift below and `unabsUnsignedMulOrDivLossy` add at most
+                // 77 together, as `mulExponentNearCeiling` argues.
+                if (exponent > type(int256).max - 77) {
                     return mulExponentNearCeiling(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
                 }
             }
@@ -446,9 +453,18 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// `mul` for operands whose exponent sum is above `type(int256).max - 78`,
+    /// `mul` for operands whose exponent sum is above `type(int256).max - 77`,
     /// where the normalisation can lift the exponent past `type(int256).max`.
     /// Reverts `ExponentOverflow` when the result exponent does not fit.
+    ///
+    /// The lift is n, the digit count of the high word prod1 of
+    /// P = |a| |b|, plus the 1 `unabsUnsignedMulOrDivLossy` adds for a
+    /// quotient q = floor(P / 10^n) above int256. It is at most 77:
+    /// - |a|, |b| <= 2^255, so P <= 2^510, prod1 <= 2^254 < 1e77 and n <= 77.
+    /// - prod1 = 0: n = 0, so the lift is at most 1.
+    /// - n in [1, 76]: the lift is at most n + 1 <= 77.
+    /// - n = 77: q <= floor(2^510 / 1e77) < 3.36e76 < 2^255 - 1, so q fits
+    ///   int256 at either sign and the lift is 77.
     function mulExponentNearCeiling(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -577,9 +593,11 @@ library LibDecimalFloatImplementation {
             // The result exponent is exponentA - adjustExponent - exponentB.
             // Lowering exponentA and raising exponentB move it alike, so
             // what exponentA cannot take above int256.min goes to exponentB.
-            // If exponentB cannot take the rest below int256.max, the
-            // exponent is below int256.min - int256.max and the quotient,
-            // under 1e77, rounds to zero.
+            // If exponentB cannot take the rest below int256.max, the return
+            // is the `underflowExponentBy > 76` zero below: exponentA is
+            // int256.min, so headroom is 0 and underflowExponentBy would be
+            // exponentB + adjustExponent > int256.max. Returning here skips
+            // the mulDiv, and adding instead would wrap exponentB.
             unchecked {
                 if (exponentA >= type(int256).min + adjustExponent) {
                     exponentA -= adjustExponent;
@@ -687,19 +705,26 @@ library LibDecimalFloatImplementation {
 
     /// mulDiv as seen in Open Zeppelin, PRB Math, Solady, and other libraries.
     /// Credit to Remco Bloemen under MIT license: https://2π.com/21/muldiv
+    ///
+    /// Returns `floor(x y / denominator)`. Reverts `MulDivOverflow` with the
+    /// inputs where that is 2^256 or more, and for every `x` and `y` where
+    /// `denominator` is zero.
     function mulDiv(uint256 x, uint256 y, uint256 denominator) internal pure returns (uint256 result) {
         (uint256 prod1, uint256 prod0) = mul512(x, y);
 
-        // Handle non-overflow cases, 256 by 256 division.
-        if (prod1 == 0) {
-            unchecked {
-                return prod0 / denominator;
-            }
-        }
-
-        // Make sure the result is less than 2^256. Also prevents denominator == 0.
+        // x y = prod1 2^256 + prod0 with prod0 < 2^256, so the quotient is at
+        // least 2^256 iff prod1 >= denominator, and a zero denominator meets
+        // that at any prod1.
         if (prod1 >= denominator) {
             revert MulDivOverflow(x, y, denominator);
+        }
+
+        // Handle non-overflow cases, 256 by 256 division. denominator > 0.
+        if (prod1 == 0) {
+            assembly ("memory-safe") {
+                result := div(prod0, denominator)
+            }
+            return result;
         }
 
         ////////////////////////////////////////////////////////////////////////////
@@ -784,7 +809,8 @@ library LibDecimalFloatImplementation {
     /// agree, and away from zero when they differ, which takes the cancelling
     /// sum towards zero. `1e100 + -1` returns `(1e76 - 1)e24`. Packing
     /// truncates again, which composes, so `LibDecimalFloat.add` is the exact
-    /// sum rounded once towards zero.
+    /// sum rounded once towards zero. A zero sum returns
+    /// `(MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT)`.
     ///
     /// https://speleotrove.com/decimal/daops.html#refaddsub
     /// > add and subtract both take two operands. If either operand is a special
@@ -839,6 +865,9 @@ library LibDecimalFloatImplementation {
         }
         if (eitherZero) {
             if (signedCoefficientA == 0) {
+                if (signedCoefficientB == 0) {
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                }
                 return (signedCoefficientB, exponentB);
             } else {
                 return (signedCoefficientA, exponentA);
@@ -952,19 +981,37 @@ library LibDecimalFloatImplementation {
                 signedCoefficientA = c;
             }
 
-            // The sum's true exponent is below the floor, so shed the digits
-            // the floor cannot hold. exponentA is the floor, or one above it
-            // after an overflow.
-            if (shortfallA != 0) {
-                // The shed is in [0, 76].
-                // forge-lint: disable-next-line(unsafe-typecast)
-                signedCoefficientA /= int256(10 ** uint256(shortfallA - (exponentA - type(int256).min)));
-                exponentA = type(int256).min;
+            // One jump on the common path for both a shortfall and a zero sum.
+            bool shortfallOrZero;
+            assembly ("memory-safe") {
+                shortfallOrZero := or(shortfallA, iszero(signedCoefficientA))
+            }
+            if (shortfallOrZero) {
+                // The sum's true exponent is below the floor, so shed the
+                // digits the floor cannot hold. exponentA is the floor, or one
+                // above it after an overflow.
+                if (shortfallA != 0) {
+                    // The shed is in [0, 76].
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    signedCoefficientA /= int256(10 ** uint256(shortfallA - (exponentA - type(int256).min)));
+                    exponentA = type(int256).min;
+                }
+                if (signedCoefficientA == 0) {
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                }
             }
         }
         return (signedCoefficientA, exponentA);
     }
 
+    /// Subtract float b from float a.
+    ///
+    /// The returned difference is the exact `a - b` rounded as `add` rounds a
+    /// sum, with `-b` exact at `b`'s int256 unit. This is not
+    /// `add(a, minus(b))` for `b = type(int256).min`, whose negation `2^255` is
+    /// no int256: `minus` sheds its last digit, which rounds twice or reverts
+    /// where the difference is representable.
+    ///
     /// @param signedCoefficientA The signed coefficient of the first floating
     /// point number.
     /// @param exponentA The exponent of the first floating point number.
@@ -978,8 +1025,51 @@ library LibDecimalFloatImplementation {
         pure
         returns (int256, int256)
     {
-        (signedCoefficientB, exponentB) = minus(signedCoefficientB, exponentB);
-        return add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        if (signedCoefficientB != type(int256).min) {
+            unchecked {
+                return add(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
+            }
+        }
+        return subInt256Min(signedCoefficientA, exponentA, exponentB);
+    }
+
+    /// `sub` for `b = type(int256).min × 10^exponentB`, so `-b` is
+    /// `2^255 × 10^exponentB` at a 77 digit unit.
+    /// @param signedCoefficientA The signed coefficient of `a`.
+    /// @param exponentA The exponent of `a`.
+    /// @param exponentB The exponent of `b`.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
+    function subInt256Min(int256 signedCoefficientA, int256 exponentA, int256 exponentB)
+        private
+        pure
+        returns (int256, int256)
+    {
+        unchecked {
+            if (signedCoefficientA != type(int256).min) {
+                // a - b = -(-a + b). add's rule truncates magnitudes, so it
+                // commutes with negation, except that a positive sum is past
+                // int256 from 2^255 units. minus sheds that digit from the
+                // truncated units, and floor(floor(x) / 10) = floor(x / 10).
+                (int256 signedCoefficient, int256 exponent) =
+                    add(-signedCoefficientA, exponentA, type(int256).min, exponentB);
+                return minus(signedCoefficient, exponent);
+            }
+            if (exponentA == exponentB) {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+            }
+            // |a - b| is 2^255 (1 - 10^-d) units of the larger exponent, for
+            // d the exponent gap. 10^d never divides 2^255, so that truncates
+            // to 2^255 - 1 - floor(2^255 / 10^d), and the floor is 0 from
+            // d = 77. The sign is the larger exponent's operand's.
+            bool aLarger = exponentA > exponentB;
+            // The gap fits uint256 as the larger exponent less the smaller.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 gap = uint256(aLarger ? exponentA - exponentB : exponentB - exponentA);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 magnitude = type(int256).max - (gap > 76 ? int256(0) : int256((uint256(1) << 255) / 10 ** gap));
+            return aLarger ? (-magnitude, exponentA) : (magnitude, exponentB);
+        }
     }
 
     /// Numeric equality for floats.
@@ -1210,9 +1300,10 @@ library LibDecimalFloatImplementation {
     ///
     /// Error, in units of 1e-50 unless stated, for z = |a - b| / (a + b) at
     /// most `LOG10_RATIO_Z_MAX`, 7.499e-4. A larger z, a + b past 2^256 or b
-    /// of zero reverts `Log10RatioOutOfRange`. `log10Unrounded` passes z at
-    /// most 5.1e-4: a / b within a factor 1.001 at a power of ten and within
-    /// 10^(2^-16) after `log10Reduce`.
+    /// of zero reverts `Log10RatioOutOfRange`, but relative a + b below 1e50
+    /// reverts `Log10RatioRelativeSumTooSmall` first, b of zero included.
+    /// `log10Unrounded` passes z at most 5.1e-4: a / b within a factor 1.001
+    /// at a power of ten and within 10^(2^-16) after `log10Reduce`.
     /// - Flooring z moves atanh(z) / z by under 2z / 3, 5e-4, or 3.5e-4 for
     ///   z at most 5.1e-4.
     /// - z^2 floors under a unit, and each term's multiply under one more
@@ -1314,7 +1405,6 @@ library LibDecimalFloatImplementation {
         // multiply in once at the end, so the sum keeps 50 digits however
         // small z is.
         uint256 series;
-        uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
         assembly ("memory-safe") {
             // floor(z^2 / 1e50) exactly, as u^2 + floor((2 u v 1e25 + v^2) /
             // 1e50) for z = u 1e25 + v. z is at most 1e50, so u is at most 1e25
@@ -1323,34 +1413,20 @@ library LibDecimalFloatImplementation {
             let v := mod(z, POW_FIXED_SQRT_ONE)
             let zSquared := add(mul(u, u), div(add(mul(mul(u, v), POW_FIXED_TWO_SQRT_ONE), mul(v, v)), POW_FIXED_ONE))
             series := add(POW_FIXED_ONE, div(zSquared, 3))
-            // z^4 and z^6 times zSquared can pass 2^256, so these two are
-            // `mulDivFixed` in place: mm and prod0 give the product's high
-            // word (with borrow) and low word. Subtracting
-            // the remainder mod 1e50 makes it an exact multiple of 1e50 =
-            // 2^50 5^50, so shifting 50 bits across both words divides by
-            // 2^50 and multiplying by 5^50's inverse mod 2^256 divides by
-            // 5^50 exactly.
-            let mm := mulmod(zSquared, zSquared, not(0))
-            let prod0 := mul(zSquared, zSquared)
-            let remainder := mulmod(zSquared, zSquared, POW_FIXED_ONE)
-            let term :=
-                mul(
-                    or(
-                        shr(50, sub(prod0, remainder)),
-                        shl(206, sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0)))
-                    ),
-                    inverse
-                )
+            // floor(zSquared^2 / 1e50) by the same split, as zSquared is at
+            // most z, so at most 1e50.
+            u := div(zSquared, POW_FIXED_SQRT_ONE)
+            v := mod(zSquared, POW_FIXED_SQRT_ONE)
+            let term := add(mul(u, u), div(add(mul(mul(u, v), POW_FIXED_TWO_SQRT_ONE), mul(v, v)), POW_FIXED_ONE))
             series := add(series, div(term, 5))
-            mm := mulmod(term, zSquared, not(0))
-            prod0 := mul(term, zSquared)
-            remainder := mulmod(term, zSquared, POW_FIXED_ONE)
-            term := mul(
-                or(
-                    shr(50, sub(prod0, remainder)),
-                    shl(206, sub(sub(sub(mm, prod0), lt(mm, prod0)), gt(remainder, prod0)))
-                ),
-                inverse
+            // floor(term zSquared / 1e50) for zSquared = u 2^50 + v, v below
+            // 2^50: term zSquared is term u 2^50 + term v, so its floor over
+            // 2^50 is term u + floor(term v / 2^50), and that floored over
+            // 5^50 is the floor over 1e50. zSquared is at most 5.7e43, so term
+            // is at most 3.3e37, term u under 1.7e66 and term v under 3.8e52.
+            term := div(
+                add(mul(term, shr(50, zSquared)), shr(50, mul(term, and(zSquared, POW_FIXED_ONE_TWOS_MASK)))),
+                POW_FIXED_ONE_ODD
             )
             series := add(series, div(term, 7))
             // term is now below z^6, so term * zSquared fits a word.
@@ -1444,9 +1520,8 @@ library LibDecimalFloatImplementation {
     /// The square root of a positive float, rounded to nearest at 41
     /// significant digits. There is never a tie: the root is taken of an
     /// integer N, and r + 1/2 squared is r^2 + r + 1/4, never an integer.
-    /// A coefficient outside (0, 1e76), or an exponent that scaling the
-    /// coefficient into [1e75, 1e76) and evening would take past
-    /// `type(int256).min`, reverts `SqrtOutOfRange`.
+    /// A coefficient outside (0, 1e76) reverts `SqrtOutOfRange`. Every
+    /// exponent has a root, whose exponent is at least int256.min / 2 - 40.
     ///
     /// Four Newton steps over E = N / 1e6 floored suffice from the seed
     /// a + E / b, (a, b) being (26e36, 12e37) for E in [1e75, 1e76) and
@@ -1460,7 +1535,6 @@ library LibDecimalFloatImplementation {
     /// @return signedCoefficient The root's coefficient, in [1e40, 1e41].
     /// @return exponent The root's exponent.
     function sqrt(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        int256 inputCoefficient = signedCoefficient;
         int256 inputExponent = exponent;
         unchecked {
             // A coefficient below 1 wraps to at least 2^255 - 1.
@@ -1469,10 +1543,11 @@ library LibDecimalFloatImplementation {
                 revert SqrtOutOfRange(signedCoefficient, exponent);
             }
         }
-        // The value is C 10^e with C in [1e75, 1e76). A root halves e, so it
-        // is taken of N 10^(e - s) with N = C 10^s and e - s even: s is 5 for
-        // an odd e and 6 for an even one. N is in [1e80, 1e82), so sqrt N is
-        // in [1e40, 1e41) at exponent (e - s) / 2.
+        // The value is C 10^e with C in [1e75, 1e76). A root halves e, which
+        // must be even to stay a power of ten (an odd e leaves a factor of
+        // sqrt 10). So it is taken of N 10^(e - s) with N = C 10^s and e - s
+        // even: s is 5 for an odd e and 6 for an even one. N is in
+        // [1e80, 1e82), so sqrt N is in [1e40, 1e41) at exponent (e - s) / 2.
         (signedCoefficient, exponent) = scaleUpUnguarded(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -1496,12 +1571,11 @@ library LibDecimalFloatImplementation {
             // forge-lint: disable-next-line(unsafe-typecast)
             exponent -= scale == 1e5 ? int256(5) : int256(6);
             // The scale and s take off at most 81, so exponent is above the
-            // input's only by wrapping past int256.min.
-            if (exponent > inputExponent) {
-                revert SqrtOutOfRange(inputCoefficient, inputExponent);
-            }
-            exponent /= 2;
+            // input's only by wrapping past int256.min, and then is the even
+            // e - s plus 2^256. Halved, that is (e - s) / 2 plus 2^255: the
+            // sign bit flipped.
             assembly ("memory-safe") {
+                exponent := xor(sar(1, exponent), shl(255, sgt(exponent, inputExponent)))
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))

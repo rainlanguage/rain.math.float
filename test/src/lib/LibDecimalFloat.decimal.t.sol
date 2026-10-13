@@ -71,6 +71,23 @@ contract LibDecimalFloatDecimalTest is Test {
     /// Over the full uint256 range, the nearest Float towards zero to the exact
     /// `value × 10^-decimals`, lossless iff it is that value.
     function testFromFixedDecimalLossyPackedValue(uint256 value, uint8 decimals) external pure {
+        checkFromFixedDecimalLossyPackedValue(value, decimals);
+    }
+
+    /// Past int256.max with a nonzero last digit, where the remaining digits
+    /// pack exactly: `c × 10^10 + d` with int224.max / 10 < c <= int224.max.
+    /// Not the value, so lossy.
+    function testFromFixedDecimalLossyPackedValueLastDigitOnly() external pure {
+        uint256[4] memory values = [uint256(1e77 + 7), 1e77 + 9, 1.1e77 + 1, 6e76 + 5];
+        uint8[3] memory decimalsList = [uint8(0), 18, 255];
+        for (uint256 i = 0; i < values.length; i++) {
+            for (uint256 j = 0; j < decimalsList.length; j++) {
+                checkFromFixedDecimalLossyPackedValue(values[i], decimalsList[j]);
+            }
+        }
+    }
+
+    function checkFromFixedDecimalLossyPackedValue(uint256 value, uint8 decimals) internal pure {
         (Float float, bool lossless) = LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
         int256 exponentExact = -int256(uint256(decimals));

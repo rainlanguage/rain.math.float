@@ -10,8 +10,8 @@ import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 
 /// Wherever main returns, the PR returns the same bytes, and wherever main
 /// reverts, the PR reverts the same bytes, except in the floor shortfall,
-/// carry (#394) and cancelling (#350) classes each `check*` names. Those are
-/// asserted against an oracle.
+/// carry (#394), cancelling (#350) and int256.min subtrahend (#459) classes
+/// each `check*` names. Those are asserted against an oracle.
 /// Equivalence only: main carries the mixed-sign add rounding of #340, so
 /// agreement is not a value check. `testAddPacked`, `testSubPacked`,
 /// `testDivPacked` and `testInvMem` check values against exact math.
@@ -390,24 +390,14 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         checkInv(digits(c, shift), nearFloor(e));
     }
 
-    /// The PR's add or sub against the exact parts. Negating
-    /// `type(int256).min` sheds its last digit.
+    /// The PR's add or sub against the exact parts. Sub negates `b` exactly,
+    /// so `-type(int256).min` is `2^255` at 77 digits.
     function checkAddSubExact(bool isSub, int256 a, int256 ea, int256 b, int256 eb, bool ok, bytes memory ret)
         internal
         pure
     {
-        if (isSub) {
-            if (b == type(int256).min) {
-                if (eb == type(int256).max) {
-                    assertEq(ret, abi.encodeWithSelector(ExponentOverflow.selector, b, eb), "minus ExponentOverflow");
-                    return;
-                }
-                b /= 10;
-                eb += 1;
-            }
-            b = -b;
-        }
-        (bool overflows, int256 ec, int256 ee) = LibExactFloat.addPartsWide(a, ea, b, eb);
+        (bool overflows, int256 ec, int256 ee) =
+            isSub ? LibExactFloat.subPartsWide(a, ea, b, eb) : LibExactFloat.addPartsWide(a, ea, b, eb);
         if (overflows) {
             assertFalse(ok, "exact add overflows");
             assertEq(selector(ret), ExponentOverflow.selector, "add ExponentOverflow");
@@ -426,10 +416,20 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
             run(isSub ? abi.encodeCall(this.prSub, (a, ea, b, eb)) : abi.encodeCall(this.prAdd, (a, ea, b, eb)));
         checkAddSubExact(isSub, a, ea, b, eb, pOk, p);
         if (mOk == pOk && keccak256(m) == keccak256(p)) return;
+        // By design (#459, #461, #462): main sheds a digit negating
+        // `type(int256).min` before the sum, the PR negates it exactly.
+        if (isSub && b == type(int256).min) return;
 
         if (mOk) {
             (int256 mc, int256 me) = pair(m);
             (int256 pc, int256 pe) = pair(p);
+            // By design (#495): a zero sum is the zero constants, main keeps
+            // an exponent.
+            if (pc == 0) {
+                assertEq(pe, 0, "zero exponent");
+                if (mc == 0) return;
+                pe = me;
+            }
             if (a != 0 && b != 0 && (a < 0) != (isSub ? b > 0 : b < 0)) {
                 // By design (#350): the magnitudes cancel, main truncates the
                 // smaller operand towards zero, so the sum one unit away from
@@ -538,13 +538,20 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         // #368: a positive 2^255 quotient below the floor, by each scale,
         // down to the last digit it keeps.
         for (int256 u = 1; u <= 76; u++) {
-            assertDiffers(
-                abi.encodeCall(this.mainDiv, (min, min + 76, -1e76, u)),
-                abi.encodeCall(this.prDiv, (min, min + 76, -1e76, u))
-            );
-            checkDiv(min, min + 76, -1e76, u);
-            checkDiv(min, min + 75, -1e75, u);
+            this.checkDivMinByMinusScaleBelowFloor(u);
         }
+    }
+
+    /// One shed of the #368 loop, in its own call frame so memory does not
+    /// accumulate across the 76 sheds.
+    function checkDivMinByMinusScaleBelowFloor(int256 u) external view {
+        int256 min = type(int256).min;
+        assertDiffers(
+            abi.encodeCall(this.mainDiv, (min, min + 76, -1e76, u)),
+            abi.encodeCall(this.prDiv, (min, min + 76, -1e76, u))
+        );
+        checkDiv(min, min + 76, -1e76, u);
+        checkDiv(min, min + 75, -1e75, u);
     }
 
     function testMainEquivalenceAddFloorExamples() external view {

@@ -238,10 +238,10 @@ contract LibParseDecimalFloatPastInt256Test is Test {
     }
 
     /// 78 significant digits, past int256: `head` then 0000000001, so
-    /// `head` + 10^-10 times 10^int32.max, past every Float iff `head` is at
-    /// least 2^223 + 2. Each literal writes that value with the point placed
-    /// differently: after leading zeros, inside the digits, or before a zero
-    /// fraction.
+    /// `head` + 10^-10 times 10^int32.max, which packLossy overflows on iff
+    /// `head` is at least 2^223 + 2 (#452). Each literal writes that value
+    /// with the point placed differently: after leading zeros, inside the
+    /// digits, or before a zero fraction.
     function checkThresholdPointPositions(uint256 head, bytes4 expected) internal view {
         string memory digits = string.concat(head.toString(), "0000000001");
         uint256 int32Max = uint256(int256(type(int32).max));
@@ -266,7 +266,8 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         }
     }
 
-    /// Just below the threshold is no Float, at it is past every Float.
+    /// Just below the threshold is a lossy pack, past the largest Float of
+    /// either sign though it is; at it packLossy overflows.
     function testParseOverflowThresholdPointPositions() external view {
         checkThresholdPointPositions(2 ** 223 + 1, ParseDecimalPrecisionLoss.selector);
         checkThresholdPointPositions(2 ** 223 + 2, ExponentOverflow.selector);

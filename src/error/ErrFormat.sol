@@ -3,5 +3,6 @@
 pragma solidity ^0.8.25;
 
 /// @dev Thrown when the exponent cannot be formatted.
-/// @param exponent The exponent that cannot be formatted.
+/// @param exponent The exponent that cannot be formatted. Non-scientific mode
+/// reports the canonical exponent, after trailing coefficient zeros.
 error UnformatableExponent(int256 exponent);
