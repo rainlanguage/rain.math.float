@@ -82,7 +82,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
     /// Within a factor 1.001 of a power of ten the seed is exact, so the error
     /// is relative to the log, which can be arbitrarily close to zero:
     /// `log10Ratio`'s 8.03e-50 relative plus a unit of its quotient, which is at
-    /// least 1e75 (2 / ln 10) / 2e76, 4.34e48, so 3.11e-49 relative.
+    /// least 1e75 (2 / ln 10) / 2.001e76, 4.34e48, so 3.11e-49 relative.
     function testLog10AccuracyNearPowersOfTen() external pure {
         int256[4][] memory references = log10NearPowerOfTenReferences();
         for (uint256 i = 0; i < references.length; i++) {

@@ -24,7 +24,9 @@ contract LibDecimalFloatLog10GasTest is Test {
         logGas("2 (reduced, not relative):", 2, 0);
         logGas("1.0001 (relative):", 10001, -4);
         logGas("0.9999 (relative):", 9999, -4);
+        logGas("1.001 (relative):", 1001, -3);
+        logGas("0.9995 (relative):", 9995, -4);
         logGas("10.001 (near 10, not relative):", 10001, -3);
-        logGas("9.9989e2000000000 (worst reduce):", 99989, 1999999996);
+        logGas("9.99e2000000000 (worst reduce):", 999, 1999999998);
     }
 }

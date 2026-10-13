@@ -284,9 +284,10 @@ inherently approximations in many cases.
 `log10` divides the input by powers 10^(2^-i) down to within 10^(2^-16) of a
 power of ten and closes the gap with a fixed point series. Before rounding it is
 within 1.0037e-50 of the true value, and within 3.11e-49 relative of it for an
-input within a factor 1.001 of a power of ten, so a log near zero keeps its
-precision. The result is rounded to 41 significant digits, so it is within half
-a unit in the 41st digit plus 1.0037e-50. A power of ten has an exact log.
+input within a factor 1.001 of a power of ten, either side and the factor
+included, so a log near zero keeps its precision. The result is rounded to 41
+significant digits, so it is within half a unit in the 41st digit plus
+1.0037e-50. A power of ten has an exact log.
 
 `pow10` computes the power in fixed point and rounds it to 41 significant
 digits, so it is within half a unit in the 41st digit plus 1.12e-8 of a unit,
