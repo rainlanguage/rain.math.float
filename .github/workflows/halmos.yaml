@@ -17,6 +17,15 @@ on:
           - far
           - log10ratio
           - exp10
+          - fixedfrom
+          - fixedtoedges
+          - fixedtomidlossypair
+          - fixedtomidlosslesspair
+          - fixedtomidlossyfloat
+          - fixedtomidlosslessfloat
+          - wteshrinknear
+          - wtegrownear
+          - wtefar
 env:
   HALMOS_VERSION: 0.3.3
   # Solver versions: yices 2.7.0, cvc5 1.4.0, bitwuzla 0.9.1.
@@ -46,7 +55,16 @@ jobs:
             {"name": "minus", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_subIsAddNegated", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
             {"name": "far", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_addFar", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
             {"name": "log10ratio", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_log10RatioEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]}
+            {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "fixedfrom", "solver": "hybrid", "expect": 2, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_fromFixedDecimal", "--solver-timeout-assertion", "0"]},
+            {"name": "fixedtoedges", "solver": "hybrid", "expect": 8, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimal.*(Low|High)$", "--solver-timeout-assertion", "0"]},
+            {"name": "fixedtomidlossypair", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLossyPairMid", "--solver-timeout-assertion", "0"]},
+            {"name": "fixedtomidlosslesspair", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLosslessPairMid", "--solver-timeout-assertion", "0"]},
+            {"name": "fixedtomidlossyfloat", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLossyFloatMid", "--solver-timeout-assertion", "0"]},
+            {"name": "fixedtomidlosslessfloat", "solver": "hybrid", "expect": 1, "args": ["--contract", "FixedDecimalHalmosTest", "--function", "check_toFixedDecimalLosslessFloatMid", "--solver-timeout-assertion", "0"]},
+            {"name": "wteshrinknear", "solver": "hybrid", "expect": 1, "args": ["--contract", "WithTargetExponentHalmosTest", "--function", "check_withTargetExponentShrinkNear", "--solver-timeout-assertion", "0"]},
+            {"name": "wtegrownear", "solver": "hybrid", "expect": 1, "args": ["--contract", "WithTargetExponentHalmosTest", "--function", "check_withTargetExponentGrowNear", "--solver-timeout-assertion", "0"]},
+            {"name": "wtefar", "solver": "hybrid", "expect": 2, "args": ["--contract", "WithTargetExponentHalmosTest", "--function", "check_withTargetExponent.*Far$", "--solver-timeout-assertion", "0"]}
           ]
           JSON
           )
