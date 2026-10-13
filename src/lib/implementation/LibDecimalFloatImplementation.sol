@@ -809,7 +809,8 @@ library LibDecimalFloatImplementation {
     /// agree, and away from zero when they differ, which takes the cancelling
     /// sum towards zero. `1e100 + -1` returns `(1e76 - 1)e24`. Packing
     /// truncates again, which composes, so `LibDecimalFloat.add` is the exact
-    /// sum rounded once towards zero.
+    /// sum rounded once towards zero. A zero sum returns
+    /// `(MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT)`.
     ///
     /// https://speleotrove.com/decimal/daops.html#refaddsub
     /// > add and subtract both take two operands. If either operand is a special
@@ -864,6 +865,9 @@ library LibDecimalFloatImplementation {
         }
         if (eitherZero) {
             if (signedCoefficientA == 0) {
+                if (signedCoefficientB == 0) {
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                }
                 return (signedCoefficientB, exponentB);
             } else {
                 return (signedCoefficientA, exponentA);
@@ -977,19 +981,37 @@ library LibDecimalFloatImplementation {
                 signedCoefficientA = c;
             }
 
-            // The sum's true exponent is below the floor, so shed the digits
-            // the floor cannot hold. exponentA is the floor, or one above it
-            // after an overflow.
-            if (shortfallA != 0) {
-                // The shed is in [0, 76].
-                // forge-lint: disable-next-line(unsafe-typecast)
-                signedCoefficientA /= int256(10 ** uint256(shortfallA - (exponentA - type(int256).min)));
-                exponentA = type(int256).min;
+            // One jump on the common path for both a shortfall and a zero sum.
+            bool shortfallOrZero;
+            assembly ("memory-safe") {
+                shortfallOrZero := or(shortfallA, iszero(signedCoefficientA))
+            }
+            if (shortfallOrZero) {
+                // The sum's true exponent is below the floor, so shed the
+                // digits the floor cannot hold. exponentA is the floor, or one
+                // above it after an overflow.
+                if (shortfallA != 0) {
+                    // The shed is in [0, 76].
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    signedCoefficientA /= int256(10 ** uint256(shortfallA - (exponentA - type(int256).min)));
+                    exponentA = type(int256).min;
+                }
+                if (signedCoefficientA == 0) {
+                    return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+                }
             }
         }
         return (signedCoefficientA, exponentA);
     }
 
+    /// Subtract float b from float a.
+    ///
+    /// The returned difference is the exact `a - b` rounded as `add` rounds a
+    /// sum, with `-b` exact at `b`'s int256 unit. This is not
+    /// `add(a, minus(b))` for `b = type(int256).min`, whose negation `2^255` is
+    /// no int256: `minus` sheds its last digit, which rounds twice or reverts
+    /// where the difference is representable.
+    ///
     /// @param signedCoefficientA The signed coefficient of the first floating
     /// point number.
     /// @param exponentA The exponent of the first floating point number.
@@ -1003,8 +1025,51 @@ library LibDecimalFloatImplementation {
         pure
         returns (int256, int256)
     {
-        (signedCoefficientB, exponentB) = minus(signedCoefficientB, exponentB);
-        return add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        if (signedCoefficientB != type(int256).min) {
+            unchecked {
+                return add(signedCoefficientA, exponentA, -signedCoefficientB, exponentB);
+            }
+        }
+        return subInt256Min(signedCoefficientA, exponentA, exponentB);
+    }
+
+    /// `sub` for `b = type(int256).min × 10^exponentB`, so `-b` is
+    /// `2^255 × 10^exponentB` at a 77 digit unit.
+    /// @param signedCoefficientA The signed coefficient of `a`.
+    /// @param exponentA The exponent of `a`.
+    /// @param exponentB The exponent of `b`.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
+    function subInt256Min(int256 signedCoefficientA, int256 exponentA, int256 exponentB)
+        private
+        pure
+        returns (int256, int256)
+    {
+        unchecked {
+            if (signedCoefficientA != type(int256).min) {
+                // a - b = -(-a + b). add's rule truncates magnitudes, so it
+                // commutes with negation, except that a positive sum is past
+                // int256 from 2^255 units. minus sheds that digit from the
+                // truncated units, and floor(floor(x) / 10) = floor(x / 10).
+                (int256 signedCoefficient, int256 exponent) =
+                    add(-signedCoefficientA, exponentA, type(int256).min, exponentB);
+                return minus(signedCoefficient, exponent);
+            }
+            if (exponentA == exponentB) {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
+            }
+            // |a - b| is 2^255 (1 - 10^-d) units of the larger exponent, for
+            // d the exponent gap. 10^d never divides 2^255, so that truncates
+            // to 2^255 - 1 - floor(2^255 / 10^d), and the floor is 0 from
+            // d = 77. The sign is the larger exponent's operand's.
+            bool aLarger = exponentA > exponentB;
+            // The gap fits uint256 as the larger exponent less the smaller.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 gap = uint256(aLarger ? exponentA - exponentB : exponentB - exponentA);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 magnitude = type(int256).max - (gap > 76 ? int256(0) : int256((uint256(1) << 255) / 10 ** gap));
+            return aLarger ? (-magnitude, exponentA) : (magnitude, exponentB);
+        }
     }
 
     /// Numeric equality for floats.
