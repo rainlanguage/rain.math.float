@@ -111,17 +111,21 @@ contract LibParseDecimalFloatTest is Test {
         int256 int32Max = int256(type(int32).max);
         // Below the threshold, 2^223 + 1 is past the largest Float of either
         // sign but packs lossily.
-        for (int256 x = -9; x <= 0; x++) {
-            uint256 m = threshold * 10 ** uint256(-x);
+        uint256 m = threshold;
+        for (int256 x = 0; x >= -9; x--) {
+            if (x < 0) {
+                m *= 10;
+            }
             checkThresholdSides(m, int32Max + x, ExponentOverflow.selector);
             checkThresholdSides(m - 1, int32Max + x, ParseDecimalPrecisionLoss.selector);
         }
         // Positive excesses: the smallest coefficient at or past it is
         // ceil(threshold / 10^x), and one below is exactly a Float or a lossy
         // pack.
+        uint256 scale = 1;
         for (int256 x = 1; x <= 67; x++) {
-            uint256 scale = 10 ** uint256(x);
-            uint256 m = (threshold + scale - 1) / scale;
+            scale *= 10;
+            m = (threshold + scale - 1) / scale;
             checkThresholdSides(m, int32Max + x, ExponentOverflow.selector);
             if (m > 1) {
                 string memory below = string.concat((m - 1).toString(), "e", Strings.toStringSigned(int32Max + x));
@@ -649,6 +653,17 @@ contract LibParseDecimalFloatTest is Test {
         // rather than reverting.
         (bytes4 err,) = this.parseDecimalFloatExternal("1e-2147483649");
         assertEq(err, ParseDecimalPrecisionLoss.selector);
+    }
+
+    /// Issue #504: past-range literals reach the caller through one channel,
+    /// the returned selector, whatever their spelling.
+    function testParsePastRangeOneChannel() external view {
+        assertTrue(LibExactFloat.overflows(LibExactFloat.u512(2), 2147483714));
+        bytes memory over = abi.encode("return", ExponentOverflow.selector, Float.wrap(0));
+        assertEq(parseOutcome("2e2147483714"), over, "2e2147483714");
+        assertEq(parseOutcome("-2e2147483714"), over, "-2e2147483714");
+        assertEq(parseOutcome(string.concat("2", zeros(76), "1e2147483637")), over, "78 digits");
+        assertEq(parseOutcome(string.concat("1e1", zeros(80))), over, "exponent past int256");
     }
 
     /// A literal below the exponent floor whose coefficient carries the

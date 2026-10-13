@@ -1529,11 +1529,11 @@ mod checker {
         ));
     }
 
-    /// Past every Float the whole parse may revert, but only with
-    /// ExponentOverflow, from both contracts alike; or it returns that
-    /// selector. A suffix is excess characters, never a revert.
+    /// Past every Float both parses return ExponentOverflow by value, from
+    /// both contracts alike, never a revert (#510). A suffix is excess
+    /// characters.
     #[test]
-    fn parse_overflow_reverts_or_selects() {
+    fn parse_overflow_selects() {
         let lit = "1e3000000000";
         let len = lit.len() as u64;
         let none = [0u8; 4];
@@ -1545,88 +1545,56 @@ mod checker {
             check_parse_entry_points_with(lit, suffix, None, i, w, c).is_ok()
         };
         let reverts = || Err(Fail::Harness(revert.clone()));
-        let ok = || inline(none, len, 1, 3_000_000_000);
-        assert!(accepts("", ok(), reverts(), Err(revert.clone())));
-        assert!(accepts(
-            "",
-            ok(),
-            whole(eo, B256::ZERO),
-            concrete(eo, B256::ZERO)
-        ));
-        assert!(accepts(
-            "",
-            inline(eo, len, 0, 0),
-            reverts(),
-            Err(revert.clone())
-        ));
-        // The inline parse: the exact value or ExponentOverflow, at the end.
-        assert!(!accepts(
-            "",
-            inline(none, len, 1, 3_000_000_001),
-            reverts(),
-            Err(revert.clone())
-        ));
-        assert!(!accepts(
-            "",
-            inline(none, len - 1, 1, 3_000_000_000),
-            reverts(),
-            Err(revert.clone())
-        ));
-        assert!(!accepts(
-            "",
-            inline(eo, 0, 0, 0),
-            reverts(),
-            Err(revert.clone())
-        ));
-        assert!(!accepts(
-            "",
+        let over = || inline(eo, len, 0, 0);
+        let selects = || (whole(eo, B256::ZERO), concrete(eo, B256::ZERO));
+        let (w, c) = selects();
+        assert!(accepts("", over(), w, c));
+        // The inline parse: ExponentOverflow at the end, not the value.
+        for (n, i) in [
+            inline(none, len, 1, 3_000_000_000),
+            inline(eo, len - 1, 0, 0),
             inline(loss, len, 0, 0),
-            reverts(),
-            Err(revert.clone())
-        ));
-        assert!(!accepts(
-            "",
             Err(Fail::Harness(revert.clone())),
-            reverts(),
-            Err(revert.clone())
-        ));
-        // The whole parse.
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let (w, c) = selects();
+            assert!(!accepts("", i, w, c), "case {n}");
+        }
+        // The whole parse: the selector, never a revert.
+        assert!(!accepts("", over(), reverts(), Err(revert.clone())));
         assert!(!accepts(
             "",
-            ok(),
+            over(),
             whole(loss, B256::ZERO),
             concrete(loss, B256::ZERO)
         ));
-        assert!(!accepts("", ok(), reverts(), concrete(none, B256::ZERO)));
+        assert!(!accepts(
+            "",
+            over(),
+            whole(eo, B256::ZERO),
+            concrete(none, B256::ZERO)
+        ));
         let other = no_positive();
         let Fail::Harness(other) = other else {
             unreachable!()
         };
         assert!(!accepts(
             "",
-            ok(),
+            over(),
             Err(Fail::Harness(other.clone())),
             Err(other)
         ));
         assert!(accepts(
             " x",
-            ok(),
+            over(),
             whole(excess, B256::ZERO),
             concrete(excess, B256::ZERO)
         ));
-        assert!(accepts(
-            " x",
-            inline(eo, len, 0, 0),
-            whole(excess, B256::ZERO),
-            concrete(excess, B256::ZERO)
-        ));
-        assert!(!accepts(" x", ok(), reverts(), Err(revert.clone())));
-        assert!(!accepts(
-            " x",
-            ok(),
-            whole(eo, B256::ZERO),
-            concrete(eo, B256::ZERO)
-        ));
+        assert!(!accepts(" x", over(), reverts(), Err(revert.clone())));
+        let (w, c) = selects();
+        assert!(!accepts(" x", over(), w, c));
     }
 
     /// A literal that is no Float but has an exact int256 coefficient and
