@@ -72,9 +72,40 @@ contract LibDecimalFloatConstantsTest is Test {
     function testFloatPi() external pure {
         Float pi = LibDecimalFloat.FLOAT_PI;
         Float expected = LibDecimalFloat.packLossless(
-            int224(3.141592653589793238462643383279502884197169399375105820974944592308e66), -66
+            int224(3.141592653589793238462643383279502884197169399375105820974944592307e66), -66
         );
         assertEq(Float.unwrap(pi), Float.unwrap(expected));
+    }
+
+    /// The first 72 significant digits of pi, from OEIS A000796
+    /// (https://oeis.org/A000796/b000796.txt).
+    int256 constant PI_72_DIGITS = 314159265358979323846264338327950288419716939937510582097494459230781640;
+
+    /// The first 72 significant digits of e, from OEIS A001113
+    /// (https://oeis.org/A001113/b001113.txt).
+    int256 constant E_72_DIGITS = 271828182845904523536028747135266249775724709369995957496696762772407663;
+
+    /// `float` is the closest Float not above `digits72 × 10^-71 + [0, 10^-71)`,
+    /// a value in [1, 10), at the finest exponent whose coefficient fits.
+    function checkClosestFloatNotAbove(Float float, int256 digits72) internal pure {
+        (int256 c, int256 exponent) = LibDecimalFloat.unpack(float);
+        assertEq(exponent, -66);
+        assertTrue(c > 0);
+        // c × 10^-66 <= digits72 × 10^-71 <= value.
+        assertTrue(c * 1e5 <= digits72);
+        // value < (digits72 + 1) × 10^-71 <= (c + 1) × 10^-66.
+        assertTrue((c + 1) * 1e5 >= digits72 + 1);
+        // At exponent -67 the coefficient floor(value × 10^67) is
+        // floor(digits72 / 10^4), which does not fit in int224.
+        assertTrue(digits72 / 1e4 > type(int224).max);
+    }
+
+    function testFloatPiIsTheClosestFloatNotAbovePi() external pure {
+        checkClosestFloatNotAbove(LibDecimalFloat.FLOAT_PI, PI_72_DIGITS);
+    }
+
+    function testFloatEIsTheClosestFloatNotAboveE() external pure {
+        checkClosestFloatNotAbove(LibDecimalFloat.FLOAT_E, E_72_DIGITS);
     }
 
     function testFloatZero() external pure {
