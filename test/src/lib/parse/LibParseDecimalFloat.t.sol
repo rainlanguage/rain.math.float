@@ -889,6 +889,29 @@ contract LibParseDecimalFloatTest is Test {
         }
     }
 
+    /// An integer part and a fraction that each fit int256 but whose combined
+    /// digits do not: the fraction pushes the sum past int256 of its sign, or
+    /// the integer rescaled by 10^77 passes uint256's int256 range.
+    function testParseRuleFractionRescaleEdges() external view {
+        string memory maxTenth = Strings.toStringSigned(type(int256).max / 10);
+        string memory maxHundredth = Strings.toStringSigned(type(int256).max / 100);
+        string memory minTenth = Strings.toStringSigned(type(int256).min / 10);
+        string[9] memory literals = [
+            string.concat(maxTenth, ".9"),
+            string.concat(maxTenth, ".7"),
+            string.concat(maxHundredth, ".99"),
+            string.concat(minTenth, ".9"),
+            string.concat(minTenth, ".8"),
+            string.concat("1.", zeros(75), "1"),
+            string.concat("1.", zeros(76), "1"),
+            string.concat("-1.", zeros(76), "1"),
+            string.concat("5.", zeros(76), "3")
+        ];
+        for (uint256 i = 0; i < literals.length; i++) {
+            checkAgainstRule(literals[i]);
+        }
+    }
+
     /// A nonzero integer part with a fraction ending 10^-76 rescales by 10^76
     /// to `10^76 + 1`, inside int256. Ending 10^-77 it is `10^77 + 1`, past
     /// int256 and 78 significant digits, so no Float, and its magnitude near 1
