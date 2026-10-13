@@ -645,8 +645,9 @@ pub fn canonicalize(x: &Dec) -> Dec {
 
 /// `agree`, as its NatSpec states it: a negative tolerance is
 /// `AgreeToleranceNegative`, neither positive `AgreeNoPositiveTolerance`;
-/// otherwise `highest - lowest <= max(absolute, proportional * max(|lowest|,
-/// |highest|))`, the spread rounded as `sub` rounds it and nothing packed.
+/// otherwise, with the extremes in either order, `max - min <= max(absolute,
+/// proportional * max(|min|, |max|))`, the spread rounded as `sub` rounds it
+/// and nothing packed.
 pub fn agree(
     absolute: &Dec,
     proportional: &Dec,
@@ -659,6 +660,11 @@ pub fn agree(
     if absolute.is_zero() && proportional.is_zero() {
         return Err(RefError::AgreeNoPositiveTolerance);
     }
+    let (lowest, highest) = if lowest.cmp_value(highest) == Ordering::Greater {
+        (highest, lowest)
+    } else {
+        (lowest, highest)
+    };
     let spread = rounded_sum(highest, &lowest.neg());
     let anchor = if lowest.abs().cmp_value(&highest.abs()) == Ordering::Greater {
         lowest.abs()
