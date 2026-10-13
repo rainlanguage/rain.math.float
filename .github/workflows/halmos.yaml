@@ -19,17 +19,17 @@ on:
           - exp10
           - agree-tolerance
           - agree-zero
+          - agree-hints
+          - agree-divhints
+          - agree-negdivhint
+          - agree-overflowhint
+          - agree-neg
           - agree-neg0
           - agree-neg17
           - agree-neg34
           - agree-neg51
-          - agree-near0
-          - agree-near20
-          - agree-near40
-          - agree-near60
+          - agree-near
           - agree-far
-          - agree-probe-norevert
-          - agree-probe-order
 env:
   HALMOS_VERSION: 0.3.3
   # Solver versions: yices 2.7.0, cvc5 1.4.0, bitwuzla 0.9.1.
@@ -48,8 +48,17 @@ jobs:
           LEMMA: ${{ inputs.lemma }}
         # expect: tests the contract/function filter must match; a filter
         # that silently matches fewer fails the job.
+        # group: a lemma's slices, selected together by the group's name.
+        # agree-near is one slice per exponent gap d in [0, 76], the lemma
+        # check_spreadSymNear<d> with d two digits wide, so the filter matches
+        # it alone without an anchor.
         run: |
-          lemmas=$(jq -c --arg lemma "$LEMMA" '[.[] | select($lemma == "all" or .name == $lemma)]' <<'JSON'
+          lemmas=$(jq -c --arg lemma "$LEMMA" '
+            . + [range(0; 77) | {
+              name: "agree-near\(.)", group: "agree-near", solver: "hybrid", expect: 1,
+              args: ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymNear\("0\(.)"[-2:])", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]
+            }]
+            | [.[] | select($lemma == "all" or .name == $lemma or .group == $lemma)]' <<'JSON'
           [
             {"name": "quick", "solver": "bitwuzla", "expect": 3, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_(addZeroOperand|maximizeFloat|maximizeIdempotent)"]},
             {"name": "divhint", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_divHintHolds"]},
@@ -62,17 +71,14 @@ jobs:
             {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
             {"name": "agree-tolerance", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_agreeToleranceErrors"]},
             {"name": "agree-zero", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadZeroEitherOrder"]},
-            {"name": "agree-neg0", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_maximizeNegates0"]},
-            {"name": "agree-neg17", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_maximizeNegates17"]},
-            {"name": "agree-neg34", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_maximizeNegates34"]},
-            {"name": "agree-neg51", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_maximizeNegates51"]},
-            {"name": "agree-near0", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymNear0$", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "agree-near20", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymNear20", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "agree-near40", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymNear40", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "agree-near60", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymNear60", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "agree-far", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymFar", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "agree-probe-norevert", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeProbeHalmosTest", "--function", "check_probeNoRevert", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "agree-probe-order", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeProbeHalmosTest", "--function", "check_probeEitherOrder", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]}
+            {"name": "agree-divhints", "group": "agree-hints", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_divHintsHold"]},
+            {"name": "agree-negdivhint", "group": "agree-hints", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_negDivHintHolds", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "agree-overflowhint", "group": "agree-hints", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_overflowHintHolds", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "agree-neg0", "group": "agree-neg", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_maximizeNegates0"]},
+            {"name": "agree-neg17", "group": "agree-neg", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_maximizeNegates17"]},
+            {"name": "agree-neg34", "group": "agree-neg", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_maximizeNegates34"]},
+            {"name": "agree-neg51", "group": "agree-neg", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_maximizeNegates51"]},
+            {"name": "agree-far", "solver": "hybrid", "expect": 1, "args": ["--contract", "AgreeHalmosTest", "--function", "check_spreadSymFar", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]}
           ]
           JSON
           )
