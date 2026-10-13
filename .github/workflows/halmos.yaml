@@ -18,6 +18,7 @@ on:
           - far
           - log10ratio
           - exp10
+          - packing
 concurrency:
   # A push supersedes the previous push's run on its ref; dispatches never
   # cancel each other.
@@ -74,7 +75,16 @@ jobs:
             {"name": "minus", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_subIsAddNegated", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"], "range": [0, 6083], "starts": [0, 468, 936, 1404, 1872, 2340, 2808, 3276, 3744, 4212, 4680, 5148, 5616]},
             {"name": "far", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_addFar", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
             {"name": "log10ratio", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_log10RatioEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
-            {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]}
+            {"name": "exp10", "solver": "hybrid", "expect": 1, "args": ["--contract", "SeriesSolidityEquivalenceHalmosTest", "--function", "check_exp10FixedEquivalence", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]},
+            {"name": "packing-hints", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackingHalmosTest", "--function", "check_packHintsHold$", "--solver-timeout-assertion", "0"]},
+            {"name": "packing-floorhints", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackingHalmosTest", "--function", "check_packFloorHintsHold$", "--solver-timeout-assertion", "0"], "range": [0, 127], "starts": [0, 16, 32, 48, 64, 80, 96, 112]},
+            {"name": "packing-below", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackingHalmosTest", "--function", "check_packingBelow$", "--solver-timeout-assertion", "0"]},
+            {"name": "packing-low", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackingHalmosTest", "--function", "check_packingLow$", "--solver-timeout-assertion", "0"], "range": [0, 127], "starts": [0, 16, 32, 48, 64, 80, 96, 112]},
+            {"name": "packing-middle", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackingHalmosTest", "--function", "check_packingMiddle$", "--solver-timeout-assertion", "0"]},
+            {"name": "packing-high", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackingHalmosTest", "--function", "check_packingHigh$", "--solver-timeout-assertion", "0"], "range": [0, 127], "starts": [0, 16, 32, 48, 64, 80, 96, 112]},
+            {"name": "packing-above", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackingHalmosTest", "--function", "check_packingAbove$", "--solver-timeout-assertion", "0"]},
+            {"name": "packing-unpack", "solver": "hybrid", "expect": 2, "args": ["--contract", "PackingHalmosTest", "--function", "check_(unpack|canonicalizeZero)$", "--solver-timeout-assertion", "0"]},
+            {"name": "packing-canonicalize", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackingHalmosTest", "--function", "check_canonicalize$", "--loop", "70", "--solver-timeout-assertion", "0"], "range": [0, 67], "starts": [0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 64]}
           ]
           JSON
           )
@@ -138,6 +148,11 @@ jobs:
           passed=$(awk '/^Symbolic test result: [0-9]+ passed; 0 failed;/ { n += $4 } END { print n + 0 }' "$LOG")
           if [ "$code" != 0 ] || [ "$passed" != "$EXPECT" ]; then
             echo "exit $code; expected $EXPECT passing tests, got $passed"
+            exit 1
+          fi
+          # A pass that cut paths at the loop bound proved only those paths.
+          if grep -q 'paths have not been fully explored' "$LOG"; then
+            echo "paths cut at the loop bound: not a proof"
             exit 1
           fi
       - name: Upload log
