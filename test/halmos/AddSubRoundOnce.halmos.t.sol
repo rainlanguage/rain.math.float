@@ -198,10 +198,16 @@ contract AddSubRoundOnceHalmosTest {
         assert((exact && f == lower) || mc >= TWO_223 / 10 + 1);
     }
 
-    /// NEAR: gap D in [0, 76], one D per path.
-    function check_addNear(int256 a, int256 b, int256 eB, uint256 dBits, bool swap) external view {
+    /// NEAR: gap D in [0, 76], one D per path. B = 10 yb: by MAX 10^8 | B
+    /// for every maximized B, so |yb| <= T10 drops none, and `Impl.add`'s
+    /// B mod 10 is zero by construction (solvers time out deducing it from
+    /// B mod 10^8 == 0).
+    function check_addNear(int256 a, int256 yb, int256 eB, uint256 dBits, bool swap) external view {
         uint256 d = LibHalmosExact.concrete(dBits, 7);
         if (d > 76) return;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (yb < -int256(T10) || yb > int256(T10)) return;
+        int256 b = yb * 10;
         if (!isMaximized(a) || !isMaximized(b) || a % 1e8 != 0 || b % 1e8 != 0) return;
         if (!LibHalmosExact.divHint(a, 1e75) || !LibHalmosExact.divHint(b, 1e75)) return;
         if (eB < FMIN - 76 || eB > FMAX - 8) return;
