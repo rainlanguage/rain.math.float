@@ -104,8 +104,14 @@ contract LibDecimalFloatImplementationInvTest is Test {
         (outputSignedCoefficient, outputExponent);
     }
 
+    /// #544: a zero `x` reverts `DivisionByZero` with the dividend `1e76e-76`,
+    /// not `x`, whatever its exponent.
     function testInv0() external {
         vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, 1e76, -76));
         this.invExternal(0, 0);
+        vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, 1e76, -76));
+        this.invExternal(0, 7);
+        vm.expectRevert(abi.encodeWithSelector(DivisionByZero.selector, 1e76, -76));
+        this.invExternal(0, type(int256).min);
     }
 }

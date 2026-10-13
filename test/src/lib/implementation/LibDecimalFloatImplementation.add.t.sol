@@ -280,6 +280,27 @@ contract LibDecimalFloatImplementationAddTest is Test {
         this.addExternal(type(int256).max, type(int256).max, 1, type(int256).max);
     }
 
+    /// #538: a same sign sum past int256 at `type(int256).max` reverts
+    /// `ExponentOverflow` with the operand at that exponent as given, the
+    /// first where both are. `1` at `type(int256).max` maximizes below it,
+    /// so the second operand is the one there. A cancelling pair returns.
+    function testAddRevertPayloadIsTheOperandAtMax() external {
+        int256 max = type(int256).max;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(3e76), max));
+        this.addExternal(3e76, max, 4e76, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(4e76), max));
+        this.addExternal(4e76, max, 3e76, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-3e76), max));
+        this.addExternal(-3e76, max, -4e76, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(6e75), max));
+        this.addExternal(6e75, max, 5.5e76, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, max, max));
+        this.addExternal(1, max, max, max);
+        (int256 signedCoefficient, int256 exponent) = this.addExternal(3e76, max, -4e76, max);
+        assertEq(signedCoefficient, -1e76, "cancelling coefficient");
+        assertEq(exponent, max, "cancelling exponent");
+    }
+
     /// For every int256 coefficient and exponent, `add` returns the exact
     /// parts `addPartsWide` states, or reverts `ExponentOverflow` past them.
     function testAddRoundsTheExactSum(
