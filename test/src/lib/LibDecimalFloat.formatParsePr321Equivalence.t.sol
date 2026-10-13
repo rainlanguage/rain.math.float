@@ -9,7 +9,7 @@ import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 import {LibFormatDecimalFloatPr321} from "test/lib/LibFormatDecimalFloatPr321.sol";
 import {LibParseDecimalFloatPr321} from "test/lib/LibParseDecimalFloatPr321.sol";
 import {UnformatableExponent} from "src/error/ErrFormat.sol";
-import {ParseDecimalPrecisionLoss, MalformedExponentDigits} from "src/error/ErrParse.sol";
+import {ParseDecimalPrecisionLoss, MalformedExponentDigits, MalformedDecimalPoint} from "src/error/ErrParse.sol";
 import {ParseDecimalOverflow} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {LibTestDecimalLiteral, Literal} from "test/lib/LibTestDecimalLiteral.sol";
 import {LibExactFloat} from "test/lib/LibExactFloat.sol";
@@ -88,10 +88,11 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
 
     /// #375 chose the errors of literals that are no Float by value, which
     /// the parse tests check against the rule, so only those are skipped.
-    /// An `e` without digits is `MalformedExponentDigits` where it stopped
+    /// An `e` without digits is `MalformedExponentDigits`, and a `.` without
+    /// digits `MalformedDecimalPoint`, where it stopped
     /// (SPEC, Parse). The base instead returned `ParseDecimalPrecisionLoss`
     /// or `ParseDecimalOverflow` from a mantissa past its int256 steps before
-    /// reading the `e`; #375 reads the whole literal first. Only that
+    /// reading the `e` or `.`; #375 reads the whole literal first. Only that
     /// difference is allowed.
     function checkParse(string memory str) internal view {
         Literal memory lit = LibTestDecimalLiteral.read(bytes(str));
@@ -100,7 +101,7 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         }
         bytes memory baseCall = abi.encodeCall(this.baseParse, (str));
         bytes memory prCall = abi.encodeCall(this.prParse, (str));
-        if (lit.malformed == MalformedExponentDigits.selector) {
+        if (lit.malformed == MalformedExponentDigits.selector || lit.malformed == MalformedDecimalPoint.selector) {
             (bool baseOk, bytes memory baseRet) = address(this).staticcall(baseCall);
             assertTrue(baseOk, "base success");
             (bytes4 e,,, uint256 cursor,,) = abi.decode(baseRet, (bytes4, Float, bytes4, uint256, int256, int256));
@@ -274,6 +275,21 @@ contract LibDecimalFloatFormatParsePr321EquivalenceTest is Test {
         string memory str = "99999999999999999999999999999999999999999999999999999999999999999999999999999999e";
         bytes4 overflow = ParseDecimalOverflow.selector;
         bytes4 malformed = MalformedExponentDigits.selector;
+        (, bytes memory baseRet) = address(this).staticcall(abi.encodeCall(this.baseParse, (str)));
+        (, bytes memory prRet) = address(this).staticcall(abi.encodeCall(this.prParse, (str)));
+        assertEq(baseRet, abi.encode(overflow, Float.wrap(0), overflow, uint256(80), int256(0), int256(0)));
+        assertEq(prRet, abi.encode(malformed, Float.wrap(0), malformed, uint256(81), int256(0), int256(0)));
+        checkParse(str);
+    }
+
+    /// 80 nines, past uint256, then `.` without digits: the base stopped
+    /// after the integer digits at 80 with `ParseDecimalOverflow`; the
+    /// literal is a malformed decimal point, `MalformedDecimalPoint` after the
+    /// `.` at 81.
+    function testParsePr321EquivalenceMalformedDecimalPointAfterOverflow() external view {
+        string memory str = "99999999999999999999999999999999999999999999999999999999999999999999999999999999.";
+        bytes4 overflow = ParseDecimalOverflow.selector;
+        bytes4 malformed = MalformedDecimalPoint.selector;
         (, bytes memory baseRet) = address(this).staticcall(abi.encodeCall(this.baseParse, (str)));
         (, bytes memory prRet) = address(this).staticcall(abi.encodeCall(this.prParse, (str)));
         assertEq(baseRet, abi.encode(overflow, Float.wrap(0), overflow, uint256(80), int256(0), int256(0)));
