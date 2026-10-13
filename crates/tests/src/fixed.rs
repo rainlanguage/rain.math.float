@@ -487,9 +487,8 @@ proptest! {
 
 // ------------------------------------------- log10Ratio in-place multiplies
 
-/// What log10Ratio's z^4 and z^6 multiplies take as zSquared: floor(z^2 /
-/// 1e50), at most this for z at most `LOG10_RATIO_Z_MAX`, and every integer
-/// up to it.
+/// log10Ratio's zSquared, floor(z^2 / 1e50): at most this for z at most
+/// `LOG10_RATIO_Z_MAX`, and every integer up to it.
 fn z_squared_max() -> BigInt {
     let z = literal_after(IMPL, "uint256 constant LOG10_RATIO_Z_MAX = ");
     &z * &z / pow10(50)
@@ -580,4 +579,25 @@ fn log10_ratio_z6_never_wraps() {
     let max = z_squared_max();
     assert_eq!(sixth(&max) >> 256u32, BigInt::from(15_357));
     assert_eq!(wrapping_words(&sixth, &max, 256), Vec::<BigInt>::new());
+}
+
+/// log10Ratio squares z, then zSquared, as u^2 + floor((2 u v 1e25 + v^2) /
+/// 1e50) for x = u 1e25 + v, v below 1e25. That is floor(x^2 / 1e50)
+/// exactly, as x^2 less 2 u v 1e25 + v^2 is u^2 1e50, so neither square
+/// needs a 512-bit product. Each part grows with u and v, so u from the
+/// largest x and v of 1e25 - 1 bound them, and none reaches 2^256.
+#[test]
+fn log10_ratio_square_splits_fit_a_word() {
+    let word = BigInt::from(1) << 256u32;
+    let root = pow10(25);
+    let z_max = literal_after(IMPL, "uint256 constant LOG10_RATIO_Z_MAX = ");
+    let x_max = z_squared_max();
+    assert!(x_max <= z_max);
+    for max in [z_max, x_max] {
+        let u = &max / &root;
+        let v = &root - 1;
+        let dividend = &u * &v * 2 * &root + &v * &v;
+        assert!(dividend < word);
+        assert!(&u * &u + dividend / pow10(50) < word);
+    }
 }
