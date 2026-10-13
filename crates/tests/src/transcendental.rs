@@ -1680,7 +1680,7 @@ mod anchors {
         // a = A 1e-38, t = T 1e-28 and eps = 1e-66, so with a^13 = A^13
         // 1e-494 and t^2 = T^2 1e-56 every comparison of squares is between
         // integers.
-        let big_t = &lo * 2 + 1;
+        let big_t = &lo * 10 + 5;
         let a13 = big_a.pow(13);
         let t2 = &big_t * &big_t * pow10(438);
         // a <= 1.001^4608, so a^eps <= 1.001^(4608 eps). x^y is concave in x
