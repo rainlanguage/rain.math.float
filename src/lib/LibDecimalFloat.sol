@@ -108,15 +108,15 @@ library LibDecimalFloat {
     Float constant FLOAT_MIN_NEGATIVE_VALUE =
         Float.wrap(bytes32(uint256(0x7fffffff80000000000000000000000000000000000000000000000000000000)));
 
-    /// Euler's number
+    /// Euler's number: the closest Float not above e.
     /// 2.718281828459045235360287471352662497757247093699959574966967627724e66, -66
     Float constant FLOAT_E =
         Float.wrap(bytes32(uint256(0xffffffbe19cfc6ef4f44cf88f14500d013df534fcaad48fca1d5ca47bea26fcc)));
 
-    /// Pi
-    /// 3.141592653589793238462643383279502884197169399375105820974944592308e66, -66
+    /// Pi: the closest Float not above pi.
+    /// 3.141592653589793238462643383279502884197169399375105820974944592307e66, -66
     Float constant FLOAT_PI =
-        Float.wrap(bytes32(uint256(0xffffffbe1dd4c9e873614f593bba9c6007d9a7ac8d03a4b6c700a65cb537a1b4)));
+        Float.wrap(bytes32(uint256(0xffffffbe1dd4c9e873614f593bba9c6007d9a7ac8d03a4b6c700a65cb537a1b3)));
 
     /// Convert a fixed point decimal value to a signed coefficient and exponent.
     /// The conversion can be lossy if the unsigned value is too large to fit in
