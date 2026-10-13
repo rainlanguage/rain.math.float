@@ -17,3 +17,8 @@ error ParseDecimalPrecisionLoss(uint256 position);
 
 /// @dev Thrown when the string contains characters after the float.
 error ParseDecimalFloatExcessCharacters();
+
+/// @dev Thrown when the parser reads the significant digits of a mantissa
+/// that has none. Unreachable: only a literal with a nonzero digit is read so.
+/// @param start The start of the literal.
+error ParseDecimalNoSignificantDigits(uint256 start);
