@@ -5,7 +5,9 @@ pragma solidity =0.8.25;
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {
     LibDecimalFloatImplementation,
-    LOG10_RATIO_Z_MAX
+    LOG10_RATIO_Z_MAX,
+    LOG10_SKIP_BELOW,
+    POW_FIXED_LN10
 } from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibExactFloat, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
@@ -112,7 +114,15 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     /// The 1.001 edges log10Unrounded hands over.
     function testLog10RatioTableEdges() external pure {
         checkBothModes(1001e72, 1e75, 4340774793186406689213877779888660200037751774867729013649473955595637, -73);
-        checkBothModes(9999e72, 1e76, -4343161980751038455604402380722667375072594570258433791106376134065183, -74);
+        checkBothModes(
+            // Positive constant.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256(LOG10_SKIP_BELOW),
+            1e76,
+            -4340774793186406689213877779888660200037751774867729013649473955595637,
+            -73
+        );
+        checkBothModes(1001e73, 1e76, 4340774793186406689213877779888660200037751774867729013649473955595637, -73);
     }
 
     /// A difference of one unit keeps 48 digits only when `relative`; at the
@@ -198,6 +208,28 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     function testLog10RatioRelativeZeroSum() external {
         vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, 0, 0));
         this.ratio(0, 0, true);
+    }
+
+    /// #456: b of zero reverts `Log10RatioOutOfRange`, but relative with a
+    /// below 1e50 the sum guard comes first and reverts
+    /// `Log10RatioRelativeSumTooSmall`.
+    function testLog10RatioZeroDenominator() external {
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, 1, 0));
+        this.ratio(1, 0, true);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioRelativeSumTooSmall.selector, 1e50 - 1, 0));
+        this.ratio(1e50 - 1, 0, true);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, 1e50, 0));
+        this.ratio(1e50, 0, true);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, 1, 0));
+        this.ratio(1, 0, false);
+        vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, 1e50 - 1, 0));
+        this.ratio(1e50 - 1, 0, false);
+    }
+
+    /// #476: `POW_FIXED_LN10` is ln 10 at 1e50 rounded down, `ORACLE_LN10`
+    /// from `bc -l` at 1e70 truncated to 1e50.
+    function testPowFixedLn10() external pure {
+        assertEq(POW_FIXED_LN10, ORACLE_LN10 / 1e20);
     }
 
     /// Every relative a + b below 1e50 reverts with its inputs, including 0,
@@ -398,5 +430,27 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         vm.assume(Math.mulDiv(difference, 1e50, a + b) > LOG10_RATIO_Z_MAX);
         vm.expectRevert(abi.encodeWithSelector(Log10RatioOutOfRange.selector, a, b));
         this.ratio(a, b, relative);
+    }
+
+    /// a + b = 2e50 and a - b = 2^65 1e25 make z = 2^64 1e25 exactly, so z^2
+    /// at 1e-50 is 2^128 and its square 2^256: the low word is 0, below the
+    /// remainder 2^256 mod 1e50, so the in-place z^4 multiply borrows from
+    /// the high word. Reference from `bc -l` at scale 200.
+    function testLog10RatioZFourthRemainderBorrow() external pure {
+        uint256 z = 2 ** 64 * 1e25;
+        int256 expected = 1602263832060531559618195882253573250139901008052388705256199829072734;
+        checkBothModes(1e50 + z, 1e50 - z, expected, -75);
+        checkBothModes(1e50 - z, 1e50 + z, -expected, -75);
+    }
+
+    /// z^2 at 1e-50 is Z = 2^102 5^17 + 1e10, where Z^3 / 1e50 is just past
+    /// 5 2^256, so the in-place z^6 multiply has a low word of 4.49e45, below
+    /// its remainder mod 1e50 of 4.34e49, and borrows from the high word.
+    /// Reference from `bc -l` at scale 200.
+    function testLog10RatioZSixthRemainderBorrow() external pure {
+        uint256 z = 19668661934068655294372187221166452031959486958;
+        int256 expected = 1708398290907464345711870817501326157006314194270408443866512063549736;
+        checkBothModes(1e50 + z, 1e50 - z, expected, -73);
+        checkBothModes(1e50 - z, 1e50 + z, -expected, -73);
     }
 }

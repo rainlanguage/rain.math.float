@@ -20,6 +20,15 @@ struct U512 {
     uint256 lo;
 }
 
+/// A sum operand: `±magnitude × 10^exponent`, and `unitShift`, as
+/// `LibExactFloat.int256UnitShift` gives it for the coefficient's int256 unit.
+struct Operand {
+    bool negative;
+    uint256 magnitude;
+    int256 exponent;
+    int256 unitShift;
+}
+
 /// Exact decimal comparisons, independent of the library under test. Values
 /// are `magnitude × 10^exponent` with a 512 bit magnitude, and every
 /// comparison is decided in exact integer arithmetic. The `*Payload` functions
@@ -40,15 +49,24 @@ library LibExactFloat {
     /// The 512 bit product by schoolbook multiplication of 128 bit limbs,
     /// independent of the CRT trick `mul512` uses.
     function mul(uint256 a, uint256 b) internal pure returns (U512 memory) {
-        uint256 mask = type(uint128).max;
-        uint256 lowLow = (a & mask) * (b & mask);
-        uint256 lowHigh = (a & mask) * (b >> 128);
-        uint256 highLow = (a >> 128) * (b & mask);
-        uint256 highHigh = (a >> 128) * (b >> 128);
-        uint256 middle = (lowLow >> 128) + (lowHigh & mask) + (highLow & mask);
-        return U512(
-            highHigh + (lowHigh >> 128) + (highLow >> 128) + (middle >> 128), (lowLow & mask) | ((middle & mask) << 128)
-        );
+        (uint256 hi, uint256 lo) = mulWords(a, b);
+        return U512(hi, lo);
+    }
+
+    /// `mul` as its two words, without allocating.
+    function mulWords(uint256 a, uint256 b) internal pure returns (uint256 hi, uint256 lo) {
+        // Limb products are below 2^256 and the full product below 2^512, so
+        // no step wraps.
+        unchecked {
+            uint256 mask = type(uint128).max;
+            uint256 lowLow = (a & mask) * (b & mask);
+            uint256 lowHigh = (a & mask) * (b >> 128);
+            uint256 highLow = (a >> 128) * (b & mask);
+            uint256 highHigh = (a >> 128) * (b >> 128);
+            uint256 middle = (lowLow >> 128) + (lowHigh & mask) + (highLow & mask);
+            hi = highHigh + (lowHigh >> 128) + (highLow >> 128) + (middle >> 128);
+            lo = (lowLow & mask) | ((middle & mask) << 128);
+        }
     }
 
     function words(U512 memory x) internal pure returns (uint256, uint256) {
@@ -57,7 +75,7 @@ library LibExactFloat {
 
     /// Checked: a product at or above 2^512 panics rather than wrapping.
     function mulSmall(U512 memory x, uint256 m) internal pure returns (U512 memory) {
-        (uint256 carry, uint256 lo) = words(mul(x.lo, m));
+        (uint256 carry, uint256 lo) = mulWords(x.lo, m);
         return U512(x.hi * m + carry, lo);
     }
 
@@ -95,9 +113,17 @@ library LibExactFloat {
 
     /// The number of decimal digits of a non-zero `x` below 10^154.
     function digits(U512 memory x) internal pure returns (int256 n) {
-        U512 memory p = u512(1);
-        while (cmp(p, x) <= 0) {
-            p = mulSmall(p, 10);
+        if (x.hi == 0) {
+            for (uint256 rest = x.lo; rest > 0; rest /= 10) {
+                n++;
+            }
+            return n;
+        }
+        uint256 pHi = 0;
+        uint256 pLo = 1;
+        while (pHi < x.hi || (pHi == x.hi && pLo <= x.lo)) {
+            (uint256 carry, uint256 lo) = mulWords(pLo, 10);
+            (pHi, pLo) = (pHi * 10 + carry, lo);
             n++;
         }
     }
@@ -130,6 +156,16 @@ library LibExactFloat {
         // -(x + 1) cannot overflow for negative x, including int256.min.
         // forge-lint: disable-next-line(unsafe-typecast)
         return x < 0 ? uint256(-(x + 1)) + 1 : uint256(x);
+    }
+
+    /// The exponent of `signedCoefficient × 10^exponent` once the
+    /// coefficient's trailing decimal zeros move into it.
+    function canonicalExponent(int256 signedCoefficient, int256 exponent) internal pure returns (int256) {
+        while (signedCoefficient != 0 && signedCoefficient % 10 == 0) {
+            signedCoefficient /= 10;
+            exponent++;
+        }
+        return exponent;
     }
 
     /// Whether the exact non-zero `magnitude × 10^exponent`, of either sign,
@@ -253,7 +289,7 @@ library LibExactFloat {
             if (!tooLarge && coefficient != 0) {
                 uint256 high;
                 // forge-lint: disable-next-line(unsafe-typecast)
-                (high, value) = words(mul(coefficient, 10 ** uint256(finalExponent)));
+                (high, value) = mulWords(coefficient, 10 ** uint256(finalExponent));
                 tooLarge = high != 0;
             }
             if (tooLarge) {
@@ -539,13 +575,14 @@ library LibExactFloat {
     /// The int256 unit is the last digit's place when written with as many
     /// digits as an int256 coefficient of its sign holds, so
     /// `type(int256).min` holds 77. Below `type(int256).min` the sum then
-    /// truncates towards zero to that exponent.
+    /// truncates towards zero to that exponent. A zero sum is `(0, 0)`.
     function addPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
         internal
         pure
         returns (bool overflowed, int256 c, int256 e)
     {
         (overflowed, c, e,) = addPartsInexact(ca, ea, cb, eb);
+        e = c == 0 ? int256(0) : e;
     }
 
     /// `addPartsWide` with the magnitude rounded up instead, so never below
@@ -572,22 +609,63 @@ library LibExactFloat {
         pure
         returns (bool overflowed, int256 c, int256 e, bool inexact)
     {
-        if (ca == 0) {
-            // forge-lint: disable-next-line(boolean-cst)
-            return (false, cb, eb, false);
+        return sumPartsInexact(operand(false, ca, ea), operand(false, cb, eb));
+    }
+
+    /// The parts `sub` of any two int256 coefficients hands to packing, or
+    /// `overflowed` past `type(int256).max`: `addPartsWide`'s rule for the
+    /// exact `a + (-b)`, where `-b` keeps `b`'s int256 unit, so the negation
+    /// of `type(int256).min` is `2^255` at 77 digits. A zero difference is
+    /// `(0, 0)`.
+    function subPartsWide(int256 ca, int256 ea, int256 cb, int256 eb)
+        internal
+        pure
+        returns (bool overflowed, int256 c, int256 e)
+    {
+        (overflowed, c, e,) = sumPartsInexact(operand(false, ca, ea), operand(true, cb, eb));
+        e = c == 0 ? int256(0) : e;
+    }
+
+    /// `signedCoefficient × 10^exponent`, negated if `negate`, at the int256
+    /// unit of `signedCoefficient`.
+    function operand(bool negate, int256 signedCoefficient, int256 exponent) internal pure returns (Operand memory) {
+        return Operand(
+            negate ? signedCoefficient > 0 : signedCoefficient < 0,
+            abs(signedCoefficient),
+            exponent,
+            signedCoefficient == 0 ? int256(0) : int256UnitShift(signedCoefficient)
+        );
+    }
+
+    /// `addPartsInexact` of two operands.
+    function sumPartsInexact(Operand memory a, Operand memory b)
+        internal
+        pure
+        returns (bool overflowed, int256 c, int256 e, bool inexact)
+    {
+        if (a.magnitude == 0) {
+            (a, b) = (b, a);
         }
-        if (cb == 0) {
+        if (b.magnitude == 0) {
+            // Only 2^255 positive is past int256 alone. It sheds a digit, past
+            // every exponent from `type(int256).max`.
+            inexact = !a.negative && a.magnitude > uint256(type(int256).max);
+            if (inexact && a.exponent == type(int256).max) {
+                // forge-lint: disable-next-line(boolean-cst)
+                return (true, 0, 0, true);
+            }
+            (c, e) = signedParts(a.negative, a.magnitude, a.exponent);
             // forge-lint: disable-next-line(boolean-cst)
-            return (false, ca, ea, false);
+            return (false, c, e, inexact);
         }
-        if (cmpWide(u512(abs(ca)), ea, eb, 0, 0, u512(abs(cb))) < 0) {
-            (ca, ea, cb, eb) = (cb, eb, ca, ea);
+        if (cmpWide(u512(a.magnitude), a.exponent, b.exponent, 0, 0, u512(b.magnitude)) < 0) {
+            (a, b) = (b, a);
         }
         uint256 magnitude;
         int256 offset;
-        (magnitude, offset, inexact) = addUnits(ca, ea, cb, eb);
+        (magnitude, offset, inexact) = addUnits(a, b);
         int256 cls;
-        (cls, e) = wideExponent(ea, 0, 0, offset);
+        (cls, e) = wideExponent(a.exponent, 0, 0, offset);
         if (cls == 1) {
             // forge-lint: disable-next-line(boolean-cst)
             return (true, 0, 0, inexact);
@@ -598,36 +676,35 @@ library LibExactFloat {
             magnitude = shed(magnitude, e);
             e = type(int256).min;
         }
-        (c, e) = signedParts(ca < 0, magnitude, e);
+        (c, e) = signedParts(a.negative, magnitude, e);
     }
 
-    /// `addPartsWide`'s magnitude in units of `10^(ea + offset)`, for
+    /// `addPartsWide`'s magnitude in units of `10^(a.exponent + offset)`, for
     /// non-zero operands with `|a| >= |b|`, and whether it is inexact.
-    function addUnits(int256 ca, int256 ea, int256 cb, int256 eb)
+    function addUnits(Operand memory a, Operand memory b)
         internal
         pure
         returns (uint256 magnitude, int256 offset, bool inexact)
     {
-        uint256 limit = ca < 0 ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
-        int256 unitShift = int256UnitShift(ca);
+        uint256 limit = a.negative ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
         // forge-lint: disable-next-line(unsafe-typecast)
-        U512 memory units = u512(abs(ca) * 10 ** uint256(unitShift));
+        U512 memory units = u512(a.magnitude * 10 ** uint256(a.unitShift));
         U512 memory smallUnits;
         // Whether b has digits below the unit: all of them unless aligned.
         inexact = true;
         // eb - unit, where unit is ea - unitShift.
-        (int256 cls, int256 gap) = wideExponent(eb, ea, 0, unitShift);
+        (int256 cls, int256 gap) = wideExponent(b.exponent, a.exponent, 0, a.unitShift);
         if (cls == 0 && gap >= 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
-            smallUnits = mulPow10(u512(abs(cb)), uint256(gap));
+            smallUnits = mulPow10(u512(b.magnitude), uint256(gap));
             inexact = false;
         } else if (cls == 0 && gap > -78) {
             // forge-lint: disable-next-line(unsafe-typecast)
-            smallUnits = u512(abs(cb) / 10 ** uint256(-gap));
+            smallUnits = u512(b.magnitude / 10 ** uint256(-gap));
             // forge-lint: disable-next-line(unsafe-typecast)
-            inexact = abs(cb) % 10 ** uint256(-gap) != 0;
+            inexact = b.magnitude % 10 ** uint256(-gap) != 0;
         }
-        if ((ca < 0) == (cb < 0)) {
+        if (a.negative == b.negative) {
             // floor(|a| + |b|) = |a| + floor(|b|) for a whole |a|.
             units = add(units, smallUnits);
         } else {
@@ -635,7 +712,7 @@ library LibExactFloat {
             // and ceil(|b|) is floor(|b|) plus one where |b| is not whole.
             units = U512(0, units.lo - smallUnits.lo - (inexact ? 1 : 0));
         }
-        offset = -unitShift;
+        offset = -a.unitShift;
         if (cmp(units, u512(limit)) > 0) {
             // units mod 10, as 2^256 is 6 mod 10.
             inexact = inexact || (units.hi * 6 + units.lo % 10) % 10 != 0;
@@ -734,6 +811,48 @@ library LibExactFloat {
         }
         (bool none, uint256 next, int256 nextExponent) = nextFloat(negative, rc, re);
         return none || cmpScaled(magnitude, exponent, u512(next), nextExponent) < 0;
+    }
+
+    /// The packed bytes of the Float the general rule packs the exact
+    /// `±magnitude × 10^exponent` to, for a magnitude past the int224 bound of
+    /// its sign. `packLossy`'s NatSpec puts such a value at the lowest exponent
+    /// its truncated coefficient fits int224, or at the int224 bound one
+    /// exponent lower where the bound is the closer of the two, and never
+    /// below the int32 floor. The caller rules out values that `overflows` or
+    /// `underflows`.
+    function packedNearestTowardZero(bool negative, uint256 magnitude, int256 exponent)
+        internal
+        pure
+        returns (bytes32)
+    {
+        uint256 limit = coefficientLimit(negative);
+        require(magnitude > limit, "fits int224");
+        uint256 shift = 1;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        while (magnitude / 10 ** shift > limit) {
+            ++shift;
+        }
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 floorShift = int256(type(int32).min) - exponent;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        if (floorShift > int256(shift)) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            shift = uint256(floorShift);
+        }
+        uint256 truncated = shift > 77 ? 0 : magnitude / 10 ** shift;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 truncatedExponent = exponent + int256(shift);
+        // At `truncatedExponent - 1` the truncation did not fit, so the bound
+        // there is at most the value.
+        bool boundIsCloser = truncatedExponent - 1 >= type(int32).min && limit > truncated * 10;
+        uint256 resultMagnitude = boundIsCloser ? limit : truncated;
+        int256 resultExponent = boundIsCloser ? truncatedExponent - 1 : truncatedExponent;
+        require(resultMagnitude != 0, "underflows");
+        require(resultExponent <= type(int32).max, "overflows");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signed = negative ? -int256(resultMagnitude) : int256(resultMagnitude);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return bytes32((uint256(uint32(int32(resultExponent))) << 224) | uint256(uint224(int224(signed))));
     }
 
     /// The magnitude of the Float of the sign one step further from zero than
@@ -852,12 +971,12 @@ library LibExactFloat {
     /// leave it in int256 of the product's sign, and the number shed.
     function productInt256(int256 ca, int256 cb) internal pure returns (int256, int256) {
         bool negative = (ca < 0) != (cb < 0);
-        (uint256 productHi, uint256 productLo) = words(mul(abs(ca), abs(cb)));
+        (uint256 productHi, uint256 productLo) = mulWords(abs(ca), abs(cb));
         // floor(product / 10^k) is within the bound iff product < (bound + 1) × 10^k.
         uint256 aboveBound = negative ? 2 ** 255 + 1 : 2 ** 255;
         uint256 dropped = 0;
         while (true) {
-            (uint256 hi, uint256 lo) = words(mul(aboveBound, 10 ** dropped));
+            (uint256 hi, uint256 lo) = mulWords(aboveBound, 10 ** dropped);
             if (productHi < hi || (productHi == hi && productLo < lo)) {
                 break;
             }

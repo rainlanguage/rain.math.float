@@ -12,8 +12,8 @@ import {LibExactFloat} from "test/lib/LibExactFloat.sol";
 contract LibDecimalFloatImplementationSqrtTest is Test {
     /// x 10^d > m^2 in 512 bits.
     function past(uint256 x, uint256 d, uint256 m) internal pure returns (bool) {
-        (uint256 xHigh, uint256 xLow) = LibDecimalFloatImplementation.mul512(x, 10 ** d);
-        (uint256 mHigh, uint256 mLow) = LibDecimalFloatImplementation.mul512(m, m);
+        (uint256 xHigh, uint256 xLow) = LibExactFloat.mulWords(x, 10 ** d);
+        (uint256 mHigh, uint256 mLow) = LibExactFloat.mulWords(m, m);
         return xHigh > mHigh || (xHigh == mHigh && xLow > mLow);
     }
 
@@ -27,11 +27,14 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
     {
         assertGe(root, 1e40, "root low");
         assertLe(root, 1e41, "root high");
+        int256 t = 0;
         while (signedCoefficient < 1e75) {
             signedCoefficient *= 10;
-            exponent -= 1;
+            t += 1;
         }
-        int256 d = exponent - 2 * rootExponent;
+        // e - 2 re - t, each step within int256 for any exponent, as the
+        // root's exponent is near half the input's.
+        int256 d = exponent - rootExponent - rootExponent - t;
         assertTrue(d >= 4 && d <= 7, "root scale");
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 x = uint256(signedCoefficient) * 4;
@@ -45,16 +48,15 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
 
     function testSqrtCorrectlyRounded(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, 1e76 - 1);
-        exponent = bound(exponent, -1e70, 1e70);
         (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
         assertCorrectlyRounded(signedCoefficient, exponent, root, rootExponent);
     }
 
-    /// The exponent extremes the scaling and halving pass through. Both are
-    /// odd, so each is exponent 1 shifted by an even exponent - 1.
+    /// The odd exponent extremes. Each is exponent 1 shifted by an even
+    /// exponent - 1.
     function testSqrtExponentEnds(int256 signedCoefficient, bool high) external pure {
         signedCoefficient = bound(signedCoefficient, 1, 1e76 - 1);
-        int256 exponent = high ? type(int256).max : type(int256).min + 81;
+        int256 exponent = high ? type(int256).max : type(int256).min + 1;
         (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
         (int256 shifted, int256 shiftedExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, 1);
         assertEq(root, shifted, "root");
@@ -268,42 +270,43 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         }
     }
 
-    /// #422: sqrt(1, int256.min) wrapped to 1e40 10^(2.9e76). c 10^e is
-    /// taken as C 10^(e - t) with C = c 10^t in [1e75, 1e76), then as
-    /// N 10^(e - t - s) with s 5 or 6 to make e - t - s even. That exponent
-    /// is at least int256.min exactly when the root is returned, correctly
-    /// rounded, and otherwise the input is reverted with.
-    function testSqrtExponentFloor(int256 signedCoefficient, int256 room) external {
+    /// #451: c 10^e is taken as N 10^(e - t - s), C = c 10^t in [1e75, 1e76)
+    /// and s 5 or 6 to make e - t - s even. Within 81 of int256.min that
+    /// exponent passes it, while the root's, about half of it, does not. The
+    /// root is correctly rounded there, and as int256.min is even,
+    /// sqrt(c 10^(min + k)) is sqrt(c 10^k) 10^(min / 2) exactly.
+    function testSqrtExponentFloor(int256 signedCoefficient, int256 room) external pure {
         signedCoefficient = bound(signedCoefficient, 1, 1e76 - 1);
         room = bound(room, 0, 200);
         int256 exponent = type(int256).min + room;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 t = 76 - LibExactFloat.digits(LibExactFloat.u512(uint256(signedCoefficient)));
-        // e - t - s is even, so s is 5 when e - t is odd.
-        int256 s = (room + t) % 2 == 1 ? int256(5) : int256(6);
-        if (room >= t + s) {
-            (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
-            assertCorrectlyRounded(signedCoefficient, exponent, root, rootExponent);
-        } else {
-            vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, signedCoefficient, exponent));
-            this.sqrtExternal(signedCoefficient, exponent);
-        }
+        (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
+        assertCorrectlyRounded(signedCoefficient, exponent, root, rootExponent);
+        (int256 shifted, int256 shiftedExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, room);
+        assertEq(root, shifted, "root");
+        assertEq(rootExponent, shiftedExponent + type(int256).min / 2, "exponent");
     }
 
-    /// Either side of the floor for c = 1, t = 75, and c = 1e75, t = 0.
-    function testSqrtExponentFloorEnds() external {
+    /// Values from exact maths and `bc`: 10^(min + 2k) has root 1e40
+    /// 10^(min / 2 + k - 40), and 10^(min + 2k + 1) has root sqrt(10) 1e40
+    /// 10^(min / 2 + k - 40), sqrt(10) 1e40 being
+    /// 31622776601683793319988935444327185337195.55 to scale 60. c = 1 has
+    /// t = 75 and c = 1e75 has t = 0, either side of where e - t - s passes
+    /// int256.min.
+    function testSqrtExponentFloorEnds() external pure {
         int256 min = type(int256).min;
-        (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(1, min + 80);
-        assertEq(root, 1e40, "root of 10^(min + 80)");
-        assertEq(rootExponent, min / 2, "exponent of 10^(min / 2 + 40)");
-        (root, rootExponent) = LibDecimalFloatImplementation.sqrt(1e75, min + 5);
-        assertEq(root, 1e40, "root of 10^(min + 80)");
-        assertEq(rootExponent, min / 2, "exponent of 10^(min / 2 + 40)");
-        int256[2][4] memory inputs =
-            [[int256(1), min + 79], [int256(1), min], [int256(1e75), min + 4], [int256(1e75), min]];
-        for (uint256 i = 0; i < inputs.length; i++) {
-            vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, inputs[i][0], inputs[i][1]));
-            this.sqrtExternal(inputs[i][0], inputs[i][1]);
+        int256 rootTen = 31622776601683793319988935444327185337196;
+        int256[4][6] memory cases = [
+            [int256(1), min + 80, 1e40, min / 2],
+            [int256(1e75), min + 5, 1e40, min / 2],
+            [int256(1), min + 79, rootTen, min / 2 - 1],
+            [int256(1e75), min + 4, rootTen, min / 2 - 1],
+            [int256(1), min, 1e40, min / 2 - 40],
+            [int256(1e75), min, rootTen, min / 2 - 3]
+        ];
+        for (uint256 i = 0; i < cases.length; i++) {
+            (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(cases[i][0], cases[i][1]);
+            assertEq(root, cases[i][2], "root");
+            assertEq(rootExponent, cases[i][3], "exponent");
         }
     }
 }

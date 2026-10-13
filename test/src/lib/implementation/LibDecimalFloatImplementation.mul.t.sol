@@ -287,6 +287,23 @@ contract LibDecimalFloatImplementationMulTest is Test {
         checkMulExponentOverflow(max, max, max, -76);
     }
 
+    /// The two other ways to the largest combined lift of 77, each
+    /// `floor(|a b| / 1e77)` from `bc` at `max`, and past it one higher.
+    /// n = 76 plus 1 from shedding a digit to fit int256, and n = 77 at the
+    /// largest product, 2^510, which fits without shedding.
+    function testMulExponentCombinedLiftCeiling() external {
+        int256 max = type(int256).max;
+        int256 min = type(int256).min;
+        checkMul(
+            max, max - 77, 15e75, 0, 8684406692798714656767823875651593088995248849923042302959318800593484722995, max
+        );
+        checkMulExponentOverflow(max, max - 76, 15e75, 0);
+        checkMul(
+            min, max - 77, min, 0, 33519519824856492748935062495514615318698414551480983444308903609304410075183, max
+        );
+        checkMulExponentOverflow(min, max - 76, min, 0);
+    }
+
     /// The lift fits but the divide by 10 for a coefficient wider than int256
     /// does not.
     function testMulExponentCoefficientRescaleAboveCeiling() external {
@@ -393,7 +410,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
     }
 
     /// True iff `exponentA + exponentB + lift` is above `type(int256).max`,
-    /// for `lift` in [0, 78].
+    /// for `lift` in [0, 77].
     function exceedsCeiling(int256 exponentA, int256 exponentB, int256 lift) internal pure returns (bool) {
         if (exponentA >= 0) {
             if (exponentB > type(int256).max - exponentA) {
@@ -441,7 +458,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
         int256 min = type(int256).min;
         int256 max = type(int256).max;
         int256[10] memory coefficients = [min, min + 1, -1e76, -10, -1, 1, 9, 1e76, max - 1, max];
-        int256[16] memory exponents = [
+        int256[17] memory exponents = [
             min,
             min + 1,
             min + 77,
@@ -457,6 +474,7 @@ contract LibDecimalFloatImplementationMulTest is Test {
             2 ** 254,
             max - 78,
             max - 77,
+            max - 76,
             max
         ];
         for (uint256 ia = 0; ia < coefficients.length; ia++) {

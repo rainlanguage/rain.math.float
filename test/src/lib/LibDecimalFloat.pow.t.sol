@@ -1425,6 +1425,37 @@ contract LibDecimalFloatPowTest is Test {
         this.powExternal(below, widest);
     }
 
+    /// An integer part of b past int256 by its exponent alone takes every a
+    /// but 1 past the range, on the side a is of 1, for every exponent up to
+    /// int32.max. From 256 up, 10^e is 0 modulo 2^256.
+    function testPowHugeExponentDirectionAnyExponent(int256 exponentB) external {
+        exponentB = bound(exponentB, 77, type(int32).max);
+        Float b = LibDecimalFloat.packLossless(1, exponentB);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2), int256(0)));
+        this.powExternal(LibDecimalFloat.packLossless(2, 0), b);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(5), int256(-1)));
+        this.powExternal(LibDecimalFloat.packLossless(5, -1), b);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(2), int256(0)));
+        this.powExternal(LibDecimalFloat.packLossless(2, 0), b.minus());
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(5), int256(-1)));
+        this.powExternal(LibDecimalFloat.packLossless(5, -1), b.minus());
+    }
+
+    /// b = 2^180 10^76 has an exponent inside int256 powers of ten but an
+    /// integer part past int256, and that integer part is 0 modulo 2^256.
+    /// It is past the range on the side a is of 1 all the same.
+    function testPowHugeExponentDirectionCoefficientPastInt256() external {
+        Float b = LibDecimalFloat.packLossless(int256(1) << 180, 76);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(2), int256(0)));
+        this.powExternal(LibDecimalFloat.packLossless(2, 0), b);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(5), int256(-1)));
+        this.powExternal(LibDecimalFloat.packLossless(5, -1), b);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(2), int256(0)));
+        this.powExternal(LibDecimalFloat.packLossless(2, 0), b.minus());
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(5), int256(-1)));
+        this.powExternal(LibDecimalFloat.packLossless(5, -1), b.minus());
+    }
+
     /// The most negative Float as b, or as a base with a whole b, does not
     /// pack negated. It reverted `ExponentOverflow` whichever side of the range
     /// the power is on.

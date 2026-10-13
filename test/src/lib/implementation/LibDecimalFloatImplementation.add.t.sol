@@ -434,7 +434,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
             // We aren't testing the overflow case in this test.
             vm.assume(!willOverflow(signedCoefficientAMaximized, signedCoefficientBMaximized));
         }
-        int256 expectedExponent = exponentA;
+        int256 expectedExponent = expectedSignedCoefficient == 0 ? int256(0) : exponentA;
 
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.add(
             signedCoefficientAMaximized, exponentA, signedCoefficientBMaximized, exponentB
@@ -501,10 +501,21 @@ contract LibDecimalFloatImplementationAddTest is Test {
 
     /// Operands too close to `type(int256).min` to take their full shift add
     /// exactly when the sum fits at the floor.
+    /// A zero sum is the zero constants, exact or truncated. `ceil(2^255 / 10)`
+    /// at exponent 1 plus `-2^255` is 2 (bc), under the larger operand's unit
+    /// of 10, so it truncates to zero.
+    function testAddZeroSum() external pure {
+        checkAdd(0, 5, 0, 7, 0, 0);
+        checkAdd(7, 5, -7, 5, 0, 0);
+        checkAdd(
+            5789604461865809771178549250434395392663499233282028201972879200395656481997, 1, type(int256).min, 0, 0, 0
+        );
+    }
+
     function testAddAtFloor() external pure {
         int256 min = type(int256).min;
         checkAdd(1, min, 1, min, 2, min);
-        checkAdd(1, min, -1, min, 0, min);
+        checkAdd(1, min, -1, min, 0, 0);
         checkAdd(1, min, 1, min + 1, 11, min);
         checkAdd(1, min + 1, 1, min, 11, min);
         checkAdd(-1, min, 1, min + 76, 1e76 - 1, min);
@@ -614,6 +625,9 @@ contract LibDecimalFloatImplementationAddTest is Test {
         }
         (int256 expectedSignedCoefficient, int256 expectedExponent) =
             LibDecimalFloatImplementationAddPre394.add(a, ea, b, eb);
+        // Pre-394 keeps an exponent on a zero sum, which is now the zero
+        // constants.
+        if (expectedSignedCoefficient == 0) expectedExponent = 0;
         checkAdd(a, ea, b, eb, expectedSignedCoefficient, expectedExponent);
     }
 }

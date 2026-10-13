@@ -349,6 +349,15 @@ library LibDecimalFloat {
     /// is gone. An exponent above the ceiling is lowered by multiplying the
     /// coefficient by ten, which is exact; `ExponentOverflow` when int224 has no
     /// headroom for that.
+    ///
+    /// Reverts `ExponentOverflow` with the inputs once the value is at least
+    /// `(2^223 + 2) × 10^int32.max` in magnitude, for both signs: there the
+    /// coefficient at exponent int32.max + 1 exceeds int224.max / 10, so no
+    /// bound is taken and that exponent does not fit. Below it a value past
+    /// `FLOAT_MAX_POSITIVE_VALUE`, `(2^223 - 1) × 10^int32.max`, or
+    /// `FLOAT_MIN_NEGATIVE_VALUE`, `-2^223 × 10^int32.max`, returns that Float
+    /// with `lossless` false: up to three units of `10^int32.max` past the
+    /// positive one, and up to two past the negative one.
     /// @param signedCoefficient The signed coefficient of the floating point
     /// representation.
     /// @param exponent The exponent of the floating point representation.
@@ -517,16 +526,25 @@ library LibDecimalFloat {
         }
     }
 
-    /// Lossless version of `packLossy`. A value larger in magnitude than every
-    /// Float reverts `ExponentOverflow`; any other value that is not exactly a
-    /// Float, one smaller than every Float included, reverts
-    /// `LossyConversionToFloat` with the inputs.
+    /// Lossless version of `packLossy`. A value past `FLOAT_MAX_POSITIVE_VALUE`
+    /// or `FLOAT_MIN_NEGATIVE_VALUE` reverts `ExponentOverflow`, the band that
+    /// `packLossy` truncates into them included; any other value that is not
+    /// exactly a Float, one smaller than every Float included, reverts
+    /// `LossyConversionToFloat`. Both report the inputs.
     /// @param signedCoefficient As per `packLossy`.
     /// @param exponent As per `packLossy`.
     /// @return float As per `packLossy`.
     function packLossless(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless) {
+            // packLossy never exceeds the value's magnitude, so a lossy
+            // extreme stands for a value past it.
+            if (
+                Float.unwrap(c) == Float.unwrap(FLOAT_MAX_POSITIVE_VALUE)
+                    || Float.unwrap(c) == Float.unwrap(FLOAT_MIN_NEGATIVE_VALUE)
+            ) {
+                revert ExponentOverflow(signedCoefficient, exponent);
+            }
             revert LossyConversionToFloat(signedCoefficient, exponent);
         }
         return c;
@@ -706,27 +724,17 @@ library LibDecimalFloat {
         }
     }
 
-    /// https://speleotrove.com/decimal/daops.html#refmult
-    /// > multiply takes two operands. If either operand is a special value then
-    /// > the general rules apply.
-    /// >
-    /// > Otherwise, the operands are multiplied together
-    /// > (‘long multiplication’), resulting in a number which may be as long as
-    /// > the sum of the lengths of the two operands, as follows:
-    /// >
-    /// > - The coefficient of the result, before rounding, is computed by
-    /// >   multiplying together the coefficients of the operands.
-    /// > - The exponent of the result, before rounding, is the sum of the
-    /// >   exponents of the two operands.
-    /// > - The sign of the result is the exclusive or of the signs of the
-    /// >   operands.
-    /// >
-    /// > The result is then rounded to precision digits if necessary, counting
-    /// > from the most significant digit of the result.
-    /// @param a The Float struct containing the signed coefficient and
-    /// exponent of the first floating point number.
-    /// @param b The Float struct containing the signed coefficient and
-    /// exponent of the second floating point number.
+    /// Multiplies `a` by `b`. The result is the exact product rounded once
+    /// towards zero: the Float closest to it that does not exceed its
+    /// magnitude, as every arithmetic result packs. A product `packLossy`
+    /// cannot bring to an exponent at most `int32.max` reverts
+    /// `ExponentOverflow`; one just past the largest Float, such as
+    /// `2^223 × 10^int32.max`, packs to it. A non-zero product below every
+    /// non-zero Float reverts `ExponentUnderflow`. Unlike `div`, both errors
+    /// report the parts handed to packing: the exact product truncated towards
+    /// zero to fit int256, at the exponent sum plus the digits dropped.
+    /// @param a The first factor.
+    /// @param b The second factor.
     /// @return The product of the two floats.
     function mul(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
@@ -865,7 +873,10 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Fractional component of a float.
+    /// Fractional component of a float: `x - trunc(x)`, the part `integer`
+    /// truncates away. It has the sign of the float and lies in (-1, 1), so it
+    /// is negative for a negative non-integer: `frac(-1.5)` is `-0.5`, not the
+    /// `x - floor(x)` of `0.5`. `integer(x) + frac(x) == x`.
     /// @param float The float to return the fractional part of.
     /// @return The fractional component of the float.
     function frac(Float float) internal pure returns (Float) {
@@ -876,7 +887,7 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Smallest integer value less than or equal to the float.
+    /// Greatest integer value less than or equal to the float.
     /// @param float The float to floor.
     /// @return The floored float.
     function floor(Float float) internal pure returns (Float) {
@@ -1305,9 +1316,10 @@ library LibDecimalFloat {
     }
 
     /// `packLossy` reverts `ExponentOverflow` exactly when the value is at
-    /// least (int224.max / 10 + 1) 10^(int32.max + 1) in magnitude: there the
-    /// closest Float not above it is past int224.max 10^int32.max. The
-    /// comparison is on the magnitude, so both signs share it. A pow, pow10 or
+    /// least (int224.max / 10 + 1) 10^(int32.max + 1), which is
+    /// (2^223 + 2) 10^int32.max, in magnitude: there the closest Float not
+    /// above it is past int224.max 10^int32.max. The comparison is on the
+    /// magnitude, so both signs share it. A pow, pow10 or
     /// div result is never int256.min, whose checked negation would panic.
     function revertIfPastLargestFloat(int256 signedCoefficient, int256 exponent, Float input) private pure {
         if (signedCoefficient < 0) {
@@ -1372,7 +1384,7 @@ library LibDecimalFloat {
     /// Whether the two extremes of a set of values are close enough to each
     /// other, given an absolute and a proportional tolerance.
     ///
-    /// `highest - lowest <= max(absolute, proportional * max(abs(lowest), abs(highest)))`
+    /// `abs(highest - lowest) <= max(absolute, proportional * max(abs(lowest), abs(highest)))`
     ///
     /// BOTH TOLERANCES ARE TAKEN, and the LARGER of the two terms is the
     /// limit. A proportional tolerance alone collapses as the values approach
@@ -1422,10 +1434,14 @@ library LibDecimalFloat {
     /// guard. See `AgreeToleranceNegative` and `AgreeNoPositiveTolerance` for
     /// what each would otherwise silently do. Either tolerance ALONE may be
     /// zero, which is how a caller asks for only the other one.
+    ///
+    /// THE EXTREMES MAY COME IN EITHER ORDER. `agree(a, p, x, y)` and
+    /// `agree(a, p, y, x)` give the same answer: the spread is the distance
+    /// between them, and the anchor is the larger magnitude.
     /// @param absolute The absolute tolerance, in the same units as the values.
     /// @param proportional The proportional tolerance, as a fraction.
-    /// @param lowest The lowest value in the set.
-    /// @param highest The highest value in the set.
+    /// @param lowest One extreme of the set, the lowest by convention.
+    /// @param highest The other extreme, the highest by convention.
     /// @return Whether the spread is within the limit.
     function agree(Float absolute, Float proportional, Float lowest, Float highest) internal pure returns (bool) {
         agreeValidateTolerances(absolute, proportional);
@@ -1467,7 +1483,7 @@ library LibDecimalFloat {
         }
     }
 
-    /// The distance between the two extremes, unpacked.
+    /// The distance between the two extremes, unpacked, in either order.
     ///
     /// Split out of `agree` because holding the four unpacked values and the
     /// intermediates in one frame exceeds the stack.
@@ -1482,6 +1498,13 @@ library LibDecimalFloat {
         // `return f(...)` on a tuple-returning call as an ignored return.
         (int256 spreadCoefficient, int256 spreadExponent) =
             LibDecimalFloatImplementation.sub(highestCoefficient, highestExponent, lowestCoefficient, lowestExponent);
+        // `add` truncates magnitudes toward zero whatever its operands' order
+        // or signs, so `minus` of this is `sub(lowest, highest)`. At
+        // int256.min both shed the same last digit: `minus` divides by 10,
+        // and the positive `add` overflows and does.
+        if (spreadCoefficient < 0) {
+            (spreadCoefficient, spreadExponent) = LibDecimalFloatImplementation.minus(spreadCoefficient, spreadExponent);
+        }
         return (spreadCoefficient, spreadExponent);
     }
 

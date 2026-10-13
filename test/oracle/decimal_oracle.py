@@ -200,6 +200,7 @@ def agree(absolute, proportional, lowest, highest):
         return {"err": "AgreeToleranceNegative"}
     if not absolute > 0 and not proportional > 0:
         return {"err": "AgreeNoPositiveTolerance"}
+    lowest, highest = min(lowest, highest), max(lowest, highest)
     spread = rounded_sum(highest, EXACT.minus(lowest))
     anchor = max(EXACT.abs(lowest), EXACT.abs(highest))
     limit = max(absolute, EXACT.multiply(proportional, anchor))
@@ -332,6 +333,10 @@ def handle(req):
             return {"err": p}
         return {"ok": [out(p[0]), p[1]]}
     if op == "pack_lossless":
+        # Past every Float is ExponentOverflow, the band pack truncates into
+        # the largest Float of a sign included (#450).
+        if not Decimal(INT224_MIN).scaleb(INT32_MAX, EXACT) <= a <= Decimal(INT224_MAX).scaleb(INT32_MAX, EXACT):
+            return {"err": "ExponentOverflow"}
         p = pack(a)
         if p == "ExponentOverflow":
             return {"err": p}

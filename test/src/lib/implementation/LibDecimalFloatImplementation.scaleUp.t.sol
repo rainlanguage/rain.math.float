@@ -89,4 +89,22 @@ contract LibDecimalFloatImplementationScaleUpTest is Test {
     function testScaleUpFuzzNearFloor(int256 signedCoefficient, int256 room) external {
         checkRule(bound(signedCoefficient, 1, 1e76 - 1), type(int256).min + bound(room, 0, 80));
     }
+
+    /// Every power of ten in (0, 1e76) and its neighbours, at exponent 0 and
+    /// at the least exponent the shift leaves room for. A power of ten is the
+    /// one coefficient that lands on a step's threshold exactly, at the input
+    /// or after earlier steps.
+    function testScaleUpPowersOfTen() external {
+        for (uint256 k = 0; k < 76; k++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 p = int256(10 ** k);
+            int256[3] memory coefficients = [p - 1, p, p + 1];
+            for (uint256 i = 0; i < coefficients.length; i++) {
+                if (coefficients[i] == 0) continue;
+                checkRule(coefficients[i], 0);
+                // forge-lint: disable-next-line(unsafe-typecast)
+                checkRule(coefficients[i], type(int256).min + int256(75 - k));
+            }
+        }
+    }
 }

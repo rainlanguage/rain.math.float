@@ -140,7 +140,8 @@ the same size results in loss of information.
 The information loss follows the rules explained here. A value that does not fit
 packs to the Float closest to it that does not exceed its magnitude, for every
 operation, so `2^223` packs as int224.max rather than `2^223 - 8` at the next
-exponent. Exponents may underflow and exponent overflows will error.
+exponent. Exponents may underflow and exponent overflows will error, from the
+threshold under "Exponent overflow" below.
 
 There is a "lossless" version of packing provided in the library interface that
 doesn't magically resolve the information loss but converts all precision loss
@@ -203,6 +204,15 @@ When exponents _overflow_ this means the number that we are attempting to
 represent cannot fit into the binary represenation that we have (assuming the
 coefficient is also maximized and so we cannot shift magnitude from exponent
 space to coefficient space).
+
+Lossy packing overflows from `(2^223 + 2) × 10^int32.max` in magnitude, for both
+signs: that is where the coefficient at exponent `int32.max + 1` exceeds
+`int224.max / 10`. Below it the value packs to the largest Float of its sign
+with `lossless` false. As the largest Float is `(2^223 - 1) × 10^int32.max` and
+the most negative is `-2^223 × 10^int32.max`, a positive value up to three units
+of `10^int32.max` past the largest truncates into it, and a negative value up to
+two units past the most negative. Lossless packing reverts `ExponentOverflow`
+for any value past either one, that band included.
 
 In this case we error because decapitating the coefficient is an extreme loss of
 information that doesn't converge on any particular value that we could round
@@ -274,9 +284,10 @@ inherently approximations in many cases.
 `log10` divides the input by powers 10^(2^-i) down to within 10^(2^-16) of a
 power of ten and closes the gap with a fixed point series. Before rounding it is
 within 1.0037e-50 of the true value, and within 3.11e-49 relative of it for an
-input within a factor 1.001 of a power of ten, so a log near zero keeps its
-precision. The result is rounded to 41 significant digits, so it is within half
-a unit in the 41st digit plus 1.0037e-50. A power of ten has an exact log.
+input within a factor 1.001 of a power of ten, either side and the factor
+included, so a log near zero keeps its precision. The result is rounded to 41
+significant digits, so it is within half a unit in the 41st digit plus
+1.0037e-50. A power of ten has an exact log.
 
 `pow10` computes the power in fixed point and rounds it to 41 significant
 digits, so it is within half a unit in the 41st digit plus 1.12e-8 of a unit,
