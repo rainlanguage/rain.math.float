@@ -215,7 +215,13 @@ fn check_reported(
         prop_assert!(e.is_ok(), "{case}: reported exponent {:?}", e);
         let v = D::from_parts(int_of(&out[4..36]), e.unwrap());
         let x = exact();
-        prop_assert_eq!(toward_zero(&v).err(), Some(range), "{}: reported {}", case, v);
+        prop_assert_eq!(
+            toward_zero(&v).err(),
+            Some(range),
+            "{}: reported {}",
+            case,
+            v
+        );
         prop_assert!(
             (v < D::ZERO) == (x < D::ZERO) && magnitude(&v) <= magnitude(&x),
             "{case}: reported {v}, exact {x}"
@@ -232,15 +238,27 @@ fn check_reported(
 /// result is past or below every Float, so the operands are close in
 /// exponent and the sum is short.
 fn exact_add(a: &Dec, b: &Dec) -> D {
-    rounded(Context::<Zero>::new(0).add(d(a).repr(), d(b).repr()).unwrap())
+    rounded(
+        Context::<Zero>::new(0)
+            .add(d(a).repr(), d(b).repr())
+            .unwrap(),
+    )
 }
 
 fn exact_sub(a: &Dec, b: &Dec) -> D {
-    rounded(Context::<Zero>::new(0).sub(d(a).repr(), d(b).repr()).unwrap())
+    rounded(
+        Context::<Zero>::new(0)
+            .sub(d(a).repr(), d(b).repr())
+            .unwrap(),
+    )
 }
 
 fn exact_mul(a: &Dec, b: &Dec) -> D {
-    rounded(Context::<Zero>::new(0).mul(d(a).repr(), d(b).repr()).unwrap())
+    rounded(
+        Context::<Zero>::new(0)
+            .mul(d(a).repr(), d(b).repr())
+            .unwrap(),
+    )
 }
 
 fn rounded(r: dashu_float::round::Rounded<D>) -> D {
@@ -499,13 +517,9 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
     let lossy = evm::concrete(T::toFixedDecimalLossyCall { float, decimals });
     match (lossy, want) {
         (Ok(r), Ok(w)) => prop_assert_eq!((r._0, r._1), w, "{}", case),
-        (Err(s), Err(w)) => prop_assert_eq!(
-            s.to_vec(),
-            data(w),
-            "{}: revert data, dashu {:?}",
-            case,
-            w
-        ),
+        (Err(s), Err(w)) => {
+            prop_assert_eq!(s.to_vec(), data(w), "{}: revert data, dashu {:?}", case, w)
+        }
         (s, w) => prop_assert!(false, "{case}: solidity {s:?}, dashu {w:?}"),
     }
     let want = match want {
@@ -621,13 +635,9 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
             prop_assert!(same(&s, w), "{case}: solidity {s}, dashu {w}");
             prop_assert_eq!(r._1, *l, "{}: lossless flag", case);
         }
-        (Err(s), Err(w)) => prop_assert_eq!(
-            s.to_vec(),
-            data(*w),
-            "{}: revert data, dashu {:?}",
-            case,
-            w
-        ),
+        (Err(s), Err(w)) => {
+            prop_assert_eq!(s.to_vec(), data(*w), "{}: revert data, dashu {:?}", case, w)
+        }
         (s, w) => prop_assert!(false, "{case}: solidity {s:?}, dashu {w:?}"),
     }
     let want = match want {
@@ -800,7 +810,14 @@ fn tail(first: &'static [u8]) -> BoxedStrategy<String> {
 /// after them; and literals at the largest Float of each sign ± 4 units of
 /// 10^int32.max, written at up to two lower exponents.
 fn parse_input() -> BoxedStrategy<(String, Shape)> {
-    let past_int256 = (mantissa(), any::<bool>(), 0u8..3, any::<bool>(), 1u8..=9, proptest::collection::vec(0u8..=9, 77..=90))
+    let past_int256 = (
+        mantissa(),
+        any::<bool>(),
+        0u8..3,
+        any::<bool>(),
+        1u8..=9,
+        proptest::collection::vec(0u8..=9, 77..=90),
+    )
         .prop_map(|(m, upper, sign, neg, first, rest)| {
             let mut s = m + if upper { "E" } else { "e" };
             match (sign, neg) {
@@ -808,22 +825,39 @@ fn parse_input() -> BoxedStrategy<(String, Shape)> {
                 (1, false) => s.push('+'),
                 _ => {}
             }
-            s.extend(std::iter::once(first).chain(rest).map(|d| char::from(b'0' + d)));
+            s.extend(
+                std::iter::once(first)
+                    .chain(rest)
+                    .map(|d| char::from(b'0' + d)),
+            );
             (s, Shape::WellFormed)
         });
     let sign = || prop_oneof![Just(""), Just("-")];
     fn end(first: &'static [u8]) -> impl Strategy<Value = String> {
         proptest::option::of(tail(first)).prop_map(Option::unwrap_or_default)
     }
-    let empty = (sign(), end(b" x.eE+_a\t,")).prop_map(|(s, t)| (format!("{s}{t}"), Shape::Malformed(EMPTY)));
-    let empty_after_minus = end(b" x.eE+-_a\t,").prop_map(|t| (format!("-{t}"), Shape::Malformed(EMPTY)));
+    let empty = (sign(), end(b" x.eE+_a\t,"))
+        .prop_map(|(s, t)| (format!("{s}{t}"), Shape::Malformed(EMPTY)));
+    let empty_after_minus =
+        end(b" x.eE+-_a\t,").prop_map(|t| (format!("-{t}"), Shape::Malformed(EMPTY)));
     let point = (sign(), digits(20), end(b" x.eE+-_a\t,"))
         .prop_map(|(s, i, t)| (format!("{s}{i}.{t}"), Shape::Malformed(DECIMAL_POINT)));
-    let exponent = (mantissa(), any::<bool>(), prop_oneof![Just(""), Just("+"), Just("-")])
+    let exponent = (
+        mantissa(),
+        any::<bool>(),
+        prop_oneof![Just(""), Just("+"), Just("-")],
+    )
         .prop_flat_map(|(m, upper, sign)| {
-            let first: &'static [u8] = if sign.is_empty() { b" x.eE_a\t," } else { b" x.eE+-_a\t," };
+            let first: &'static [u8] = if sign.is_empty() {
+                b" x.eE_a\t,"
+            } else {
+                b" x.eE+-_a\t,"
+            };
             end(first).prop_map(move |t| {
-                (format!("{m}{}{sign}{t}", if upper { "E" } else { "e" }), Shape::Malformed(EXPONENT_DIGITS))
+                (
+                    format!("{m}{}{sign}{t}", if upper { "E" } else { "e" }),
+                    Shape::Malformed(EXPONENT_DIGITS),
+                )
             })
         });
     let excess = (literal(), tail(b" x+-_a\t,")).prop_map(|(l, t)| (l + &t, Shape::Excess));
@@ -831,7 +865,11 @@ fn parse_input() -> BoxedStrategy<(String, Shape)> {
         let c = cap(neg) + IBig::from(k);
         let sign = if neg { "-" } else { "" };
         (
-            format!("{sign}{c}{}e{}", "0".repeat(shift), I32_MAX - shift as isize),
+            format!(
+                "{sign}{c}{}e{}",
+                "0".repeat(shift),
+                I32_MAX - shift as isize
+            ),
             Shape::WellFormed,
         )
     });
@@ -1614,8 +1652,16 @@ fn sqrt_near_tie() -> BoxedStrategy<Dec> {
                 + dashu_int::UBig::from(5u8);
             let sq = &t * &t;
             let cut = sq.to_string().len() - 67;
-            let a = &sq / ten.pow(cut) + if up { dashu_int::UBig::ONE } else { dashu_int::UBig::ZERO };
-            Dec::new(a.to_string().parse::<num_bigint::BigInt>().unwrap(), e * 2 + cut as i64)
+            let a = &sq / ten.pow(cut)
+                + if up {
+                    dashu_int::UBig::ONE
+                } else {
+                    dashu_int::UBig::ZERO
+                };
+            Dec::new(
+                a.to_string().parse::<num_bigint::BigInt>().unwrap(),
+                e * 2 + cut as i64,
+            )
         })
         .boxed()
 }
@@ -1662,7 +1708,12 @@ fn to_dec(x: &D) -> Dec {
 /// boundary either answer passes.
 /// What `agree` must answer: an error, or `Some` answer, or `None` where
 /// either is allowed.
-fn want_agree(absolute: &Dec, proportional: &Dec, x: &Dec, y: &Dec) -> Result<Option<bool>, RefError> {
+fn want_agree(
+    absolute: &Dec,
+    proportional: &Dec,
+    x: &Dec,
+    y: &Dec,
+) -> Result<Option<bool>, RefError> {
     let (ta, tp) = (d(absolute), d(proportional));
     if ta < D::ZERO || tp < D::ZERO {
         return Err(RefError::AgreeToleranceNegative);
@@ -1676,7 +1727,11 @@ fn want_agree(absolute: &Dec, proportional: &Dec, x: &Dec, y: &Dec) -> Result<Op
         Context::<Zero>::new(200).sub(dx.repr(), dy.repr()).unwrap(),
     ));
     let anchor = max_of(magnitude(&dx), magnitude(&dy));
-    let scaled = rounded(Context::<Zero>::new(0).mul(tp.repr(), anchor.repr()).unwrap());
+    let scaled = rounded(
+        Context::<Zero>::new(0)
+            .mul(tp.repr(), anchor.repr())
+            .unwrap(),
+    );
     let limit = max_of(ta, scaled);
     let within = D::from_parts(IBig::from(10).pow(76) - IBig::ONE, -76);
     Ok(if spread_hi <= limit {
@@ -1755,16 +1810,18 @@ fn agree_input() -> BoxedStrategy<(Dec, Dec, Dec, Dec)> {
         let max: num_bigint::BigInt = int224_max().to_string().parse().unwrap();
         (c >= num_bigint::BigInt::from(0) && c <= max).then(|| Dec::new(c, f.e))
     };
-    let on_absolute = (pair(), -1i64..=1).prop_filter_map("spread past every Float", move |((x, y), k)| {
-        let s = magnitude(&want_sub(&y, &x).ok()?);
-        Some((nudge(&s, k)?, Dec::zero(), x, y))
-    });
-    let on_proportional = (pair(), -1i64..=1).prop_filter_map("spread or ratio not a Float", move |((x, y), k)| {
-        let s = to_dec(&magnitude(&want_sub(&y, &x).ok()?));
-        let anchor = to_dec(&max_of(magnitude(&d(&x)), magnitude(&d(&y))));
-        let p = want_div(&s, &anchor).ok()?;
-        Some((Dec::zero(), nudge(&p, k)?, x, y))
-    });
+    let on_absolute =
+        (pair(), -1i64..=1).prop_filter_map("spread past every Float", move |((x, y), k)| {
+            let s = magnitude(&want_sub(&y, &x).ok()?);
+            Some((nudge(&s, k)?, Dec::zero(), x, y))
+        });
+    let on_proportional =
+        (pair(), -1i64..=1).prop_filter_map("spread or ratio not a Float", move |((x, y), k)| {
+            let s = to_dec(&magnitude(&want_sub(&y, &x).ok()?));
+            let anchor = to_dec(&max_of(magnitude(&d(&x)), magnitude(&d(&y))));
+            let p = want_div(&s, &anchor).ok()?;
+            Some((Dec::zero(), nudge(&p, k)?, x, y))
+        });
     prop_oneof![
         2 => (tolerance(), tolerance(), pair()).prop_map(|(a, p, (x, y))| (a, p, x, y)),
         1 => on_absolute,
@@ -2191,13 +2248,28 @@ mod oracle_checks {
         ok("1e2147483647", D::from_parts(IBig::ONE, I32_MAX));
         ok("1e2147483714", D::from_parts(IBig::ONE, I32_MAX + 67));
         ok(&format!("0e{}", "9".repeat(80)), D::ZERO);
-        ok(&format!("-{}e2147483647", IBig::ONE << 223), -largest_float(true));
-        ok(&format!("{}e2147483647", int224_max()), largest_float(false));
+        ok(
+            &format!("-{}e2147483647", IBig::ONE << 223),
+            -largest_float(true),
+        );
+        ok(
+            &format!("{}e2147483647", int224_max()),
+            largest_float(false),
+        );
         err("1e2147483715", RefError::ExponentOverflow);
         err(&format!("1e{}", "9".repeat(80)), RefError::ExponentOverflow);
-        err(&format!("{}e2147483647", (IBig::ONE << 223) + IBig::from(2)), RefError::ExponentOverflow);
-        err(&format!("{}e2147483647", (IBig::ONE << 223) + IBig::ONE), RefError::ParseDecimalPrecisionLoss);
-        err(&format!("1e-{}", "9".repeat(80)), RefError::ParseDecimalPrecisionLoss);
+        err(
+            &format!("{}e2147483647", (IBig::ONE << 223) + IBig::from(2)),
+            RefError::ExponentOverflow,
+        );
+        err(
+            &format!("{}e2147483647", (IBig::ONE << 223) + IBig::ONE),
+            RefError::ParseDecimalPrecisionLoss,
+        );
+        err(
+            &format!("1e-{}", "9".repeat(80)),
+            RefError::ParseDecimalPrecisionLoss,
+        );
         err("1e-2147483649", RefError::ParseDecimalPrecisionLoss);
         err("1.5e-2147483648", RefError::ParseDecimalPrecisionLoss);
     }
@@ -2211,17 +2283,32 @@ mod oracle_checks {
             assert_eq!(w, want_agree(a, p, y, x), "order");
             w
         };
-        assert_eq!(want(&n(-1, 0), &n(1, 0), &z, &z), Err(RefError::AgreeToleranceNegative));
-        assert_eq!(want(&n(1, 0), &n(-1, -80), &z, &z), Err(RefError::AgreeToleranceNegative));
-        assert_eq!(want(&z, &n(0, 9), &z, &z), Err(RefError::AgreeNoPositiveTolerance));
+        assert_eq!(
+            want(&n(-1, 0), &n(1, 0), &z, &z),
+            Err(RefError::AgreeToleranceNegative)
+        );
+        assert_eq!(
+            want(&n(1, 0), &n(-1, -80), &z, &z),
+            Err(RefError::AgreeToleranceNegative)
+        );
+        assert_eq!(
+            want(&z, &n(0, 9), &z, &z),
+            Err(RefError::AgreeNoPositiveTolerance)
+        );
         assert_eq!(want(&n(1, 0), &z, &z, &n(1, 0)), Ok(Some(true)));
-        assert_eq!(want(&n(1, 0), &z, &z, &n(10000000001, -10)), Ok(Some(false)));
+        assert_eq!(
+            want(&n(1, 0), &z, &z, &n(10000000001, -10)),
+            Ok(Some(false))
+        );
         // proportional against the larger magnitude: 0.1 * 11 >= 1, 0.1 * 12 < 2.
         assert_eq!(want(&z, &n(1, -1), &n(10, 0), &n(11, 0)), Ok(Some(true)));
         assert_eq!(want(&z, &n(1, -1), &n(-10, 0), &n(-11, 0)), Ok(Some(true)));
         assert_eq!(want(&z, &n(1, -1), &n(10, 0), &n(12, 0)), Ok(Some(false)));
         // the larger tolerance applies.
-        assert_eq!(want(&n(2, 0), &n(1, -1), &n(10, 0), &n(12, 0)), Ok(Some(true)));
+        assert_eq!(
+            want(&n(2, 0), &n(1, -1), &n(10, 0), &n(12, 0)),
+            Ok(Some(true))
+        );
         // a spread past the limit by under 1e-76 of itself may go either way.
         let close = Dec::new(p10(78) - 1, -78);
         assert_eq!(want(&close, &z, &z, &n(1, 0)), Ok(None));
@@ -2242,7 +2329,11 @@ mod oracle_checks {
         let p = UBig::from(10u8).pow(drop);
         let head = &root / &p;
         let half = UBig::from(5u8) * UBig::from(10u8).pow(drop - 1);
-        let head = if &root % &p >= half { head + UBig::ONE } else { head };
+        let head = if &root % &p >= half {
+            head + UBig::ONE
+        } else {
+            head
+        };
         D::from_parts(IBig::from(head), (e - m) / 2 + drop as isize)
     }
 
