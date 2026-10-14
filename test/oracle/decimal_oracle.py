@@ -31,10 +31,12 @@ INT32_MIN = -(2**31)
 INT32_MAX = 2**31 - 1
 UINT256_MAX = 2**256 - 1
 
-# Exact for every sum, product and comparison the tests send; division is
-# truncated towards zero at this many digits, far past a Float's 68.
+# Exact for every product and comparison the tests send, and for the sums of
+# `agree`. A sum or quotient is truncated towards zero at this many digits,
+# far past a Float's 68: every Float not exceeding a value is a multiple of
+# the value's 68th-digit unit, so packing's truncation composes with it.
 EXACT = Context(prec=1000, rounding=ROUND_DOWN, Emax=MAX_EMAX, Emin=MIN_EMIN, traps=[])
-QUOTIENT = Context(prec=200, rounding=ROUND_DOWN, Emax=MAX_EMAX, Emin=MIN_EMIN, traps=[])
+TRUNCATED = Context(prec=200, rounding=ROUND_DOWN, Emax=MAX_EMAX, Emin=MIN_EMIN, traps=[])
 # The true log10, 10^x and a^b, within 1e-250 relative: log10 and exp are
 # correctly rounded at 300 digits, and 10^y loses ln(10) |y| 1e-300 relative
 # for |y| at most RANGE.
@@ -126,10 +128,9 @@ def int256_unit(x):
 
 
 def rounded_sum(a, b):
-    """add's sum before packing, as its NatSpec states it: the exact sum
-    truncated towards zero to a multiple of the larger operand's int256 unit.
-    Packing truncates again, which composes, so add is the exact sum rounded
-    once towards zero."""
+    """agree's spread, as SPEC defines it: the implementation sub, unpacked,
+    which is the exact sum truncated towards zero to a multiple of the larger
+    operand's int256 unit."""
     if a.is_zero():
         return b
     if b.is_zero():
@@ -150,7 +151,7 @@ def rounded_sum(a, b):
 
 
 def add(a, b):
-    return arithmetic(rounded_sum(a, b))
+    return arithmetic(TRUNCATED.add(a, b))
 
 
 def div(a, b):
@@ -158,7 +159,7 @@ def div(a, b):
         return {"err": "DivisionByZero"}
     if a.is_zero():
         return {"ok": ["0", 0]}
-    return arithmetic(QUOTIENT.divide(a, b))
+    return arithmetic(TRUNCATED.divide(a, b))
 
 
 def fixed_lossy(value, decimals):
