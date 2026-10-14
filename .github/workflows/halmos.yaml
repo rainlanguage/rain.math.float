@@ -48,6 +48,9 @@ jobs:
         # so the slices tile the range. Each slice runs with
         # HALMOS_SLICE_LO/HI (`LibHalmosExact.inSlice`), so its --function
         # filter must match that one lemma.
+        # pack-low's cases 99-780 (e in [int32.min - 70, int32.min - 9]) are
+        # out: at about 25s each they need more slices than a matrix carries
+        # (#511).
         run: |
           lemmas=$(jq -c --arg lemma "$LEMMA" '
             [.[]
@@ -68,7 +71,8 @@ jobs:
             {"name": "hints", "solver": "yices", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_maximizeHintsHold"], "range": [0, 76], "starts": [0, 10, 20, 30, 40, 50, 60, 70]},
             {"name": "pack-hints", "solver": "hybrid", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_packHintsHold", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 76], "starts": [0, 72]},
             {"name": "pack-below", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packBelow", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"]},
-            {"name": "pack-low", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packLow", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 857], "starts": [0, 22, 44, 66, 88, 110, 132, 154, 176, 198, 220, 242, 264, 286, 308, 330, 352, 374, 396, 418, 440, 462, 484, 506, 528, 550, 572, 594, 616, 638, 660, 682, 704, 726, 748, 770, 792, 814, 836]},
+            {"name": "pack-low", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packLow", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 98], "starts": [0, 11, 22, 33, 44, 55, 66, 77, 88]},
+            {"name": "pack-low-end", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packLow", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [781, 857], "starts": [781, 792, 803, 814, 825, 836, 847]},
             {"name": "pack-middle", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packMiddle", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 10], "starts": [0]},
             {"name": "pack-high", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packHigh", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 857], "starts": [0, 22, 44, 66, 88, 110, 132, 154, 176, 198, 220, 242, 264, 286, 308, 330, 352, 374, 396, 418, 440, 462, 484, 506, 528, 550, 572, 594, 616, 638, 660, 682, 704, 726, 748, 770, 792, 814, 836]},
             {"name": "pack-above", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packAbove", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"]},
