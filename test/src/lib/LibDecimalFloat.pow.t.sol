@@ -844,8 +844,9 @@ contract LibDecimalFloatPowTest is Test {
         );
     }
 
-    /// A rounded power without the headroom to lift reverts with a, whether
-    /// the unrounded value is packed, up to an excess of 67, or not, past it.
+    /// A rounded power without the headroom to lift reverts with a, at an
+    /// excess of 67, where a rounded coefficient of two or more is past, and
+    /// at 68, where any non-zero one is.
     function testPowRoundedPastTheTopRevertValue() external {
         // (3000000000000000000001e1073741856)^2 is
         // 9000000000000000000006000000000000000000001e2147483712, rounded to
