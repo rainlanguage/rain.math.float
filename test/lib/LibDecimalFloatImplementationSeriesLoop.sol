@@ -7,13 +7,13 @@ import {
     POW_FIXED_LN10,
     POW_FIXED_ONE_ODD_INVERSE,
     LOG10_RATIO_Z_MAX
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {
     Exp10FixedOutOfRange,
     Log10RatioOutOfRange,
     Log10RatioRelativeSumTooSmall,
     MulDivOverflow
-} from "src/error/ErrDecimalFloat.sol";
+} from "../../src/error/ErrDecimalFloat.sol";
 
 /// `mulDivFixedUnguarded`, `log10Ratio` and `exp10Fixed` verbatim from
 /// `src/lib/implementation/LibDecimalFloatImplementation.sol` at 9d843e7,
@@ -22,7 +22,9 @@ import {
 /// Equivalence tests only.
 /// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
 /// nothing about a value. Expected values come from `LibExactFloat`.
-library LibDecimalFloatImplementationSeriesMain {
+library LibDecimalFloatImplementationSeriesLoop {
+    /// `LibDecimalFloatImplementation.mulDivFixedUnguarded` verbatim at
+    /// 9d843e7; see its NatSpec there.
     function mulDivFixedUnguarded(uint256 x, uint256 y) private pure returns (uint256 result) {
         uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
         assembly ("memory-safe") {
@@ -36,6 +38,8 @@ library LibDecimalFloatImplementationSeriesMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.log10Ratio` verbatim at 9d843e7; see its
+    /// NatSpec there.
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
         uint256 difference = below ? b - a : a - b;
@@ -117,6 +121,8 @@ library LibDecimalFloatImplementationSeriesMain {
         return (below ? -signedCoefficient : signedCoefficient, exponent);
     }
 
+    /// `LibDecimalFloatImplementation.exp10Fixed` verbatim at 9d843e7; see its
+    /// NatSpec there.
     function exp10Fixed(uint256 x) internal pure returns (uint256 result) {
         if (x >= POW_FIXED_ONE) {
             revert Exp10FixedOutOfRange(x);

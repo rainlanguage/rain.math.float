@@ -15,20 +15,20 @@
 /// Each frozen baseline, by name, as committed.
 const BASELINES: [(&str, &str); 6] = [
     (
-        "LibDecimalFloatImplementationMain",
-        include_str!("../../../test/lib/LibDecimalFloatImplementationMain.sol"),
+        "LibDecimalFloatImplementationPreShortfall",
+        include_str!("../../../test/lib/LibDecimalFloatImplementationPreShortfall.sol"),
     ),
     (
-        "LibDecimalFloatGasMain",
-        include_str!("../../../test/lib/LibDecimalFloatGasMain.sol"),
+        "LibDecimalFloatPre310Mul",
+        include_str!("../../../test/lib/LibDecimalFloatPre310Mul.sol"),
     ),
     (
         "LibDecimalFloatImplementationMulPr307",
         include_str!("../../../test/lib/LibDecimalFloatImplementationMulPr307.sol"),
     ),
     (
-        "LibDecimalFloatImplementationSeriesMain",
-        include_str!("../../../test/lib/LibDecimalFloatImplementationSeriesMain.sol"),
+        "LibDecimalFloatImplementationSeriesLoop",
+        include_str!("../../../test/lib/LibDecimalFloatImplementationSeriesLoop.sol"),
     ),
     (
         "LibDecimalFloatImplementationLog10RatioPr336",

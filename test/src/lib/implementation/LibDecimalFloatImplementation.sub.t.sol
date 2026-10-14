@@ -124,6 +124,31 @@ contract LibDecimalFloatImplementationSubTest is Test {
         this.subExternal(0, 0, min, max);
     }
 
+    /// #538: `sub` reverts `ExponentOverflow` as `add` does for `a + (-b)`,
+    /// with its payload, so `-b` where `b` is the operand at
+    /// `type(int256).max`. For `b = type(int256).min` the sum is `-a + b`:
+    /// its payload is `-a` where `a` is unshifted at `type(int256).max`, and
+    /// `b` otherwise; a sum of `type(int256).min` there is `minus`'s
+    /// `ExponentOverflow(type(int256).min, type(int256).max)`. A cancelling
+    /// pair returns: `-6e75 - -2^255` is `2^255 - 6e75` (bc).
+    function testSubRevertPayload() external {
+        int256 min = type(int256).min;
+        int256 max = type(int256).max;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(3e76), max));
+        this.subExternal(3e76, max, -4e76, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, max, max));
+        this.subExternal(1, max, -max, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-6e75), max));
+        this.subExternal(6e75, max, min, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, max));
+        this.subExternal(1, max, min, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, max));
+        this.subExternal(3, 0, min, max);
+        checkSub(
+            -6e75, max, min, max, 51896044618658097711785492504343953926634992332820282019728792003956564819968, max
+        );
+    }
+
     /// `min e d - min e 0` is `-2^255 (1 - 10^-d)` units of `10^d`, which
     /// truncates to `-(2^255 - 1 - floor(2^255 / 10^d))` (bc), and the mirror.
     function testSubMinFromMinExamples() external pure {

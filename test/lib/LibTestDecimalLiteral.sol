@@ -3,8 +3,8 @@
 pragma solidity ^0.8.25;
 
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
-import {MalformedExponentDigits, MalformedDecimalPoint} from "src/error/ErrParse.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {MalformedExponentDigits, MalformedDecimalPoint} from "../../src/error/ErrParse.sol";
+import {LibExactFloat} from "./LibExactFloat.sol";
 
 /// A signed integer below 2^256 in magnitude, or `huge` past it with its sign.
 struct Wide {
@@ -86,9 +86,9 @@ library LibTestDecimalLiteral {
         }
         // Below 2^200.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 v = int256(x.magnitude);
+        int256 value = int256(x.magnitude);
         // forge-lint: disable-next-line(boolean-cst)
-        return (true, x.negative ? -v : v);
+        return (true, x.negative ? -value : value);
     }
 
     /// The digits `s[from, to)` as a signed integer.
@@ -197,6 +197,15 @@ library LibTestDecimalLiteral {
         for (uint256 i = from; i < to; i++) {
             out[i - from] = s[i];
         }
+    }
+
+    /// `length` ASCII zeros, for building literals with long zero runs.
+    function zeroString(uint256 length) internal pure returns (string memory) {
+        bytes memory out = new bytes(length);
+        for (uint256 i = 0; i < length; i++) {
+            out[i] = "0";
+        }
+        return string(out);
     }
 
     /// Whether the literal's value is zero.

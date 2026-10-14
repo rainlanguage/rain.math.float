@@ -40,6 +40,8 @@ dashu-float (`differential.rs`) and the Python `decimal` oracle
 - **`src/lib/`** — The pure-math suite mirroring `src/lib/`.
 - **`lib/`** — `LibExactFloat.sol` (exact reference), frozen pre-change copies
   for equivalence tests, error-bound helpers and gas variants.
+- **`abstract/`** — Shared test bases: the sqrt correct-rounding oracle and gas
+  logging.
 - **`concrete/`**, **`oracle/`** — Run by `crates/tests`, above.
 
 Dependencies come from Soldeer (`foundry.toml`), never git submodules.

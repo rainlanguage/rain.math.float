@@ -12,6 +12,7 @@ import {
 import {LibExactFloat, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {Log10RatioRelativeSumTooSmall, Log10RatioOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
+import {SafeCast} from "@openzeppelin-contracts-5.7.0/utils/math/SafeCast.sol";
 
 /// Bounds from the `log10Ratio` NatSpec, for z = |a - b| / (a + b) at most
 /// 5.1e-4: the magnitude is at most 1.3e-51 relative above the true log, and
@@ -49,13 +50,11 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     ) internal pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, relative);
         assertTrue(expectedCoefficient < 0 ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 c = int256(LibExactFloat.abs(signedCoefficient));
+        int256 c = SafeCast.toInt256(LibExactFloat.abs(signedCoefficient));
         int256[] memory coefficients = new int256[](2);
         int256[] memory exponents = new int256[](2);
         (coefficients[0], exponents[0]) = (c, exponent);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        (coefficients[1], exponents[1]) = (-int256(LibExactFloat.abs(expectedCoefficient)), expectedExponent);
+        (coefficients[1], exponents[1]) = (-SafeCast.toInt256(LibExactFloat.abs(expectedCoefficient)), expectedExponent);
         int256[] memory boundCoefficients = new int256[](5);
         int256[] memory boundExponents = new int256[](5);
         (boundCoefficients[0], boundExponents[0], boundCoefficients[1], boundExponents[1]) =
@@ -281,8 +280,7 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, false);
         assertEq(exponent, -50, "exponent");
         assertTrue(below ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 actual = int256(LibExactFloat.abs(signedCoefficient)) * 1e20;
+        int256 actual = SafeCast.toInt256(LibExactFloat.abs(signedCoefficient)) * 1e20;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 expected = int256(Math.mulDiv(d, oracleRatio(d, b, below), b));
         assertLe(LibExactFloat.abs(actual - expected), 1.0036e20 + 2, "fixed point error");
@@ -427,22 +425,22 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         this.ratio(a, b, relative);
     }
 
-    /// a + b = 2e50 and a - b = 2^65 1e25 make z = 2^64 1e25 exactly, so z^2
-    /// at 1e-50 is 2^128 and its square 2^256: the low word is 0, below the
-    /// remainder 2^256 mod 1e50, so the in-place z^4 multiply borrows from
-    /// the high word. Reference from `bc -l` at scale 200.
-    function testLog10RatioZFourthRemainderBorrow() external pure {
+    /// a + b = 2e50 and a - b = 2^65 1e25 make z = 2^64 1e25 exactly, so
+    /// zSquared is 2^128 and its square is 2^256, past a word: the z^4 term
+    /// floor(2^256 / 1e50) comes from the 1e25 split alone. Reference from
+    /// `bc -l` at scale 200.
+    function testLog10RatioZFourthSquarePastAWord() external pure {
         uint256 z = 2 ** 64 * 1e25;
         int256 expected = 1602263832060531559618195882253573250139901008052388705256199829072734;
         checkBothModes(1e50 + z, 1e50 - z, expected, -75);
         checkBothModes(1e50 - z, 1e50 + z, -expected, -75);
     }
 
-    /// z^2 at 1e-50 is Z = 2^102 5^17 + 1e10, where Z^3 / 1e50 is just past
-    /// 5 2^256, so the in-place z^6 multiply has a low word of 4.49e45, below
-    /// its remainder mod 1e50 of 4.34e49, and borrows from the high word.
-    /// Reference from `bc -l` at scale 200.
-    function testLog10RatioZSixthRemainderBorrow() external pure {
+    /// zSquared is Z = 2^102 5^17 + 1e10, so the z^6 product, term times Z,
+    /// about Z^3 / 1e50, is just past 5 2^256 and past a word: the z^6 term comes
+    /// from the 2^50 split, with low part v = 1e10. Reference from `bc -l` at
+    /// scale 200.
+    function testLog10RatioZSixthProductPastAWord() external pure {
         uint256 z = 19668661934068655294372187221166452031959486958;
         int256 expected = 1708398290907464345711870817501326157006314194270408443866512063549736;
         checkBothModes(1e50 + z, 1e50 - z, expected, -73);

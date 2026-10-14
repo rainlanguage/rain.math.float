@@ -517,11 +517,6 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         return uint256(error < 0 ? -error : error);
     }
 
-    function prime(uint256 primeSeed) internal pure returns (uint256) {
-        uint256[3] memory primes = [uint256(2), 3, 7];
-        return primes[primeSeed % 3];
-    }
-
     /// |log10(x) - oracle| for x = prime^j (1 ± d / 10^p) 10^n, which spreads
     /// the seed over the whole decade. Unrounded, in units of 1e-70. Rounded,
     /// in billionths of a unit in the result's last place, with n moved off 0
@@ -532,7 +527,7 @@ contract LibDecimalFloatImplementationLog10Test is Test {
         pure
         returns (uint256)
     {
-        uint256 base = prime(primeSeed);
+        uint256 base = LibExactFloat.seededPrime(primeSeed);
         j = bound(j, 0, LibExactFloat.maxPower(base));
         p = bound(p, 3, 40);
         d = bound(d, 0, 10 ** (p - 3));

@@ -479,15 +479,10 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         }
     }
 
-    function prime(uint256 primeSeed) internal pure returns (uint256) {
-        uint256[3] memory primes = [uint256(2), 3, 7];
-        return primes[primeSeed % 3];
-    }
-
     /// 10^(j log10(prime) + n) is prime^j 10^n exactly, as prime^j is below
     /// 1e30 and so has fewer than the 41 digits pow10 keeps.
     function testPow10PrimePowersExact(uint256 primeSeed, uint256 j, int256 n) external pure {
-        uint256 base = prime(primeSeed);
+        uint256 base = LibExactFloat.seededPrime(primeSeed);
         j = bound(j, 0, LibExactFloat.maxPower(base));
         n = bound(n, -1e6, 1e6);
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -501,7 +496,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
     /// for x = j log10(prime) + d + n with |d| up to 1e-3, which spreads the
     /// fraction over [0, 1).
     function pow10OracleError(uint256 primeSeed, uint256 j, int256 d, int256 n) internal pure returns (uint256) {
-        uint256 base = prime(primeSeed);
+        uint256 base = LibExactFloat.seededPrime(primeSeed);
         j = bound(j, 0, LibExactFloat.maxPower(base));
         d = bound(d, -1e67, 1e67);
         n = bound(n, -1e6, 1e6);
