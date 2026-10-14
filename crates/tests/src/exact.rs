@@ -18,7 +18,7 @@ use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde_json::{Value, json};
 
-/// Local runs set `PROPTEST_CASES` low; CI runs the default.
+/// `PROPTEST_CASES` cases, or 2000 when it is unset.
 pub(crate) fn config() -> ProptestConfig {
     let cases = std::env::var("PROPTEST_CASES")
         .ok()
