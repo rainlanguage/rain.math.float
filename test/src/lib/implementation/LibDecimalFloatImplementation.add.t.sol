@@ -6,10 +6,11 @@ import {
     ExponentOverflow,
     LibDecimalFloatImplementation,
     ADD_MAX_EXPONENT_DIFF
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
-import {LibDecimalFloatImplementationAddPre394} from "test/lib/LibDecimalFloatImplementationAddPre394.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
+import {LibTestRegion} from "../../../lib/LibTestRegion.sol";
+import {LibDecimalFloatImplementationAddPre394} from "../../../lib/LibDecimalFloatImplementationAddPre394.sol";
 
 contract LibDecimalFloatImplementationAddTest is Test {
     function addExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -559,11 +560,6 @@ contract LibDecimalFloatImplementationAddTest is Test {
         }
     }
 
-    /// `c` with its last `shift % 78` digits dropped.
-    function dropDigits(int256 c, uint8 shift) internal pure returns (int256) {
-        return c / int256(10 ** (uint256(shift) % 78));
-    }
-
     /// #394: past int256 the sum sheds its own last digit, so the last digits
     /// of the operands carry. `2 × int256.max` and `2 × int256.min` are
     /// `±(2^256 - 2)` and `-2^256`, both `±1157…963993` tens.
@@ -591,14 +587,16 @@ contract LibDecimalFloatImplementationAddTest is Test {
     }
 
     function testAddMatchesExact(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external view {
-        checkAddExact(dropDigits(a, sa), ea, dropDigits(b, sb), eb);
+        checkAddExact(LibTestRegion.anyDigits(a, sa), ea, LibTestRegion.anyDigits(b, sb), eb);
     }
 
     /// Exponents close enough that the sum can carry past int256.
     function testAddNearbyMatchesExact(int256 a, int256 ea, int256 b, uint256 gap, uint8 sa, uint8 sb) external view {
         ea = bound(ea, type(int256).min + 80, type(int256).max);
         // forge-lint: disable-next-line(unsafe-typecast)
-        checkAddExact(dropDigits(a, sa), ea, dropDigits(b, sb), ea - int256(bound(gap, 0, 80)));
+        checkAddExact(
+            LibTestRegion.anyDigits(a, sa), ea, LibTestRegion.anyDigits(b, sb), ea - int256(bound(gap, 0, 80))
+        );
     }
 
     /// Exponents at or near the floor, where the sum sheds what it cannot
@@ -611,7 +609,7 @@ contract LibDecimalFloatImplementationAddTest is Test {
         int256 exponentA = type(int256).min + int256(bound(ea, 0, 160));
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = type(int256).min + int256(bound(eb, 0, 160));
-        checkAddExact(dropDigits(a, sa), exponentA, dropDigits(b, sb), exponentB);
+        checkAddExact(LibTestRegion.anyDigits(a, sa), exponentA, LibTestRegion.anyDigits(b, sb), exponentB);
     }
 
     /// Float operands maximize to coefficients with a zero last digit, so no

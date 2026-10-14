@@ -3,9 +3,10 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
+import {LibTestRegion} from "../../../lib/LibTestRegion.sol";
+import {ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationSubTest is Test {
     function subExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -41,20 +42,17 @@ contract LibDecimalFloatImplementationSubTest is Test {
         }
     }
 
-    /// `c` with its last `shift % 78` digits dropped.
-    function dropDigits(int256 c, uint8 shift) internal pure returns (int256) {
-        return c / int256(10 ** (uint256(shift) % 78));
-    }
-
     function testSubMatchesRule(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external view {
-        checkSubMatchesRule(dropDigits(a, sa), ea, dropDigits(b, sb), eb);
+        checkSubMatchesRule(LibTestRegion.anyDigits(a, sa), ea, LibTestRegion.anyDigits(b, sb), eb);
     }
 
     /// As `testSubMatchesRule`, with the operands' digits overlapping or
     /// adjacent, so the difference can carry past int256.
     function testSubMatchesRuleNearby(int256 a, int256 ea, int256 b, int256 gap, uint8 sa, uint8 sb) external view {
         ea = bound(ea, type(int256).min + 80, type(int256).max - 80);
-        checkSubMatchesRule(dropDigits(a, sa), ea, dropDigits(b, sb), ea + bound(gap, -80, 80));
+        checkSubMatchesRule(
+            LibTestRegion.anyDigits(a, sa), ea, LibTestRegion.anyDigits(b, sb), ea + bound(gap, -80, 80)
+        );
     }
 
     /// As `testSubMatchesRule`, with exponents at or near the floor, where the
@@ -64,13 +62,13 @@ contract LibDecimalFloatImplementationSubTest is Test {
         int256 exponentA = type(int256).min + int256(bound(ea, 0, 160));
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = type(int256).min + int256(bound(eb, 0, 160));
-        checkSubMatchesRule(dropDigits(a, sa), exponentA, dropDigits(b, sb), exponentB);
+        checkSubMatchesRule(LibTestRegion.anyDigits(a, sa), exponentA, LibTestRegion.anyDigits(b, sb), exponentB);
     }
 
     /// As `testSubMatchesRuleNearby`, with `b` int256.min.
     function testSubMinSignedValue(int256 a, int256 ea, int256 gap, uint8 sa) external view {
         ea = bound(ea, type(int256).min + 80, type(int256).max - 80);
-        checkSubMatchesRule(dropDigits(a, sa), ea, type(int256).min, ea + bound(gap, -80, 80));
+        checkSubMatchesRule(LibTestRegion.anyDigits(a, sa), ea, type(int256).min, ea + bound(gap, -80, 80));
     }
 
     /// `b` int256.min at the extreme exponents.

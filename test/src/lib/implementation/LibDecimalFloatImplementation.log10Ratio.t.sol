@@ -8,11 +8,10 @@ import {
     LOG10_RATIO_Z_MAX,
     LOG10_SKIP_BELOW,
     POW_FIXED_LN10
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibExactFloat, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
-import {Log10RatioRelativeSumTooSmall, Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
+import {Log10RatioRelativeSumTooSmall, Log10RatioOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
 
 /// Bounds from the `log10Ratio` NatSpec, for z = |a - b| / (a + b) at most
 /// 5.1e-4: the magnitude is at most 1.3e-51 relative above the true log, and
@@ -20,10 +19,6 @@ import {Log10RatioRelativeSumTooSmall, Log10RatioOutOfRange} from "src/error/Err
 /// or by C 8.03e-50 plus a unit of its exponent when `relative`. Up to
 /// `LOG10_RATIO_Z_MAX` those are 1.0053 units and C 8.082e-50 plus a unit.
 contract LibDecimalFloatImplementationLog10RatioTest is Test {
-    function abs(int256 value) internal pure returns (int256) {
-        return value < 0 ? -value : value;
-    }
-
     /// `m × c × 10^e` exactly, as two terms that each fit an int256 for a
     /// non-negative `c` and `m` below 100.
     function multiple(int256 c, int256 m, int256 e) internal pure returns (int256, int256, int256, int256) {
@@ -54,11 +49,13 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     ) internal pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, relative);
         assertTrue(expectedCoefficient < 0 ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
-        int256 c = abs(signedCoefficient);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 c = int256(LibExactFloat.abs(signedCoefficient));
         int256[] memory coefficients = new int256[](2);
         int256[] memory exponents = new int256[](2);
         (coefficients[0], exponents[0]) = (c, exponent);
-        (coefficients[1], exponents[1]) = (-abs(expectedCoefficient), expectedExponent);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        (coefficients[1], exponents[1]) = (-int256(LibExactFloat.abs(expectedCoefficient)), expectedExponent);
         int256[] memory boundCoefficients = new int256[](5);
         int256[] memory boundExponents = new int256[](5);
         (boundCoefficients[0], boundExponents[0], boundCoefficients[1], boundExponents[1]) =
@@ -285,10 +282,10 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         assertEq(exponent, -50, "exponent");
         assertTrue(below ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 actual = abs(signedCoefficient) * 1e20;
+        int256 actual = int256(LibExactFloat.abs(signedCoefficient)) * 1e20;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 expected = int256(Math.mulDiv(d, oracleRatio(d, b, below), b));
-        assertLe(abs(actual - expected), 1.0036e20 + 2, "fixed point error");
+        assertLe(LibExactFloat.abs(actual - expected), 1.0036e20 + 2, "fixed point error");
     }
 
     /// Relative: d is maximized to D = d 10^k in [1e75, 1e77) and the log is
@@ -300,15 +297,14 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         a = below ? b - d : b + d;
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, true);
         assertTrue(below ? signedCoefficient < 0 : signedCoefficient > 0, "sign");
-        assertGe(abs(signedCoefficient), 1e48, "48 digits");
+        assertGe(LibExactFloat.abs(signedCoefficient), 1e48, "48 digits");
         int256 shift = -50 - exponent;
         assertGe(shift, 0, "shift");
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 maximized = d * 10 ** uint256(shift);
         assertGe(maximized, 1e75, "maximized low");
         assertLt(maximized, 1e77, "maximized high");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 actual = uint256(abs(signedCoefficient)) * 1e20;
+        uint256 actual = LibExactFloat.abs(signedCoefficient) * 1e20;
         uint256 expected = Math.mulDiv(maximized, oracleRatio(d, b, below), b);
         uint256 error = actual > expected ? actual - expected : expected - actual;
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -346,8 +342,7 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         assertGe(a + b, 1e50, "domain");
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, true);
         assertTrue(below ? signedCoefficient < 0 : signedCoefficient > 0, "sign");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 c = uint256(abs(signedCoefficient));
+        uint256 c = LibExactFloat.abs(signedCoefficient);
         assertGe(c, 1e48, "48 digits");
         int256 shift = -50 - exponent;
         assertGe(shift, 0, "shift");
