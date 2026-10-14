@@ -2,23 +2,39 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-/// @dev Thrown when the decimal point is malformed in a float string.
-/// @param position The position in the string where the error occurred.
+/// @dev Returned by value from `LibParseDecimalFloat`, never reverted with,
+/// for a `.` without fraction digits.
+/// @param position The cursor after the `.`, which a reverting caller appends.
 error MalformedDecimalPoint(uint256 position);
 
-/// @dev Thrown when the exponent cannot be parsed from a float string.
-/// @param position The position in the string where the error occurred.
+/// @dev Returned by value from `LibParseDecimalFloat`, never reverted with,
+/// for an `e` or `E` without exponent digits.
+/// @param position The cursor where the exponent digits were expected, which
+/// a reverting caller appends.
 error MalformedExponentDigits(uint256 position);
 
-/// @dev Thrown when parsing a decimal string would result in precision loss in
-/// the decimal float representation.
-/// @param position The position in the string where the error occurred.
+/// @dev Returned by value from `LibParseDecimalFloat`, never reverted with,
+/// for a well formed literal that is not exactly a Float and is below
+/// `(2^223 + 2) × 10^int32.max` in magnitude: too many significant digits,
+/// nonzero but below every nonzero Float, or past the largest Float of its
+/// sign.
+/// @param position The cursor after the literal, from
+/// `parseDecimalFloatInline`, which a reverting caller appends.
+/// `parseDecimalFloat` returns no position.
 error ParseDecimalPrecisionLoss(uint256 position);
 
-/// @dev Thrown when the string contains characters after the float.
+/// @dev Returned by value from `parseDecimalFloat`, never reverted with, for
+/// a well formed literal followed by more characters.
 error ParseDecimalFloatExcessCharacters();
 
 /// @dev Thrown when the parser reads the significant digits of a mantissa
 /// that has none. Unreachable: only a literal with a nonzero digit is read so.
 /// @param start The start of the literal.
 error ParseDecimalNoSignificantDigits(uint256 start);
+
+/// @dev Thrown when a fraction with a nonzero digit gives a zero or positive
+/// exponent. Unreachable: the scan back over trailing zeros stops at the `.`
+/// at the latest, so the exponent is minus the count of fraction digits up to
+/// the last nonzero one.
+/// @param start The start of the literal.
+error ParseDecimalNonNegativeFractionExponent(uint256 start);

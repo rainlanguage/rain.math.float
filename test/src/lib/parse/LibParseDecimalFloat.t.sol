@@ -423,55 +423,56 @@ contract LibParseDecimalFloatTest is Test {
         checkParseDecimalFloatFail("", ParseEmptyDecimalString.selector, 0);
     }
 
-    /// A non decimal string should revert.
+    /// A non decimal string returns ParseEmptyDecimalString.
     function testParseDecimalFloatNonDecimal() external pure {
         checkParseDecimalFloatFail("hello", ParseEmptyDecimalString.selector, 0);
     }
 
-    /// e without a number should revert.
-    function testParseDecimalFloatExponentRevert() external pure {
+    /// e without a number returns ParseEmptyDecimalString.
+    function testParseDecimalFloatExponentOnlyEmpty() external pure {
         checkParseDecimalFloatFail("e", ParseEmptyDecimalString.selector, 0);
     }
 
-    /// e with a left digit but not right should revert.
-    function testParseDecimalFloatExponentRevert2() external pure {
+    /// e with a left digit but not right returns MalformedExponentDigits.
+    function testParseDecimalFloatExponentNoDigits() external pure {
         checkParseDecimalFloatFail("1e", MalformedExponentDigits.selector, 2);
     }
 
-    /// e with a left digit but not right should revert. Add a negative sign.
-    function testParseDecimalFloatExponentRevert3() external pure {
+    /// e with a left digit but not right returns MalformedExponentDigits.
+    /// Add a negative sign.
+    function testParseDecimalFloatExponentNegativeNoDigits() external pure {
         checkParseDecimalFloatFail("1e-", MalformedExponentDigits.selector, 3);
     }
 
-    /// e with a right digit but not left should revert.
-    function testParseDecimalFloatExponentRevert4() external pure {
+    /// e with a right digit but not left returns ParseEmptyDecimalString.
+    function testParseDecimalFloatExponentNoMantissa() external pure {
         checkParseDecimalFloatFail("e1", ParseEmptyDecimalString.selector, 0);
     }
 
-    /// e with a right digit but not left should revert.
+    /// e with a right digit but not left returns ParseEmptyDecimalString.
     /// two digits.
-    function testParseLiteralDecimalFloatExponentRevert5() external pure {
+    function testParseLiteralDecimalFloatExponentNoMantissaTwoDigits() external pure {
         checkParseDecimalFloatFail("e10", ParseEmptyDecimalString.selector, 0);
     }
 
-    /// e with a right digit but not left should revert.
+    /// e with a right digit but not left returns ParseEmptyDecimalString.
     /// two digits with negative sign.
-    function testParseLiteralDecimalFloatExponentRevert6() external pure {
+    function testParseLiteralDecimalFloatExponentNoMantissaNegative() external pure {
         checkParseDecimalFloatFail("e-10", ParseEmptyDecimalString.selector, 0);
     }
 
-    /// Dot without digits should revert.
-    function testParseLiteralDecimalFloatDotRevert() external pure {
+    /// Dot without digits returns ParseEmptyDecimalString.
+    function testParseLiteralDecimalFloatDotOnly() external pure {
         checkParseDecimalFloatFail(".", ParseEmptyDecimalString.selector, 0);
     }
 
-    /// Dot without leading digits should revert.
-    function testParseLiteralDecimalFloatDotRevert2() external pure {
+    /// Dot without leading digits returns ParseEmptyDecimalString.
+    function testParseLiteralDecimalFloatDotNoIntegerDigits() external pure {
         checkParseDecimalFloatFail(".1", ParseEmptyDecimalString.selector, 0);
     }
 
-    /// Dot without trailing digits should revert.
-    function testParseLiteralDecimalFloatDotRevert3() external pure {
+    /// Dot without trailing digits returns MalformedDecimalPoint.
+    function testParseLiteralDecimalFloatDotNoFractionDigits() external pure {
         checkParseDecimalFloatFail("1.", MalformedDecimalPoint.selector, 2);
     }
 
@@ -795,8 +796,9 @@ contract LibParseDecimalFloatTest is Test {
         checkAgainstRule(frac);
     }
 
-    /// Can't have more than max total precision. Add decimals after the max int.
-    function testParseLiteralDecimalFloatPrecisionRevert0() external pure {
+    /// Can't have more than max total precision. Add decimals after the max
+    /// int. Returns ParseDecimalPrecisionLoss.
+    function testParseLiteralDecimalFloatPrecisionLossPastInt256Fraction() external pure {
         checkParseDecimalFloatFail(
             "57896044618658097711785492504343953926634992332820282019728792003956564819967.1",
             ParseDecimalPrecisionLoss.selector,
@@ -806,7 +808,7 @@ contract LibParseDecimalFloatTest is Test {
 
     /// 69 significant digits are no Float, but fit int256, so the inline parse
     /// returns them exactly and the wrapper reports the precision loss.
-    function testParseLiteralDecimalFloatPrecisionRevert1() external view {
+    function testParseLiteralDecimalFloatPrecisionLoss69Digits() external view {
         string memory s = "2.5789604461865809771178549250434395392663499233282028201972879200395";
         checkParseDecimalFloat(s, 25789604461865809771178549250434395392663499233282028201972879200395, -67, 69);
         (bytes4 err, Float float) = this.parseDecimalFloatExternal(s);

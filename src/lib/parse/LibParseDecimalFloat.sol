@@ -17,11 +17,17 @@ import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters,
-    ParseDecimalNoSignificantDigits
+    ParseDecimalNoSignificantDigits,
+    ParseDecimalNonNegativeFractionExponent
 } from "../../error/ErrParse.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
+
+/// @dev The coefficient at 10^int32.max where `packLossy` overflows: a parsed
+/// literal at least `PARSE_OVERFLOW_FLOOR × 10^int32.max` in magnitude is
+/// `ExponentOverflow`.
+uint256 constant PARSE_OVERFLOW_FLOOR = 2 ** 223 + 2;
 
 /// @title LibParseDecimalFloat
 /// @notice Library for parsing decimal floating point numbers from strings.
@@ -29,6 +35,11 @@ import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
 /// Main use case is ensuring consistent behaviour across all offchain
 /// implementations by standardizing in Solidity.
 library LibParseDecimalFloat {
+    /// @dev The ASCII code of `.`.
+    uint256 private constant ASCII_DECIMAL_POINT = 0x2e;
+    /// @dev The ASCII code of `0`.
+    uint256 private constant ASCII_ZERO = 0x30;
+
     /// @notice Parses the decimal literal at the start of [start, end): an
     /// optional `-`, digits, optionally `.` and digits, and optionally `e` or
     /// `E`, an optional `+` or `-`, and digits. The cursor stops after it.
@@ -43,8 +54,13 @@ library LibParseDecimalFloat {
     /// `MalformedExponentDigits`, each with the cursor where it stopped.
     /// @param start The starting index of the substring (inclusive).
     /// @param end The ending index of the substring (exclusive).
-    /// @return errorSelector The error selector if an error occurred, otherwise
-    /// 0.
+    /// @return errorSelector 0, or the error's selector, never reverted with.
+    /// `ParseEmptyDecimalString`, `MalformedDecimalPoint`,
+    /// `MalformedExponentDigits` and `ParseDecimalPrecisionLoss` each take a
+    /// `uint256 position`, which a reverting caller takes from `cursor`.
+    /// `ExponentOverflow` is `ExponentOverflow(int256, int256)` from
+    /// ErrDecimalFloat.sol, so a reverting caller encodes two words, not the
+    /// cursor alone.
     /// @return cursor The position in the string after parsing.
     /// @return signedCoefficient The signed coefficient of the parsed decimal
     /// float.
@@ -90,6 +106,7 @@ library LibParseDecimalFloat {
                 // The scan stops at the decimal point at the latest.
                 uint256 nonZeroCursor = cursor;
                 assembly ("memory-safe") {
+                    // 0x30 is '0'.
                     for {} eq(byte(0, mload(sub(nonZeroCursor, 1))), 0x30) {} {
                         nonZeroCursor := sub(nonZeroCursor, 1)
                     }
@@ -113,9 +130,11 @@ library LibParseDecimalFloat {
                     // is physically impossible to exist.
                     // forge-lint: disable-next-line(unsafe-typecast)
                     exponent = int256(fracStart) - int256(nonZeroCursor);
-                    // Should not be possible but guard against it in case.
-                    if (exponent > 0) {
-                        return (MalformedExponentDigits.selector, cursor, 0, 0);
+                    // nonZeroCursor > fracStart here, as the scan stops at the
+                    // point, so exponent is negative. Unreachable otherwise, as
+                    // a zero or positive exponent would misread the value.
+                    if (exponent >= 0) {
+                        revert ParseDecimalNonNegativeFractionExponent(start);
                     }
 
                     if (signedCoefficient == 0) {
@@ -223,36 +242,44 @@ library LibParseDecimalFloat {
     }
 
     /// @notice Whether `magnitude × 10^exponent` is at least
-    /// `(2^223 + 2) × 10^int32.max`, where `packLossy` overflows. At an
-    /// exponent of `int32.max - 10` or below even 2^255 is under it.
-    /// @param magnitude A nonzero magnitude, at most 2^255.
-    /// @param exponent The exponent, above `int32.max - 10`.
+    /// `PARSE_OVERFLOW_FLOOR × 10^int32.max`, where `packLossy` overflows.
+    /// Total over its inputs. At an exponent of `int32.max - 10` or below
+    /// every uint256 is under it.
+    /// @param magnitude Any magnitude.
+    /// @param exponent Any exponent.
     /// @return Whether the value is at or past the threshold.
-    function isPastOverflowThreshold(uint256 magnitude, int256 exponent) private pure returns (bool) {
+    function isPastOverflowThreshold(uint256 magnitude, int256 exponent) internal pure returns (bool) {
         unchecked {
-            // exponent > int32.max - 10, so this does not wrap.
+            // Zero is under the threshold, and so is every uint256 at
+            // 10^(int32.max - 10): 2^256 < PARSE_OVERFLOW_FLOOR × 10^10.
+            if (magnitude == 0 || exponent <= type(int32).max - 10) {
+                return false;
+            }
+            // exponent > int32.max - 10 above, so this does not wrap.
             int256 excess = exponent - type(int32).max;
-            // 10^68 is past 2^223 + 2.
+            // 10^68 is past PARSE_OVERFLOW_FLOOR.
             if (excess > 67) {
                 return true;
             }
             if (excess >= 0) {
                 // m × 10^x >= t iff m > floor((t - 1) / 10^x).
                 // forge-lint: disable-next-line(unsafe-typecast)
-                return magnitude > (2 ** 223 + 1) / 10 ** uint256(excess);
+                return magnitude > (PARSE_OVERFLOW_FLOOR - 1) / 10 ** uint256(excess);
             }
             // excess is in [-9, -1], so the product is below 2^256.
             // forge-lint: disable-next-line(unsafe-typecast)
-            return magnitude >= (2 ** 223 + 2) * 10 ** uint256(-excess);
+            return magnitude >= PARSE_OVERFLOW_FLOOR * 10 ** uint256(-excess);
         }
     }
 
     /// @notice `parseDecimalFloatInline` for a literal whose digits the int256
     /// steps there cannot hold. Reads the significant digits, from the first
     /// nonzero digit to the last, and the exponent of the last exactly, and
-    /// returns them when both fit int256. Otherwise the literal has more than
-    /// 68 significant digits or an exponent past int256, so is no Float, and
-    /// the error is chosen by its value as `parseDecimalFloatInline` documents.
+    /// returns them when both fit int256 and the value is below the overflow
+    /// threshold, `ExponentOverflow` when it is at or past it. Otherwise the
+    /// literal has more than 68 significant digits or an exponent past int256,
+    /// so is no Float, and the error is chosen by its value as
+    /// `parseDecimalFloatInline` documents.
     /// Each caller has seen a nonzero digit in the mantissa: integer digits
     /// past int256, a fraction with a nonzero digit, or a nonzero integer
     /// part. Zero literals all return from `parseDecimalFloatInline`.
@@ -303,12 +330,12 @@ library LibParseDecimalFloat {
             }
 
             // At least 77 significant digits, where packLossy overflows iff
-            // the floor at 10^int32.max is at least 2^223 + 2: the leading
-            // digit is above 10^(int32.max + 67), or at it with those 68
-            // digits.
+            // the floor at 10^int32.max is at least PARSE_OVERFLOW_FLOOR: the
+            // leading digit is above 10^(int32.max + 67), or at it with those
+            // 68 digits.
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 leadingAtCeiling = int256(type(int32).max) + 68 - int256(digitCount);
-            if (exponent > leadingAtCeiling || (exponent == leadingAtCeiling && leading >= 2 ** 223 + 2)) {
+            if (exponent > leadingAtCeiling || (exponent == leadingAtCeiling && leading >= PARSE_OVERFLOW_FLOOR)) {
                 return (ExponentOverflow.selector, cursor, 0, 0);
             }
             return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
@@ -388,9 +415,9 @@ library LibParseDecimalFloat {
                 assembly ("memory-safe") {
                     char := byte(0, mload(p))
                 }
-                if (char != 0x2e) {
+                if (char != ASCII_DECIMAL_POINT) {
                     if (digitCount < 77) {
-                        magnitude = magnitude * 10 + (char - 0x30);
+                        magnitude = magnitude * 10 + (char - ASCII_ZERO);
                     }
                     digitCount++;
                     if (digitCount == 68) {
@@ -455,13 +482,18 @@ library LibParseDecimalFloat {
     /// other literal that is not exactly a Float returns
     /// `ParseDecimalPrecisionLoss`.
     /// @param str The string to parse.
-    /// @return errorSelector The error selector if an error occurred, otherwise
-    /// 0.
+    /// @return errorSelector 0, or the error's selector, never reverted with.
+    /// `ParseEmptyDecimalString`, `MalformedDecimalPoint`,
+    /// `MalformedExponentDigits` and `ParseDecimalPrecisionLoss` each take a
+    /// `uint256 position`, which this function does not return.
+    /// `ExponentOverflow` is `ExponentOverflow(int256, int256)` from
+    /// ErrDecimalFloat.sol, and `ParseDecimalFloatExcessCharacters` takes no
+    /// arguments.
     /// @return result The parsed `Float` if no error occurred, otherwise zero.
     function parseDecimalFloat(string memory str) internal pure returns (bytes4, Float) {
         uint256 start;
         uint256 end;
-        assembly {
+        assembly ("memory-safe") {
             start := add(str, 0x20)
             end := add(start, mload(str))
         }
@@ -482,17 +514,12 @@ library LibParseDecimalFloat {
         if (errorSelector != 0) {
             return (errorSelector, Float.wrap(0));
         }
-        // packLossy handles the two exponent-overflow directions differently:
-        // - Positive exponent overflow is first met by lifting the
-        //   coefficient to lower the exponent to int32.max (e.g.
-        //   1e2147483648 is 10e2147483647). Every value it would revert
-        //   ExponentOverflow on returned that selector above.
-        // - Negative exponent overflow is first met by shedding trailing
-        //   digits of the coefficient to lift the exponent to int32.min
-        //   (e.g. 10e-2147483649 is 1e-2147483648, which packs
-        //   losslessly). Only a number that genuinely rounds to zero
-        //   (e.g. 1e-2147483649) makes packLossy return
-        //   (FLOAT_ZERO, false), and we report ParseDecimalPrecisionLoss.
+        // Every literal packLossy would revert ExponentOverflow on returned
+        // that selector above. packLossy is lossy for every other literal
+        // that is not exactly a Float: too many digits, past the largest
+        // Float of its sign, or below every nonzero Float (e.g.
+        // 1e-2147483649, which packs to FLOAT_ZERO). Each is reported as
+        // ParseDecimalPrecisionLoss.
         (Float result, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         if (!lossless) {
             return (ParseDecimalPrecisionLoss.selector, Float.wrap(0));
