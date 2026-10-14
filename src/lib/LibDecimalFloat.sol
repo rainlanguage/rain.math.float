@@ -72,13 +72,13 @@ type Float is bytes32;
 library LibDecimalFloat {
     using LibDecimalFloat for Float;
 
-    /// A zero valued float.
     /// @dev The greatest exponent at which no uint256 magnitude is past every
     /// Float: 2^256 < 10^10 (2^223 + 2), and one exponent up 2^256 - 1 is
     /// past. `isPastEveryFloat` returns false at or below it, so a caller may
     /// check it first to skip the call on the hot path.
     int256 constant NEVER_PAST_EXPONENT = int256(type(int32).max) - 10;
 
+    /// A zero valued float.
     Float constant FLOAT_ZERO = Float.wrap(0);
 
     /// A one valued float.
