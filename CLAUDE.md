@@ -37,6 +37,8 @@ cross-references the packed constants against values derived independently.
 
 - **`src/lib/`** — The pure-math suite mirroring `src/lib/`.
 - **`lib/`** — Reference (slow) implementations used to cross-check the library.
+- **`abstract/`** — Shared test bases: the sqrt correct-rounding oracle and gas
+  logging.
 
 ### Dependencies (`dependencies/`)
 
