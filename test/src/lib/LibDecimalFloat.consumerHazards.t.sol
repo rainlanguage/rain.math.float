@@ -3,8 +3,8 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ExponentUnderflow, ExponentOverflow, DivisionByZero} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {ExponentUnderflow, ExponentOverflow, DivisionByZero} from "../../../src/error/ErrDecimalFloat.sol";
 
 /// The README's consumer guidance, one test per hazard. Expected values are
 /// the exact result rounded toward zero to the nearest Float (`div`, `mul`,

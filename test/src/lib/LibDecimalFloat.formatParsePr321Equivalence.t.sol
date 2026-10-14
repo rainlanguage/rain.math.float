@@ -3,16 +3,20 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
-import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
-import {LibFormatDecimalFloatPr321} from "test/lib/LibFormatDecimalFloatPr321.sol";
-import {LibParseDecimalFloatPr321} from "test/lib/LibParseDecimalFloatPr321.sol";
-import {UnformatableExponent} from "src/error/ErrFormat.sol";
-import {ParseDecimalPrecisionLoss, MalformedExponentDigits, MalformedDecimalPoint} from "src/error/ErrParse.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibFormatDecimalFloat} from "../../../src/lib/format/LibFormatDecimalFloat.sol";
+import {LibParseDecimalFloat} from "../../../src/lib/parse/LibParseDecimalFloat.sol";
+import {LibFormatDecimalFloatPr321} from "../../lib/LibFormatDecimalFloatPr321.sol";
+import {LibParseDecimalFloatPr321} from "../../lib/LibParseDecimalFloatPr321.sol";
+import {UnformatableExponent} from "../../../src/error/ErrFormat.sol";
+import {
+    ParseDecimalPrecisionLoss,
+    MalformedExponentDigits,
+    MalformedDecimalPoint
+} from "../../../src/error/ErrParse.sol";
 import {ParseDecimalOverflow} from "rain-string-0.3.9/src/error/ErrParse.sol";
-import {LibTestDecimalLiteral, Literal} from "test/lib/LibTestDecimalLiteral.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {LibTestDecimalLiteral, Literal} from "../../lib/LibTestDecimalLiteral.sol";
+import {LibExactFloat} from "../../lib/LibExactFloat.sol";
 
 /// Every input returns the same bytes, or reverts with the same bytes, as
 /// `toDecimalString`, `parseDecimalFloat` and `parseDecimalFloatInline` before

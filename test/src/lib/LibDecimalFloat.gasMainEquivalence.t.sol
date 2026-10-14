@@ -3,8 +3,8 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloatGasMain} from "test/lib/LibDecimalFloatGasMain.sol";
+import {LibDecimalFloatImplementation} from "../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatGasMain} from "../../lib/LibDecimalFloatGasMain.sol";
 
 /// Every input returns the same bytes, or reverts with the same bytes, as main
 /// before the #310 gas changes.

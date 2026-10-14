@@ -3,9 +3,9 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {ScaleUpOutOfRange} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {ScaleUpOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationScaleUpTest is Test {
     function scaleUpExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {

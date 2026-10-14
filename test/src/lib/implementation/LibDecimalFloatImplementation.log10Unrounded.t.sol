@@ -6,11 +6,11 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {
     LibDecimalFloatImplementation,
     LOG10_SKIP_BELOW
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LOG10_RAW_ERROR_E54} from "test/lib/LibTestErrorBound.sol";
-import {Log10Zero, Log10Negative, ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LOG10_RAW_ERROR_E54} from "../../../lib/LibTestErrorBound.sol";
+import {Log10Zero, Log10Negative, ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
 import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {SafeCast} from "@openzeppelin-contracts-5.7.0/utils/math/SafeCast.sol";
 
 /// @dev log10 of 1448249443771554926630073670106315934706894775468672318138123474693615199258e-75
 /// in units of 1e-76, from `bc -l` at scale 130, truncated.
@@ -26,10 +26,6 @@ int256 constant LOG10_HIGH_REFERENCE = 99997625749236281158857587643401898360325
 contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
     function log10UnroundedExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
         return LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
-    }
-
-    function abs(int256 value) internal pure returns (int256) {
-        return value < 0 ? -value : value;
     }
 
     /// Whether |actual - oracle| is within the bound terms, exactly.
@@ -126,7 +122,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         int256 expected = characteristic * 1e70 + int256(fraction);
         int256[] memory boundCoefficients = new int256[](2);
         int256[] memory boundExponents = new int256[](2);
-        (boundCoefficients[0], boundExponents[0]) = (abs(expected) * 311, -121);
+        (boundCoefficients[0], boundExponents[0]) = (SafeCast.toInt256(LibExactFloat.abs(expected)) * 311, -121);
         (boundCoefficients[1], boundExponents[1]) = (1, -67);
         (int256 c, int256 e) = LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         assertTrue(
@@ -359,14 +355,14 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
             [int256(1448249443771554926630073670106315934706894775468672318138123474693615199258), LOG10_LOW_REFERENCE],
             [int256(9999453323501747426601859962676171576268035899274424060577868894318634900000), LOG10_HIGH_REFERENCE]
         ];
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 bound = int256(LOG10_RAW_ERROR_E54) * 1e22;
+        uint256 bound = LOG10_RAW_ERROR_E54 * 1e22;
         for (uint256 i = 0; i < references.length; i++) {
             (int256 rawCoefficient, int256 rawExponent) =
                 LibDecimalFloatImplementation.log10Unrounded(references[i][0], -75);
             assertGe(rawExponent, -76, "exponent");
             // forge-lint: disable-next-line(unsafe-typecast)
-            int256 error = abs(rawCoefficient * int256(10 ** uint256(rawExponent + 76)) - references[i][1]);
+            int256 raw = rawCoefficient * int256(10 ** uint256(rawExponent + 76));
+            uint256 error = LibExactFloat.abs(raw - references[i][1]);
             assertLe(error, bound + 1, "within the bound");
             assertGe(error * 1000, bound * 995, "bound tight");
         }

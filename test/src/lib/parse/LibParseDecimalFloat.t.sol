@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
+import {LibParseDecimalFloat} from "../../../../src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
@@ -13,11 +13,11 @@ import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters
-} from "src/error/ErrParse.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
-import {LibTestDecimalLiteral, Literal} from "test/lib/LibTestDecimalLiteral.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+} from "../../../../src/error/ErrParse.sol";
+import {ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
+import {Float, LibDecimalFloat} from "../../../../src/lib/LibDecimalFloat.sol";
+import {LibTestDecimalLiteral, Literal} from "../../../lib/LibTestDecimalLiteral.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
