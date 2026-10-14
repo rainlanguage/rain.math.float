@@ -7,11 +7,10 @@ import {Float} from "../lib/LibDecimalFloat.sol";
 /// @dev Thrown when an exponent overflows.
 error ExponentOverflow(int256 signedCoefficient, int256 exponent);
 
-/// @dev Thrown when an exponent underflows. Exponent underflow means the
-/// magnitude is smaller than any representable Float. Without this revert,
-/// arithmetic ops that compose to underflow (e.g. `mul` with two operands
-/// whose exponents sum below `int32.min`) would silently return `FLOAT_ZERO`,
-/// breaking downstream code that branches on `result == 0`.
+/// @dev Thrown when a non-zero result is below every non-zero Float, so that
+/// the closest Float toward zero would be zero: magnitude below
+/// 1e-2147483648 (e.g. `mul` of 1e-2147483648 by 0.1). Returning `FLOAT_ZERO`
+/// instead would break code that branches on `result == 0`.
 error ExponentUnderflow(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when attempting to convert a negative number to an unsigned
@@ -54,7 +53,11 @@ error ZeroNegativePower(Float b);
 /// more, or its denominator is zero.
 error MulDivOverflow(uint256 x, uint256 y, uint256 denominator);
 
-/// @dev Thrown when a maximize overflows where it is not appropriate.
+/// @dev Thrown by `maximizeFull` when the shift that maximizes the
+/// coefficient would take the exponent below `type(int256).min`, where
+/// `maximize` instead stops at the floor and reports the shortfall.
+/// @param signedCoefficient The coefficient as given.
+/// @param exponent The exponent as given.
 error MaximizeOverflow(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when dividing by zero.

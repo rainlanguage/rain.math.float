@@ -7,8 +7,6 @@ import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatIm
 import {UnformatableExponent} from "../../error/ErrFormat.sol";
 
 /// @dev Library for formatting DecimalFloat values as strings.
-/// Not particularly efficient as it is intended for offchain use that doesn't
-/// cost gas.
 library LibFormatDecimalFloat {
     /// Maximum `|exponent|` supported by non-scientific formatting, applied to
     /// the value's canonical form: the coefficient without its trailing
@@ -25,12 +23,22 @@ library LibFormatDecimalFloat {
     uint256 private constant E16 = 1e16;
     uint256 private constant E32 = 1e32;
     uint256 private constant E64 = 1e64;
+    /// ASCII `0`, `-`, `.` and `e`.
+    uint256 private constant CHAR_ZERO = 0x30;
+    uint256 private constant CHAR_MINUS = 0x2d;
+    uint256 private constant CHAR_DOT = 0x2e;
+    uint256 private constant CHAR_E = 0x65;
     /// 32 ASCII `0` bytes.
     bytes32 private constant ZEROS = 0x3030303030303030303030303030303030303030303030303030303030303030;
 
-    /// Format a decimal float as a string.
-    /// Not particularly efficient as it is intended for offchain use that
-    /// doesn't cost gas.
+    /// Format a decimal float as a string. Zero is "0" at any exponent. Every
+    /// other value formats from its canonical form, the coefficient without its
+    /// trailing decimal zeros, so equal Floats give equal strings.
+    /// Scientific: `d.ddd` then `eN` for the exponent of the leading digit, `eN`
+    /// omitted when N is zero. Plain: the decimal digits with a point where
+    /// needed; a canonical exponent outside
+    /// `[-MAX_NON_SCIENTIFIC_EXPONENT, MAX_NON_SCIENTIFIC_EXPONENT]` reverts
+    /// `UnformatableExponent` with that exponent. Scientific mode never reverts.
     /// @param float The decimal float to format.
     /// @param scientific Whether to format in scientific notation (e.g. 1e10).
     /// @return The string representation of the decimal float.
@@ -49,6 +57,9 @@ library LibFormatDecimalFloat {
     /// most significant digit of the maximized coefficient, so the display
     /// exponent is the maximized exponent plus 75 or 76. When `N` is zero the
     /// `eN` part is omitted, so `1.5e0` formats as `1.5`.
+    /// @param signedCoefficient The nonzero coefficient, as unpacked.
+    /// @param exponent The exponent, as unpacked.
+    /// @return out The formatted string.
     //slither-disable-next-line cyclomatic-complexity
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory out) {
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
@@ -65,12 +76,13 @@ library LibFormatDecimalFloat {
 
         assembly ("memory-safe") {
             // Significand digits end at `out`, the exponent's digits end
-            // where the significand's start.
+            // where the significand's start: at most 68 + 10 bytes below
+            // `out`, within the 0x80 of headroom above the free pointer.
             out := add(mload(0x40), 0x80)
             let start := out
             for {} 1 {} {
                 start := sub(start, 1)
-                mstore8(start, add(48, mod(significand, 10)))
+                mstore8(start, add(CHAR_ZERO, mod(significand, 10)))
                 significand := div(significand, 10)
                 if iszero(significand) { break }
             }
@@ -78,13 +90,13 @@ library LibFormatDecimalFloat {
 
             let cursor := add(out, 0x20)
             if isNeg {
-                mstore8(cursor, 0x2d)
+                mstore8(cursor, CHAR_MINUS)
                 cursor := add(cursor, 1)
             }
             mstore(cursor, mload(start))
             cursor := add(cursor, 1)
             if gt(digits, 1) {
-                mstore8(cursor, 0x2e)
+                mstore8(cursor, CHAR_DOT)
                 cursor := add(cursor, 1)
                 let n := sub(digits, 1)
                 for { let i := 0 } lt(i, n) { i := add(i, 0x20) } {
@@ -93,18 +105,18 @@ library LibFormatDecimalFloat {
                 cursor := add(cursor, n)
             }
             if displayExponent {
-                mstore8(cursor, 0x65)
+                mstore8(cursor, CHAR_E)
                 cursor := add(cursor, 1)
                 let e := displayExponent
                 if slt(e, 0) {
-                    mstore8(cursor, 0x2d)
+                    mstore8(cursor, CHAR_MINUS)
                     cursor := add(cursor, 1)
                     e := sub(0, e)
                 }
                 let eStart := start
                 for {} 1 {} {
                     eStart := sub(eStart, 1)
-                    mstore8(eStart, add(48, mod(e, 10)))
+                    mstore8(eStart, add(CHAR_ZERO, mod(e, 10)))
                     e := div(e, 10)
                     if iszero(e) { break }
                 }
@@ -123,8 +135,10 @@ library LibFormatDecimalFloat {
     /// Non-scientific notation: render by placing a decimal point inside the
     /// coefficient's digit string according to the exponent. Does not compute
     /// `10^exponent` as an integer, so the output is valid for any canonical
-    /// `|exponent| <= MAX_NON_SCIENTIFIC_EXPONENT` — including exponents below
-    /// `-76` that arise from near-cancellation add/sub.
+    /// `|exponent| <= MAX_NON_SCIENTIFIC_EXPONENT`.
+    /// @param signedCoefficient The nonzero coefficient, as unpacked.
+    /// @param exponent The exponent, as unpacked.
+    /// @return out The formatted string.
     //slither-disable-next-line cyclomatic-complexity
     function _toNonScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory out) {
         bool isNeg = signedCoefficient < 0;
@@ -147,12 +161,13 @@ library LibFormatDecimalFloat {
         }
 
         assembly ("memory-safe") {
-            // The digits end at `out`, at most 68 of them.
+            // The digits end at `out`, at most 68 of them, within the 0x60 of
+            // headroom above the free pointer.
             out := add(mload(0x40), 0x60)
             let start := out
             for {} 1 {} {
                 start := sub(start, 1)
-                mstore8(start, add(48, mod(significand, 10)))
+                mstore8(start, add(CHAR_ZERO, mod(significand, 10)))
                 significand := div(significand, 10)
                 if iszero(significand) { break }
             }
@@ -160,7 +175,7 @@ library LibFormatDecimalFloat {
 
             let cursor := add(out, 0x20)
             if isNeg {
-                mstore8(cursor, 0x2d)
+                mstore8(cursor, CHAR_MINUS)
                 cursor := add(cursor, 1)
             }
             switch slt(effExp, 0)
@@ -179,7 +194,7 @@ library LibFormatDecimalFloat {
                 case 0 {
                     // "0." + leading zeros + significant digits.
                     // ASCII `0.`, left aligned.
-                    mstore(cursor, shl(240, 0x302e))
+                    mstore(cursor, or(shl(248, CHAR_ZERO), shl(240, CHAR_DOT)))
                     cursor := add(cursor, 2)
                     let leadingZeros := sub(fractionDigits, digits)
                     for { let i := 0 } lt(i, leadingZeros) { i := add(i, 0x20) } {
@@ -198,7 +213,7 @@ library LibFormatDecimalFloat {
                         mstore(add(cursor, i), mload(add(start, i)))
                     }
                     cursor := add(cursor, integerDigits)
-                    mstore8(cursor, 0x2e)
+                    mstore8(cursor, CHAR_DOT)
                     cursor := add(cursor, 1)
                     start := add(start, integerDigits)
                     for { let i := 0 } lt(i, fractionDigits) { i := add(i, 0x20) } {
@@ -215,14 +230,14 @@ library LibFormatDecimalFloat {
         }
     }
 
-    /// Divides the decimal trailing zeros out of a nonzero value of at most 77
-    /// digits.
+    /// Divides the decimal trailing zeros out of a nonzero value.
+    /// @param value The nonzero value.
     /// @return significand The value without its trailing zeros.
     /// @return trailingZeros How many zeros were divided out.
     function stripTrailingZeros(uint256 value) private pure returns (uint256 significand, uint256 trailingZeros) {
         assembly ("memory-safe") {
-            // Each step takes half of what the previous one could, so at most
-            // 76 zeros come out in at most one step each.
+            // The steps halve, so any count up to 127 comes out in at most one
+            // step each; a nonzero uint256 has at most 77.
             if iszero(mod(value, 10)) {
                 if iszero(mod(value, E64)) {
                     value := div(value, E64)
