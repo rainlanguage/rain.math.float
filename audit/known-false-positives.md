@@ -80,3 +80,24 @@ returns `FLOAT_ZERO` through `packLossy`'s zero arm, byte for byte the constant.
 zero coefficient at exponent one (`Float.wrap(bytes32(uint256(1) << 224))`)
 changes nothing: `lt` and `gt` unpack both operands and compare numerically, and
 a zero coefficient is zero at every exponent, as the function's NatSpec states.
+
+## Equivalent mutant: `agreeWithinProportional` raised-exponent test as `!=`
+
+`src/lib/LibDecimalFloat.sol`, `agreeWithinProportional`'s fallback. Testing
+`scaledExponent != proportionalExponent + anchorExponent` in place of `>`
+changes nothing: `mul` returns the exponent sum plus the count of digits it
+shed, never less, for operands whose exponents are int32 (the paths that move an
+exponent down are for sums below `type(int256).min`), and the one product whose
+exponent is not that sum, the zero product's `(0, 0)`, is already refused by
+`scaledCoefficient != 0` ahead of this test.
+
+## Equivalent mutant: `agreeWithinProportional` spread exponent test as `<=`
+
+`src/lib/LibDecimalFloat.sol`, `agreeWithinProportional`'s fallback. Accepting
+`spreadExponent <= scaledExponent - 1` in place of `==` changes nothing: the
+clause runs only after `lte(spread, scaled)` was false with a non-zero
+`scaledCoefficient` at a raised exponent, which puts `scaledCoefficient` at or
+above `type(int256).max / 10`. A spread two or more exponents below the limit
+rescales the limit by at least `100`, past int256 (or past `compareRescale`'s
+`10^76` reach), and the overflow branch ranks the limit above the spread, so
+`lte` is true there and the fallback never sees such a spread.

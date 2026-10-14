@@ -815,4 +815,70 @@ contract LibDecimalFloatAgreeTest is Test {
             expectedAgreeExactLimit(absolute, proportional, lowest, highest)
         );
     }
+
+    /// An untruncated limit one exponent above the spread is still a plain
+    /// comparison. `sub` aligns the spread to the anchor's int256 unit, so a
+    /// proportional exponent one above that unit's shift puts the limit's
+    /// exponent one above the spread's without `mul` shedding anything, and a
+    /// spread past the limit is refused.
+    ///
+    /// `1e66` as a coefficient shifts ten digits to its int256 unit: the
+    /// spread `1e66 - 1e-20` truncates to `1e66 - 1e-10` at exponent -10 and
+    /// the limit `5e-9 × 1e66` is `5e66` at exponent -9. `1` shifts 76: the
+    /// spread `1 - 1e-77` truncates to `1 - 1e-76` at exponent -76 and the
+    /// limit `1e-75` sits at -75.
+    function testAgreeUntruncatedLimitOneExponentAboveSpread() external pure {
+        assertFalse(expectedAgreeExactLimit(f(0, 0), f(5, -9), f(1, -20), f(1e66, 0)), "oracle");
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(5, -9), f(1, -20), f(1e66, 0)), "sorted");
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(5, -9), f(1e66, 0), f(1, -20)), "reversed");
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(5, -9), f(-1e66, 0), f(-1, -20)), "negated");
+        assertFalse(expectedAgreeExactLimit(f(0, 0), f(1, -75), f(1, -77), f(1, 0)), "one oracle");
+        assertFalse(LibDecimalFloat.agree(f(0, 0), f(1, -75), f(1, -77), f(1, 0)), "one");
+    }
+
+    /// `testAgreeUntruncatedLimitOneExponentAboveSpread` for any anchor of ten
+    /// digits or more, at both sides of the limit: a spread one unit of the
+    /// anchor's int256 unit under the anchor is within a limit equal to the
+    /// anchor, one unit over it is refused, and one far past a limit a tiny
+    /// fraction of the anchor is refused.
+    function testAgreeUntruncatedLimitOneExponentAboveSpreadForAnyAnchor(
+        int224 anchorCoefficient,
+        int256 anchorExponent,
+        bool negate,
+        bool reverse
+    ) external pure {
+        // Ten digits or more shifts at most 67, so `10^(shift - 1)` below
+        // fits an int224 coefficient.
+        int256 coefficient = bound(anchorCoefficient, 1e9, type(int224).max);
+        anchorExponent = bound(anchorExponent, -1e6, 1e6);
+        int256 shift = LibExactFloat.int256UnitShift(coefficient);
+        Float anchor = f(coefficient, anchorExponent);
+        Float under = f(1, anchorExponent - shift - 1);
+        Float over = f(-1, anchorExponent - shift);
+        if (negate) {
+            (anchor, under, over) = (anchor.minus(), under.minus(), over.minus());
+        }
+        // The limit is `anchor × 10^(1 - shift)`, under the spread.
+        Float tiny = f(1, 1 - shift);
+        // The limit is the anchor itself, exact at exponent one above the
+        // spread's.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        Float whole = f(int256(10 ** uint256(shift - 1)), 1 - shift);
+        assertAgreeAs(false, tiny, under, anchor, reverse, "far past");
+        assertAgreeAs(false, whole, over, anchor, reverse, "a unit past");
+        assertAgreeAs(true, whole, under, anchor, reverse, "a unit within");
+    }
+
+    /// `agree` with a zero absolute tolerance answers `expected`, as does the
+    /// exact oracle, in the given order of the extremes or reversed.
+    function assertAgreeAs(bool expected, Float proportional, Float x, Float y, bool reverse, string memory label)
+        internal
+        pure
+    {
+        if (reverse) {
+            (x, y) = (y, x);
+        }
+        assertEq(expectedAgreeExactLimit(f(0, 0), proportional, x, y), expected, string.concat(label, " oracle"));
+        assertEq(LibDecimalFloat.agree(f(0, 0), proportional, x, y), expected, label);
+    }
 }
