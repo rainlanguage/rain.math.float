@@ -32,6 +32,8 @@ library LibDecimalFloatImplementationAddPre394 {
     uint256 private constant TIMES_TEN_SPAN =
         11579208923731619542357098500868790785326998466564056403945758400791312963993;
 
+    /// `LibDecimalFloatImplementation.add` verbatim at 8fcfeb3; see its NatSpec
+    /// there.
     function add(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure

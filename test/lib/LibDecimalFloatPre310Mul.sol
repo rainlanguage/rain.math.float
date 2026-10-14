@@ -17,6 +17,8 @@ import {
 /// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
 /// nothing about a value. Expected values come from `LibExactFloat`.
 library LibDecimalFloatPre310Mul {
+    /// `LibDecimalFloatImplementation.mul` verbatim at 8fd3980; see its NatSpec
+    /// there.
     function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -100,6 +102,8 @@ library LibDecimalFloatPre310Mul {
         }
     }
 
+    /// `LibDecimalFloatImplementation.mulExponentBelowFloor` verbatim at
+    /// 8fd3980; see its NatSpec there.
     function mulExponentBelowFloor(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -122,6 +126,8 @@ library LibDecimalFloatPre310Mul {
         }
     }
 
+    /// `LibDecimalFloatImplementation.mulExponentNearCeiling` verbatim at
+    /// 8fd3980; see its NatSpec there.
     function mulExponentNearCeiling(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -139,6 +145,8 @@ library LibDecimalFloatPre310Mul {
         }
     }
 
+    /// `LibDecimalFloatImplementation.maximize` verbatim at 8fd3980; see its
+    /// NatSpec there.
     function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, int256) {
         unchecked {
             if (signedCoefficient == 0) {
@@ -193,6 +201,8 @@ library LibDecimalFloatPre310Mul {
         }
     }
 
+    /// `LibDecimalFloatImplementation.mulDivPow10` verbatim at 8fd3980; see its
+    /// NatSpec there.
     function mulDivPow10(uint256 x, uint256 y, uint256 n) internal pure returns (uint256 result) {
         (uint256 prod1, uint256 prod0) = mul512(x, y);
         if (prod1 == 0) {

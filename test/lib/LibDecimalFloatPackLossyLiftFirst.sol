@@ -12,6 +12,8 @@ import {Float, LibDecimalFloat} from "../../src/lib/LibDecimalFloat.sol";
 /// with it says nothing about a result's value. Expected values come from
 /// `LibExactFloat` over exact math.
 library LibDecimalFloatPackLossyLiftFirst {
+    /// `LibDecimalFloat.packLossy` verbatim at 4d2d1e8 (see its NatSpec
+    /// there), plus the #332 rule the library NatSpec describes.
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {
             int256 initialSignedCoefficient = signedCoefficient;

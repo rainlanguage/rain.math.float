@@ -21,6 +21,8 @@ import {Log10RatioRelativeSumTooSmall, MaximizeOverflow, MulDivOverflow} from ".
 /// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
 /// nothing about a value. Expected values come from `LibExactFloat`.
 library LibDecimalFloatImplementationLog10RatioPr336 {
+    /// `LibDecimalFloatImplementation.log10Ratio` as at 5210e11 (see its
+    /// NatSpec there), with the series the library NatSpec describes.
     // slither-disable-start divide-before-multiply
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
