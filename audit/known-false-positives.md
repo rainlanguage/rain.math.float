@@ -25,7 +25,7 @@ to 15 (0.0667 of int224.max) stays below the smallest known failing input at
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The assertions read only
 the bounded `a`, `b` and `c`, and the clamp exists to keep `a * b` at or below
-`WEI_SAFE_SIDE_AB_MAX`. Two rearrangements keep that domain exactly.
+`WEI_SAFE_SIDE_AB_MAX`. These rewrites keep that domain exactly.
 
 Moving the clamp before `b = bound(b, 1, 1e33)`: both orders land `b` in
 `[1, min(X, 1e33)]` for `X = WEI_SAFE_SIDE_AB_MAX / a`. Bounding into `[1, X]`
@@ -42,3 +42,8 @@ the domain is again every `(a, b)` with `a <= 1e33`, `1 <= b <= 1e33` and
 `testFuzzWeiFloorCeilSafeSideClampWrapsToOne` wrap into that domain under both
 clamps. A test that told either mutant apart would need the property to fail
 inside the domain the test asserts it on.
+
+Raising the guard from `a > 0` to `a > 1`, or to any `a > k` with `k` at most
+`WEI_SAFE_SIDE_AB_MAX / 1e33` (about 6.7e32): for every such `a` the clamp's
+limit `WEI_SAFE_SIDE_AB_MAX / a` is at least 1e33, which `b` already satisfies,
+so the clamp it skips is a no-op and no bounded input changes.

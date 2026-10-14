@@ -297,6 +297,18 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertTrue(lossless);
     }
 
+    /// One div can do the same: (1e67 + 3) / 7 has remainder 6, but the
+    /// quotient's 67 integer digits fill the coefficient, so the Float is the
+    /// floor and the conversion reports lossless.
+    function testSingleDivSubUlpFractionReadsLossless() external pure {
+        uint256 a = 1e67 + 3;
+        Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
+        (uint256 got, bool lossless) = fa.div(LibDecimalFloat.packLossless(7, 0)).toFixedDecimalLossy(0);
+        assertEq(a % 7, 6);
+        assertEq(got, a / 7);
+        assertTrue(lossless);
+    }
+
     /// Dividing by a truncated price turns an exact integer into a lossy
     /// result: the lossless-flag ceiling charges 1 more than mulDivUp.
     function testExactIntegerCeilOvercharge() external pure {
