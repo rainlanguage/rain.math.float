@@ -64,37 +64,24 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         return digits - 1 + (roundsUp ? int256(1) : int256(0));
     }
 
-    /// Whether `(c, e)` is `k + d 10^-70` truncated toward zero to a
-    /// multiple of `10^unit`, for unit in (-50, 0] and |k| far above |d 10^-70|,
-    /// so the sum has k's sign.
-    function isTruncatedSum(int256 k, int256 unit, int256 d, int256 c, int256 e) internal pure returns (bool) {
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 scale = int256(10 ** uint256(70 + unit));
-        // k is a multiple of 10^unit, so the sum truncates as d does: down for
-        // a positive sum, up for a negative one.
-        int256 q = d / scale;
-        if (d % scale != 0) {
-            if (k > 0 && d < 0) {
-                q -= 1;
-            } else if (k < 0 && d > 0) {
-                q += 1;
-            }
-        }
-        (bool overflowed, int256 expectedCoefficient, int256 expectedExponent, bool inexact) =
-            LibExactFloat.addPartsInexact(k, 0, q, unit);
-        return !overflowed && !inexact && LibExactFloat.cmpParts(c, e, expectedCoefficient, expectedExponent) == 0;
+    /// `x / 1e20` rounded toward negative infinity.
+    function floorE20(int256 x) internal pure returns (int256) {
+        int256 q = x / 1e20;
+        return x < 0 && x % 1e20 != 0 ? q - 1 : q;
     }
 
     /// Whether `(c, e)` is `log10Unrounded` of the input within its proven
-    /// bound. The characteristic k is summed with the correction, within
-    /// `LOG10_RAW_ERROR_E54` units of 1e-54 of the log less k, and the oracle
-    /// is within 1e-67. Where k's int256 unit is above 1e-50, `add` truncates
-    /// that sum toward zero to it, so the result is one of the truncations of
-    /// the oracle less and plus both errors. Elsewhere the sum is exact.
+    /// bound. For a characteristic k other than zero the result is `add` of
+    /// k and a correction d 10^-50 within `LOG10_RAW_ERROR_E54` units of 1e-54
+    /// of the log less k, below 1e25 by a fixed point sum that is exact, as
+    /// `add` is there. The oracle is within 1e-67, so d is one of the
+    /// integers within both errors of it, and the result is
+    /// `LibExactFloat.addPartsWide` of k and that d, which truncates toward
+    /// zero to k's int256 unit and sheds one more digit where the sum passes
+    /// int256. Zero k is the correction alone, which may be relative.
     function absoluteOk(int256 signedCoefficient, int256 exponent, int256 c, int256 e) internal pure returns (bool) {
         int256 k = exponent + characteristicRise(signedCoefficient);
-        int256 unit = LibExactFloat.int256Unit(k, 0);
-        if (k != 0 && unit > -50) {
+        if (k != 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
             (int256 characteristic, uint256 fraction) = LibExactFloat.log10(uint256(signedCoefficient), exponent);
             // The oracle's characteristic is within one of k.
@@ -102,7 +89,16 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
             int256 offset = (characteristic - k) * 1e70 + int256(fraction);
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 slack = int256(LOG10_RAW_ERROR_E54) * 1e16 + 1e3;
-            return isTruncatedSum(k, unit, offset - slack, c, e) || isTruncatedSum(k, unit, offset + slack, c, e);
+            // The span is 2.0074e-50, so at most three corrections.
+            int256 high = floorE20(offset + slack);
+            for (int256 d = -floorE20(slack - offset); d <= high; d++) {
+                (bool overflowed, int256 expectedCoefficient, int256 expectedExponent) =
+                    LibExactFloat.addPartsWide(k, 0, d, -50);
+                if (!overflowed && LibExactFloat.cmpParts(c, e, expectedCoefficient, expectedExponent) == 0) {
+                    return true;
+                }
+            }
+            return false;
         }
         int256[] memory boundCoefficients = new int256[](2);
         int256[] memory boundExponents = new int256[](2);
@@ -239,6 +235,51 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         checkAbsolute(2, -1e25);
         checkAbsolute(2, -9e26);
         checkAbsolute(31415926535, 1e40);
+    }
+
+    /// #699: 578960446186580977117854925 is the largest k with k 1e50 in
+    /// int256, and 5789604461865809771178549250 the largest with k 1e49, each
+    /// 0.0434 under `type(int256).max` at that unit, so log10 3 = 0.47712...
+    /// carries and `add` sheds a digit: the sum truncated toward zero to 1e-49
+    /// and 1e-48. 57896044618658097711785492 1e51 is 0.5043 under it, so
+    /// log10 4 = 0.60206... carries to 1e-50, where the correction is exact.
+    /// Each coefficient is k plus log10 3 or log10 4 from `bc -l` at scale
+    /// 120, truncated, and one unit less is past the bound.
+    function testLog10UnroundedAddCarry() external pure {
+        int256[2][3] memory inputs = [
+            [int256(3), 578960446186580977117854925],
+            [int256(3), 5789604461865809771178549250],
+            [int256(4), 57896044618658097711785492]
+        ];
+        int256[2][3] memory expected = [
+            [int256(5789604461865809771178549254771212547196624372950279032551153092001288641906), -49],
+            [int256(5789604461865809771178549250477121254719662437295027903255115309200128864190), -48],
+            [int256(5789604461865809771178549260205999132796239042747778944898605353637976292421), -50]
+        ];
+        for (uint256 i = 0; i < inputs.length; i++) {
+            (int256 c, int256 e) = LibDecimalFloatImplementation.log10Unrounded(inputs[i][0], inputs[i][1]);
+            assertEq(c, expected[i][0], "coefficient");
+            assertEq(e, expected[i][1], "exponent");
+            assertTrue(absoluteOk(inputs[i][0], inputs[i][1], c, e), "log10Unrounded error");
+            assertFalse(absoluteOk(inputs[i][0], inputs[i][1], c - 1, e), "one unit below");
+        }
+    }
+
+    /// A characteristic within two of the largest magnitude k with k 10^s in
+    /// int256, either sign, for s from 1 to 52, so the sum passes int256 for
+    /// any correction past the gap and `add` sheds a digit.
+    function testLog10UnroundedOracleCarryEdge(int256 signedCoefficient, uint256 shift, uint256 below, bool negative)
+        external
+        pure
+    {
+        signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
+        shift = bound(shift, 1, 52);
+        below = bound(below, 0, 2);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 scale = int256(10 ** shift);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 k = negative ? type(int256).min / scale + int256(below) : type(int256).max / scale - int256(below);
+        checkAbsolute(signedCoefficient, k - characteristicRise(signedCoefficient));
     }
 
     function testLog10UnroundedOracle(int256 signedCoefficient, int256 exponent) external pure {
