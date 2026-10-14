@@ -19,4 +19,11 @@ contract LibHalmosExactHalmosTest {
         if (x < 10 ** j || x >= 10 ** (j + 1)) return;
         assert(LibHalmosExact.maximizeHints(c, j));
     }
+
+    /// Every nonzero int256 has one digit count n + 1 in [1, 77].
+    function check_packHintsHold(int256 c, uint256 nBits) external view {
+        uint256 n = LibHalmosExact.concrete(nBits, 7);
+        if (n > 76 || !LibHalmosExact.inSlice(n) || !LibHalmosExact.hasDigits(c, n)) return;
+        assert(LibHalmosExact.packHints(c, n));
+    }
 }

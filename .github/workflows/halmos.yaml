@@ -83,7 +83,7 @@ jobs:
     needs: matrix
     name: halmos (${{ matrix.lemma.name }})
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -124,17 +124,26 @@ jobs:
           mapfile -t args < <(jq -r '.[]' <<<"$ARGS_JSON")
           start=$(date +%s)
           set +e
-          nix develop -c timeout "$HALMOS_RUN_SECONDS" halmos --panic-error-codes '*' --solver-threads 4 --loop 16 \
-            --solver-command "$solver" "${args[@]}" 2>&1 | tee "$LOG"
-          code=${PIPESTATUS[0]}
+          # Into a file, not a pipe: solver processes outliving a killed
+          # halmos would hold a pipe open past the limit.
+          timeout -k 10 "$HALMOS_RUN_SECONDS" nix develop -c halmos --panic-error-codes '*' --solver-threads 4 --loop 16 \
+            --solver-command "$solver" "${args[@]}" > "$LOG" 2>&1
+          code=$?
           set -e
+          cat "$LOG"
           seconds=$(($(date +%s) - start))
           echo "| ${{ matrix.lemma.name }} | exit $code | ${seconds}s |" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$code" = 124 ]; then
+          if [ "$code" = 124 ] || [ "$code" = 137 ]; then
             echo "over ${HALMOS_RUN_SECONDS}s: cut this slice smaller"
             exit 1
           fi
-          # halmos exits non-zero on any counterexample, timeout or error.
+          # halmos exits non-zero on any counterexample, timeout or error. A
+          # warning (a loop bound reached, a path left unexplored) leaves the
+          # proof incomplete.
+          if grep -q WARNING "$LOG"; then
+            echo "halmos warned: the proof is incomplete"
+            exit 1
+          fi
           passed=$(awk '/^Symbolic test result: [0-9]+ passed; 0 failed;/ { n += $4 } END { print n + 0 }' "$LOG")
           if [ "$code" != 0 ] || [ "$passed" != "$EXPECT" ]; then
             echo "exit $code; expected $EXPECT passing tests, got $passed"

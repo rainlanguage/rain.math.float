@@ -85,13 +85,6 @@ contract AddSubRoundOnceHalmosTest {
         }
     }
 
-    /// 10^j <= |c| < 10^(j + 1), or c zero for j = 77.
-    function hasDigits(int256 c, uint256 j) internal pure returns (bool) {
-        if (j == 77) return c == 0;
-        uint256 x = LibHalmosExact.abs(c);
-        return c != 0 && x >= 10 ** j && x < 10 ** (j + 1);
-    }
-
     /// MINUS, split by the digit counts of ca and -cb (j = 77 for zero), one
     /// pair per path. Every int256 has one j in [0, 77].
     function check_subIsAddNegated(int224 cb, int256 ca, int256 ea, int256 eb, uint256 jaBits, uint256 jbBits)
@@ -99,10 +92,11 @@ contract AddSubRoundOnceHalmosTest {
         view
     {
         uint256 ja = LibHalmosExact.concrete(jaBits, 7);
+        if (ja > 77 || !LibHalmosExact.overlapsSlice(ja * 78, ja * 78 + 77)) return;
         uint256 jb = LibHalmosExact.concrete(jbBits, 7);
-        if (ja > 77 || jb > 77 || !LibHalmosExact.inSlice(ja * 78 + jb)) return;
+        if (jb > 77 || !LibHalmosExact.inSlice(ja * 78 + jb)) return;
         int256 nb = -int256(cb);
-        if (!hasDigits(ca, ja) || !hasDigits(nb, jb)) return;
+        if (!LibHalmosExact.hasDigits(ca, ja) || !LibHalmosExact.hasDigits(nb, jb)) return;
         if (ja < 77 && !LibHalmosExact.maximizeHints(ca, ja)) return;
         if (jb < 77 && !LibHalmosExact.maximizeHints(nb, jb)) return;
         (bool subOk, bytes memory subOut) = address(this).staticcall(abi.encodeCall(this.implSub, (ca, ea, cb, eb)));
