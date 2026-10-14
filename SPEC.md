@@ -136,18 +136,18 @@ binary path (#306).
 
 ### integer, frac, floor, ceil
 
-All **UNRULED**.
+All **UNRULED** except the zero rule for `floor` and `ceil` (#687).
 
 - `integer(f)` truncates toward zero at `f`'s exponent; `frac(f)` is
   `f - integer(f)` at the same exponent, carrying `f`'s sign. Exponent `>= 0`:
   `integer` is `f`, `frac` is zero. Exponent `< -76`: `integer` is zero, `frac`
   is `f`.
-- `floor(f)`: `f` when `e >= 0` or the fraction is zero; otherwise `integer(f)`
-  for `f > 0` and `integer(f) - 1` for `f < 0`.
-- `ceil(f)`: `f` when `e >= 0` or the fraction is zero; otherwise
-  `integer(f) + 1` for `f > 0` and `integer(f)` for `f < 0`.
-- A zero input to `floor` or `ceil` returns `FLOAT_ZERO`, at every exponent
-  (#687).
+- `floor(f)`: `FLOAT_ZERO` for a zero `f` at any exponent (#687); otherwise `f`
+  when `e >= 0` or the fraction is zero; otherwise `integer(f)` for `f > 0` and
+  `integer(f) - 1` for `f < 0`.
+- `ceil(f)`: `FLOAT_ZERO` for a zero `f` at any exponent (#687); otherwise `f`
+  when `e >= 0` or the fraction is zero; otherwise `integer(f) + 1` for `f > 0`
+  and `integer(f)` for `f < 0`.
 - None reverts: each result is zero exactly or at least 1 in magnitude, so
   `packArithmeticResult` never underflows, and none lifts the exponent above
   `int32.max`.

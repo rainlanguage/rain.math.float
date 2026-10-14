@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
 import {LibExactFloat} from "../../lib/LibExactFloat.sol";
+import {zeroAt} from "../../lib/LibTestFloatZero.sol";
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
@@ -147,14 +148,6 @@ contract LibDecimalFloatCeilTest is Test {
         (int256 rc, int256 re) = LibDecimalFloat.packLossless(c, e).ceil().unpack();
         (int256 xc, int256 xe) = LibExactFloat.ceilParts(c, e);
         assertEq(LibExactFloat.cmpParts(rc, re, xc, xe), 0, "exact ceil");
-    }
-
-    /// A zero Float at exponent `e`, with the exponent in the high 32 bits:
-    /// `packLossless(0, e)` would already be `FLOAT_ZERO`.
-    function zeroAt(int32 e) internal pure returns (Float) {
-        // The exponent's two's complement bits, as packing places them.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return Float.wrap(bytes32(uint256(uint32(e)) << 224));
     }
 
     /// A zero input of any exponent gives `FLOAT_ZERO`, byte for byte (#687).
