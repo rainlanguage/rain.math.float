@@ -3,9 +3,9 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
-import {LibTestRegion} from "test/lib/LibTestRegion.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
+import {LibTestRegion} from "../../../lib/LibTestRegion.sol";
 
 /// `lt`, `gt`, `gte` and `min` on unpacked values. `lte` and `max` have their
 /// own files; these are the rest of the set, so the unpacked surface carries
