@@ -476,6 +476,24 @@ contract LibDecimalFloatImplementationDivTest is Test {
         );
     }
 
+    /// The adjustment spills onto `exponentB` only when `exponentA` sits
+    /// within it of `type(int256).min`, so the spill is at least one digit.
+    /// Every headroom below and past the adjustment, at both scales, with
+    /// and without a dividend shortfall, against the exact quotient.
+    function testDivAdjustExponentSpillIsPositive() external {
+        int256 min = type(int256).min;
+        for (int256 headroom = 0; headroom <= 80; headroom++) {
+            // 6e75 is maximized below 1e76: scale 1e75, adjustment 75.
+            checkDivExact(1e76, min + headroom, 6e75, 0);
+            checkDivExact(-1e76, min + headroom, 6e75, 0);
+            // 3e76 is at or above 1e76: scale 1e76, adjustment 76.
+            checkDivExact(1e76, min + headroom, 3e76, 0);
+            // 7 maximizes to 7e75, with a shortfall of 75 - headroom while headroom
+            // is below 75 and none after.
+            checkDivExact(7, min + headroom, -3, 0);
+        }
+    }
+
     /// A division whose true exponent underflows below what a single result can
     /// represent returns maximized zero.
     function testDivUnderflowReturnsZero() external pure {
