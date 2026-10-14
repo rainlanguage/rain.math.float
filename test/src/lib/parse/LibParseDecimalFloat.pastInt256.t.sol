@@ -4,18 +4,19 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
+import {LibParseDecimalFloat} from "../../../../src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
+import {LibTestDecimalLiteral} from "../../../lib/LibTestDecimalLiteral.sol";
 import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
     MalformedExponentDigits,
     ParseDecimalFloatExcessCharacters
-} from "src/error/ErrParse.sol";
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+} from "../../../../src/error/ErrParse.sol";
+import {Float, LibDecimalFloat} from "../../../../src/lib/LibDecimalFloat.sol";
 
 contract LibParseDecimalFloatPastInt256Test is Test {
     using LibDecimalFloat for Float;
@@ -27,13 +28,6 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         "57896044618658097711785492504343953926634992332820282019728792003956564819968";
     string constant INT256_MAX_PLUS_TWO =
         "57896044618658097711785492504343953926634992332820282019728792003956564819969";
-
-    function zeros(uint256 n) internal pure returns (string memory z) {
-        z = new string(n);
-        for (uint256 i = 0; i < n; i++) {
-            bytes(z)[i] = "0";
-        }
-    }
 
     function parseInline(string memory data)
         external
@@ -90,20 +84,20 @@ contract LibParseDecimalFloatPastInt256Test is Test {
 
     /// Issue #341: 1e77 and 1e100 written out are Floats.
     function testParseIntegerPastInt256PowersOfTen() external view {
-        checkExact(string.concat("1", zeros(77)), 1, 77, 1, 77);
-        checkExact(string.concat("-1", zeros(77)), -1, 77, -1, 77);
-        checkExact(string.concat("1", zeros(100)), 1, 100, 1, 100);
-        checkExact(string.concat("-1", zeros(100)), -1, 100, -1, 100);
-        checkExact(string.concat("000", "1", zeros(100)), 1, 100, 1, 100);
-        checkExact(string.concat("-000", "3", zeros(100)), -3, 100, -3, 100);
-        checkExact(string.concat("12345", zeros(200)), 12345, 200, 12345, 200);
+        checkExact(string.concat("1", LibTestDecimalLiteral.zeroString(77)), 1, 77, 1, 77);
+        checkExact(string.concat("-1", LibTestDecimalLiteral.zeroString(77)), -1, 77, -1, 77);
+        checkExact(string.concat("1", LibTestDecimalLiteral.zeroString(100)), 1, 100, 1, 100);
+        checkExact(string.concat("-1", LibTestDecimalLiteral.zeroString(100)), -1, 100, -1, 100);
+        checkExact(string.concat("000", "1", LibTestDecimalLiteral.zeroString(100)), 1, 100, 1, 100);
+        checkExact(string.concat("-000", "3", LibTestDecimalLiteral.zeroString(100)), -3, 100, -3, 100);
+        checkExact(string.concat("12345", LibTestDecimalLiteral.zeroString(200)), 12345, 200, 12345, 200);
     }
 
     /// The fallback starts exactly past int256: 5e76 fits it, 6e76 does not.
     function testParseIntegerPastInt256Boundary() external view {
-        checkExact(string.concat("5", zeros(76)), 5e76, 0, 5e66, 10);
-        checkExact(string.concat("6", zeros(76)), 6, 76, 6, 76);
-        checkExact(string.concat("-6", zeros(76)), -6, 76, -6, 76);
+        checkExact(string.concat("5", LibTestDecimalLiteral.zeroString(76)), 5e76, 0, 5e66, 10);
+        checkExact(string.concat("6", LibTestDecimalLiteral.zeroString(76)), 6, 76, 6, 76);
+        checkExact(string.concat("-6", LibTestDecimalLiteral.zeroString(76)), -6, 76, -6, 76);
         // int256.min fits int256, one past it does not.
         checkLoss(string.concat("-", INT256_MAX_PLUS_ONE), type(int256).min, 0);
         checkFail(string.concat("-", INT256_MAX_PLUS_TWO), ParseDecimalPrecisionLoss.selector, 78);
@@ -120,18 +114,20 @@ contract LibParseDecimalFloatPastInt256Test is Test {
     function testParseIntegerPastInt256Int224Bounds() external view {
         int256 max = type(int224).max;
         int256 min = type(int224).min;
-        checkExact(string.concat(Strings.toStringSigned(max), zeros(20)), max, 20, max, 20);
-        checkExact(string.concat(Strings.toStringSigned(min), zeros(20)), min, 20, min, 20);
-        checkExact(string.concat(Strings.toStringSigned(max), zeros(200)), max, 200, max, 200);
+        checkExact(string.concat(Strings.toStringSigned(max), LibTestDecimalLiteral.zeroString(20)), max, 20, max, 20);
+        checkExact(string.concat(Strings.toStringSigned(min), LibTestDecimalLiteral.zeroString(20)), min, 20, min, 20);
+        checkExact(
+            string.concat(Strings.toStringSigned(max), LibTestDecimalLiteral.zeroString(200)), max, 200, max, 200
+        );
         // One past int224.max is no Float at any exponent.
-        checkLoss(string.concat(Strings.toStringSigned(max + 1), zeros(20)), max + 1, 20);
+        checkLoss(string.concat(Strings.toStringSigned(max + 1), LibTestDecimalLiteral.zeroString(20)), max + 1, 20);
     }
 
     /// The fraction after an integer part past int256.
     function testParseIntegerPastInt256Fraction() external view {
-        string memory e77 = string.concat("1", zeros(77));
+        string memory e77 = string.concat("1", LibTestDecimalLiteral.zeroString(77));
         checkExact(string.concat(e77, ".0"), 1, 77, 1, 77);
-        checkExact(string.concat(e77, ".", zeros(100)), 1, 77, 1, 77);
+        checkExact(string.concat(e77, ".", LibTestDecimalLiteral.zeroString(100)), 1, 77, 1, 77);
         checkExact(string.concat(e77, ".000e-77"), 1, 0, 1, 0);
         checkFail(string.concat(e77, ".5"), ParseDecimalPrecisionLoss.selector, 80);
         checkFail(string.concat(e77, ".0001"), ParseDecimalPrecisionLoss.selector, 83);
@@ -153,7 +149,7 @@ contract LibParseDecimalFloatPastInt256Test is Test {
 
     /// The zeros moved into the exponent add to the written exponent.
     function testParseIntegerPastInt256Exponent() external view {
-        string memory e80 = string.concat("1", zeros(80));
+        string memory e80 = string.concat("1", LibTestDecimalLiteral.zeroString(80));
         checkExact(string.concat(e80, "e-80"), 1, 0, 1, 0);
         checkExact(string.concat(e80, "e2147483567"), 1, 2147483647, 1, type(int32).max);
         checkExact(string.concat(e80, "e-2147483728"), 1, -2147483648, 1, type(int32).min);
@@ -168,7 +164,7 @@ contract LibParseDecimalFloatPastInt256Test is Test {
             string.concat("0e-", INT256_MAX_PLUS_TWO),
             string.concat("-0.000E+", INT256_MAX_PLUS_ONE, "000"),
             string.concat("000e", INT256_MAX_PLUS_ONE),
-            string.concat("0.0e-", "9", zeros(200)),
+            string.concat("0.0e-", "9", LibTestDecimalLiteral.zeroString(200)),
             string.concat("0e", INT256_MAX)
         ];
         for (uint256 i = 0; i < literals.length; i++) {
@@ -183,7 +179,7 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         checkFail(s, ExponentOverflow.selector, bytes(s).length);
         s = string.concat("-0.1e-", INT256_MAX_PLUS_TWO);
         checkFail(s, ParseDecimalPrecisionLoss.selector, bytes(s).length);
-        s = string.concat("1", zeros(80), "e", INT256_MAX_PLUS_ONE);
+        s = string.concat("1", LibTestDecimalLiteral.zeroString(80), "e", INT256_MAX_PLUS_ONE);
         checkFail(s, ExponentOverflow.selector, bytes(s).length);
     }
 
@@ -200,7 +196,7 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         checkFail(s, ParseDecimalPrecisionLoss.selector, bytes(s).length);
         s = string.concat("1e-", INT256_MAX_PLUS_TWO);
         checkFail(s, ParseDecimalPrecisionLoss.selector, bytes(s).length);
-        checkLoss(string.concat("2", zeros(66), ".5"), 2e67 + 5, -1);
+        checkLoss(string.concat("2", LibTestDecimalLiteral.zeroString(66), ".5"), 2e67 + 5, -1);
     }
 
     /// Any int256 followed by any number of zeros parses to exactly its value
@@ -217,7 +213,7 @@ contract LibParseDecimalFloatPastInt256Test is Test {
     }
 
     function checkIntegerTrailingZeros(int256 c, uint8 z) internal view {
-        string memory s = string.concat(Strings.toStringSigned(c), zeros(z));
+        string memory s = string.concat(Strings.toStringSigned(c), LibTestDecimalLiteral.zeroString(z));
         (bytes4 err, Float float) = this.parse(s);
         uint256 significand = LibExactFloat.abs(c);
         while (significand != 0 && significand % 10 == 0) {
@@ -276,7 +272,7 @@ contract LibParseDecimalFloatPastInt256Test is Test {
     /// An exponent marker without digits after a mantissa past int256 is
     /// `MalformedExponentDigits`, the cursor after the marker and any sign.
     function testParseIntegerPastInt256MalformedExponent() external view {
-        string memory e77 = string.concat("1", zeros(77));
+        string memory e77 = string.concat("1", LibTestDecimalLiteral.zeroString(77));
         checkFail(string.concat(e77, "e"), MalformedExponentDigits.selector, 79);
         checkFail(string.concat(e77, "E+"), MalformedExponentDigits.selector, 80);
         checkFail(string.concat(e77, "e-"), MalformedExponentDigits.selector, 80);
@@ -287,19 +283,21 @@ contract LibParseDecimalFloatPastInt256Test is Test {
 
     /// A fraction past int256, 10^77 + 1, then `e` without digits.
     function testParsePastInt256MalformedExponentFractionOverflow() external view {
-        checkFail(string.concat("0.1", zeros(76), "1e"), MalformedExponentDigits.selector, 81);
+        checkFail(
+            string.concat("0.1", LibTestDecimalLiteral.zeroString(76), "1e"), MalformedExponentDigits.selector, 81
+        );
     }
 
     /// 77 fraction digits after a nonzero integer part, then `e` without
     /// digits.
     function testParsePastInt256MalformedExponentScale() external view {
-        checkFail(string.concat("1.", zeros(76), "1e"), MalformedExponentDigits.selector, 80);
+        checkFail(string.concat("1.", LibTestDecimalLiteral.zeroString(76), "1e"), MalformedExponentDigits.selector, 80);
     }
 
     /// 9 * 10^75 rescaled by 10 is 9 * 10^76, past int256, then `e` without
     /// digits.
     function testParsePastInt256MalformedExponentRescale() external view {
-        checkFail(string.concat("9", zeros(75), ".5e"), MalformedExponentDigits.selector, 79);
+        checkFail(string.concat("9", LibTestDecimalLiteral.zeroString(75), ".5e"), MalformedExponentDigits.selector, 79);
     }
 
     /// floor(int256.max / 10) * 10 + 8 is int256.max + 1, then `e` without

@@ -4,8 +4,11 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibDecimalFloatImplementation, POW_FIXED_ONE} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibExactFloat, ORACLE_ONE} from "test/lib/LibExactFloat.sol";
+import {
+    LibDecimalFloatImplementation,
+    POW_FIXED_ONE
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibExactFloat, ORACLE_ONE} from "../../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationExp10FixedExactTest is Test {
     /// 10^(x 1e-50) at 1e50, floored, from the oracle: it is within 1e-67

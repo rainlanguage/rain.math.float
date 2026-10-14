@@ -15,10 +15,12 @@ This repository is the library half of the rain.math.float split. It publishes
 only the `rain-math-float` Soldeer package. The deployed concrete contract, the
 on-chain deploy pins/snapshot, the deploy scripts/tests, and the Rust/WASM/npm
 bindings live in `rain.math.float.deploy` and publish from there. The one Rust
-crate here, `crates/tests`, is test-only and never published. It calls the
-concretes in `test/concrete/` compiled from this source by their own ABI in
-revm, fuzzed against exact references (`exact.rs`, `transcendental.rs`), and
-cross-references the packed constants against values derived independently.
+crate here, `crates/tests`, is test-only and never published. Its `build.rs`
+runs `forge soldeer install && forge build`; the tests call the concretes in
+`test/concrete/` by their own ABI in revm, fuzzed against independent
+references: `reference.rs` (exact big integers), `precise.rs` (astro-float),
+dashu-float (`differential.rs`) and the Python `decimal` oracle
+`test/oracle/decimal_oracle.py`.
 
 ## Architecture
 
@@ -30,20 +32,18 @@ cross-references the packed constants against values derived independently.
   mul/div), normalization, packing.
 - **`lib/parse/`** — String-to-Float parsing.
 - **`lib/format/`** — Float-to-string formatting.
-- **`error/`** — Custom error definitions (LossyConversionToFloat,
-  ExponentOverflow, DivisionByZero, etc.).
+- **`error/`** — Every custom error.
 
 ### Tests (`test/`)
 
 - **`src/lib/`** — The pure-math suite mirroring `src/lib/`.
-- **`lib/`** — Reference (slow) implementations used to cross-check the library.
+- **`lib/`** — `LibExactFloat.sol` (exact reference), frozen pre-change copies
+  for equivalence tests, error-bound helpers and gas variants.
+- **`abstract/`** — Shared test bases: the sqrt correct-rounding oracle and gas
+  logging.
+- **`concrete/`**, **`oracle/`** — Run by `crates/tests`, above.
 
-### Dependencies (`dependencies/`)
-
-Managed by [Soldeer](https://soldeer.xyz) (`[dependencies]` in `foundry.toml`,
-`libs = ['dependencies']`), not git submodules: forge-std,
-`@openzeppelin-contracts`, rain-solmem, rain-string. Run `forge soldeer install`
-to fetch them.
+Dependencies come from Soldeer (`foundry.toml`), never git submodules.
 
 ## Key Design Details
 
@@ -64,11 +64,13 @@ to fetch them.
     underflow. Used by parsing where underflow → "value rounds to zero" is a
     legitimate parse result reported via `ParseDecimalPrecisionLoss`.
   - `packArithmeticResult`: tolerates coefficient truncation, reverts on
-    exponent underflow. Used by every public arithmetic operation but `minus`,
-    `abs`, `div`, `inv`, `pow` and `pow10`. The last four inline it with range
-    errors that report the call's input.
+    exponent underflow. SPEC.md "Packing" lists which operations finalise
+    through it.
 
 ## License
 
-LicenseRef-DCL-1.0 (Rain Decentralized Computer License). All source files
-require SPDX headers per REUSE.toml.
+LicenseRef-DCL-1.0, the DecentraLicense version 1.0
+(`LICENSES/LicenseRef-DCL-1.0.txt`, which `LICENSE` links to). Solidity and
+Python files carry inline `SPDX-License-Identifier` and `SPDX-FileCopyrightText`
+headers; everything else (configs, docs, workflows, `crates/**`, `audit/**`) is
+annotated in `REUSE.toml`.

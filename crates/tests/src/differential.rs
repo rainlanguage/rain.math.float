@@ -5,11 +5,12 @@
 //! shared with `exact.rs`, every value the Solidity is checked against is
 //! computed by dashu.
 
+use crate::common::{self, PARSE_EMPTY_DECIMAL_STRING, selector};
 use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
-use crate::exact::{self, Fail, Sol, config, error_matches, pair, show};
-use crate::reference::{Dec, RefError};
+use crate::exact::{self, Fail, Sol, config, error_matches, pair, show, sol_bool, sol_float};
+use crate::reference::{self as r, Dec, RefError, pow10};
 use crate::transcendental::{self, revert_data};
-use alloy::primitives::{B256, I256, U256, keccak256};
+use alloy::primitives::{B256, I256, U256};
 use core::cmp::Ordering;
 use dashu_base::Abs;
 use dashu_float::round::mode::{Away, HalfAway, Zero};
@@ -30,18 +31,22 @@ const P: usize = 90;
 const I32_MIN: isize = i32::MIN as isize;
 const I32_MAX: isize = i32::MAX as isize;
 
+/// The `P`-digit context every rounded operation uses.
 fn ctx() -> Context<Zero> {
     Context::new(P)
 }
 
+/// A num-bigint integer as dashu's.
 fn ibig(c: &num_bigint::BigInt) -> IBig {
     c.to_string().parse().unwrap()
 }
 
+/// The dashu value of a Float's fields.
 pub(crate) fn d(x: &Dec) -> D {
     D::from_parts(ibig(&x.c), x.e as isize)
 }
 
+/// 2^223 - 1.
 fn int224_max() -> IBig {
     (IBig::ONE << 223) - IBig::ONE
 }
@@ -62,6 +67,7 @@ fn cap(negative: bool) -> IBig {
     }
 }
 
+/// Whether two dashu values are the same number.
 pub(crate) fn same(a: &D, b: &D) -> bool {
     a.partial_cmp(b) == Some(Ordering::Equal)
 }
@@ -126,14 +132,6 @@ pub(crate) fn toward_zero(v: &D) -> Result<D, Range> {
 
 // ------------------------------------------------------------------ checking
 
-fn sol_float<C: alloy::sol_types::SolCall<Return = B256>>(c: C) -> Sol<Dec> {
-    exact::sol_float(c)
-}
-
-fn sol_bool<C: alloy::sol_types::SolCall<Return = bool>>(c: C) -> bool {
-    evm::concrete(c).unwrap()
-}
-
 /// The Solidity result against dashu's: the same value, or the same error.
 /// With `reporting`, a revert must also carry exactly that Float, unpacked.
 fn check(
@@ -159,6 +157,7 @@ fn check(
     Ok(())
 }
 
+/// The rule's Float for `v`, or its range error.
 fn packed(v: D) -> Result<D, RefError> {
     toward_zero(&v).map_err(Range::error)
 }
@@ -168,10 +167,6 @@ fn word(x: &IBig) -> [u8; 32] {
     I256::from_dec_str(&x.to_string())
         .unwrap()
         .to_be_bytes::<32>()
-}
-
-fn word_of(x: &num_bigint::BigInt) -> [u8; 32] {
-    word(&ibig(x))
 }
 
 /// The ABI word as an int256.
@@ -245,6 +240,7 @@ fn exact_add(a: &Dec, b: &Dec) -> D {
     )
 }
 
+/// The exact difference, unrounded.
 fn exact_sub(a: &Dec, b: &Dec) -> D {
     rounded(
         Context::<Zero>::new(0)
@@ -253,6 +249,7 @@ fn exact_sub(a: &Dec, b: &Dec) -> D {
     )
 }
 
+/// The exact product, unrounded.
 fn exact_mul(a: &Dec, b: &Dec) -> D {
     rounded(
         Context::<Zero>::new(0)
@@ -261,6 +258,7 @@ fn exact_mul(a: &Dec, b: &Dec) -> D {
     )
 }
 
+/// The value of a dashu rounding, its inexact flag dropped.
 fn rounded(r: dashu_float::round::Rounded<D>) -> D {
     r.value()
 }
@@ -277,6 +275,7 @@ pub(crate) fn want_sub(a: &Dec, b: &Dec) -> Result<D, RefError> {
     packed(rounded(ctx().sub(d(a).repr(), d(b).repr()).unwrap()))
 }
 
+/// As `want_add`, for the product.
 pub(crate) fn want_mul(a: &Dec, b: &Dec) -> Result<D, RefError> {
     packed(rounded(ctx().mul(d(a).repr(), d(b).repr()).unwrap()))
 }
@@ -290,10 +289,12 @@ pub(crate) fn want_div(a: &Dec, b: &Dec) -> Result<D, RefError> {
     packed(rounded(ctx().div(d(a).repr(), d(b).repr()).unwrap()))
 }
 
+/// Two Floats as their bytes.
 fn bin(a: &Dec, b: &Dec) -> (B256, B256) {
     (a.to_bytes(), b.to_bytes())
 }
 
+/// `add` against `want_add`; a range error reports the exact sum.
 fn check_add(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let (fa, fb) = bin(a, b);
     let case = format!("add({}, {})", show(a), show(b));
@@ -305,6 +306,7 @@ fn check_add(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     )
 }
 
+/// `sub` against `want_sub`; a range error reports the exact difference.
 fn check_sub(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let (fa, fb) = bin(a, b);
     let case = format!("sub({}, {})", show(a), show(b));
@@ -316,6 +318,7 @@ fn check_sub(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     )
 }
 
+/// `mul` against `want_mul`; a range error reports the exact product.
 fn check_mul(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     let (fa, fb) = bin(a, b);
     let case = format!("mul({}, {})", show(a), show(b));
@@ -508,7 +511,7 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
     // Every error reports the Float unpacked, and `FixedDecimalOverflow`
     // `decimals` too.
     let data = |e: RefError| {
-        let mut words = vec![word_of(&a.c), word(&IBig::from(a.e))];
+        let mut words = vec![common::word(&a.c), word(&IBig::from(a.e))];
         if e == RefError::FixedDecimalOverflow {
             words.push(U256::from(decimals).to_be_bytes::<32>());
         }
@@ -687,6 +690,7 @@ fn int256() -> BoxedStrategy<IBig> {
     .boxed()
 }
 
+/// Every int256 exponent, weighted to the int32 ends and to int256's.
 fn exponent256() -> BoxedStrategy<IBig> {
     prop_oneof![
         3 => exact::exponent().prop_map(IBig::from),
@@ -781,13 +785,8 @@ enum Shape {
     Malformed(&'static str),
 }
 
-const EMPTY: &str = "ParseEmptyDecimalString(uint256)";
 const DECIMAL_POINT: &str = "MalformedDecimalPoint(uint256)";
 const EXPONENT_DIGITS: &str = "MalformedExponentDigits(uint256)";
-
-fn selector(signature: &str) -> [u8; 4] {
-    keccak256(signature.as_bytes())[..4].try_into().unwrap()
-}
 
 /// Up to five characters after a first one drawn from `first`.
 fn tail(first: &'static [u8]) -> BoxedStrategy<String> {
@@ -836,10 +835,18 @@ fn parse_input() -> BoxedStrategy<(String, Shape)> {
     fn end(first: &'static [u8]) -> impl Strategy<Value = String> {
         proptest::option::of(tail(first)).prop_map(Option::unwrap_or_default)
     }
-    let empty = (sign(), end(b" x.eE+_a\t,"))
-        .prop_map(|(s, t)| (format!("{s}{t}"), Shape::Malformed(EMPTY)));
-    let empty_after_minus =
-        end(b" x.eE+-_a\t,").prop_map(|t| (format!("-{t}"), Shape::Malformed(EMPTY)));
+    let empty = (sign(), end(b" x.eE+_a\t,")).prop_map(|(s, t)| {
+        (
+            format!("{s}{t}"),
+            Shape::Malformed(PARSE_EMPTY_DECIMAL_STRING),
+        )
+    });
+    let empty_after_minus = end(b" x.eE+-_a\t,").prop_map(|t| {
+        (
+            format!("-{t}"),
+            Shape::Malformed(PARSE_EMPTY_DECIMAL_STRING),
+        )
+    });
     let point = (sign(), digits(20), end(b" x.eE+-_a\t,"))
         .prop_map(|(s, i, t)| (format!("{s}{i}.{t}"), Shape::Malformed(DECIMAL_POINT)));
     let exponent = (
@@ -1047,14 +1054,17 @@ fn lead(x: &D) -> isize {
     r.exponent() + r.digits() as isize - 1
 }
 
+/// |x|.
 fn magnitude(x: &D) -> D {
     if *x < D::ZERO { -x.clone() } else { x.clone() }
 }
 
+/// The larger of two values.
 fn max_of(x: D, y: D) -> D {
     if x > y { x } else { y }
 }
 
+/// The smaller of two values.
 fn min_of(x: D, y: D) -> D {
     if x < y { x } else { y }
 }
@@ -1087,6 +1097,7 @@ fn bound_sum(x: &D, y: &D) -> D {
     rounded(Context::<Zero>::new(200).add(x.repr(), y.repr()).unwrap())
 }
 
+/// As `bound_sum`, for the product.
 fn bound_mul(x: &D, y: &D) -> D {
     rounded(Context::<Zero>::new(200).mul(x.repr(), y.repr()).unwrap())
 }
@@ -1098,6 +1109,8 @@ fn smallest() -> D {
     D::from_parts(IBig::ONE, I32_MIN)
 }
 
+/// Whether |t| is below 1e-2147483608, where the exponent floor sheds
+/// digits from a 41-digit result.
 fn sheds(t: &D) -> bool {
     magnitude(t) < D::from_parts(IBig::ONE, I32_MIN + 40)
 }
@@ -1196,6 +1209,10 @@ fn truncated_from_past(r: &D, top: Option<&D>, negative: bool) -> bool {
     top.is_none_or(|t| *t >= carry) && magnitude(r) >= floor
 }
 
+/// The Solidity result against its `Band`: the truth exactly or within
+/// `bound` of it, of its sign where `signed`, at most 41 digits unless
+/// truncated from past the largest Float; or an allowed range error
+/// reporting `input`.
 fn check_band<F: Fn(&D, &D) -> D>(
     case: &str,
     sol: Sol<Dec>,
@@ -1505,6 +1522,7 @@ fn check_pow(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     )
 }
 
+/// `check_pow` on a result already obtained.
 fn check_pow_with(a: &Dec, b: &Dec, sol: Sol<Dec>) -> Result<(), TestCaseError> {
     let (x, y) = (d(a), d(b));
     let case = format!("pow({}, {})", show(a), show(b));
@@ -1666,6 +1684,7 @@ fn sqrt_near_tie() -> BoxedStrategy<Dec> {
         .boxed()
 }
 
+/// sqrt's inputs: `a_sqrt`, and roots near a 41-digit rounding tie.
 fn sqrt_input() -> BoxedStrategy<Dec> {
     prop_oneof![3 => transcendental::a_sqrt(), 1 => sqrt_near_tie()].boxed()
 }
@@ -1703,9 +1722,11 @@ fn to_dec(x: &D) -> Dec {
 /// `AgreeNoPositiveTolerance(absolute, proportional)`. Otherwise it is
 /// `|x - y| <= max(absolute, proportional × max(|x|, |y|))` with the
 /// extremes in either order, but that a spread past the limit by under
-/// 1e-76 of the spread may be accepted, the spread being a truncating `sub`.
+/// 1.7273e-76 of the spread may be accepted, the spread being a truncating
+/// `sub`.
 /// dashu bounds the spread at 200 digits each way; within that of the
 /// boundary either answer passes.
+///
 /// What `agree` must answer: an error, or `Some` answer, or `None` where
 /// either is allowed.
 fn want_agree(
@@ -1733,7 +1754,7 @@ fn want_agree(
             .unwrap(),
     );
     let limit = max_of(ta, scaled);
-    let within = D::from_parts(IBig::from(10).pow(76) - IBig::ONE, -76);
+    let within = D::from_parts(IBig::from(10).pow(80) - IBig::from(17_273), -80);
     Ok(if spread_hi <= limit {
         Some(true)
     } else if bound_mul(&spread_lo, &within) >= limit {
@@ -1743,6 +1764,8 @@ fn want_agree(
     })
 }
 
+/// `agree` against `want_agree`, the extremes in both orders; a revert
+/// carries both tolerances.
 fn check_agree(absolute: &Dec, proportional: &Dec, x: &Dec, y: &Dec) -> Result<(), TestCaseError> {
     let (fa, fp) = (absolute.to_bytes(), proportional.to_bytes());
     let want = want_agree(absolute, proportional, x, y);
@@ -1784,7 +1807,7 @@ fn tolerance() -> BoxedStrategy<Dec> {
     let non_negative = exact::float().prop_map(|f| {
         if f.c < num_bigint::BigInt::from(0) {
             let c = -f.c;
-            let max: num_bigint::BigInt = int224_max().to_string().parse().unwrap();
+            let max = r::int224_max();
             Dec::new(if c > max { max } else { c }, f.e)
         } else {
             f
@@ -1807,7 +1830,7 @@ fn agree_input() -> BoxedStrategy<(Dec, Dec, Dec, Dec)> {
     let nudge = |v: &D, k: i64| {
         let f = to_dec(v);
         let c = f.c + k;
-        let max: num_bigint::BigInt = int224_max().to_string().parse().unwrap();
+        let max = r::int224_max();
         (c >= num_bigint::BigInt::from(0) && c <= max).then(|| Dec::new(c, f.e))
     };
     let on_absolute =
@@ -1904,7 +1927,6 @@ proptest! {
 
 /// The oracle on fixed examples whose values are the README's and #333's,
 /// so a misconfigured dashu context fails here and not only under fuzz.
-#[cfg(test)]
 mod oracle {
     use super::*;
 
@@ -1930,7 +1952,7 @@ mod oracle {
         assert!(same(&w, &D::from_parts(nines(67), -67)));
         // 1e100 - (1e33 + 1) is 1e100 - 2e33, and so is 1e100 - 1.7e33.
         let want = D::from_parts(IBig::from(10).pow(67) - IBig::from(2), 33);
-        let b = Dec::new(num_bigint::BigInt::from(10).pow(33) + 1, 0);
+        let b = Dec::new(pow10(33) + 1, 0);
         assert!(same(&want_sub(&Dec::new(1, 100), &b).unwrap(), &want));
         assert!(same(
             &want_sub(&Dec::new(1, 100), &Dec::new(17, 32)).unwrap(),
@@ -1952,7 +1974,7 @@ mod oracle {
     /// the oracle must answer without materialising the gap.
     #[test]
     fn extreme_gaps_are_cheap() {
-        let big: num_bigint::BigInt = num_bigint::BigInt::from(10).pow(66) * 13 + 7;
+        let big: num_bigint::BigInt = pow10(66) * 13 + 7;
         for (ea, eb) in [(I32_MAX, I32_MIN), (I32_MIN, I32_MAX)] {
             for sb in [1i32, -1] {
                 let a = Dec::new(big.clone(), ea as i64);
@@ -2162,24 +2184,18 @@ mod oracle {
 
 /// The checks reject wrong results the bounds once let through, and the
 /// oracle's own rounding agrees with exact integer arithmetic.
-#[cfg(test)]
 mod oracle_checks {
     use super::*;
     use dashu_base::SquareRoot;
     use dashu_int::UBig;
-    use num_bigint::BigInt;
-
-    fn p10(n: u32) -> BigInt {
-        BigInt::from(10).pow(n)
-    }
 
     /// x = 5 + 1e-50: 10^x = 1e5 (1 + 2.3e-50). 1e5 - 4e-36 is 4 units of
     /// its own 41st digit off, inside half a unit of 1e5's.
     #[test]
     fn pow10_unit_is_the_smaller_values() {
-        let x = Dec::new(p10(50) * 5 + 1, -50);
+        let x = Dec::new(pow10(50) * 5 + 1, -50);
         assert!(check_pow10_with(&x, Ok(Dec::new(1, 5))).is_ok());
-        let wrong = Dec::new(p10(41) - 4, 5 - 41);
+        let wrong = Dec::new(pow10(41) - 4, 5 - 41);
         assert!(check_pow10_with(&x, Ok(wrong)).is_err());
     }
 
@@ -2187,9 +2203,9 @@ mod oracle_checks {
     /// own 41st digit off, inside half a unit of 1's.
     #[test]
     fn log10_unit_is_the_results() {
-        let a = Dec::new(p10(67) + 1, -66);
+        let a = Dec::new(pow10(67) + 1, -66);
         assert!(check_log10_with(&a, Ok(Dec::new(1, 0))).is_ok());
-        let wrong = Dec::new(p10(41) - 4, -41);
+        let wrong = Dec::new(pow10(41) - 4, -41);
         assert!(check_log10_with(&a, Ok(wrong)).is_err());
     }
 
@@ -2198,7 +2214,7 @@ mod oracle_checks {
     fn pow_of_a_power_of_ten_is_exact() {
         let (a, b) = (Dec::new(1, -1), Dec::new(5000, 0));
         assert!(check_pow_with(&a, &b, Ok(Dec::new(1, -5000))).is_ok());
-        let wrong = Dec::new(p10(41) - 4, -5041);
+        let wrong = Dec::new(pow10(41) - 4, -5041);
         assert!(check_pow_with(&a, &b, Ok(wrong)).is_err());
         let (a, b) = (Dec::new(-1, 2), Dec::new(3001, 0));
         assert!(check_pow_with(&a, &b, Ok(Dec::new(-1, 6002))).is_ok());
@@ -2213,7 +2229,7 @@ mod oracle_checks {
         assert!(check_pow_with(&a, &b, Ok(Dec::new(7, 5))).is_ok());
         assert!(check_pow_with(&a, &b, Ok(Dec::zero())).is_err());
         assert!(check_pow_with(&a, &b, Ok(Dec::new(-7, 5))).is_err());
-        assert!(check_pow_with(&a, &b, Ok(Dec::new(p10(41) + 1, 5))).is_err());
+        assert!(check_pow_with(&a, &b, Ok(Dec::new(pow10(41) + 1, 5))).is_err());
     }
 
     /// The carry threshold rounds past the largest Float at 41 digits, half
@@ -2309,11 +2325,16 @@ mod oracle_checks {
             want(&n(2, 0), &n(1, -1), &n(10, 0), &n(12, 0)),
             Ok(Some(true))
         );
-        // a spread past the limit by under 1e-76 of itself may go either way.
-        let close = Dec::new(p10(78) - 1, -78);
+        // a spread past the limit by under 1.7273e-76 of itself may go either way.
+        let close = Dec::new(pow10(78) - 1, -78);
         assert_eq!(want(&close, &z, &z, &n(1, 0)), Ok(None));
-        let far = Dec::new(p10(70) - 1, -70);
+        let far = Dec::new(pow10(70) - 1, -70);
         assert_eq!(want(&far, &z, &z, &n(1, 0)), Ok(Some(false)));
+        // 6 against -9e-76 is past 6 by 1.5e-76 of the spread, which the
+        // truncated spread holds as 6: the library accepts it.
+        let past = (n(6, 0), z.clone(), n(-9, -76), n(6, 0));
+        assert_ne!(want(&past.0, &past.1, &past.2, &past.3), Ok(Some(false)));
+        check_agree(&past.0, &past.1, &past.2, &past.3).unwrap();
     }
 
     /// sqrt(c 10^e) correctly rounded half away at 41 digits, by integer
@@ -2342,7 +2363,7 @@ mod oracle_checks {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig::with_cases(20000))]
+        #![proptest_config(ProptestConfig::with_cases(config().cases.saturating_mul(10)))]
 
         /// dashu's division at P digits is the exact quotient truncated at
         /// P digits.

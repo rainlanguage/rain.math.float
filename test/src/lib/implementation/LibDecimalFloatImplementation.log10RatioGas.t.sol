@@ -2,14 +2,15 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloat, Float} from "../../../../src/lib/LibDecimalFloat.sol";
+import {console2} from "forge-std-1.17.0/src/Test.sol";
+import {GasLogTest} from "../../../abstract/GasLogTest.sol";
 
 /// Logs the gas of the relative `log10Ratio` path per input, and of the
 /// `log10` inputs that reach it, measured inside the call so ABI overhead is
 /// excluded. Run with `-vv` on two trees to compare them.
-contract LibDecimalFloatImplementationLog10RatioGasTest is Test {
+contract LibDecimalFloatImplementationLog10RatioGasTest is GasLogTest {
     function ratioGas(uint256 a, uint256 b) external view returns (uint256 g) {
         g = gasleft();
         LibDecimalFloatImplementation.log10Ratio(a, b, true);
@@ -34,7 +35,7 @@ contract LibDecimalFloatImplementationLog10RatioGasTest is Test {
 
     /// For a coefficient past int224, which no Float holds.
     function logImpl(string memory name, int256 signedCoefficient, int256 exponent) internal view {
-        console2.log(string.concat("impl  ", name), this.implGas(signedCoefficient, exponent));
+        logGas(string.concat("impl  ", name), abi.encodeCall(this.implGas, (signedCoefficient, exponent)));
     }
 
     function logLog10(string memory name, int256 signedCoefficient, int256 exponent) internal view {
