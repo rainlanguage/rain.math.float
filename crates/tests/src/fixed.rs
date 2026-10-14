@@ -7,11 +7,11 @@
 //! - the worst inputs found sit inside the bounds and near them;
 //! - log10Ratio over its domain, both modes, against astro-float.
 
+use crate::common::u256;
 use crate::evm::{self, TestDecimalFloatHarness as H};
 use crate::exact::config;
 use crate::precise::{self, Approx};
 use crate::reference::{Dec, pow10};
-use alloy::primitives::U256;
 use num_bigint::{BigInt, Sign};
 use num_integer::Integer;
 use num_traits::{Signed, Zero};
@@ -44,10 +44,6 @@ const LOG10_RATIO_ABOVE_E52: u64 = 13;
 
 /// 2^-16 at 1e16.
 const STEP: u64 = 152_587_890_625;
-
-fn u256(x: &BigInt) -> U256 {
-    U256::from_str_radix(&x.to_string(), 10).unwrap()
-}
 
 fn exp10_fixed(x: &BigInt) -> BigInt {
     let r = evm::harness(H::exp10FixedCall { x: u256(x) }).unwrap();

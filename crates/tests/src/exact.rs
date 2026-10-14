@@ -4,6 +4,7 @@
 //! pow, pow10, log10 and sqrt are approximations; `transcendental.rs` checks
 //! them against their documented bounds.
 
+use crate::common::i256;
 use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
 use crate::oracle::{self, ask};
 use crate::reference::{self as r, Dec, I32_MAX, I32_MIN, RefError, pow10};
@@ -176,7 +177,8 @@ pub(crate) fn sol_float<C: alloy::sol_types::SolCall<Return = B256>>(c: C) -> So
     sol(evm::float(c))
 }
 
-fn sol_bool<C: alloy::sol_types::SolCall<Return = bool>>(c: C) -> bool {
+/// The concrete's bool result; the comparisons never revert.
+pub(crate) fn sol_bool<C: alloy::sol_types::SolCall<Return = bool>>(c: C) -> bool {
     evm::concrete(c).unwrap()
 }
 
@@ -469,7 +471,7 @@ fn check_extremes_with(
 fn check_pack(a: &Dec) -> Result<(), TestCaseError> {
     let s = show(a);
     let packed = evm::harness(H::packLosslessCall {
-        signedCoefficient: alloy::primitives::I256::from_dec_str(&a.c.to_string()).unwrap(),
+        signedCoefficient: i256(&a.c),
         exponent: alloy::primitives::I256::try_from(a.e).unwrap(),
     })
     .unwrap();
@@ -779,14 +781,7 @@ fn exact_unary_near_zero_exponents() {
 /// `check_float` and `error_matches` reject wrong Solidity and Python results.
 mod checker {
     use super::*;
-
-    fn one() -> Dec {
-        Dec::new(1, 0)
-    }
-
-    fn two() -> Dec {
-        Dec::new(2, 0)
-    }
+    use crate::common::{one, two};
 
     fn div_by_zero() -> Sol<Dec> {
         let r = sol_float(T::divCall {
@@ -944,12 +939,7 @@ mod checker {
 /// fuzzer reaches them.
 mod found {
     use super::*;
-
-    fn run(r: Result<(), TestCaseError>) {
-        if let Err(e) = r {
-            panic!("{e}");
-        }
-    }
+    use crate::common::run;
 
     /// The product is `1e2147483648`, exactly `10e2147483647`.
     #[test]
@@ -1031,7 +1021,7 @@ mod found {
     /// past int256.max.
     #[test]
     fn parse_sheds_past_the_int256_exponent() {
-        let int256_max = (BigInt::from(1) << 255usize) - 1u32;
+        let int256_max = r::int256_max();
         run(check_parse(&format!("1{}e{int256_max}", "0".repeat(68))));
     }
 

@@ -5,6 +5,7 @@
 //! Bytes are compared only where NatSpec documents the representation: a pack
 //! of a non-zero coefficient that already fits, and `canonicalize`.
 
+use crate::common::{i256, run};
 use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
 use crate::exact::{self as x, Fail, Sol, check_float, config, error_matches, py_float, show};
 use crate::oracle::{self, ask};
@@ -20,11 +21,6 @@ use serde_json::{Value, json};
 /// The harness's result, or its revert as `Fail::Harness`.
 fn harness<C: SolCall>(c: C) -> Sol<C::Return> {
     evm::harness(c).map_err(Fail::Harness)
-}
-
-/// A BigInt as an alloy int256, which it must fit.
-fn i256(v: &BigInt) -> I256 {
-    I256::from_dec_str(&v.to_string()).unwrap()
 }
 
 /// An alloy int256 as a BigInt.
@@ -727,13 +723,6 @@ proptest! {
     }
 }
 
-/// A check as a plain test: its failure is the panic.
-fn run(r: Result<(), TestCaseError>) {
-    if let Err(e) = r {
-        panic!("{e}");
-    }
-}
-
 /// Packing at each edge the fuzzer may miss: the int32 floor with every
 /// shortfall up to and past a whole int224, the ceiling lift, and the
 /// coefficients past 1e72 the packing sheds five digits from at once.
@@ -1044,15 +1033,8 @@ fn library_parse_zero() {
 /// Each check against Solidity and python answers that are wrong.
 mod checker {
     use super::*;
+    use crate::common::{one, two};
     use alloy::primitives::B256;
-
-    fn one() -> Dec {
-        Dec::new(1, 0)
-    }
-
-    fn two() -> Dec {
-        Dec::new(2, 0)
-    }
 
     /// A real `AgreeToleranceNegative` revert, and a real
     /// `AgreeNoPositiveTolerance` one.

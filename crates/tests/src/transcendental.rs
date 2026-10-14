@@ -16,6 +16,7 @@
 //! - sqrt: correctly rounded, half a unit in the 41st digit.
 //! - pow10 and pow: a result below 1e-2147483608 adds 1e-2147483648.
 
+use crate::common::word;
 use crate::evm::{self, TestDecimalFloat as T};
 use crate::exact::{config, float, show};
 use crate::oracle::{self, ask};
@@ -37,14 +38,6 @@ type Sol = Result<Dec, Vec<u8>>;
 
 fn call<C: SolCall<Return = B256>>(c: C) -> Sol {
     evm::float(c).map_err(|output| output.to_vec())
-}
-
-/// `x` as an int256 word.
-fn word(x: &BigInt) -> [u8; 32] {
-    let mut w = [if x.is_negative() { 0xff } else { 0 }; 32];
-    let b = x.to_signed_bytes_be();
-    w[32 - b.len()..].copy_from_slice(&b);
-    w
 }
 
 /// The revert data of `e` from a call whose first input is `a`. Every error
@@ -191,11 +184,6 @@ fn is_integer(b: &Dec) -> bool {
     b.normalized().e >= 0
 }
 
-fn is_odd(b: &Dec) -> bool {
-    let n = b.normalized();
-    n.e == 0 && n.c.is_odd()
-}
-
 /// `roundSignificant`: 41 significant digits, half away from zero.
 pub fn round41(x: &Dec) -> Dec {
     let n = r::digits(&x.c);
@@ -338,7 +326,7 @@ pub fn truth_pow(a: &Dec, b: &Dec) -> Truth {
         if !is_integer(b) {
             return Truth::err(RefError::PowNegativeBase);
         }
-        negate = is_odd(b);
+        negate = r::is_odd(b);
         base = a.neg();
     }
     let sign = |d: Dec| if negate { d.neg() } else { d };
@@ -930,14 +918,17 @@ fn edge_integer() -> BoxedStrategy<i64> {
     .boxed()
 }
 
+/// Past int32 either side, so 10^x reaches past both ends of the Float range.
+const PAST_INT32: i64 = 2_200_000_000;
+
 pub(crate) fn x_pow10() -> BoxedStrategy<Dec> {
     prop_oneof![
         2 => float(),
-        3 => with_fraction((-2_200_000_000i64..=2_200_000_000).boxed(), 55),
+        3 => with_fraction((-PAST_INT32..=PAST_INT32).boxed(), 55),
         3 => with_fraction((-120i64..=120).boxed(), 66),
         2 => with_fraction(edge_integer(), 56),
         1 => spread(edge_integer()),
-        1 => spread((-2_200_000_000i64..=2_200_000_000).boxed()),
+        1 => spread((-PAST_INT32..=PAST_INT32).boxed()),
         // Within 1e-50 of an integer, where the fraction truncates to zero.
         1 => (edge_integer(), 51u64..=66, any::<bool>()).prop_map(|(k, n, up)| {
             let c = BigInt::from(k) * pow10(n) + if up { 1 } else { -1 };
@@ -1337,7 +1328,7 @@ mod checker {
     #[test]
     fn pow_bound_past_one() {
         let v = Dec::new(31, 145_000_000);
-        let n = BigInt::from(33333347515073147437056u128) * pow10(52);
+        let n = BigInt::from(N_3_3E74_E52) * pow10(52);
         let relative = Dec::new(
             BigInt::from(POW_RELATIVE_E52) * pow10(28) + &n * POW_INVERSE_K1_E80,
             -80,
@@ -1410,21 +1401,7 @@ mod checker {
     /// so only exactness rejects it, for every q and every count of decimals.
     #[test]
     fn pow_exact_past_small_ratios() {
-        for (a, b, want) in [
-            ("42535295865117307932921825928971026432", "0.008", "2"),
-            ("42535295865117307932921825928971026432", "-0.008", "0.5"),
-            (
-                "42535295865117307932921825928971026432",
-                "1.056",
-                "5444517870735015415413993718908291383296",
-            ),
-            (
-                "11790184577738583171520872861412518665678211592275841109096961",
-                "0.0078125",
-                "3",
-            ),
-            ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
-        ] {
+        for (a, b, want) in EXACT_POWERS_PAST_SMALL_RATIOS {
             let (a, b, want) = (
                 r::literal_value(a),
                 r::literal_value(b),
@@ -1634,16 +1611,31 @@ mod checker {
     }
 }
 
+/// Exact powers `(a, b, a^b)` whose b has q past 64 or more than 6 decimals.
+const EXACT_POWERS_PAST_SMALL_RATIOS: [(&str, &str, &str); 5] = [
+    ("42535295865117307932921825928971026432", "0.008", "2"),
+    ("42535295865117307932921825928971026432", "-0.008", "0.5"),
+    (
+        "42535295865117307932921825928971026432",
+        "1.056",
+        "5444517870735015415413993718908291383296",
+    ),
+    (
+        "11790184577738583171520872861412518665678211592275841109096961",
+        "0.0078125",
+        "3",
+    ),
+    ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
+];
+
+/// An N of about 3.3e74, as its coefficient at exponent 52.
+const N_3_3E74_E52: u128 = 33333347515073147437056;
+
 /// The documented anchors, each checked against the reference's own answer
 /// and then through the same checks as the fuzz.
 mod anchors {
     use super::*;
-
-    fn run(r: Result<(), TestCaseError>) {
-        if let Err(e) = r {
-            panic!("{e}");
-        }
-    }
+    use crate::common::run;
 
     fn int(s: &str) -> BigInt {
         BigInt::parse_bytes(s.as_bytes(), 10).expect("decimal")
@@ -1803,29 +1795,16 @@ mod anchors {
             ("-0.1", "-3", "-1000"),
             ("7", "0", "1"),
             ("1", "1e100", "1"),
-            // q past 64, or b past 6 decimals.
-            ("42535295865117307932921825928971026432", "0.008", "2"),
-            ("42535295865117307932921825928971026432", "-0.008", "0.5"),
-            (
-                "42535295865117307932921825928971026432",
-                "1.056",
-                "5444517870735015415413993718908291383296",
-            ),
-            (
-                "11790184577738583171520872861412518665678211592275841109096961",
-                "0.0078125",
-                "3",
-            ),
-            ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
-        ] {
+        ]
+        .into_iter()
+        .chain(EXACT_POWERS_PAST_SMALL_RATIOS)
+        {
             exactly(truth_pow(&d(a), &d(b)), want);
             run(check_pow(&d(a), &d(b)));
         }
-        exactly(
-            truth_pow(&d("152415787532388367501905199875019052100"), &d("0.5")),
-            "12345678901234567890",
-        );
-        run(check_sqrt(&d("152415787532388367501905199875019052100")));
+        let square = d("152415787532388367501905199875019052100");
+        exactly(truth_pow(&square, &d("0.5")), "12345678901234567890");
+        run(check_sqrt(&square));
         run(check_sqrt(&d("4")));
         run(check_sqrt(&d("0")));
     }
@@ -1971,7 +1950,7 @@ mod anchors {
     #[test]
     fn pow_near_one_past_1e74() {
         let a = Dec::new(pow10(66) + 1, -66);
-        let b = Dec::new("33333347515073147437056".parse::<BigInt>().unwrap(), 52);
+        let b = Dec::new(BigInt::from(N_3_3E74_E52), 52);
         run(check_pow(&a, &b));
     }
 
