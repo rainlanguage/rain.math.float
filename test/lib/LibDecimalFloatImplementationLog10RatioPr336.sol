@@ -14,10 +14,10 @@ import {
 import {Log10RatioRelativeSumTooSmall, MaximizeOverflow, MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
 
 /// `log10Ratio` as at 5210e11, the #336 head, before the relative path scaled
-/// by a cascade, with the series written out in place as it is now, so the
-/// equivalence tests compare the scaling alone. The helpers it calls are
-/// copied from 5210e11, so it calls nothing on the live library. Equivalence
-/// tests only.
+/// by a cascade, with the pre-#475 series written out in place, which returns
+/// the same series as the live one, so the equivalence tests compare the
+/// scaling alone. The helpers it calls are copied from 5210e11, so it calls
+/// nothing on the live library. Equivalence tests only.
 /// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
 /// nothing about a value. Expected values come from `LibExactFloat`.
 library LibDecimalFloatImplementationLog10RatioPr336 {
