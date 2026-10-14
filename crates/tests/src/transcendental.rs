@@ -593,12 +593,9 @@ fn check_sol(
                 "{case}: solidity {s:?}, true {t:?} is past every Float"
             );
             // The carve-out is for a result that shed digits to reach the
-            // exponent floor: one below 1e-2147483608.
-            let carve = if s.abs().cmp_value(&Dec::new(1, I32_MIN + 40)).is_lt() {
-                carve
-            } else {
-                Dec::zero()
-            };
+            // exponent floor: one nonzero and below 1e-2147483608.
+            let shed = !s.is_zero() && s.abs().cmp_value(&Dec::new(1, I32_MIN + 40)).is_lt();
+            let carve = if shed { carve } else { Dec::zero() };
             // (|s - v| + err) scale <= within + carve scale, exactly: within's
             // exponent and the carve-out's are billions apart.
             let side = match Dec::sign_of_sum(&[s.clone(), t.value.neg()]) {
@@ -1372,6 +1369,15 @@ mod checker {
         let truth = near(Dec::new(pow10(41) - 1, k - 41));
         let shed = Dec::new(pow10(40) - 1, I32_MIN);
         assert!(accepts(&truth, &Bound::Pow10(k - 1), Ok(shed)));
+    }
+
+    /// Zero sheds no digits, so it gets no carve-out: a true value just above
+    /// 1e-2147483648 is 1e-2147483648 from zero, past the half unit
+    /// (5e-2147483689) and inside the bound only with the carve-out.
+    #[test]
+    fn floor_carve_out_needs_a_nonzero_result() {
+        let truth = near(sum(&Dec::new(1, I32_MIN), &Dec::new(1, I32_MIN - 52)));
+        assert!(!accepts(&truth, &Bound::Pow10(I32_MIN), Ok(Dec::zero())));
     }
 
     /// A revert is accepted only where the bound reaches past every Float.
