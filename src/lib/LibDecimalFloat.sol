@@ -1487,7 +1487,8 @@ library LibDecimalFloat {
     /// return false. `agree(0, 1, -1e-100, 1)` is such a case: the real spread
     /// is `1 + 1e-100`, needing 101 significant digits against the 77 the
     /// coefficient holds for `1`, so `sub` returns exactly `1` and `1 <= 1`
-    /// holds.
+    /// holds. The limit itself is exact: the proportional term is not
+    /// truncated the way `mul` truncates its product.
     ///
     /// That is the rounding every other operation here performs, and `sub`
     /// reports the same spread as exactly `1` when asked directly. Resolving
@@ -1515,8 +1516,10 @@ library LibDecimalFloat {
     function agree(Float absolute, Float proportional, Float lowest, Float highest) internal pure returns (bool) {
         agreeValidateTolerances(absolute, proportional);
         (int256 spreadCoefficient, int256 spreadExponent) = agreeSpread(lowest, highest);
-        (int256 limitCoefficient, int256 limitExponent) = agreeLimit(absolute, proportional, lowest, highest);
-        return LibDecimalFloatImplementation.lte(spreadCoefficient, spreadExponent, limitCoefficient, limitExponent);
+        (int256 absoluteCoefficient, int256 absoluteExponent) = absolute.unpack();
+        return LibDecimalFloatImplementation.lte(
+            spreadCoefficient, spreadExponent, absoluteCoefficient, absoluteExponent
+        ) || agreeWithinProportional(spreadCoefficient, spreadExponent, proportional, lowest, highest);
     }
 
     /// Rejects tolerances that do not describe a tolerance.
@@ -1595,32 +1598,42 @@ library LibDecimalFloat {
         return (anchorCoefficient, anchorExponent);
     }
 
-    /// The limit the spread is checked against: the larger of the absolute
-    /// tolerance and the proportional tolerance of the anchor.
-    /// @param absolute The absolute tolerance.
-    /// @param proportional The proportional tolerance.
+    /// Whether the spread is within the proportional tolerance of the anchor,
+    /// compared with the exact product rather than `mul`'s truncation of it.
+    /// @param spreadCoefficient The spread's coefficient, non-negative.
+    /// @param spreadExponent The spread's exponent.
+    /// @param proportional The proportional tolerance, non-negative.
     /// @param lowest One extreme, in either order.
     /// @param highest The other extreme.
-    /// @return The limit's coefficient.
-    /// @return The limit's exponent.
-    function agreeLimit(Float absolute, Float proportional, Float lowest, Float highest)
-        private
-        pure
-        returns (int256, int256)
-    {
-        int256 scaledCoefficient;
-        int256 scaledExponent;
-        {
-            (int256 anchorCoefficient, int256 anchorExponent) = agreeAnchor(lowest, highest);
-            (int256 proportionalCoefficient, int256 proportionalExponent) = proportional.unpack();
-            (scaledCoefficient, scaledExponent) = LibDecimalFloatImplementation.mul(
-                proportionalCoefficient, proportionalExponent, anchorCoefficient, anchorExponent
-            );
+    /// @return Whether `spread <= proportional * max(abs(lowest), abs(highest))`.
+    function agreeWithinProportional(
+        int256 spreadCoefficient,
+        int256 spreadExponent,
+        Float proportional,
+        Float lowest,
+        Float highest
+    ) private pure returns (bool) {
+        (int256 anchorCoefficient, int256 anchorExponent) = agreeAnchor(lowest, highest);
+        (int256 proportionalCoefficient, int256 proportionalExponent) = proportional.unpack();
+        (int256 scaledCoefficient, int256 scaledExponent) = LibDecimalFloatImplementation.mul(
+            proportionalCoefficient, proportionalExponent, anchorCoefficient, anchorExponent
+        );
+        if (LibDecimalFloatImplementation.lte(spreadCoefficient, spreadExponent, scaledCoefficient, scaledExponent)) {
+            return true;
         }
-        (int256 absoluteCoefficient, int256 absoluteExponent) = absolute.unpack();
-        (int256 limitCoefficient, int256 limitExponent) =
-            LibDecimalFloatImplementation.max(absoluteCoefficient, absoluteExponent, scaledCoefficient, scaledExponent);
-        return (limitCoefficient, limitExponent);
+        // `mul` sheds digits only from a non-zero product past int256.max, so
+        // a raised exponent marks a truncated limit, and it keeps
+        // `scaledCoefficient >= type(int256).max / 10`. A spread over the
+        // truncated limit and within the exact one lies strictly inside the
+        // limit's last unit, so its exponent is `scaledExponent - 1`: a
+        // coarser one is on the unit grid, a finer one needs a coefficient
+        // past int256.max. `lte` refused it there, which it does only when
+        // `10 * scaledCoefficient` fits int256: not a 77 digit kept product,
+        // so the shed digit was the final division by ten of a value past
+        // int256.max. At `spreadExponent` the exact limit is that value or
+        // more, above every int256 coefficient, so the spread is within it.
+        return scaledCoefficient != 0 && scaledExponent > proportionalExponent + anchorExponent
+            && spreadExponent == scaledExponent - 1;
     }
 
     /// Returns true if the float is zero. Handles the case where the signed

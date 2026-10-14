@@ -167,6 +167,8 @@ All **UNRULED**.
 - The spread is the implementation `sub`, so on a cancelling spread it truncates
   toward zero like `sub`; a spread accepted at the boundary exceeds the limit by
   under `1.7273e-76` of its magnitude (PR #278, PR #434, #627).
+- The limit is exact: the proportional product is not truncated like `mul`
+  (#573).
 - A negative tolerance reverts `AgreeToleranceNegative(absolute, proportional)`;
   neither tolerance positive reverts
   `AgreeNoPositiveTolerance(absolute,
