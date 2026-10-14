@@ -328,4 +328,10 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertTrue(r.pow(LibDecimalFloat.packLossless(5, -1)).eq(LibDecimalFloat.FLOAT_ONE));
         assertTrue(r.pow(LibDecimalFloat.packLossless(7, -1)).eq(LibDecimalFloat.FLOAT_ONE));
     }
+
+    /// The fuzz domain excludes the known counterexamples above the bound.
+    function testFuzzWeiFloorCeilSafeSideBoundsCounterexample() external view {
+        this.testFuzzWeiFloorCeilSafeSide(987095638915421968423246895997630, 999999999999999999999999999999999, 7);
+        this.testFuzzWeiFloorCeilSafeSide(982988587715706933722833015409834, 961104254074084716688159570998290, 7);
+    }
 }
