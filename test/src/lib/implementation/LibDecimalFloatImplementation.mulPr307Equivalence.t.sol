@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloatImplementationMulPr307} from "test/lib/LibDecimalFloatImplementationMulPr307.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementationMulPr307} from "../../../lib/LibDecimalFloatImplementationMulPr307.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 /// `mul` returns and reverts the same bytes as the #307 head it was

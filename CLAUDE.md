@@ -20,8 +20,7 @@ runs `forge soldeer install && forge build`; the tests call the concretes in
 `test/concrete/` by their own ABI in revm, fuzzed against independent
 references: `reference.rs` (exact big integers), `precise.rs` (astro-float),
 dashu-float (`differential.rs`) and the Python `decimal` oracle
-`test/oracle/decimal_oracle.py`, so `cargo test` needs `python3` on PATH (the
-flake dev shell provides it).
+`test/oracle/decimal_oracle.py`.
 
 ## Architecture
 

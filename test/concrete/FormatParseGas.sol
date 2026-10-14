@@ -9,21 +9,27 @@ import {LibFormatDecimalFloatPr321} from "test/lib/LibFormatDecimalFloatPr321.so
 import {LibParseDecimalFloatPr321} from "test/lib/LibParseDecimalFloatPr321.sol";
 import {LibFormatDecimalFloatSolidity} from "test/lib/LibFormatDecimalFloatSolidity.sol";
 
+/// Each function returns the gas of one format or parse call alone, between two
+/// `gasleft()` reads, as `g`, and the hash of its result as `h`.
 contract FormatParseGas {
-    function formatBase(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
+    /// `toDecimalString` of the #321 copy, `LibFormatDecimalFloatPr321`.
+    function formatPr321(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
         uint256 s = gasleft();
         string memory r = LibFormatDecimalFloatPr321.toDecimalString(f, scientific);
         g = s - gasleft();
         h = keccak256(bytes(r));
     }
 
-    function formatPr(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
+    /// `toDecimalString` of the live `LibFormatDecimalFloat`.
+    function formatLive(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
         uint256 s = gasleft();
         string memory r = LibFormatDecimalFloat.toDecimalString(f, scientific);
         g = s - gasleft();
         h = keccak256(bytes(r));
     }
 
+    /// `toDecimalString` of the plain-Solidity copy,
+    /// `LibFormatDecimalFloatSolidity`.
     function formatSol(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
         uint256 s = gasleft();
         string memory r = LibFormatDecimalFloatSolidity.toDecimalString(f, scientific);
@@ -31,23 +37,19 @@ contract FormatParseGas {
         h = keccak256(bytes(r));
     }
 
-    function parseBase(string memory str) external view returns (uint256 g, bytes32 h) {
+    /// `parseDecimalFloat` of the #321 copy, `LibParseDecimalFloatPr321`.
+    function parsePr321(string memory str) external view returns (uint256 g, bytes32 h) {
         uint256 s = gasleft();
         (bytes4 e, Float f) = LibParseDecimalFloatPr321.parseDecimalFloat(str);
         g = s - gasleft();
         h = keccak256(abi.encode(e, f));
     }
 
-    function parsePr(string memory str) external view returns (uint256 g, bytes32 h) {
+    /// `parseDecimalFloat` of the live `LibParseDecimalFloat`.
+    function parseLive(string memory str) external view returns (uint256 g, bytes32 h) {
         uint256 s = gasleft();
         (bytes4 e, Float f) = LibParseDecimalFloat.parseDecimalFloat(str);
         g = s - gasleft();
         h = keccak256(abi.encode(e, f));
     }
 }
-
-/// Gas of `toDecimalString` and `parseDecimalFloat` against their copies from
-/// before #310's format and parse changes, measured the same way: the library
-/// call alone between two `gasleft()` reads. Every row asserts the same result
-/// bytes and no more gas. Run with `forge test --mc
-/// LibDecimalFloatFormatParseGasTest -vv`; each line is

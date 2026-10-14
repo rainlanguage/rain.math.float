@@ -4,18 +4,18 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
+import {LibParseDecimalFloat} from "../../../../src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
     MalformedExponentDigits,
     ParseDecimalFloatExcessCharacters
-} from "src/error/ErrParse.sol";
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+} from "../../../../src/error/ErrParse.sol";
+import {Float, LibDecimalFloat} from "../../../../src/lib/LibDecimalFloat.sol";
 
 contract LibParseDecimalFloatPastInt256Test is Test {
     using LibDecimalFloat for Float;
