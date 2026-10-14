@@ -7,11 +7,12 @@
 //! - the worst inputs found sit inside the bounds and near them;
 //! - log10Ratio over its domain, both modes, against astro-float.
 
+use crate::common::u256;
 use crate::evm::{self, TestDecimalFloatHarness as H};
 use crate::exact::config;
 use crate::precise::{self, Approx};
-use crate::reference::{Dec, pow10};
-use alloy::primitives::U256;
+use crate::reference::{Dec, I32_MAX, pow10};
+use crate::transcendental::POW10_RAW_E52;
 use num_bigint::{BigInt, Sign};
 use num_integer::Integer;
 use num_traits::{Signed, Zero};
@@ -24,8 +25,6 @@ use proptest::test_runner::TestCaseError;
 const EXP10_FIXED_E52: u64 = 8_808;
 /// exp10Fixed is under 1.408e-49 of 10^x below it.
 const EXP10_FIXED_RELATIVE_E52: u64 = 1_408;
-/// pow10's fixed point power is under 111.11 units of 1e-50 below 10^x 1e50.
-const POW10_RAW_E52: u64 = 11_111;
 /// The series is under 1.07903 units of 1e-50 below 10^r 1e50: its floored
 /// coefficients and Horner steps, under 1 + 2r / (1 - r), 1.0000306, and the
 /// terms past the ninth, under (ln 10 2^-16)^10 / 10! 1e50 / (1 - r),
@@ -45,10 +44,6 @@ const LOG10_RATIO_ABOVE_E52: u64 = 13;
 
 /// 2^-16 at 1e16.
 const STEP: u64 = 152_587_890_625;
-
-fn u256(x: &BigInt) -> U256 {
-    U256::from_str_radix(&x.to_string(), 10).unwrap()
-}
 
 fn exp10_fixed(x: &BigInt) -> BigInt {
     let r = evm::harness(H::exp10FixedCall { x: u256(x) }).unwrap();
@@ -154,27 +149,33 @@ fn series_coefficients() -> Vec<BigInt> {
 /// ln 10 at 1e-LN10_SCALE: lo <= ln 10 10^LN10_SCALE < lo + 2.
 const LN10_SCALE: u64 = 200;
 
-/// ln 10 = 6 atanh(1/3) + 2 atanh(1/9), each series term floored at 20 guard
-/// digits past the scale. Every floor is down: each power is under 1.125
-/// below its exact value, each term so under 2.2, over about 220 terms,
-/// with a tail under 2, so the sum is under 5000 guard units below ln 10,
-/// well under the unit the guard digits are dropped to.
+/// atanh(1/n) at 20 guard digits past the scale, each series term floored.
+/// Every floor is down: each power is under 1.125 below its exact value,
+/// each term so under 2.2, over about 230 terms for n = 3, with a tail
+/// under 2, so a combination weighing under 10 is under 5000 guard units
+/// below its value, well under the unit the guard digits are dropped to.
+fn atanh_inv_scaled(n: u64) -> BigInt {
+    let n = BigInt::from(n);
+    let n2 = &n * &n;
+    let mut power = pow10(LN10_SCALE + 20) / &n;
+    let mut sum = BigInt::zero();
+    let mut k = 1u64;
+    while !power.is_zero() {
+        sum += &power / k;
+        power /= &n2;
+        k += 2;
+    }
+    sum
+}
+
+/// ln 10 = 6 atanh(1/3) + 2 atanh(1/9).
 fn ln10_floor() -> BigInt {
-    let one = pow10(LN10_SCALE + 20);
-    let atanh_inv = |n: u64| {
-        let n = BigInt::from(n);
-        let n2 = &n * &n;
-        let mut power = &one / &n;
-        let mut sum = BigInt::zero();
-        let mut k = 1u64;
-        while !power.is_zero() {
-            sum += &power / k;
-            power /= &n2;
-            k += 2;
-        }
-        sum
-    };
-    (atanh_inv(3) * 6 + atanh_inv(9) * 2) / pow10(20)
+    (atanh_inv_scaled(3) * 6 + atanh_inv_scaled(9) * 2) / pow10(20)
+}
+
+/// ln 2 = 2 atanh(1/3): lo <= ln 2 10^LN10_SCALE < lo + 2.
+fn ln2_floor() -> BigInt {
+    atanh_inv_scaled(3) * 2 / pow10(20)
 }
 
 /// floor((ln 10)^j / j! 1e50), determined by the interval on ln 10.
@@ -218,6 +219,43 @@ fn ln10_constant_shortfall() {
     let below_hi = &below_lo + 2;
     assert!(below_lo >= BigInt::from(29_755) * pow10(LN10_SCALE - 55));
     assert!(below_hi < BigInt::from(29_765) * pow10(LN10_SCALE - 55));
+}
+
+/// The oracle sources whose constants came from `bc`.
+const EXACT_FLOAT: &str = include_str!("../../../test/lib/LibExactFloat.sol");
+const POW_RANGE: &str = include_str!("../../../test/lib/LibTestPowRange.sol");
+
+/// `ORACLE_LN10` and `ORACLE_LN2` are ln 10 and ln 2 truncated at
+/// `ORACLE_ONE`; `LOG10_OVERFLOW` is log10((2^223 + 2) 10^int32.max) floored
+/// at `UNIT_EXPONENT`; `LOG10_UP_PER_E` and `LOG10_DOWN_PER_E` are the least
+/// integers past 1e4 / ln 10 and 1e4 / (0.999 ln 10).
+#[test]
+fn oracle_constants_are_their_derivations() {
+    assert!(EXACT_FLOAT.contains("uint256 constant ORACLE_ONE = 1e70;"));
+    let shift = pow10(LN10_SCALE - 70);
+    for (name, lo) in [("ORACLE_LN10", ln10_floor()), ("ORACLE_LN2", ln2_floor())] {
+        let constant = literal_after(EXACT_FLOAT, &format!("uint256 constant {name} = "));
+        assert_eq!(&lo / &shift, constant, "{name}");
+        assert_eq!((&lo + 2) / &shift, constant, "{name} undetermined");
+    }
+
+    assert!(POW_RANGE.contains("int256 constant UNIT_EXPONENT = -66;"));
+    let threshold = Dec::new((BigInt::from(1) << 223u32) + 2, I32_MAX);
+    assert_eq!(
+        floor_at(&precise::log10(&threshold), 66),
+        literal_after(POW_RANGE, "int256 constant LOG10_OVERFLOW = ")
+    );
+
+    // n ln 10 > 1e4 and 999 n ln 10 > 1e7 at the least n, decided by the
+    // interval on ln 10.
+    let lo = ln10_floor();
+    let hi = &lo + 2;
+    for (name, weight, scale) in [("LOG10_UP_PER_E", 1u64, 4), ("LOG10_DOWN_PER_E", 999, 7)] {
+        let n = literal_after(POW_RANGE, &format!("uint256 constant {name} = "));
+        let unit = pow10(LN10_SCALE + scale);
+        assert!(&n * weight * &lo > unit, "{name} is not past the bound");
+        assert!((&n - 1) * weight * &hi <= unit, "{name} is not the least");
+    }
 }
 
 /// SERIES_LOSS_E5 is the least five-place bound on its derivation: the floors'
@@ -362,7 +400,7 @@ fn exp10_fixed_every_cell() {
         );
     };
     check("exp10Fixed", &exp10, &fine_units(EXP10_FIXED_E52));
-    check("pow10 raw", &pow10_raw, &fine_units(POW10_RAW_E52));
+    check("pow10 raw", &pow10_raw, &fine_units(POW10_RAW_E52 as u64));
     // rel_num / rel_den against 1.408e-49 of a power at 1e80 units.
     check(
         "exp10Fixed relative",
@@ -398,7 +436,7 @@ fn pow10_raw_worst_input() {
     let m: BigInt = EXP10_WORST.parse().unwrap();
     let x = Dec::new(&m * pow10(16) + pow10(16) - 1, -66);
     let (lo, hi) = shortfall(&m, &x);
-    let bound = fine_units(POW10_RAW_E52);
+    let bound = fine_units(POW10_RAW_E52 as u64);
     assert!(hi <= bound, "{hi} past {bound}");
     assert!(lo * 1000 >= bound * 999, "under 99.9% of the bound");
 }

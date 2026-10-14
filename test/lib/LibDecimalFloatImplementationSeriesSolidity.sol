@@ -52,8 +52,12 @@ import {
     EXP10_HORNER_3,
     EXP10_HORNER_2,
     LOG10_RATIO_Z_MAX
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Exp10FixedOutOfRange, Log10RatioOutOfRange, Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {
+    Exp10FixedOutOfRange,
+    Log10RatioOutOfRange,
+    Log10RatioRelativeSumTooSmall
+} from "../../src/error/ErrDecimalFloat.sol";
 
 /// `log10Ratio` and `exp10Fixed` with the library's unrolled algorithm (seven
 /// atanh terms, the 1e25 split of z^2 and z^4, z^6 split by 2^50 over
@@ -64,6 +68,8 @@ import {Exp10FixedOutOfRange, Log10RatioOutOfRange, Log10RatioRelativeSumTooSmal
 /// in plain Solidity, to measure the assembly against. Expected values come
 /// from `LibExactFloat`.
 library LibDecimalFloatImplementationSeriesSolidity {
+    /// The live `LibDecimalFloatImplementation.log10Ratio` with its assembly
+    /// written as plain Solidity; see its NatSpec there.
     // slither-disable-start divide-before-multiply
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;
@@ -161,6 +167,8 @@ library LibDecimalFloatImplementationSeriesSolidity {
 
     // slither-disable-end divide-before-multiply
 
+    /// The live `LibDecimalFloatImplementation.exp10Fixed` with its assembly
+    /// written as plain Solidity; see its NatSpec there.
     //slither-disable-next-line cyclomatic-complexity
     function exp10Fixed(uint256 x) internal pure returns (uint256 result) {
         if (x >= POW_FIXED_ONE) {

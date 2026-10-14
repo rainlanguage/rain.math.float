@@ -40,6 +40,8 @@ dashu-float (`differential.rs`) and the Python `decimal` oracle
 - **`src/lib/`** — The pure-math suite mirroring `src/lib/`.
 - **`lib/`** — `LibExactFloat.sol` (exact reference), frozen pre-change copies
   for equivalence tests, error-bound helpers and gas variants.
+- **`abstract/`** — Shared test bases: the sqrt correct-rounding oracle and gas
+  logging.
 - **`concrete/`**, **`oracle/`** — Run by `crates/tests`, above.
 
 Dependencies come from Soldeer (`foundry.toml`), never git submodules.
@@ -63,9 +65,8 @@ Dependencies come from Soldeer (`foundry.toml`), never git submodules.
     underflow. Used by parsing where underflow → "value rounds to zero" is a
     legitimate parse result reported via `ParseDecimalPrecisionLoss`.
   - `packArithmeticResult`: tolerates coefficient truncation, reverts on
-    exponent underflow. Used by every public arithmetic operation but `minus`,
-    `abs`, `div`, `inv`, `pow` and `pow10`. The last four inline it with range
-    errors that report the call's input.
+    exponent underflow. SPEC.md "Packing" lists which operations finalise
+    through it.
 
 ## License
 

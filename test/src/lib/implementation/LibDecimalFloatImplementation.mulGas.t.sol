@@ -4,11 +4,12 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {LibDecimalFloat, Float} from "../../../../src/lib/LibDecimalFloat.sol";
-import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
+import {console2} from "forge-std-1.17.0/src/Test.sol";
+import {GasLogTest} from "../../../abstract/GasLogTest.sol";
 
 /// Logs the gas of `mul` per input, measured inside the call so ABI overhead
 /// is excluded. Run with `-vv` on two trees to compare them.
-contract LibDecimalFloatImplementationMulGasTest is Test {
+contract LibDecimalFloatImplementationMulGasTest is GasLogTest {
     function implGas(int256 a, int256 ea, int256 b, int256 eb) external view returns (uint256 g) {
         g = gasleft();
         LibDecimalFloatImplementation.mul(a, ea, b, eb);
@@ -22,11 +23,7 @@ contract LibDecimalFloatImplementationMulGasTest is Test {
     }
 
     function logImpl(string memory name, int256 a, int256 ea, int256 b, int256 eb) internal view {
-        try this.implGas(a, ea, b, eb) returns (uint256 g) {
-            console2.log(name, g);
-        } catch {
-            console2.log(name, "reverted");
-        }
+        logGas(name, abi.encodeCall(this.implGas, (a, ea, b, eb)));
     }
 
     function logPacked(string memory name, int256 a, int256 ea, int256 b, int256 eb) internal view {

@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {SqrtOutOfRange} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {SqrtOutOfRange} from "../../src/error/ErrDecimalFloat.sol";
 
 /// Variants of `LibDecimalFloatImplementation.sqrt`, for equivalence and gas
 /// comparison only.
@@ -12,7 +12,7 @@ import {SqrtOutOfRange} from "src/error/ErrDecimalFloat.sol";
 library LibDecimalFloatSqrtVariants {
     /// The integer sqrt verbatim from 0a8065d and 7459101 on #309's branch, its
     /// residual compared in 512 bits.
-    function sqrtBase(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    function sqrtPr309(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 coefficient = uint256(signedCoefficient);
@@ -88,7 +88,7 @@ library LibDecimalFloatSqrtVariants {
 
     /// The library's sqrt before #359, comments dropped: 2^125 seeds seven
     /// Newton steps over E.
-    function sqrtMain(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    function sqrtPre359(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.scaleUp(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -211,7 +211,7 @@ library LibDecimalFloatSqrtVariants {
     }
 
     /// The library's sqrt with its low-word residual rounding replaced by
-    /// `sqrtBase`'s 512-bit residual compare.
+    /// `sqrtPr309`'s 512-bit residual compare.
     function sqrt512Residual(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         int256 inputExponent = exponent;
         unchecked {

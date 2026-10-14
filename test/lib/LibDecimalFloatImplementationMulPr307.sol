@@ -2,11 +2,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ExponentOverflow, MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow, MulDivOverflow} from "../../src/error/ErrDecimalFloat.sol";
 import {
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 /// `mul` and its two cold helpers verbatim from
 /// `src/lib/implementation/LibDecimalFloatImplementation.sol` at
@@ -16,6 +16,8 @@ import {
 /// ORACLE: it copies the old steps, so agreeing with it says nothing about a
 /// value. Expected values come from `LibExactFloat` over exact math.
 library LibDecimalFloatImplementationMulPr307 {
+    /// `LibDecimalFloatImplementation.mul` verbatim at 26cd9e8; see its NatSpec
+    /// there.
     function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
