@@ -1,8 +1,16 @@
+//! Test-support sources that must not call the library under test.
+//!
 //! The equivalence baselines in `test/lib` are frozen copies of the library at
 //! the commits their NatSpec cites. A baseline that called a helper on the
 //! live library would change with that helper, and the equivalence tests would
-//! compare the live helper with itself (#645). The sources are bound at
-//! compile time, so a baseline that calls the live library fails here.
+//! compare the live helper with itself (#645).
+//!
+//! `LibTestErrorBound` gives the error bounds `LibTestPowRange` classifies
+//! with, so a bound packed or unpacked by `LibDecimalFloat` would rest on the
+//! code it tests (#672).
+//!
+//! The sources are bound at compile time, so a source that calls the library
+//! fails here.
 
 /// Each frozen baseline, by name, as committed.
 const BASELINES: [(&str, &str); 6] = [
@@ -32,17 +40,22 @@ const BASELINES: [(&str, &str); 6] = [
     ),
 ];
 
-/// The first `LibDecimalFloatImplementation.<identifier>(` in `source`: a
-/// call on the live library, not the `.sol` of an import path or a comment.
-fn live_call(source: &str) -> Option<&str> {
-    const LIBRARY: &str = "LibDecimalFloatImplementation.";
-    source.match_indices(LIBRARY).find_map(|(at, _)| {
-        let rest = &source[at + LIBRARY.len()..];
+/// The first `<library>.<identifier>(` in `source`: a call on `library`, not
+/// the `.sol` of an import path or a mention in a comment.
+fn call_on<'a>(library: &str, source: &'a str) -> Option<&'a str> {
+    let prefix = format!("{library}.");
+    source.match_indices(&prefix).find_map(|(at, _)| {
+        let rest = &source[at + prefix.len()..];
         let end = rest
             .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
             .unwrap_or(rest.len());
         (end > 0 && rest[end..].starts_with('(')).then(|| &rest[..end])
     })
+}
+
+/// The first call in `source` on the live implementation.
+fn live_call(source: &str) -> Option<&str> {
+    call_on("LibDecimalFloatImplementation", source)
 }
 
 #[test]
@@ -70,4 +83,20 @@ fn equivalence_baselines_call_no_live_library_function() {
             "{name} calls the live implementation"
         );
     }
+}
+
+/// The error bounds, as committed.
+const ERROR_BOUND: &str = include_str!("../../../test/lib/LibTestErrorBound.sol");
+
+#[test]
+fn error_bounds_call_no_library_function() {
+    assert!(
+        !ERROR_BOUND.contains("using LibDecimalFloat"),
+        "LibTestErrorBound binds LibDecimalFloat to Float"
+    );
+    assert_eq!(
+        call_on("LibDecimalFloat", ERROR_BOUND),
+        None,
+        "LibTestErrorBound calls LibDecimalFloat"
+    );
 }

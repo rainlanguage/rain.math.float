@@ -855,6 +855,45 @@ library LibExactFloat {
         return bytes32((uint256(uint32(int32(resultExponent))) << 224) | uint256(uint224(int224(signed))));
     }
 
+    /// The packed bytes of the Float closest to `c × 10^e` that does not
+    /// exceed it in magnitude, built from its bits: zero for zero or below
+    /// every Float. The caller rules out values that `overflows`. Independent
+    /// of the library's packing, for oracles that must not rest on it.
+    function packTowardZero(int256 c, int256 e) internal pure returns (bytes32) {
+        bool negative = c < 0;
+        uint256 magnitude = abs(c);
+        if (c == 0 || underflows(u512(magnitude), e)) {
+            return 0;
+        }
+        uint256 limit = coefficientLimit(negative);
+        if (magnitude > limit) {
+            return packedNearestTowardZero(negative, magnitude, e);
+        }
+        if (e < type(int32).min) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 shift = uint256(int256(type(int32).min) - e);
+            magnitude = shift > 77 ? 0 : magnitude / 10 ** shift;
+            e = type(int32).min;
+        }
+        while (e > type(int32).max && magnitude * 10 <= limit) {
+            magnitude *= 10;
+            --e;
+        }
+        require(e <= type(int32).max, "overflows");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 signed = negative ? -int256(magnitude) : int256(magnitude);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return bytes32((uint256(uint32(int32(e))) << 224) | uint256(uint224(int224(signed))));
+    }
+
+    /// A packed Float's coefficient and exponent, read from its bits.
+    function unpackBits(bytes32 packed) internal pure returns (int256 signedCoefficient, int256 exponent) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        signedCoefficient = int224(uint224(uint256(packed)));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        exponent = int32(uint32(uint256(packed) >> 224));
+    }
+
     /// The magnitude of the Float of the sign one step further from zero than
     /// the non-zero `(rc, re)`, or `none` past the largest.
     function nextFloat(bool negative, int256 rc, int256 re)
