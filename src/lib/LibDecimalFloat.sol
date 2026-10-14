@@ -950,7 +950,7 @@ library LibDecimalFloat {
     function floor(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         // A zero of any exponent is FLOAT_ZERO, as every arithmetic result
-        // packs it (#687).
+        // packs it.
         if (signedCoefficient == 0) {
             return FLOAT_ZERO;
         }
@@ -975,7 +975,7 @@ library LibDecimalFloat {
     function ceil(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
         // A zero of any exponent is FLOAT_ZERO, as every arithmetic result
-        // packs it (#687).
+        // packs it.
         if (signedCoefficient == 0) {
             return FLOAT_ZERO;
         }
@@ -1059,7 +1059,8 @@ library LibDecimalFloat {
     function log10(Float a) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.log10(signedCoefficient, exponent);
-        // The rounded log has at most 41 digits, so it packs exactly.
+        // The rounded log's coefficient is at most 1e41 in magnitude, so it
+        // packs exactly.
         Float result = packArithmeticResult(signedCoefficient, exponent);
         return result;
     }

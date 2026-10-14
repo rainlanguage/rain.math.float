@@ -1139,6 +1139,18 @@ contract LibDecimalFloatPowTest is Test {
         return a.pow(b);
     }
 
+    /// The squaring loop stops after the top bit of N, so `1.5^3` squares the
+    /// base once, not twice. The ceiling sits between the two costs: 4955
+    /// with the early break, 5624 without it.
+    function testPowSkipsUnusedFinalSquareGas() external view {
+        Float a = LibDecimalFloat.packLossless(15, -1);
+        Float b = LibDecimalFloat.packLossless(3, 0);
+        uint256 before = gasleft();
+        this.powExternal(a, b);
+        uint256 used = before - gasleft();
+        assertLt(used, 5300, "pow squares the base past the top bit of N");
+    }
+
     /// `pow` raises to an integer exponent via exponentiation by squaring,
     /// which squares the base in place. The base exponent therefore grows by
     /// roughly a factor of two per bit of the integer exponent, so a large
