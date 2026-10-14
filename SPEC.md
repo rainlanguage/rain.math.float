@@ -92,9 +92,9 @@ binary path (#306).
 
 ### minus, abs
 
-- `minus(f)` is `-f` exact at the same exponent for every coefficient but
-  `int224.min`, whose negation packs as `int224.max` at the same exponent. Never
-  reverts (#333).
+- `minus(f)` is `-f` exact at the same exponent for every non-zero coefficient
+  but `int224.min`, whose negation packs as `int224.max` at the same exponent;
+  `FLOAT_ZERO` for zero at any exponent. Never reverts (#333).
 - `abs(f)` is `f` for `f >= 0` (`FLOAT_ZERO` for zero) and `minus(f)` otherwise.
   `abs(int224.min × 10^e)` is `int224.max × 10^e`. Never reverts (#333).
 
@@ -265,9 +265,9 @@ digits (#306).
 
 ## Constants
 
-- `FLOAT_E` and `FLOAT_PI`: the 67-digit coefficient at exponent `-66`, rounded
-  to nearest at 66 places; checked by `crates/tests` against e and π derived
-  independently (PR #274).
+- `FLOAT_E` and `FLOAT_PI`: the closest Float not above e and π, the 67-digit
+  coefficient at exponent `-66` truncated at 66 places; checked by
+  `crates/tests` against e and π derived independently (PR #274, #503, PR #520).
 - `FLOAT_ZERO`, `FLOAT_ONE`, `FLOAT_HALF` (`5e-1`), `FLOAT_TWO`;
   `FLOAT_MAX_POSITIVE_VALUE` (`int224.max`, `int32.max`),
   `FLOAT_MIN_POSITIVE_VALUE` (`1`, `int32.min`), `FLOAT_MAX_NEGATIVE_VALUE`
