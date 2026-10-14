@@ -2,11 +2,29 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
+import {Vm} from "forge-std-1.17.0/src/Vm.sol";
+
+Vm constant VM = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
+
 /// Exact integer helpers for the Halmos proofs. Every multiply has an operand
 /// that is constant on the path, so halmos never makes it uninterpreted.
 library LibHalmosExact {
     /// floor(int256.max / 10).
     uint256 internal constant T10 = uint256(type(int256).max) / 10;
+
+    /// Whether case `i` of a lemma's case split is in this run's slice
+    /// [HALMOS_SLICE_LO, HALMOS_SLICE_HI], every case when unset. A lemma
+    /// returns for a case outside it; the CI slices of each lemma
+    /// (`.github/workflows/halmos.yaml`) tile its whole case range.
+    function inSlice(uint256 i) internal view returns (bool) {
+        return i >= VM.envOr("HALMOS_SLICE_LO", uint256(0)) && i <= VM.envOr("HALMOS_SLICE_HI", type(uint256).max);
+    }
+
+    /// Whether any case in [lo, hi] is in this run's slice, so a lemma can
+    /// drop a whole block of cases before splitting the next index.
+    function overlapsSlice(uint256 lo, uint256 hi) internal view returns (bool) {
+        return hi >= VM.envOr("HALMOS_SLICE_LO", uint256(0)) && lo <= VM.envOr("HALMOS_SLICE_HI", type(uint256).max);
+    }
 
     function abs(int256 x) internal pure returns (uint256) {
         unchecked {
@@ -83,6 +101,52 @@ library LibHalmosExact {
         if (!shiftHint(c, s, j, 75)) return false;
         if (s + j < 75) s += 1;
         return timesTenHint(c, s, j);
+    }
+
+    /// 10^j <= |c| < 10^(j + 1), or c zero for j = 77. Every int256 has one j
+    /// in [0, 77].
+    function hasDigits(int256 c, uint256 j) internal pure returns (bool) {
+        if (j == 77) return c == 0;
+        uint256 x = abs(c);
+        return c != 0 && x >= 10 ** j && x < 10 ** (j + 1);
+    }
+
+    /// For 10^n <= |c| < 10^(n + 1), the digit count of each quotient
+    /// `LibDecimalFloat.packLossy` takes of c while shedding digits to fit
+    /// int224: c / 1e72 and c / 1e75 are zero iff n < 72 and n < 75, the cut
+    /// leaves n - 8 digits (n >= 75), n - 5 (n >= 72) or n, and each further
+    /// division by ten one fewer; each is |c| / 10^k in magnitude for the k
+    /// digits shed. A quotient of at most 67 digits ends the shedding once
+    /// it fits int224, and every one of at most 67 digits does.
+    /// True for every such c, so a lemma that returns when it is false
+    /// excludes no input; it bounds the shedding loop on every path.
+    function packHints(int256 c, uint256 n) internal pure returns (bool) {
+        if ((c / 1e72 == 0) != (n < 72)) return false;
+        int256 x = c;
+        uint256 m = n;
+        if (n >= 72) {
+            if ((c / 1e75 == 0) != (n < 75)) return false;
+            if (n >= 75) {
+                x = c / 1e8;
+                m = n - 8;
+            } else {
+                x = c / 1e5;
+                m = n - 5;
+            }
+        }
+        while (m >= 67) {
+            if (!isQuotient(c, x, n, m)) return false;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (int224(x) == x) return true;
+            x /= 10;
+            m--;
+        }
+        return isQuotient(c, x, n, m);
+    }
+
+    /// x has m digits, c's sign and |c| / 10^(n - m) as its magnitude.
+    function isQuotient(int256 c, int256 x, uint256 n, uint256 m) private pure returns (bool) {
+        return hasDigits(x, m) && (x < 0) == (c < 0) && abs(x) == abs(c) / 10 ** (n - m);
     }
 
     /// Rebuilds x's low `bits` bits one branch per bit, so the result is a

@@ -718,9 +718,15 @@ pub(crate) fn literal() -> BoxedStrategy<String> {
 /// Python reads every literal's exact value and decides whether it is a
 /// Float, as the reference does.
 pub(crate) fn check_parse(s: &str) -> Result<(), TestCaseError> {
+    let sol = sol_parse(s);
+    // Every parse error is returned by value, never reverted (#510).
+    prop_assert!(
+        !matches!(sol, Err(Fail::Revert(_))),
+        "parse({s}): reverted {sol:?}"
+    );
     check_float(
         &format!("parse({s})"),
-        sol_parse(s),
+        sol,
         r::parse(s),
         ask(json!({"op": "parse_value", "s": s})),
     )
