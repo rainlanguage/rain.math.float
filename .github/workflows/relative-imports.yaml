@@ -5,4 +5,4 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - run: "! grep -rnE '\"(src|test)/' --include=*.sol src test/src"
+      - run: "! grep -rnE '\"(src|test)/' --include=*.sol src test"

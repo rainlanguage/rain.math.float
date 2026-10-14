@@ -10,8 +10,8 @@ import {
     POW_FIXED_SQRT_ONE,
     POW_FIXED_TWO_SQRT_ONE,
     POW_FIXED_ONE_ODD_INVERSE
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Log10RatioRelativeSumTooSmall, MaximizeOverflow, MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Log10RatioRelativeSumTooSmall, MaximizeOverflow, MulDivOverflow} from "../../src/error/ErrDecimalFloat.sol";
 
 /// `log10Ratio` as at 5210e11, the #336 head, before the relative path scaled
 /// by a cascade, with the pre-#475 series written out in place, which returns
@@ -21,6 +21,8 @@ import {Log10RatioRelativeSumTooSmall, MaximizeOverflow, MulDivOverflow} from "s
 /// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
 /// nothing about a value. Expected values come from `LibExactFloat`.
 library LibDecimalFloatImplementationLog10RatioPr336 {
+    /// `LibDecimalFloatImplementation.log10Ratio` as at 5210e11 (see its
+    /// NatSpec there), with the series the library NatSpec describes.
     // slither-disable-start divide-before-multiply
     function log10Ratio(uint256 a, uint256 b, bool relative) internal pure returns (int256, int256) {
         bool below = a < b;

@@ -1,6 +1,7 @@
 //! The library's arithmetic, comparisons, conversions and errors, through the
 //! concrete in revm.
 
+use crate::common::{PARSE_EMPTY_DECIMAL_STRING, selector};
 use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
 use crate::exact::{config, show};
 use crate::reference::{self as r, Dec, I32_MIN, RefError, int224_max};
@@ -298,20 +299,12 @@ fn chain_against(
     Ok(())
 }
 
-/// The selector of `ParseEmptyDecimalString(uint256)`, which `RefError`
-/// has no variant for.
-fn parse_empty_selector() -> [u8; 4] {
-    alloy::primitives::keccak256("ParseEmptyDecimalString(uint256)")[..4]
-        .try_into()
-        .unwrap()
-}
-
 /// Parsing an empty string returns ParseEmptyDecimalString by value.
 #[test]
 fn test_parse_empty_string_error() {
     let err = Float::parse("".to_string()).unwrap_err();
     assert!(
-        matches!(err, Fail::Selector(s) if s.0 == parse_empty_selector()),
+        matches!(err, Fail::Selector(s) if s.0 == selector(PARSE_EMPTY_DECIMAL_STRING)),
         "{err:?}"
     );
 }
@@ -335,7 +328,7 @@ fn test_parse_edge_cases() {
 
     let err = Float::parse("abc".to_string()).unwrap_err();
     assert!(
-        matches!(err, Fail::Selector(s) if s.0 == parse_empty_selector()),
+        matches!(err, Fail::Selector(s) if s.0 == selector(PARSE_EMPTY_DECIMAL_STRING)),
         "{err:?}"
     );
 }
