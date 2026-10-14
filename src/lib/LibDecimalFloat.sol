@@ -73,6 +73,12 @@ library LibDecimalFloat {
     using LibDecimalFloat for Float;
 
     /// A zero valued float.
+    /// @dev The greatest exponent at which no uint256 magnitude is past every
+    /// Float: 2^256 < 10^10 (2^223 + 2), and one exponent up 2^256 - 1 is
+    /// past. `isPastEveryFloat` returns false at or below it, so a caller may
+    /// check it first to skip the call on the hot path.
+    int256 constant NEVER_PAST_EXPONENT = int256(type(int32).max) - 10;
+
     Float constant FLOAT_ZERO = Float.wrap(0);
 
     /// A one valued float.
@@ -576,6 +582,39 @@ library LibDecimalFloat {
         return c;
     }
 
+    /// @notice Whether `magnitude × 10^exponent` is past every Float: at least
+    /// `(int224.max / 10 + 1) × 10^(int32.max + 1)`, which is
+    /// `(2^223 + 2) × 10^int32.max`, where `packLossy` reverts
+    /// `ExponentOverflow` for either sign. This is the one encoding of that
+    /// threshold outside `packLossy`; `div`, `pow`, `pow10` and the parser
+    /// all check it here, and the tests bind it to `packLossy` (#649). Exact
+    /// for every magnitude and exponent; zero is never past, and nothing is
+    /// at or below `NEVER_PAST_EXPONENT`.
+    /// @param magnitude The magnitude of the value.
+    /// @param exponent The exponent of the value.
+    /// @return Whether the value is past every Float.
+    function isPastEveryFloat(uint256 magnitude, int256 exponent) internal pure returns (bool) {
+        unchecked {
+            if (exponent <= NEVER_PAST_EXPONENT) {
+                return false;
+            }
+            // exponent > int32.max - 10, so this does not wrap.
+            int256 excess = exponent - type(int32).max;
+            // 10^68 is past 2^223 + 2, so any non-zero magnitude is past.
+            if (excess > 67) {
+                return magnitude != 0;
+            }
+            if (excess >= 0) {
+                // m × 10^x >= t iff m > floor((t - 1) / 10^x).
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return magnitude > (2 ** 223 + 1) / 10 ** uint256(excess);
+            }
+            // excess is in [-9, -1], so the product is below 2^256.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return magnitude >= (2 ** 223 + 2) * 10 ** uint256(-excess);
+        }
+    }
+
     /// Unpack a Float into its coefficient, sign-extended from the low 224
     /// bits, and its exponent, from the high 32 bits. Never reverts. For every
     /// `f` with a non-zero coefficient, `packLossy(unpack(f))` is byte-equal
@@ -778,16 +817,14 @@ library LibDecimalFloat {
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        // packArithmeticResult with range errors reporting `a`. The quotient
-        // has at most 77 digits and packLossy sheds at most ten, so an
-        // exponent ten below int32.max cannot overflow. A checked subtraction
-        // is computed at run time.
-        int256 ceilingLessTen;
+        // packArithmeticResult with range errors reporting `a`.
+        // NEVER_PAST_EXPONENT is isPastEveryFloat's own fast exit, checked
+        // here first to skip the call on almost every result. unchecked keeps
+        // the constant's subtraction from being a checked one at run time.
         unchecked {
-            ceilingLessTen = int256(type(int32).max) - 10;
-        }
-        if (exponent > ceilingLessTen) {
-            revertIfPastLargestFloat(signedCoefficient, exponent, a);
+            if (exponent > NEVER_PAST_EXPONENT) {
+                revertIfPastLargestFloat(signedCoefficient, exponent, a);
+            }
         }
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless && Float.unwrap(c) == bytes32(0)) {
@@ -995,15 +1032,12 @@ library LibDecimalFloat {
             revertPast(signedCoefficient > 0, float);
         }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
-        // packArithmeticResult with range errors reporting `float`. packLossy
-        // sheds at most ten digits, so an exponent ten below int32.max cannot
-        // overflow. A checked subtraction is computed at run time.
-        int256 ceilingLessTen;
+        // packArithmeticResult with range errors reporting `float`.
+        // NEVER_PAST_EXPONENT gates the call as in `div`.
         unchecked {
-            ceilingLessTen = int256(type(int32).max) - 10;
-        }
-        if (exponent > ceilingLessTen) {
-            revertIfPastLargestFloat(signedCoefficient, exponent, float);
+            if (exponent > NEVER_PAST_EXPONENT) {
+                revertIfPastLargestFloat(signedCoefficient, exponent, float);
+            }
         }
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless && Float.unwrap(c) == bytes32(0)) {
@@ -1371,23 +1405,19 @@ library LibDecimalFloat {
         revert ExponentUnderflow(signedCoefficient, exponent);
     }
 
-    /// `packLossy` reverts `ExponentOverflow` exactly when the value is at
-    /// least (int224.max / 10 + 1) 10^(int32.max + 1), which is
-    /// (2^223 + 2) 10^int32.max, in magnitude: there the closest Float not
-    /// above it is past int224.max 10^int32.max. The comparison is on the
-    /// magnitude, so both signs share it. A pow, pow10 or
-    /// div result is never int256.min, whose checked negation would panic.
+    /// Reverts `ExponentOverflow` reporting `input` where `packLossy` would
+    /// revert it, by `isPastEveryFloat`.
     /// @param signedCoefficient The result's coefficient.
     /// @param exponent The result's exponent.
     /// @param input The call's input, reported by the error.
     function revertIfPastLargestFloat(int256 signedCoefficient, int256 exponent, Float input) private pure {
-        if (signedCoefficient < 0) {
-            signedCoefficient = -signedCoefficient;
-        }
-        if (LibDecimalFloatImplementation.gte(
-                signedCoefficient, exponent, type(int224).max / 10 + 1, int256(type(int32).max) + 1
-            )) {
-            revertPast(true, input);
+        unchecked {
+            // int256.min negates to itself, which casts to 2^255, its
+            // magnitude.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (isPastEveryFloat(uint256(signedCoefficient < 0 ? -signedCoefficient : signedCoefficient), exponent)) {
+                revertPast(true, input);
+            }
         }
     }
 
