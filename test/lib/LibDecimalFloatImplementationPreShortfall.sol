@@ -17,7 +17,7 @@ import {
 /// ORACLE: it copies the old steps, including the mixed-sign add rounding of
 /// #340, so agreeing with it says nothing about a value. Expected values come
 /// from `LibExactFloat` over exact math.
-library LibDecimalFloatImplementationMain {
+library LibDecimalFloatImplementationPreShortfall {
     function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, bool) {
         unchecked {
             if (signedCoefficient == 0) {

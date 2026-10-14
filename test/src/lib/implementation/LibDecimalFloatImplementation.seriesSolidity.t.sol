@@ -12,7 +12,7 @@ import {Log10RatioOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementationSeriesSolidity
 } from "../../../lib/LibDecimalFloatImplementationSeriesSolidity.sol";
-import {LibDecimalFloatImplementationSeriesMain} from "../../../lib/LibDecimalFloatImplementationSeriesMain.sol";
+import {LibDecimalFloatImplementationSeriesLoop} from "../../../lib/LibDecimalFloatImplementationSeriesLoop.sol";
 
 /// The plain-Solidity copy of `log10Ratio` and `exp10Fixed` returns exactly
 /// what the library returns, so its gas rows compare one algorithm and
@@ -45,13 +45,13 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
         returns (uint256 gas, int256 signedCoefficient, int256 exponent)
     {
         gas = gasleft();
-        (signedCoefficient, exponent) = LibDecimalFloatImplementationSeriesMain.log10Ratio(a, b, relative);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementationSeriesLoop.log10Ratio(a, b, relative);
         gas -= gasleft();
     }
 
     function exp10FixedMain(uint256 x) external view returns (uint256 gas, uint256 result) {
         gas = gasleft();
-        result = LibDecimalFloatImplementationSeriesMain.exp10Fixed(x);
+        result = LibDecimalFloatImplementationSeriesLoop.exp10Fixed(x);
         gas -= gasleft();
     }
 

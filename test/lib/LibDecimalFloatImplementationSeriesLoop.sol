@@ -22,7 +22,7 @@ import {
 /// Equivalence tests only.
 /// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
 /// nothing about a value. Expected values come from `LibExactFloat`.
-library LibDecimalFloatImplementationSeriesMain {
+library LibDecimalFloatImplementationSeriesLoop {
     function mulDivFixedUnguarded(uint256 x, uint256 y) private pure returns (uint256 result) {
         uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
         assembly ("memory-safe") {
