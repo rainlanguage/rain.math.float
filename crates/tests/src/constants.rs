@@ -206,3 +206,48 @@ fn log10_skip_below_is_the_least_c_with_1001c_at_least_1e79() {
     assert!(&c * 1001u16 >= bound);
     assert!((c - 1u8) * 1001u16 < bound);
 }
+
+// ------------------------------------------------------------------ SPEC.md
+
+/// The signed-off spec.
+const SPEC: &str = include_str!("../../../SPEC.md");
+
+/// Every `.sol` file under `dir`.
+fn sol_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
+    let mut files = Vec::new();
+    for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("{}: {e}", dir.display())) {
+        let path = entry.unwrap().path();
+        if path.is_dir() {
+            files.extend(sol_files(&path));
+        } else if path.extension().is_some_and(|x| x == "sol") {
+            files.push(path);
+        }
+    }
+    files
+}
+
+/// Every error `src` declares has a rule in SPEC.md, by name, so no revert
+/// path ships unruled.
+#[test]
+fn spec_names_every_error() {
+    let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../src");
+    let mut declared = 0;
+    for path in sol_files(&src) {
+        let source = std::fs::read_to_string(&path).unwrap();
+        for line in source.lines() {
+            let Some(decl) = line.trim_start().strip_prefix("error ") else {
+                continue;
+            };
+            let name = &decl[..decl
+                .find('(')
+                .unwrap_or_else(|| panic!("{}: `{line}`", path.display()))];
+            assert!(
+                SPEC.contains(&format!("`{name}")),
+                "{name} ({}) has no rule in SPEC.md",
+                path.display()
+            );
+            declared += 1;
+        }
+    }
+    assert!(declared > 0, "no errors declared under {}", src.display());
+}

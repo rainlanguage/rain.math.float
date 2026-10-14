@@ -211,13 +211,9 @@ library LibDecimalFloatImplementation {
     uint256 private constant E66 = 1e66;
     uint256 private constant E74 = 1e74;
     uint256 private constant E75 = 1e75;
-    /// `type(int256).max / 10`. A coefficient times ten fits int256 iff its
-    /// magnitude is at most this.
-    uint256 private constant TIMES_TEN_MAX =
-        5789604461865809771178549250434395392663499233282028201972879200395656481996;
-    /// `2 * TIMES_TEN_MAX + 1`.
-    uint256 private constant TIMES_TEN_SPAN =
-        11579208923731619542357098500868790785326998466564056403945758400791312963993;
+    /// A coefficient times ten fits int256 iff its magnitude is at most this.
+    uint256 private constant TIMES_TEN_MAX = uint256(type(int256).max) / 10;
+    uint256 private constant TIMES_TEN_SPAN = 2 * TIMES_TEN_MAX + 1;
 
     /// Negates a float.
     /// Equivalent to `0 - x`.
