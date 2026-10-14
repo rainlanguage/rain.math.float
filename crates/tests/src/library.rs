@@ -1777,3 +1777,55 @@ fn library_parse_exponent_wrap() {
         run(check_parse_entry_points(&lit, " x"));
     }
 }
+
+// ----------------------------------------------------------------- coverage
+
+/// Every internal function of the three libraries has a wrapper on one of the
+/// concretes, by its own name or the rename listed, so every call the source
+/// has is reachable from these tests.
+#[test]
+fn concretes_expose_every_library_function() {
+    const RENAMED: [(&str, &str); 2] = [
+        ("fromFixedDecimalLossyPacked", "fromFixedDecimalLossy"),
+        ("fromFixedDecimalLosslessPacked", "fromFixedDecimalLossless"),
+    ];
+    // The name and header of each function `source` declares as a member, at
+    // a member's indentation so the word in NatSpec prose does not count.
+    fn declared(source: &'static str) -> impl Iterator<Item = (&'static str, &'static str)> {
+        source
+            .match_indices("\n    function ")
+            .map(move |(at, decl)| {
+                let rest = &source[at + decl.len()..];
+                let header = &rest[..rest.find(['{', ';']).unwrap()];
+                (&header[..header.find('(').unwrap()], header)
+            })
+    }
+    let exposed: std::collections::BTreeSet<&str> =
+        declared(include_str!("../../../test/concrete/TestDecimalFloat.sol"))
+            .chain(declared(include_str!(
+                "../../../test/concrete/TestDecimalFloatHarness.sol"
+            )))
+            .map(|(name, _)| name)
+            .collect();
+    let mut internal = 0;
+    for library in [
+        include_str!("../../../src/lib/LibDecimalFloat.sol"),
+        include_str!("../../../src/lib/format/LibFormatDecimalFloat.sol"),
+        include_str!("../../../src/lib/parse/LibParseDecimalFloat.sol"),
+    ] {
+        let is_internal = |header: &str| header.split_whitespace().any(|word| word == "internal");
+        for (name, header) in declared(library).filter(|(_, header)| is_internal(header)) {
+            let wrapper = RENAMED
+                .iter()
+                .find(|(from, _)| *from == name)
+                .map_or(name, |(_, to)| *to);
+            assert!(
+                exposed.contains(wrapper),
+                "{name} has no wrapper: {}",
+                header.split_whitespace().collect::<Vec<_>>().join(" ")
+            );
+            internal += 1;
+        }
+    }
+    assert!(internal > 0);
+}

@@ -427,22 +427,22 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         this.ratio(a, b, relative);
     }
 
-    /// a + b = 2e50 and a - b = 2^65 1e25 make z = 2^64 1e25 exactly, so z^2
-    /// at 1e-50 is 2^128 and its square 2^256: the low word is 0, below the
-    /// remainder 2^256 mod 1e50, so the in-place z^4 multiply borrows from
-    /// the high word. Reference from `bc -l` at scale 200.
-    function testLog10RatioZFourthRemainderBorrow() external pure {
+    /// a + b = 2e50 and a - b = 2^65 1e25 make z = 2^64 1e25 exactly, so
+    /// zSquared is 2^128 and its square is 2^256, past a word: the z^4 term
+    /// floor(2^256 / 1e50) comes from the 1e25 split alone. Reference from
+    /// `bc -l` at scale 200.
+    function testLog10RatioZFourthSquarePastAWord() external pure {
         uint256 z = 2 ** 64 * 1e25;
         int256 expected = 1602263832060531559618195882253573250139901008052388705256199829072734;
         checkBothModes(1e50 + z, 1e50 - z, expected, -75);
         checkBothModes(1e50 - z, 1e50 + z, -expected, -75);
     }
 
-    /// z^2 at 1e-50 is Z = 2^102 5^17 + 1e10, where Z^3 / 1e50 is just past
-    /// 5 2^256, so the in-place z^6 multiply has a low word of 4.49e45, below
-    /// its remainder mod 1e50 of 4.34e49, and borrows from the high word.
-    /// Reference from `bc -l` at scale 200.
-    function testLog10RatioZSixthRemainderBorrow() external pure {
+    /// zSquared is Z = 2^102 5^17 + 1e10, so the z^6 product term Z, about
+    /// Z^3 / 1e50, is just past 5 2^256 and past a word: the z^6 term comes
+    /// from the 2^50 split, with low part v = 1e10. Reference from `bc -l` at
+    /// scale 200.
+    function testLog10RatioZSixthProductPastAWord() external pure {
         uint256 z = 19668661934068655294372187221166452031959486958;
         int256 expected = 1708398290907464345711870817501326157006314194270408443866512063549736;
         checkBothModes(1e50 + z, 1e50 - z, expected, -73);
