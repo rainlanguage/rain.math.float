@@ -578,7 +578,7 @@ library LibDecimalFloat {
     /// `ExponentOverflow` for either sign. This is the one encoding of that
     /// threshold; `packLossy`, `div`, `pow`, `pow10` and the parser all check
     /// it here (#649). Exact for every magnitude and exponent; zero is never
-    /// past, and nothing is at or below `NEVER_PAST_EXPONENT`.
+    /// past, and no value at an exponent at or below `NEVER_PAST_EXPONENT` is past.
     /// @param magnitude The magnitude of the value.
     /// @param exponent The exponent of the value.
     /// @return Whether the value is past every Float.
