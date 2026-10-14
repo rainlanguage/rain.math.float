@@ -312,10 +312,13 @@ Rules for protocols built on the library. Each example is a test in
 
 1. **Round up at the fixed-decimal boundary yourself.** `toFixedDecimalLossy`
    only truncates. For an amount a user owes, add 1 when `lossless` is false.
-   With integer inputs and `a × b` below about 1e66 of the floored unit, the
-   floor never exceeds the exact floor and that ceiling never falls below the
-   exact ceiling, in any of the orders `a × b / c`, `a / (c / b)` and
-   `a × (b / c)`; on an exact integer either can miss by 1 toward the safe side.
+   With integer inputs and `a × b` at most `int224.max / 20` (about 6.7e65) of
+   the floored unit, the floor never exceeds the exact floor and that ceiling
+   never falls below the exact ceiling, in any of the orders `a × b / c`,
+   `a / (c / b)` and `a × (b / c)`; on an exact integer either can miss by 1
+   toward the safe side. Above that bound `a × (b / c)` can truncate the whole
+   fraction away and report lossless: with `a × b` about 9.9e65 and `c = 7`, the
+   exact result is an integer plus 1/7 and the ceiling comes back as the floor.
    Past about 1e66 a rounded divisor lifts the floor: `(7e66 + 2) / (7 / 3)`
    floors to `3e66 + 1` where the exact result is `3e66 + 6/7`. Keep amounts as
    Floats through a calculation: converting to wei on every step of a loop

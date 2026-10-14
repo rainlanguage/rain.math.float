@@ -165,13 +165,25 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         );
     }
 
-    /// Integer inputs with a*b at most 1e66: the floor of the Float result of
-    /// a*b/c never exceeds mulDiv floor and the lossless-flag ceiling never
-    /// falls below mulDiv ceiling, whichever of three operand orders computes
-    /// it. Each misses by at most 1, and only when a*b/c is an exact integer.
+    /// Integer inputs with a*b at most int224.max / 20: the floor of the Float
+    /// result of a*b/c never exceeds mulDiv floor and the lossless-flag ceiling
+    /// never falls below mulDiv ceiling, whichever of three operand orders
+    /// computes it. Each misses by at most 1, and only when a*b/c is an exact
+    /// integer.
+    ///
+    /// Each operation truncates toward zero to a Float, moving its result by
+    /// under 10 / int224.max of it. With q = a*b/c, a non-integer q has a
+    /// fraction of at least 1/c. a * (b / c) truncates twice, each time taking
+    /// under 10q / int224.max = (1/c)(10ab / int224.max) off the result, so the
+    /// two together stay under 1/c while
+    /// 20ab <= int224.max, so the result keeps a non-zero fraction and the
+    /// lossless flag stays false.
     function testFuzzWeiFloorCeilSafeSide(uint256 a, uint256 b, uint256 c) external pure {
         a = bound(a, 0, 1e33);
         b = bound(b, 1, 1e33);
+        if (a > 0) {
+            b = bound(b, 1, uint256(int256(type(int224).max)) / 20 / a);
+        }
         c = bound(c, 1, 1e33);
         Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
         Float fb = LibDecimalFloat.fromFixedDecimalLosslessPacked(b, 0);
@@ -194,6 +206,28 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
                 assertLe(ceilGot, ceilExact + 1);
             }
         }
+    }
+
+    /// Above int224.max / 20 the lossless-flag ceiling can fall below the exact
+    /// ceiling. a*b is about 0.073 int224.max and a*b/c is
+    /// 141013662702203138346178127999661287557765869225433082393300571767 + 1/7.
+    /// b/c truncates to 67 digits and a times it loses about 0.085; the product
+    /// has 66 integer digits, so packing keeps one decimal and drops the rest of
+    /// the fraction. The Float is an integer, the flag reports lossless, and the
+    /// ceiling is the floor.
+    function testWeiCeilUndershootAboveBound() external pure {
+        uint256 a = 987095638915421968423246895997630;
+        uint256 b = 999999999999999999999999999999999;
+        uint256 c = 7;
+        assertGt(a * b, uint256(int256(type(int224).max)) / 20);
+        Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
+        Float fb = LibDecimalFloat.fromFixedDecimalLosslessPacked(b, 0);
+        Float fc = LibDecimalFloat.fromFixedDecimalLosslessPacked(c, 0);
+        assertEq(a * b % c, 1);
+        (uint256 got, bool lossless) = fa.mul(fb.div(fc)).toFixedDecimalLossy(0);
+        assertEq(got, a * b / c);
+        assertEq(got, 141013662702203138346178127999661287557765869225433082393300571767);
+        assertTrue(lossless);
     }
 
     /// Dividing by a truncated price turns an exact integer into a lossy
