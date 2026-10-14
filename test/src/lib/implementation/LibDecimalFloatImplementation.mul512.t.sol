@@ -3,8 +3,8 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibExactFloat, U512} from "../../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationMul512Test is Test {
     function check(uint256 a, uint256 b, uint256 expectedHigh, uint256 expectedLow) internal pure {

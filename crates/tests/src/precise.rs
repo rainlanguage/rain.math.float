@@ -266,7 +266,6 @@ pub fn pow_true(a: &Dec, b: &Dec) -> Result<Approx, bool> {
     .checked())
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
 

@@ -1107,5 +1107,26 @@
       "testsAfter": 186,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-14T20:36:25Z",
+    "commit": "3921acaacc2375d904a5684b62b6e413d6826b61",
+    "testsAfterCommit": "3921acaacc2375d904a5684b62b6e413d6826b61",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 8,
+    "scope": "PR #712 (#649, #611): one encoding of the packLossy overflow threshold. NEVER_PAST_EXPONENT, LibDecimalFloat.isPastEveryFloat (uint256 and signed overloads), packLossy's lift path, the div and pow10 NEVER_PAST_EXPONENT gates, pow's carry path (packRoundedSignificant), revertIfPastLargestFloat, both LibParseDecimalFloat call sites and the past-int256 floorExponent branch. Suite per probe: forge test --match-contract 'Pack|Parse|Pow|Div' at 256 fuzz runs, seed 0x712; the Rust differential suite was not in the probe command. Before = main c554370's test tree on the PR source (316 tests), after = the PR's tests (322 tests). 27 mutants: M01/M02 NEVER_PAST_EXPONENT one higher/lower; M03/M04 fast exit strict/true; M05 any-nonzero arm at 66; M06 zero past at high excess; M07/M08 floor arm >= and 2^223+2; M09/M10 product arm > and 2^223+1; M11 excess off by one; M12 signed overload drops abs; M13 packLossy past check off; M14 lift one digit short; M15 div gate +1; M16 pow10 gate at int32.max+17; M16b pow10 gate at int32.max+27; M17 pow carry always falls back; M18/M19 carry excess guard 26/66; M20 revertIfPastLargestFloat negated; M21 parser inline drops abs; M22/M23 parser past checks off; M24 floor branch drops wrap check; M25 floorExponent -78; M26 wrap check <=. Before 24/27 killed (M03 survives: its boundary is only reachable by a direct isPastEveryFloat call, which no caller makes; M16, M19 equivalent). After 25/27 killed: M03 by the PR's testIsPastEveryFloatExactEdges; M02/M24 also by testIsPastEveryFloatExactEdges / testParsePastInt256FloorExponentPastInt256; main's killers include testPackLossyOverflowThresholdEdges, testPackLossyCeilingTruncationBand, testPackLossyLiftFirstEquivalenceExtremes, testParseOverflowThresholdExcesses, testParseOverflowThresholdPointPositions, testParseNearOverflowThreshold, testParseRuleLiteralShapeFuzz, testParseZeroHugeExponent, testDivAtTheOverflowThreshold, testPow10Thresholds, testPow10NearThresholds, testPowCarryShedsTheUnrounded, testPowRoundedAtTheHeadroomBound. Survivors: M16 is inside the pow10 gate band audit/known-false-positives.md already proves equivalent (up to int32.max+26; M16b at int32.max+27 is killed, so the band edge is pinned); M19 is equivalent (any carry guard bound from 27 up, or none: at excess 28+ a 41 digit rounded value and its unrounded source are both past) and is recorded with proof. No tests added. Adversarial pass: SPEC.md's isPastEveryFloat and packLossy claims re-derived (not past implies nothing was shed, so the lift is from the initial pair; floor arm m > floor((t-1)/10^x) is m*10^x >= t; parser floor branch exact because the threshold is a multiple of 10^floorExponent at or below int32.max); test oracles (LibExactFloat.overflows, reference.rs) are independent big-integer compares; no candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 27,
+      "killedBefore": 24,
+      "killedAfter": 25,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 316,
+      "testsAfter": 322,
+      "filed": []
+    }
   }
 ]

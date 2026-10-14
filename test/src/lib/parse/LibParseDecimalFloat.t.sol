@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
+import {LibParseDecimalFloat} from "../../../../src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
@@ -13,11 +13,12 @@ import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters
-} from "src/error/ErrParse.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
-import {LibTestDecimalLiteral, Literal} from "test/lib/LibTestDecimalLiteral.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+} from "../../../../src/error/ErrParse.sol";
+import {ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
+import {Float, LibDecimalFloat} from "../../../../src/lib/LibDecimalFloat.sol";
+import {LibTestDecimalLiteral, Literal} from "../../../lib/LibTestDecimalLiteral.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
+import {LibTestDecimalLiteral} from "../../../lib/LibTestDecimalLiteral.sol";
 
 contract LibParseDecimalFloatTest is Test {
     using LibBytes for bytes;
@@ -100,7 +101,7 @@ contract LibParseDecimalFloatTest is Test {
         string memory digits = Strings.toString(LibExactFloat.abs(c));
         string memory sign = c < 0 ? "-" : "";
         checkAgainstRule(string.concat(sign, digits, exponent));
-        checkAgainstRule(string.concat(sign, zeros(80), digits, exponent));
+        checkAgainstRule(string.concat(sign, LibTestDecimalLiteral.zeroString(80), digits, exponent));
     }
 
     /// The threshold from either side at every excess the check branches on:
@@ -663,8 +664,10 @@ contract LibParseDecimalFloatTest is Test {
         bytes memory over = abi.encode("return", ExponentOverflow.selector, Float.wrap(0));
         assertEq(parseOutcome("2e2147483714"), over, "2e2147483714");
         assertEq(parseOutcome("-2e2147483714"), over, "-2e2147483714");
-        assertEq(parseOutcome(string.concat("2", zeros(76), "1e2147483637")), over, "78 digits");
-        assertEq(parseOutcome(string.concat("1e1", zeros(80))), over, "exponent past int256");
+        assertEq(
+            parseOutcome(string.concat("2", LibTestDecimalLiteral.zeroString(76), "1e2147483637")), over, "78 digits"
+        );
+        assertEq(parseOutcome(string.concat("1e1", LibTestDecimalLiteral.zeroString(80))), over, "exponent past int256");
     }
 
     /// A literal below the exponent floor whose coefficient carries the
@@ -692,13 +695,6 @@ contract LibParseDecimalFloatTest is Test {
         assertEq(err3, ParseDecimalFloatExcessCharacters.selector);
     }
 
-    function zeros(uint256 n) internal pure returns (string memory z) {
-        z = new string(n);
-        for (uint256 i = 0; i < n; i++) {
-            bytes(z)[i] = "0";
-        }
-    }
-
     function testParseZeroFractionSmall() external pure {
         checkParseDecimalFloat("1", 1, 0, 1);
         checkParseDecimalFloat("1.0", 1, 0, 3);
@@ -711,7 +707,7 @@ contract LibParseDecimalFloatTest is Test {
     /// Issue #327: an all-zero fraction is not rescaled into the integer part.
     /// `2` + 67 zeros is past int224, so the wrapper sheds one trailing zero.
     function testParseZeroFractionPastInt224() external view {
-        string memory int67 = string.concat("2", zeros(67));
+        string memory int67 = string.concat("2", LibTestDecimalLiteral.zeroString(67));
         int256 twoE67 = 2e67;
         string[3] memory fracs = ["", ".0", ".000"];
         for (uint256 i = 0; i < fracs.length; i++) {
@@ -727,7 +723,7 @@ contract LibParseDecimalFloatTest is Test {
 
     /// Issue #327: as above, negative and with an exponent after the fraction.
     function testParseZeroFractionPastInt224NegativeExponent() external view {
-        string memory int67 = string.concat("-2", zeros(67));
+        string memory int67 = string.concat("-2", LibTestDecimalLiteral.zeroString(67));
         int256 negTwoE67 = -2e67;
         string[3] memory fracs = ["", ".0", ".000"];
         for (uint256 i = 0; i < fracs.length; i++) {
@@ -774,10 +770,11 @@ contract LibParseDecimalFloatTest is Test {
             value = bound(value, 0, 10 ** digits - 1);
         }
         fracZeros = uint8(bound(fracZeros, 1, 100));
-        string memory intPart = string.concat(isNeg ? "-" : "", zeros(leadingZeros), value.toString());
+        string memory intPart =
+            string.concat(isNeg ? "-" : "", LibTestDecimalLiteral.zeroString(leadingZeros), value.toString());
         string memory exponentPart = hasExponent ? string.concat("e", Strings.toStringSigned(e)) : "";
         string memory bare = string.concat(intPart, exponentPart);
-        string memory frac = string.concat(intPart, ".", zeros(fracZeros), exponentPart);
+        string memory frac = string.concat(intPart, ".", LibTestDecimalLiteral.zeroString(fracZeros), exponentPart);
 
         (bytes4 bareErr, uint256 bareCursor, int256 bareCoefficient, int256 bareExponent) =
             this.parseDecimalFloatInlineExternal(bare);
@@ -898,7 +895,10 @@ contract LibParseDecimalFloatTest is Test {
         intLength = uint8(bound(intLength, 1, 160));
         bytes memory intDigits = digitRun(intSeed, intLength, zeroOdds % 8);
         string memory literal = string.concat(
-            negative ? "-" : "", zeros(leadingZeros % 100), string(intDigits), zeros(trailingZeros % 100)
+            negative ? "-" : "",
+            LibTestDecimalLiteral.zeroString(leadingZeros % 100),
+            string(intDigits),
+            LibTestDecimalLiteral.zeroString(trailingZeros % 100)
         );
         if (fracLength % 3 != 0) {
             literal = string.concat(literal, ".", string(digitRun(fracSeed, bound(fracLength, 1, 160), zeroOdds % 8)));
@@ -947,12 +947,12 @@ contract LibParseDecimalFloatTest is Test {
             string.concat("1e-", past),
             string.concat("0.", digitRunString(78)),
             string.concat("1e-", (uint256(1) << 255).toString(), "1"),
-            string.concat("2", zeros(66), ".5"),
+            string.concat("2", LibTestDecimalLiteral.zeroString(66), ".5"),
             string.concat(max, ".5"),
             string.concat(max, "e2147483647"),
             string.concat(max, "e-2147483700"),
             string.concat(past, "000e-80"),
-            string.concat("1", zeros(200), ".", zeros(200), "1")
+            string.concat("1", LibTestDecimalLiteral.zeroString(200), ".", LibTestDecimalLiteral.zeroString(200), "1")
         ];
         for (uint256 i = 0; i < literals.length; i++) {
             checkAgainstRule(literals[i]);
@@ -972,10 +972,10 @@ contract LibParseDecimalFloatTest is Test {
             string.concat(maxHundredth, ".99"),
             string.concat(minTenth, ".9"),
             string.concat(minTenth, ".8"),
-            string.concat("1.", zeros(75), "1"),
-            string.concat("1.", zeros(76), "1"),
-            string.concat("-1.", zeros(76), "1"),
-            string.concat("5.", zeros(76), "3")
+            string.concat("1.", LibTestDecimalLiteral.zeroString(75), "1"),
+            string.concat("1.", LibTestDecimalLiteral.zeroString(76), "1"),
+            string.concat("-1.", LibTestDecimalLiteral.zeroString(76), "1"),
+            string.concat("5.", LibTestDecimalLiteral.zeroString(76), "3")
         ];
         for (uint256 i = 0; i < literals.length; i++) {
             checkAgainstRule(literals[i]);
@@ -987,8 +987,8 @@ contract LibParseDecimalFloatTest is Test {
     /// int256 and 78 significant digits, so no Float, and its magnitude near 1
     /// is not past every Float.
     function testParseFractionRescaleBound() external view {
-        string memory atBound = string.concat("1.", zeros(75), "1");
-        string memory pastBound = string.concat("1.", zeros(76), "1");
+        string memory atBound = string.concat("1.", LibTestDecimalLiteral.zeroString(75), "1");
+        string memory pastBound = string.concat("1.", LibTestDecimalLiteral.zeroString(76), "1");
         checkParseDecimalFloat(atBound, 1e76 + 1, -76, 78);
         checkParseDecimalFloat(string.concat("-", atBound), -(1e76 + 1), -76, 79);
         checkParseDecimalFloatFail(pastBound, ParseDecimalPrecisionLoss.selector, 79);
@@ -1026,10 +1026,10 @@ contract LibParseDecimalFloatTest is Test {
             string.concat("0.", max, "000"),
             pastPointed,
             string.concat("-", pastPointed),
-            string.concat("9.", zeros(75), "9"),
-            string.concat("-9.", zeros(75), "9"),
-            string.concat("1.", zeros(76), "0"),
-            string.concat("1.", zeros(300), "1")
+            string.concat("9.", LibTestDecimalLiteral.zeroString(75), "9"),
+            string.concat("-9.", LibTestDecimalLiteral.zeroString(75), "9"),
+            string.concat("1.", LibTestDecimalLiteral.zeroString(76), "0"),
+            string.concat("1.", LibTestDecimalLiteral.zeroString(300), "1")
         ];
         for (uint256 i = 0; i < literals.length; i++) {
             checkAgainstRule(literals[i]);
@@ -1049,7 +1049,7 @@ contract LibParseDecimalFloatTest is Test {
     /// many: an exponent padded past 78 digits is still the exponent it
     /// spells, and int256.min padded so is still int256.min.
     function testParseExponentLeadingZeros() external view {
-        string memory pad = zeros(100);
+        string memory pad = LibTestDecimalLiteral.zeroString(100);
         // "1e" + 100 zeros + "5" = 103.
         checkParseDecimalFloat(string.concat("1e", pad, "5"), 1, 5, 103);
         checkParseDecimalFloat(string.concat("1e-", pad, "5"), 1, -5, 104);

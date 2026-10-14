@@ -3,10 +3,13 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation, POW_FIXED_ONE} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    POW_FIXED_ONE
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
-import {MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LibExactFloat, U512} from "../../../lib/LibExactFloat.sol";
+import {MulDivOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationMulDivFixedTest is Test {
     /// The result q is the floor of x y / 1e50: q 1e50 <= x y < (q + 1) 1e50.

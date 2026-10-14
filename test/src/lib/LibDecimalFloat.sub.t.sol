@@ -2,8 +2,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {LibDecimalFloat, Float, ExponentOverflow} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibExactFloat} from "../../lib/LibExactFloat.sol";
+import {LibTestRegion} from "../../lib/LibTestRegion.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
@@ -70,13 +71,6 @@ contract LibDecimalFloatSubTest is Test {
         );
     }
 
-    /// `signedCoefficient` within `maxLift` exponents of the int32 floor.
-    function nearTheFloor(int224 signedCoefficient, uint256 lift, uint256 maxLift) internal pure returns (Float) {
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 exponent = int256(type(int32).min) + int256(bound(lift, 0, maxLift));
-        return LibDecimalFloat.packLossless(signedCoefficient, exponent);
-    }
-
     /// The documented rounding of the exact difference (#350), from a call
     /// that must not revert.
     function checkSubValue(Float a, Float b) internal view {
@@ -100,8 +94,8 @@ contract LibDecimalFloatSubTest is Test {
         external
         view
     {
-        Float a = nearTheFloor(coefficientA, liftA, 9);
-        Float b = nearTheFloor(coefficientB, liftB, 80);
+        Float a = LibDecimalFloat.packLossless(coefficientA, LibTestRegion.nearInt32Floor(liftA, 9));
+        Float b = LibDecimalFloat.packLossless(coefficientB, LibTestRegion.nearInt32Floor(liftB, 80));
         checkSubValue(a, b);
         checkSubValue(b, a);
     }

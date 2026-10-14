@@ -2,10 +2,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationMulTest is Test {
     function checkMul(
