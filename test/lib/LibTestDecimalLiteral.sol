@@ -3,8 +3,8 @@
 pragma solidity ^0.8.25;
 
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
-import {MalformedExponentDigits, MalformedDecimalPoint} from "src/error/ErrParse.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {MalformedExponentDigits, MalformedDecimalPoint} from "../../src/error/ErrParse.sol";
+import {LibExactFloat} from "./LibExactFloat.sol";
 
 /// A signed integer below 2^256 in magnitude, or `huge` past it with its sign.
 struct Wide {
@@ -35,14 +35,17 @@ struct Literal {
 /// Reads a decimal literal by its grammar, independent of the library's
 /// parser, into its exact value, and decides it by the documented rule.
 library LibTestDecimalLiteral {
+    /// Whether `s` has an ASCII decimal digit at `i`; false past its end.
     function isDigit(bytes memory s, uint256 i) internal pure returns (bool) {
         return i < s.length && s[i] >= "0" && s[i] <= "9";
     }
 
+    /// Whether `s` has the byte `c` at `i`; false past its end.
     function isAt(bytes memory s, uint256 i, bytes1 c) internal pure returns (bool) {
         return i < s.length && s[i] == c;
     }
 
+    /// `x` as a `Wide`, `type(int256).min` included.
     function fromInt(int256 x) internal pure returns (Wide memory) {
         return Wide(x < 0, LibExactFloat.abs(x), false);
     }
@@ -52,23 +55,25 @@ library LibTestDecimalLiteral {
         if (x.huge || d == 0) {
             return x;
         }
-        uint256 m = LibExactFloat.abs(d);
+        uint256 magnitude = LibExactFloat.abs(d);
         if (x.negative == (d < 0) || x.magnitude == 0) {
             unchecked {
-                uint256 sum = x.magnitude + m;
-                if (sum < m) {
+                uint256 sum = x.magnitude + magnitude;
+                if (sum < magnitude) {
                     return Wide(d < 0, 0, true);
                 }
                 return Wide(d < 0, sum, false);
             }
         }
-        if (x.magnitude >= m) {
-            uint256 diff = x.magnitude - m;
+        if (x.magnitude >= magnitude) {
+            uint256 diff = x.magnitude - magnitude;
             return Wide(diff != 0 && x.negative, diff, false);
         }
-        return Wide(!x.negative, m - x.magnitude, false);
+        return Wide(!x.negative, magnitude - x.magnitude, false);
     }
 
+    /// Whether `a` and `b` are the same value. A `huge` value equals nothing,
+    /// itself included, as its magnitude is not held.
     function eq(Wide memory a, Wide memory b) internal pure returns (bool) {
         return !a.huge && !b.huge && a.negative == b.negative && a.magnitude == b.magnitude;
     }
@@ -81,24 +86,29 @@ library LibTestDecimalLiteral {
         }
         // Below 2^200.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 v = int256(x.magnitude);
+        int256 value = int256(x.magnitude);
         // forge-lint: disable-next-line(boolean-cst)
-        return (true, x.negative ? -v : v);
+        return (true, x.negative ? -value : value);
     }
 
     /// The digits `s[from, to)` as a signed integer.
     function readInteger(bytes memory s, uint256 from, uint256 to, bool negative) internal pure returns (Wide memory) {
-        uint256 v = 0;
+        uint256 value = 0;
         for (uint256 i = from; i < to; i++) {
-            uint256 d = uint8(s[i]) - 48;
-            if (v > (type(uint256).max - d) / 10) {
+            uint256 digit = uint8(s[i]) - 48;
+            if (value > (type(uint256).max - digit) / 10) {
                 return Wide(negative, 0, true);
             }
-            v = v * 10 + d;
+            value = value * 10 + digit;
         }
-        return Wide(negative && v != 0, v, false);
+        return Wide(negative && value != 0, value, false);
     }
 
+    /// The literal at the start of `s`, by the grammar on `Literal`. A
+    /// malformed literal sets `malformed` to its error and `cursor` to where it
+    /// stopped, and carries no value: `negative` records a leading `-` and
+    /// every other field is zero. A well formed one sets `cursor` past it and
+    /// the rest of `Literal` to its exact value.
     function read(bytes memory s) internal pure returns (Literal memory lit) {
         uint256 i = 0;
         if (isAt(s, i, "-")) {
@@ -181,6 +191,7 @@ library LibTestDecimalLiteral {
         lit.keptExponent = addSmall(written, intLength - int256(first + keptCount));
     }
 
+    /// A copy of `s[from, to)`.
     function slice(bytes memory s, uint256 from, uint256 to) internal pure returns (bytes memory out) {
         out = new bytes(to - from);
         for (uint256 i = from; i < to; i++) {
@@ -188,6 +199,16 @@ library LibTestDecimalLiteral {
         }
     }
 
+    /// `length` ASCII zeros, for building literals with long zero runs.
+    function zeroString(uint256 length) internal pure returns (string memory) {
+        bytes memory out = new bytes(length);
+        for (uint256 i = 0; i < length; i++) {
+            out[i] = "0";
+        }
+        return string(out);
+    }
+
+    /// Whether the literal's value is zero.
     function isZero(Literal memory lit) internal pure returns (bool) {
         return lit.count == 0;
     }
@@ -237,12 +258,12 @@ library LibTestDecimalLiteral {
         if ((c < 0) != lit.negative || lit.count > 77) {
             return false;
         }
-        uint256 m = LibExactFloat.abs(c);
+        uint256 magnitude = LibExactFloat.abs(c);
         int256 zeros = 0;
-        while (m % 10 == 0) {
-            m /= 10;
+        while (magnitude % 10 == 0) {
+            magnitude /= 10;
             zeros++;
         }
-        return m == lit.kept && eq(addSmall(fromInt(e), zeros), lit.lastExponent);
+        return magnitude == lit.kept && eq(addSmall(fromInt(e), zeros), lit.lastExponent);
     }
 }

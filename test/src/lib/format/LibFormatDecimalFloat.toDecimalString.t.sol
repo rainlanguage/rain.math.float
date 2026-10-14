@@ -3,12 +3,13 @@
 pragma solidity =0.8.25;
 
 import {Test, stdError} from "forge-std-1.17.0/src/Test.sol";
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
-import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
-import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
-import {UnformatableExponent} from "src/error/ErrFormat.sol";
+import {Float, LibDecimalFloat} from "../../../../src/lib/LibDecimalFloat.sol";
+import {LibFormatDecimalFloat} from "../../../../src/lib/format/LibFormatDecimalFloat.sol";
+import {LibParseDecimalFloat} from "../../../../src/lib/parse/LibParseDecimalFloat.sol";
+import {UnformatableExponent} from "../../../../src/error/ErrFormat.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
+import {LibTestDecimalLiteral} from "../../../lib/LibTestDecimalLiteral.sol";
 
 /// @title LibFormatDecimalFloatToDecimalStringTest
 /// @notice Test contract for verifying the functionality of LibFormatDecimalFloat
@@ -77,20 +78,12 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
             );
         } else if (sigExponent >= 0) {
             // forge-lint: disable-next-line(unsafe-typecast)
-            body = string.concat(string(sig), zeros(uint256(sigExponent)));
+            body = string.concat(string(sig), LibTestDecimalLiteral.zeroString(uint256(sigExponent)));
         } else {
             // forge-lint: disable-next-line(unsafe-typecast)
             body = placeDecimalPoint(string(sig), uint256(-sigExponent));
         }
         return string.concat(negative ? "-" : "", body);
-    }
-
-    function zeros(uint256 n) internal pure returns (string memory) {
-        bytes memory z = new bytes(n);
-        for (uint256 i = 0; i < n; i++) {
-            z[i] = "0";
-        }
-        return string(z);
     }
 
     /// The oracle against hand-written renderings, so a defect in it cannot
@@ -483,7 +476,10 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     /// An integer past int224 formats in non-scientific mode.
     function testFormatNonScientificIntegerPastInt224() external pure {
         Float float = LibDecimalFloat.packLossless(1, 70);
-        assertEq(LibFormatDecimalFloat.toDecimalString(float, false), string.concat("1", zeros(70)));
+        assertEq(
+            LibFormatDecimalFloat.toDecimalString(float, false),
+            string.concat("1", LibTestDecimalLiteral.zeroString(70))
+        );
         checkFormatRoundTrip(float, false);
         assertEq(LibFormatDecimalFloat.toDecimalString(float, true), "1e70");
         checkFormatRoundTrip(float, true);
@@ -498,13 +494,19 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     function testFormatNonScientificCapBoundaries() external pure {
         int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
         Float float = LibDecimalFloat.packLossless(1, cap);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assertEq(LibFormatDecimalFloat.toDecimalString(float, false), string.concat("1", zeros(uint256(cap))));
+        assertEq(
+            LibFormatDecimalFloat.toDecimalString(float, false),
+            // forge-lint: disable-next-line(unsafe-typecast)
+            string.concat("1", LibTestDecimalLiteral.zeroString(uint256(cap)))
+        );
         checkFormatRoundTrip(float, false);
         checkFormatRoundTrip(LibDecimalFloat.packLossless(type(int224).min, cap), false);
         float = LibDecimalFloat.packLossless(1, -cap);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assertEq(LibFormatDecimalFloat.toDecimalString(float, false), string.concat("0.", zeros(uint256(cap - 1)), "1"));
+        assertEq(
+            LibFormatDecimalFloat.toDecimalString(float, false),
+            // forge-lint: disable-next-line(unsafe-typecast)
+            string.concat("0.", LibTestDecimalLiteral.zeroString(uint256(cap - 1)), "1")
+        );
         checkFormatRoundTrip(float, false);
         checkFormatRoundTrip(LibDecimalFloat.packLossless(type(int224).min, -cap), false);
     }
@@ -624,8 +626,11 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     function testFormatNonScientificExponentAtNegativeCap() external pure {
         int256 cap = LibFormatDecimalFloat.MAX_NON_SCIENTIFIC_EXPONENT;
         Float float = LibDecimalFloat.packLossless(1, -cap);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assertEq(LibFormatDecimalFloat.toDecimalString(float, false), string.concat("0.", zeros(uint256(cap - 1)), "1"));
+        assertEq(
+            LibFormatDecimalFloat.toDecimalString(float, false),
+            // forge-lint: disable-next-line(unsafe-typecast)
+            string.concat("0.", LibTestDecimalLiteral.zeroString(uint256(cap - 1)), "1")
+        );
     }
 
     /// Non-scientific format on the int224 signed range boundaries.
@@ -680,7 +685,10 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     /// `1e67` non-scientific is `1` and 67 zeros.
     function testFormatNonScientificAtIntDigitBoundary() external pure {
         Float float = LibDecimalFloat.packLossless(1, 67);
-        assertEq(LibFormatDecimalFloat.toDecimalString(float, false), string.concat("1", zeros(67)));
+        assertEq(
+            LibFormatDecimalFloat.toDecimalString(float, false),
+            string.concat("1", LibTestDecimalLiteral.zeroString(67))
+        );
         checkFormatRoundTrip(float, false);
     }
 
@@ -723,7 +731,7 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
             }
             return string.concat(string(integral), ".", string(fraction));
         }
-        return string.concat("0.", zeros(fractionDigits - d.length), digits);
+        return string.concat("0.", LibTestDecimalLiteral.zeroString(fractionDigits - d.length), digits);
     }
 
     /// The most negative coefficient formats as `-` and the digits of 2^223.
@@ -771,16 +779,16 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     /// 10^1000 is `1` and 1000 zeros, 10^-1000 is `0.`, 999 zeros and `1`,
     /// 10^-935 is `0.`, 934 zeros and `1`.
     function testFormatNonScientificCapOnCanonicalExponent() external {
-        string memory e1000 = string.concat("1", zeros(1000));
+        string memory e1000 = string.concat("1", LibTestDecimalLiteral.zeroString(1000));
         assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(1, 1000), false), e1000);
         assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(10, 999), false), e1000);
         assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(1e66, 934), false), e1000);
 
-        string memory eMinus1000 = string.concat("0.", zeros(999), "1");
+        string memory eMinus1000 = string.concat("0.", LibTestDecimalLiteral.zeroString(999), "1");
         assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(1, -1000), false), eMinus1000);
         assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(1e66, -1066), false), eMinus1000);
 
-        string memory eMinus935 = string.concat("0.", zeros(934), "1");
+        string memory eMinus935 = string.concat("0.", LibTestDecimalLiteral.zeroString(934), "1");
         assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(1, -935), false), eMinus935);
         assertEq(LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(1e66, -1001), false), eMinus935);
         assertEq(
@@ -805,7 +813,13 @@ contract LibFormatDecimalFloatToDecimalStringTest is Test {
     function testFormatNonScientificLongestOutput() external pure {
         string memory s =
             LibFormatDecimalFloat.toDecimalString(LibDecimalFloat.packLossless(type(int224).min, 1000), false);
-        assertEq(s, string.concat("-13479973333575319897333507543509815336818572211270286240551805124608", zeros(1000)));
+        assertEq(
+            s,
+            string.concat(
+                "-13479973333575319897333507543509815336818572211270286240551805124608",
+                LibTestDecimalLiteral.zeroString(1000)
+            )
+        );
         assertEq(bytes(s).length, 1069);
     }
 

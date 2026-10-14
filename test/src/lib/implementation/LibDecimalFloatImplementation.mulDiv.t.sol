@@ -3,9 +3,9 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {MulDivOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat, U512} from "../../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationMulDivTest is Test {
     function mulDivExternal(uint256 x, uint256 y, uint256 denominator) external pure returns (uint256) {

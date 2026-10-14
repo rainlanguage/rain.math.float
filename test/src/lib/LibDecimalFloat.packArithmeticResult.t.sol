@@ -3,8 +3,8 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {ExponentOverflow, ExponentUnderflow} from "../../../src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatPackArithmeticResultTest is Test {
     using LibDecimalFloat for Float;
