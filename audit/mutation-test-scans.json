@@ -1107,5 +1107,26 @@
       "testsAfter": 186,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-14T19:54:31Z",
+    "commit": "8b79ef9a7662f34b757a4bf0ff419b03ae5901c9",
+    "testsAfterCommit": "d81585266897087132ecbbab22d4ce17a9ca4f26",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 23,
+    "scope": "pr:710 (LibDecimalFloat audit) diff against PR #712's shared-threshold branch, probed on the branch merged with main and #712: floor and ceil zero guards and ceil's fraction arm (M01-M12), powUnrounded's top-bit break (M13-M16), agreeValidateTolerances' FLOAT_ZERO (M17-M19). Suite forge test --mc 'Pow|Agree|Floor|Ceil' at 256 fuzz runs (138 tests). Before = the suite as the PR stands, with none of this run's tests. Killed 15: the zero guards by the PR's testFloat{Floor,Ceil}ZeroBytesExamples (and testFloorExamples/testCeilExamples for the inverted guards), the deleted break by testPowSkipsUnusedFinalSquareGas alone (the break is gas-only by design), the early and forced breaks by the pow reference tests, the FLOAT_ONE zero by five agree tests. Equivalent 4, recorded in audit/known-false-positives.md: floor's guard narrowed to exponent >= 0 (packArithmeticResult(0, e) is FLOAT_ZERO, where ceil's same narrowing is killed through its fraction == 0 arm), break as continue, the agree zero from packLossless(0, 0) and at exponent one. Adversarial: the 1.7273e-76 agree excess bound re-derived from maximize and add (supremum 1/floor(int256.max/10) = 1.72723e-76, holds); abs dropped from the agree NatSpec revert claim holds (packNegated never reverts); a top-bit result past int128.max in exponent, the exposure the break hands downstream, pinned in testPowTopBitSquareRangeError with N = 2^98 - 1; zeroAt pinned by test/lib/LibTestFloatZero.t.sol so the floor/ceil zero tests cannot pass vacuously. After = the same match plus FloatZero at d815852 (139 tests). No candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 19,
+      "killedBefore": 15,
+      "killedAfter": 15,
+      "equivalent": 4,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 138,
+      "testsAfter": 139,
+      "filed": []
+    }
   }
 ]

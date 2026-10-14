@@ -1368,25 +1368,33 @@ contract LibDecimalFloatPowTest is Test {
     /// holds a^(2^97), past every Float on the same side of 1 as the base, so
     /// the range error is the one the final pack raises, reporting `a`,
     /// unchanged whatever the fraction of `b` and its sign.
+    ///
+    /// With every bit of N set, N = 2^98 - 1, the result a^N is about
+    /// 1e3.17e38: past int128.max in exponent, where the loop stops a base but
+    /// never a result. Only the fraction legs and the final pack see such a
+    /// result, and they raise the same error.
     function testPowTopBitSquareRangeError() external {
-        int256 n = int256(1) << 97;
+        int256[2] memory ns = [int256(1) << 97, (int256(1) << 98) - 1];
         Float big = LibDecimalFloat.packLossless(1, 1e9);
         Float small = LibDecimalFloat.packLossless(1, -1e9);
-        Float[4] memory bs = [
-            LibDecimalFloat.packLossless(n, 0),
-            LibDecimalFloat.packLossless(n * 10 + 5, -1),
-            LibDecimalFloat.packLossless(n * 100 + 25, -2),
-            LibDecimalFloat.packLossless(n * 100 + 75, -2)
-        ];
-        for (uint256 i = 0; i < bs.length; i++) {
-            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(1e9)));
-            this.powExternal(big, bs[i]);
-            vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(-1e9)));
-            this.powExternal(small, bs[i]);
-            vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(1e9)));
-            this.powExternal(big, bs[i].minus());
-            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(-1e9)));
-            this.powExternal(small, bs[i].minus());
+        for (uint256 j = 0; j < ns.length; j++) {
+            int256 n = ns[j];
+            Float[4] memory bs = [
+                LibDecimalFloat.packLossless(n, 0),
+                LibDecimalFloat.packLossless(n * 10 + 5, -1),
+                LibDecimalFloat.packLossless(n * 100 + 25, -2),
+                LibDecimalFloat.packLossless(n * 100 + 75, -2)
+            ];
+            for (uint256 i = 0; i < bs.length; i++) {
+                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(1e9)));
+                this.powExternal(big, bs[i]);
+                vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(-1e9)));
+                this.powExternal(small, bs[i]);
+                vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(1e9)));
+                this.powExternal(big, bs[i].minus());
+                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(-1e9)));
+                this.powExternal(small, bs[i].minus());
+            }
         }
     }
 

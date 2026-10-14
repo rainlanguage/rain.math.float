@@ -15,17 +15,10 @@ import {
     Exp10FixedOutOfRange,
     Log10ReduceOutOfRange,
     AbsCoefficientOverflow,
-    ScaleUpOutOfRange
+    ScaleUpOutOfRange,
+    WithTargetExponentOverflow,
+    UnabsExponentOverflow
 } from "../../error/ErrDecimalFloat.sol";
-
-/// @dev Thrown when attempting to rescale a coefficient to a target exponent
-error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
-
-/// @dev Thrown by `unabsUnsignedMulOrDivLossy` when a magnitude that does not
-/// fit int256 at the result's sign must shed a digit at exponent
-/// `type(int256).max`. `mul` and `div` revert `ExponentOverflow` before they
-/// pass it such an input.
-error UnabsExponentOverflow(int256 a, int256 b, uint256 signedCoefficientAbs, int256 exponent);
 
 /// @dev The maximum difference in exponents when adding to rescale.
 uint256 constant ADD_MAX_EXPONENT_DIFF = 76;
@@ -330,7 +323,12 @@ library LibDecimalFloatImplementation {
         }
     }
 
-    /// Stack only implementation of `mul`.
+    /// The exact product rounded once toward zero: formed in 512 bits and
+    /// truncated toward zero to an int256 coefficient, the digits dropped added
+    /// to the exponent. A zero factor returns `(0, 0)`. A result exponent below
+    /// `type(int256).min` sheds digits to reach it, and is `(0, 0)` once no
+    /// digit is left. A result exponent past `type(int256).max` reverts
+    /// `ExponentOverflow(signedCoefficientA, exponentA)`.
     /// @param signedCoefficientA The signed coefficient of the first operand.
     /// @param exponentA The exponent of the first operand.
     /// @param signedCoefficientB The signed coefficient of the second operand.
@@ -452,6 +450,12 @@ library LibDecimalFloatImplementation {
     /// `mul` for operands whose exponent sum is below `type(int256).min`. The
     /// product is taken with each exponent 2^254 higher, then moved back down,
     /// shedding the digits that do not fit above the floor.
+    /// @param signedCoefficientA The signed coefficient of the first operand.
+    /// @param exponentA The exponent of the first operand.
+    /// @param signedCoefficientB The signed coefficient of the second operand.
+    /// @param exponentB The exponent of the second operand.
+    /// @return signedCoefficient The signed coefficient of the product.
+    /// @return exponent The exponent of the product.
     function mulExponentBelowFloor(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -486,6 +490,12 @@ library LibDecimalFloatImplementation {
     /// - n in [1, 76]: the lift is at most n + 1 <= 77.
     /// - n = 77: q <= floor(2^510 / 1e77) < 3.36e76 < 2^255 - 1, so q fits
     ///   int256 at either sign and the lift is 77.
+    /// @param signedCoefficientA The signed coefficient of the first operand.
+    /// @param exponentA The exponent of the first operand.
+    /// @param signedCoefficientB The signed coefficient of the second operand.
+    /// @param exponentB The exponent of the second operand.
+    /// @return signedCoefficient The signed coefficient of the product.
+    /// @return exponent The exponent of the product.
     function mulExponentNearCeiling(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -561,7 +571,10 @@ library LibDecimalFloatImplementation {
     /// int256 does not hold, sheds its last digit. Where `ua - lb` is below
     /// `type(int256).min` the quotient truncates at `type(int256).min`, and is
     /// `(0, 0)` if no digit is left there. Above `type(int256).max` it reverts
-    /// `ExponentOverflow`.
+    /// `ExponentOverflow` carrying the dividend after `maximize` and the
+    /// exponent adjustment, not the caller's input: `div(1, 1000, 3,
+    /// type(int256).min)` reverts `ExponentOverflow(1e76, 924)`. A zero divisor
+    /// reverts `DivisionByZero` with the dividend as passed.
     /// @param signedCoefficientA The signed coefficient of the dividend.
     /// @param exponentA The exponent of the dividend.
     /// @param signedCoefficientB The signed coefficient of the divisor.
@@ -614,8 +627,10 @@ library LibDecimalFloatImplementation {
             // The result exponent is exponentA - adjustExponent - exponentB.
             // Lowering exponentA and raising exponentB move it alike, so
             // what exponentA cannot take above int256.min goes to exponentB.
-            // If exponentB cannot take the rest below int256.max, the return
-            // is the `underflowExponentBy > 76` zero below: exponentA is
+            // That rest is at least 1: the else branch has the non-negative
+            // exponentA - int256.min below adjustExponent. If exponentB
+            // cannot take it below int256.max, the return is the
+            // `underflowExponentBy > 76` zero below: exponentA is
             // int256.min, so headroom is 0 and underflowExponentBy would be
             // exponentB + adjustExponent > int256.max. Returning here skips
             // the mulDiv, and adding instead would wrap exponentB.
@@ -626,12 +641,10 @@ library LibDecimalFloatImplementation {
                     adjustExponent -= exponentA - type(int256).min;
                     exponentA = type(int256).min;
 
-                    if (adjustExponent > 0) {
-                        if (exponentB <= type(int256).max - adjustExponent) {
-                            exponentB += adjustExponent;
-                        } else {
-                            return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
-                        }
+                    if (exponentB <= type(int256).max - adjustExponent) {
+                        exponentB += adjustExponent;
+                    } else {
+                        return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT);
                     }
                 }
             }
