@@ -242,7 +242,7 @@ fn spec_names_every_error() {
                 .find('(')
                 .unwrap_or_else(|| panic!("{}: `{line}`", path.display()))];
             assert!(
-                SPEC.contains(&format!("`{name}")),
+                SPEC.contains(&format!("`{name}(")) || SPEC.contains(&format!("`{name}`")),
                 "{name} ({}) has no rule in SPEC.md",
                 path.display()
             );
