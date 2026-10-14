@@ -253,10 +253,10 @@ contract LibDecimalFloatAgreeTest is Test {
     /// that so the natspec claim cannot drift silently.
     ///
     /// The real spread of `-1e-100` and `1` is `1 + 1e-100`, which needs 101
-    /// significant digits against the coefficient's 76. The subtraction
-    /// discards the small term, the spread reads as exactly `1`, and a limit of
-    /// `1` is therefore met. An exact comparison would refuse all three of
-    /// these.
+    /// significant digits against the 77 the coefficient holds for `1`. The
+    /// subtraction discards the small term, the spread reads as exactly `1`,
+    /// and a limit of `1` is therefore met. An exact comparison would refuse
+    /// all three of these.
     function testAgreeBoundaryExactOnlyToRepresentablePrecision() external pure {
         // A proportional tolerance of 1 against an anchor of 1 is a limit of 1.
         assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(-1, -100), f(1, 0)));
@@ -364,6 +364,29 @@ contract LibDecimalFloatAgreeTest is Test {
         // Well inside precision the same shape is still accepted, because the
         // spread is genuinely below the limit rather than rounded to it.
         assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(1, -60), f(1, 0)));
+    }
+
+    /// The excess a boundary spread admits is under one unit in the last
+    /// place of the truncated spread, whose coefficient `add` holds above
+    /// `type(int256).max / 10`. So the excess reaches past `1e-76` of the
+    /// spread for a leading digit from 6, and stays under
+    /// `1 / (type(int256).max / 10)`, which is under `1.7273e-76`.
+    function testAgreeBoundaryExcessBound() external pure {
+        // 6 is held as 6e75 at -75, so 9e-76 is under a unit and dropped.
+        assertTrue(LibDecimalFloat.agree(f(6, 0), f(0, 0), f(-9, -76), f(6, 0)), "6 + 9e-76 not accepted");
+        // In units of 1e-76 the exact spread is 6e76 + 9 and the excess 9.
+        assertGt(uint256(9) * 1e76, uint256(6e76) + 9, "excess not past 1e-76 of the spread");
+        // excess / spread < 1.7273e-76 if (spread / 1e4) * 17273 > excess * 1e76.
+        assertGt((uint256(6e76) + 9) / 1e4 * 17273, uint256(9) * 1e76, "excess not under 1.7273e-76 of the spread");
+        // 5.8 is held as 58e74 at -75: the excess 1e-75 - 1e-142 is about
+        // 1.724e-76 of it.
+        assertTrue(
+            LibDecimalFloat.agree(f(58, -1), f(0, 0), f(-(1e67 - 1), -142), f(58, -1)), "5.8 + 1e-75 not accepted"
+        );
+        // 1 / (int256.max / 10) is under 1.7273e-76: (int256.max / 10 / 1e4) * 17273 > 1e76.
+        assertGt(
+            uint256(type(int256).max / 10) / 1e4 * 17273, uint256(1e76), "1 / (int256.max / 10) not under 1.7273e-76"
+        );
     }
 
     /// A refusal is always sound. Truncation only ever reduces the spread's

@@ -940,11 +940,9 @@ library LibDecimalFloat {
         if (fraction == 0) {
             return float;
         }
-        // Truncate the fractional part when exponent < 0:
-        //   fraction < 0 (input < 0) → truncation towards zero increases the value (correct ceil).
-        //   fraction == 0 → value is already an integer.
-        //   fraction > 0 (input > 0) → truncation decreases the value, so add 1 to round up.
-        else if (fraction > 0) {
+        // Truncation is the ceiling of a negative value and one below that of a
+        // positive one.
+        if (fraction > 0) {
             (i, exponent) = LibDecimalFloatImplementation.add(i, exponent, 1e76, -76);
         }
 
@@ -1002,7 +1000,8 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// The base-10 logarithm of `a`.
+    /// The base-10 logarithm of `a`. A zero `a` reverts `Log10Zero` and a
+    /// negative `a` reverts `Log10Negative(c, e)` with `a` unpacked.
     /// @param a The float to log10.
     /// @return The base-10 logarithm of a, rounded to nearest at 41
     /// significant digits, within half a unit in the 41st digit plus 1.0037e-50
@@ -1014,7 +1013,7 @@ library LibDecimalFloat {
     function log10(Float a) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = a.unpack();
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.log10(signedCoefficient, exponent);
-        // We don't care if log10 is lossy because it's an approximation anyway.
+        // The rounded log has at most 41 digits, so it packs exactly.
         Float result = packArithmeticResult(signedCoefficient, exponent);
         return result;
     }
@@ -1083,8 +1082,8 @@ library LibDecimalFloat {
     /// Exact results stay exact: a power with at most 41 significant digits,
     /// integer or fractional such as 4^0.5.
     ///
-    /// Doesn't lose precision due to the exponent, for a wide range of
-    /// exponents.
+    /// a^0 is 1 for every a, 0^0 included; 0^b is 0 for b > 0; 1^b is 1 for
+    /// every b. A zero `a` with a negative `b` reverts `ZeroNegativePower(b)`.
     ///
     /// A negative `a` is supported only for a whole `b`, where the result is
     /// `(-a)^b` with the sign of `a` kept when `b` is odd. A negative `a` with a
@@ -1103,6 +1102,12 @@ library LibDecimalFloat {
     /// `pow` before rounding and packing, so a negative base and an odd power
     /// are negated unpacked: int224.min at int32.max has no packed negation.
     /// `input` is the `a` pow was called with, which range errors report.
+    /// @param signedCoefficientA The coefficient of `a`.
+    /// @param exponentA The exponent of `a`.
+    /// @param b The power.
+    /// @param input The `a` pow was called with, reported by range errors.
+    /// @return The unrounded power's coefficient.
+    /// @return The unrounded power's exponent.
     //slither-disable-next-line cyclomatic-complexity
     function powUnrounded(int256 signedCoefficientA, int256 exponentA, Float b, Float input)
         private
@@ -1219,6 +1224,14 @@ library LibDecimalFloat {
                     );
                 }
                 exponentBInteger >>= 1;
+                // The square after the top bit would never be used. Where it
+                // would trip the guards below, the result already holds the
+                // base being squared, on the same side of 1 as every factor,
+                // so it is past every Float and packing raises the same range
+                // error.
+                if (exponentBInteger == 0) {
+                    break;
+                }
                 (signedCoefficientBase, exponentBase) = LibDecimalFloatImplementation.mul(
                     signedCoefficientBase, exponentBase, signedCoefficientBase, exponentBase
                 );
@@ -1260,6 +1273,12 @@ library LibDecimalFloat {
 
     /// a^(N+½) as the root of a^(2N+1), from a^N in `signedCoefficientResult`
     /// and `exponentResult`.
+    /// @param signedCoefficientResult The coefficient of a^N.
+    /// @param exponentResult The exponent of a^N.
+    /// @param signedCoefficientA The coefficient of `a`.
+    /// @param exponentA The exponent of `a`.
+    /// @return The root's coefficient.
+    /// @return The root's exponent.
     function powHalf(int256 signedCoefficientResult, int256 exponentResult, int256 signedCoefficientA, int256 exponentA)
         private
         pure
@@ -1291,6 +1310,10 @@ library LibDecimalFloat {
     /// Rounds to 41 significant digits and packs, as `packArithmeticResult`
     /// with range errors reporting `input`. A rounding that carries above the
     /// largest Float packs the unrounded value instead.
+    /// @param signedCoefficient The unrounded coefficient.
+    /// @param exponent The unrounded exponent.
+    /// @param input The call's input, reported by range errors.
+    /// @return The rounded, packed Float.
     function packRoundedSignificant(int256 signedCoefficient, int256 exponent, Float input)
         private
         pure
@@ -1326,6 +1349,8 @@ library LibDecimalFloat {
 
     /// The range error of a result past every Float, reporting the call's
     /// input.
+    /// @param over True for `ExponentOverflow`, false for `ExponentUnderflow`.
+    /// @param input The call's input, reported by the error.
     function revertPast(bool over, Float input) private pure {
         (int256 signedCoefficient, int256 exponent) = input.unpack();
         if (over) {
@@ -1340,6 +1365,9 @@ library LibDecimalFloat {
     /// above it is past int224.max 10^int32.max. The comparison is on the
     /// magnitude, so both signs share it. A pow, pow10 or
     /// div result is never int256.min, whose checked negation would panic.
+    /// @param signedCoefficient The result's coefficient.
+    /// @param exponent The result's exponent.
+    /// @param input The call's input, reported by the error.
     function revertIfPastLargestFloat(int256 signedCoefficient, int256 exponent, Float input) private pure {
         if (signedCoefficient < 0) {
             signedCoefficient = -signedCoefficient;
@@ -1351,11 +1379,19 @@ library LibDecimalFloat {
         }
     }
 
+    /// Whether the unpacked value equals one.
+    /// @param signedCoefficient The coefficient.
+    /// @param exponent The exponent.
+    /// @return Whether the value is one.
     function isOne(int256 signedCoefficient, int256 exponent) private pure returns (bool) {
         (int256 signedCoefficientOne, int256 exponentOne) = FLOAT_ONE.unpack();
         return LibDecimalFloatImplementation.eq(signedCoefficient, exponent, signedCoefficientOne, exponentOne);
     }
 
+    /// Whether the unpacked value is below one.
+    /// @param signedCoefficient The coefficient.
+    /// @param exponent The exponent.
+    /// @return Whether the value is below one.
     function isBelowOne(int256 signedCoefficient, int256 exponent) private pure returns (bool) {
         (int256 signedCoefficientOne, int256 exponentOne) = FLOAT_ONE.unpack();
         return LibDecimalFloatImplementation.lt(signedCoefficient, exponent, signedCoefficientOne, exponentOne);
@@ -1426,7 +1462,7 @@ library LibDecimalFloat {
     /// NOTHING IS PACKED BACK INTO A `Float` before the comparison, which is
     /// the reason this cannot be composed from the public surface. That
     /// surface reverts `ExponentOverflow` rather than truncating an exponent,
-    /// and both `abs` and `sub` do so on the extremes of the range: a set
+    /// and `sub` does so on the extremes of the range: a set
     /// spanning the most negative to the most positive representable value has
     /// a spread that no packed value can hold. A closeness test asked about
     /// representable values should answer, not revert.
@@ -1437,15 +1473,17 @@ library LibDecimalFloat {
     /// above the limit, and the spread as computed lands
     /// exactly on the limit, this returns true where an exact comparison would
     /// return false. `agree(0, 1, -1e-100, 1)` is such a case: the real spread
-    /// is `1 + 1e-100`, needing 101 significant digits against the
-    /// coefficient's 76, so `sub` returns exactly `1` and `1 <= 1` holds.
+    /// is `1 + 1e-100`, needing 101 significant digits against the 77 the
+    /// coefficient holds for `1`, so `sub` returns exactly `1` and `1 <= 1`
+    /// holds.
     ///
     /// That is the rounding every other operation here performs, and `sub`
     /// reports the same spread as exactly `1` when asked directly. Resolving
     /// the boundary the other way would put this function at odds with the
     /// library's own arithmetic. The excess it admits is bounded by one unit in
-    /// the last place of the aligned coefficient, so a spread accepted at the
-    /// boundary exceeds the limit by less than `1e-76` of its own magnitude.
+    /// the last place of the aligned coefficient, which is above
+    /// `type(int256).max / 10`, so a spread accepted at the boundary exceeds
+    /// the limit by less than `1.7273e-76` of its own magnitude.
     ///
     /// NEITHER TOLERANCE MAY BE NEGATIVE, and AT LEAST ONE MUST BE POSITIVE.
     /// Both are rejected here rather than given a meaning, and rejected here
@@ -1493,7 +1531,7 @@ library LibDecimalFloat {
     /// @param absolute The absolute tolerance.
     /// @param proportional The proportional tolerance.
     function agreeValidateTolerances(Float absolute, Float proportional) private pure {
-        Float zero = packLossless(0, 0);
+        Float zero = FLOAT_ZERO;
         if (lt(absolute, zero) || lt(proportional, zero)) {
             revert AgreeToleranceNegative(absolute, proportional);
         }
@@ -1506,8 +1544,8 @@ library LibDecimalFloat {
     ///
     /// Split out of `agree` because holding the four unpacked values and the
     /// intermediates in one frame exceeds the stack.
-    /// @param lowest The lowest value.
-    /// @param highest The highest value.
+    /// @param lowest One extreme, in either order.
+    /// @param highest The other extreme.
     /// @return The spread's coefficient.
     /// @return The spread's exponent.
     function agreeSpread(Float lowest, Float highest) private pure returns (int256, int256) {
@@ -1529,8 +1567,8 @@ library LibDecimalFloat {
 
     /// The quantity the proportional tolerance is taken of: the larger
     /// magnitude of the two extremes.
-    /// @param lowest The lowest value.
-    /// @param highest The highest value.
+    /// @param lowest One extreme, in either order.
+    /// @param highest The other extreme.
     /// @return The anchor's coefficient, non-negative.
     /// @return The anchor's exponent.
     function agreeAnchor(Float lowest, Float highest) private pure returns (int256, int256) {
@@ -1549,8 +1587,8 @@ library LibDecimalFloat {
     /// tolerance and the proportional tolerance of the anchor.
     /// @param absolute The absolute tolerance.
     /// @param proportional The proportional tolerance.
-    /// @param lowest The lowest value.
-    /// @param highest The highest value.
+    /// @param lowest One extreme, in either order.
+    /// @param highest The other extreme.
     /// @return The limit's coefficient.
     /// @return The limit's exponent.
     function agreeLimit(Float absolute, Float proportional, Float lowest, Float highest)
