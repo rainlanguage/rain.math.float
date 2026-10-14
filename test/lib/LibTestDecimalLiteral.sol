@@ -199,6 +199,15 @@ library LibTestDecimalLiteral {
         }
     }
 
+    /// `length` ASCII zeros, for building literals with long zero runs.
+    function zeroString(uint256 length) internal pure returns (string memory) {
+        bytes memory out = new bytes(length);
+        for (uint256 i = 0; i < length; i++) {
+            out[i] = "0";
+        }
+        return string(out);
+    }
+
     /// Whether the literal's value is zero.
     function isZero(Literal memory lit) internal pure returns (bool) {
         return lit.count == 0;

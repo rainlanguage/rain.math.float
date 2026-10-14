@@ -75,6 +75,13 @@ library LibExactFloat {
         return (x.hi, x.lo);
     }
 
+    /// Whether `x × 10^d` is above `m^2`, compared in 512 bits.
+    function pastMidpoint(uint256 x, uint256 d, uint256 m) internal pure returns (bool) {
+        (uint256 xHigh, uint256 xLow) = mulWords(x, 10 ** d);
+        (uint256 mHigh, uint256 mLow) = mulWords(m, m);
+        return xHigh > mHigh || (xHigh == mHigh && xLow > mLow);
+    }
+
     /// Checked: a product at or above 2^512 panics rather than wrapping.
     function mulSmall(U512 memory x, uint256 m) internal pure returns (U512 memory) {
         (uint256 carry, uint256 lo) = mulWords(x.lo, m);
@@ -1190,6 +1197,12 @@ library LibExactFloat {
             return 35;
         }
         revert("prime");
+    }
+
+    /// One of the primes `log10Prime` and `maxPower` know, picked by `seed`.
+    function seededPrime(uint256 seed) internal pure returns (uint256) {
+        uint256[3] memory primes = [uint256(2), 3, 7];
+        return primes[seed % 3];
     }
 
     /// ln(1 + u) / u at `ORACLE_ONE` for u = d / 10^p, negated when `negative`,
