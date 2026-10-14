@@ -228,6 +228,25 @@ fn sol_files(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 /// Every error `src` declares has a rule in SPEC.md, by name, so no revert
 /// path ships unruled.
+/// The identifier declared by an `error` line, from the text after `error `.
+fn declared_error_name(decl: &str) -> Option<&str> {
+    let decl = decl.trim_start();
+    let end = decl
+        .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+        .unwrap_or(decl.len());
+    (end > 0).then(|| &decl[..end])
+}
+
+/// The declared name is the identifier after `error `, wherever its
+/// parameter list starts.
+#[test]
+fn declared_error_name_reads_the_identifier() {
+    assert_eq!(declared_error_name("Foo(uint256 a);"), Some("Foo"));
+    assert_eq!(declared_error_name("Foo"), Some("Foo"));
+    assert_eq!(declared_error_name("  Foo_2 (uint256 a);"), Some("Foo_2"));
+    assert_eq!(declared_error_name("(uint256 a);"), None);
+}
+
 #[test]
 fn spec_names_every_error() {
     let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../src");
@@ -238,9 +257,8 @@ fn spec_names_every_error() {
             let Some(decl) = line.trim_start().strip_prefix("error ") else {
                 continue;
             };
-            let name = &decl[..decl
-                .find('(')
-                .unwrap_or_else(|| panic!("{}: `{line}`", path.display()))];
+            let name =
+                declared_error_name(decl).unwrap_or_else(|| panic!("{}: `{line}`", path.display()));
             assert!(
                 SPEC.contains(&format!("`{name}(")) || SPEC.contains(&format!("`{name}`")),
                 "{name} ({}) has no rule in SPEC.md",
