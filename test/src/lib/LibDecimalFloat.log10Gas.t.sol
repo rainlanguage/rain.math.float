@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
 
 /// Logs the gas of packed log10 on each `log10Ratio` path.
 contract LibDecimalFloatLog10GasTest is Test {

@@ -17,14 +17,17 @@ use proptest::prelude::*;
 use proptest::test_runner::TestCaseError;
 use serde_json::{Value, json};
 
+/// The harness's result, or its revert as `Fail::Harness`.
 fn harness<C: SolCall>(c: C) -> Sol<C::Return> {
     evm::harness(c).map_err(Fail::Harness)
 }
 
+/// A BigInt as an alloy int256, which it must fit.
 fn i256(v: &BigInt) -> I256 {
     I256::from_dec_str(&v.to_string()).unwrap()
 }
 
+/// An alloy int256 as a BigInt.
 fn big(v: I256) -> BigInt {
     v.to_string().parse().unwrap()
 }
@@ -34,6 +37,7 @@ fn in_python_range(e: &BigInt) -> bool {
     e.abs() < BigInt::from(1_000_000_000_000_000i64)
 }
 
+/// A coefficient and exponent as the oracle's pair, the exponent pinned.
 fn py_pair(c: &BigInt, e: &BigInt) -> Value {
     json!([c.to_string(), r::pin(e)])
 }
@@ -89,6 +93,8 @@ fn int256_exponent() -> BoxedStrategy<BigInt> {
     .boxed()
 }
 
+/// A tolerance: mostly a non-negative Float, sometimes zero, sometimes any
+/// Float.
 fn tolerance() -> BoxedStrategy<Dec> {
     prop_oneof![
         4 => x::float().prop_map(|a| a.abs()).prop_filter("int224", |a| r::fits_int224(&a.c)),
@@ -200,6 +206,7 @@ fn judge_py<V: PartialEq + std::fmt::Debug>(
     Ok(())
 }
 
+/// The oracle's answer: its `ok` read by `ok`, or its `err` name.
 fn py_result<V>(py: &Value, ok: impl Fn(&Value) -> V) -> Result<V, String> {
     match (&py["ok"], py["err"].as_str()) {
         (_, Some(e)) => Err(e.to_string()),
@@ -215,6 +222,7 @@ fn norm(d: &Dec) -> (BigInt, i64) {
     (n.c, n.e)
 }
 
+/// The oracle's packing `op` on the pair, where its exponent is in range.
 fn py_pack(c: &BigInt, e: &BigInt, op: &str) -> Option<Value> {
     in_python_range(e).then(|| ask(json!({"op": op, "a": py_pair(c, e)})))
 }
@@ -258,6 +266,8 @@ fn check_pack_lossy(c: &BigInt, e: &BigInt) -> Result<(), TestCaseError> {
     check_pack_lossy_with(c, e, py_pack(c, e, "pack"), sol)
 }
 
+/// `check_pack_lossy` on answers already obtained; the oracle's underflow
+/// reads as zero, lossy.
 fn check_pack_lossy_with(
     c: &BigInt,
     e: &BigInt,
@@ -310,6 +320,7 @@ fn check_packed(
     }
 }
 
+/// `packLossless`: the reference's value, or its error.
 fn check_pack_lossless(c: &BigInt, e: &BigInt) -> Result<(), TestCaseError> {
     check_packed(
         &format!("packLossless({c}, {e})"),
@@ -323,6 +334,7 @@ fn check_pack_lossless(c: &BigInt, e: &BigInt) -> Result<(), TestCaseError> {
     )
 }
 
+/// `packArithmeticResult`: the reference's value, or its error.
 fn check_pack_arithmetic(c: &BigInt, e: &BigInt) -> Result<(), TestCaseError> {
     check_packed(
         &format!("packArithmeticResult({c}, {e})"),
@@ -336,6 +348,7 @@ fn check_pack_arithmetic(c: &BigInt, e: &BigInt) -> Result<(), TestCaseError> {
     )
 }
 
+/// The harness's `canonicalize`.
 fn canonical(a: alloy::primitives::B256) -> Sol<alloy::primitives::B256> {
     harness(H::canonicalizeCall { float: a })
 }
@@ -384,6 +397,7 @@ fn check_canonical_pair(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
     Ok(())
 }
 
+/// `agree`: the reference's answer or error, from the harness and the oracle.
 fn check_agree(
     absolute: &Dec,
     proportional: &Dec,
@@ -406,6 +420,7 @@ fn check_agree(
     check_agree_with([absolute, proportional, lowest, highest], py, sol)
 }
 
+/// `check_agree` on answers already obtained.
 fn check_agree_with(args: [&Dec; 4], py: Value, sol: Sol<bool>) -> Result<(), TestCaseError> {
     let [absolute, proportional, lowest, highest] = args;
     let case = format!(
@@ -420,6 +435,7 @@ fn check_agree_with(args: [&Dec; 4], py: Value, sol: Sol<bool>) -> Result<(), Te
     judge(&case, sol, want)
 }
 
+/// `isOdd`: the reference's answer, from the harness and the oracle.
 fn check_is_odd(a: &Dec) -> Result<(), TestCaseError> {
     let py = ask(json!({"op": "is_odd", "a": oracle::float(a)}));
     check_is_odd_with(
@@ -431,6 +447,7 @@ fn check_is_odd(a: &Dec) -> Result<(), TestCaseError> {
     )
 }
 
+/// `check_is_odd` on answers already obtained.
 fn check_is_odd_with(a: &Dec, py: Value, sol: Sol<bool>) -> Result<(), TestCaseError> {
     let case = format!("isOdd({})", show(a));
     let want = Ok(r::is_odd(a));
@@ -472,6 +489,8 @@ fn check_from_fixed_unpacked_with(
     )
 }
 
+/// The unpacked `toFixedDecimalLossy` and `toFixedDecimalLossless`: the
+/// reference's results, the oracle's too where the exponent is in its range.
 fn check_to_fixed_unpacked(c: &BigInt, e: &BigInt, decimals: u8) -> Result<(), TestCaseError> {
     let py = in_python_range(e)
         .then(|| ask(json!({"op": "to_fixed_lossy", "a": py_pair(c, e), "decimals": decimals})));
@@ -488,6 +507,7 @@ fn check_to_fixed_unpacked(c: &BigInt, e: &BigInt, decimals: u8) -> Result<(), T
     check_to_fixed_unpacked_with(c, e, decimals, py, lossy, lossless)
 }
 
+/// `check_to_fixed_unpacked` on answers already obtained.
 fn check_to_fixed_unpacked_with(
     c: &BigInt,
     e: &BigInt,
@@ -559,6 +579,7 @@ fn same_number(c: &BigInt, e: &BigInt, d: &BigInt, f: &BigInt) -> bool {
     strip(c, e) == strip(d, f)
 }
 
+/// `check_parse_entry_points` on answers already obtained.
 fn check_parse_entry_points_with(
     lit: &str,
     suffix: &str,
@@ -646,6 +667,7 @@ proptest! {
     #![proptest_config(config())]
 
     #[test]
+    /// Every packing mode over every int256 coefficient and exponent.
     fn library_pack(c in int256_coefficient(), e in int256_exponent()) {
         check_pack_lossy(&c, &e)?;
         check_pack_lossless(&c, &e)?;
@@ -653,30 +675,39 @@ proptest! {
     }
 
     #[test]
+    /// `canonicalize` over every Float.
     fn library_canonicalize(a in x::float()) { check_canonicalize(&a)?; }
 
     #[test]
+    /// Canonical bytes of related pairs are equal iff the values are.
     fn library_canonical_pair((a, b) in x::pair()) { check_canonical_pair(&a, &b)?; }
 
     #[test]
+    /// `agree` over `agree_args`.
     fn library_agree((absolute, proportional, lowest, highest) in agree_args()) {
         check_agree(&absolute, &proportional, &lowest, &highest)?;
     }
 
     #[test]
+    /// `agree` over `agree_args` with the extremes swapped.
     fn library_agree_reversed((absolute, proportional, lowest, highest) in agree_args()) {
         check_agree(&absolute, &proportional, &highest, &lowest)?;
     }
 
     #[test]
+    /// `isOdd` over every Float.
     fn library_is_odd(a in x::float()) { check_is_odd(&a)?; }
 
     #[test]
+    /// The unpacked `fromFixedDecimal` conversions over every uint256 and
+    /// decimals.
     fn library_from_fixed_unpacked(value in x::u256(), decimals in any::<u8>()) {
         check_from_fixed_unpacked(value, decimals)?;
     }
 
     #[test]
+    /// The unpacked `toFixedDecimal` conversions over int256 fields, the
+    /// exponent also near zero.
     fn library_to_fixed_unpacked(
         c in int256_coefficient(),
         e in prop_oneof![int256_exponent(), (-90i64..=90).prop_map(BigInt::from)],
@@ -686,14 +717,17 @@ proptest! {
     }
 
     #[test]
+    /// `toDecimalString` over every Float.
     fn library_to_decimal_string(a in x::float()) { check_to_decimal_string(&a)?; }
 
     #[test]
+    /// Both parse entry points over every literal and suffix.
     fn library_parse(lit in x::literal(), suffix in suffix()) {
         check_parse_entry_points(&lit, &suffix)?;
     }
 }
 
+/// A check as a plain test: its failure is the panic.
 fn run(r: Result<(), TestCaseError>) {
     if let Err(e) = r {
         panic!("{e}");
@@ -1742,4 +1776,56 @@ fn library_parse_exponent_wrap() {
         run(check_parse_entry_points(&lit, ""));
         run(check_parse_entry_points(&lit, " x"));
     }
+}
+
+// ----------------------------------------------------------------- coverage
+
+/// Every internal function of the three libraries has a wrapper on one of the
+/// concretes, by its own name or the rename listed, so every call the source
+/// has is reachable from these tests.
+#[test]
+fn concretes_expose_every_library_function() {
+    const RENAMED: [(&str, &str); 2] = [
+        ("fromFixedDecimalLossyPacked", "fromFixedDecimalLossy"),
+        ("fromFixedDecimalLosslessPacked", "fromFixedDecimalLossless"),
+    ];
+    // The name and header of each function `source` declares as a member, at
+    // a member's indentation so the word in NatSpec prose does not count.
+    fn declared(source: &'static str) -> impl Iterator<Item = (&'static str, &'static str)> {
+        source
+            .match_indices("\n    function ")
+            .map(move |(at, decl)| {
+                let rest = &source[at + decl.len()..];
+                let header = &rest[..rest.find(['{', ';']).unwrap()];
+                (&header[..header.find('(').unwrap()], header)
+            })
+    }
+    let exposed: std::collections::BTreeSet<&str> =
+        declared(include_str!("../../../test/concrete/TestDecimalFloat.sol"))
+            .chain(declared(include_str!(
+                "../../../test/concrete/TestDecimalFloatHarness.sol"
+            )))
+            .map(|(name, _)| name)
+            .collect();
+    let mut internal = 0;
+    for library in [
+        include_str!("../../../src/lib/LibDecimalFloat.sol"),
+        include_str!("../../../src/lib/format/LibFormatDecimalFloat.sol"),
+        include_str!("../../../src/lib/parse/LibParseDecimalFloat.sol"),
+    ] {
+        let is_internal = |header: &str| header.split_whitespace().any(|word| word == "internal");
+        for (name, header) in declared(library).filter(|(_, header)| is_internal(header)) {
+            let wrapper = RENAMED
+                .iter()
+                .find(|(from, _)| *from == name)
+                .map_or(name, |(_, to)| *to);
+            assert!(
+                exposed.contains(wrapper),
+                "{name} has no wrapper: {}",
+                header.split_whitespace().collect::<Vec<_>>().join(" ")
+            );
+            internal += 1;
+        }
+    }
+    assert!(internal > 0);
 }

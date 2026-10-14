@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibHalmosExact} from "test/halmos/LibHalmosExact.sol";
+import {LibHalmosExact} from "./LibHalmosExact.sol";
 
 /// Halmos: the hint filters the add/sub lemmas return on are true for every
 /// input they are given, so those lemmas exclude nothing by them.

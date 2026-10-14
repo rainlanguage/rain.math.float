@@ -2,9 +2,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
-import {LibHalmosExact} from "test/halmos/LibHalmosExact.sol";
+import {LibDecimalFloat, Float} from "../../src/lib/LibDecimalFloat.sol";
+import {ExponentOverflow, ExponentUnderflow} from "../../src/error/ErrDecimalFloat.sol";
+import {LibHalmosExact} from "./LibHalmosExact.sol";
 
 /// Lemma PACK of the add/sub proof (see `AddSubRoundOnce.halmos.t.sol`).
 ///

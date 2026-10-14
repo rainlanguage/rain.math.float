@@ -3,10 +3,10 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {DivisionByZero} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {LibDecimalFloat, Float, ExponentUnderflow} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {DivisionByZero} from "../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat} from "../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatInvTest is Test {
     using LibDecimalFloat for Float;

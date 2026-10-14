@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibHalmosExact} from "test/halmos/LibHalmosExact.sol";
+import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibHalmosExact} from "./LibHalmosExact.sol";
 
 /// Halmos proof that `LibDecimalFloat.add` and `sub` return the exact sum
 /// rounded once toward zero, then packed (#350, #434, #436), for every pair of
@@ -47,6 +47,9 @@ import {LibHalmosExact} from "test/halmos/LibHalmosExact.sol";
 /// 10^e strictly between |c| 10^e and (|c| + 1) 10^e, which none is, or f < e,
 /// so m 10^f <= 2^223 10^(e - 1) <= |c| 10^e, not above it. So T(S) =
 /// T(c 10^e), unbounded exponents included, and PACK makes that the result.
+///
+/// MINUS (#513) and NEAR (#512) are not yet proved under CI's 5-minute limit
+/// per run and are out of its matrix, so the composition is open there.
 contract AddSubRoundOnceHalmosTest {
     /// floor(int256.max / 10).
     uint256 internal constant T10 = uint256(type(int256).max) / 10;
@@ -87,6 +90,7 @@ contract AddSubRoundOnceHalmosTest {
 
     /// MINUS, split by the digit counts of ca and -cb (j = 77 for zero), one
     /// pair per path. Every int256 has one j in [0, 77].
+    /// Unproven under the 5-minute limit, not in the CI matrix: see #513.
     function check_subIsAddNegated(int224 cb, int256 ca, int256 ea, int256 eb, uint256 jaBits, uint256 jbBits)
         external
         view
@@ -196,6 +200,7 @@ contract AddSubRoundOnceHalmosTest {
     /// for every maximized B, so |yb| <= T10 drops none, and `Impl.add`'s
     /// B mod 10 is zero by construction (solvers time out deducing it from
     /// B mod 10^8 == 0).
+    /// Unproven under the 5-minute limit, not in the CI matrix: see #512.
     function check_addNear(int256 a, int256 yb, int256 eB, uint256 dBits, bool swap) external view {
         uint256 d = LibHalmosExact.concrete(dBits, 7);
         if (d > 76 || !LibHalmosExact.inSlice(d)) return;

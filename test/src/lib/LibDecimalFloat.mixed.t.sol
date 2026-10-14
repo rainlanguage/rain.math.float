@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {THREES_PACKED} from "../../lib/LibCommonResults.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibCommonResults} from "../../lib/LibCommonResults.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
@@ -16,7 +16,7 @@ contract LibDecimalFloatMixedTest is Test {
         Float b = LibDecimalFloat.packLossless(3, 0);
         Float c = a.div(b);
         (int256 signedCoefficientDiv, int256 exponentDiv) = LibDecimalFloat.unpack(c);
-        assertEq(signedCoefficientDiv, THREES_PACKED, "coefficient");
+        assertEq(signedCoefficientDiv, LibCommonResults.THREES_PACKED, "coefficient");
         assertEq(exponentDiv, -67, "exponent");
 
         Float d = c.mul(LibDecimalFloat.packLossless(555, 18));

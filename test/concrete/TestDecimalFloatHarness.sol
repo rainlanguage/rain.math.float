@@ -2,10 +2,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
-import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloat, Float} from "../../src/lib/LibDecimalFloat.sol";
+import {LibFormatDecimalFloat} from "../../src/lib/format/LibFormatDecimalFloat.sol";
+import {LibParseDecimalFloat} from "../../src/lib/parse/LibParseDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 /// The library functions `TestDecimalFloat` does not expose, each by its own
 /// name.
