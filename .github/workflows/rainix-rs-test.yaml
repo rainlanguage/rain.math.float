@@ -2,4 +2,21 @@ name: rainix-rs-test
 on: [push]
 jobs:
   rs-test:
-    uses: rainlanguage/rainix/.github/workflows/rainix-rs-test.yaml@main
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      # The same nix + cachix preamble and rust cache as rainix's reusable
+      # rainix-rs-test.yaml, which this job replaces.
+      - uses: rainlanguage/rainix/.github/actions/nix-cachix-setup@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          gc-max-store-size-macos: 1G
+      - uses: rainlanguage/rainix/.github/actions/rust-cache@main
+      # This repo's own dev shell, not rainix#rust-shell: crates/tests needs
+      # the python3 the flake adds (test/oracle/decimal_oracle.py) and the
+      # solc it inherits, so CI and local runs share one environment, pinned by
+      # this repo's flake.lock.
+      - run: nix develop -c cargo test
