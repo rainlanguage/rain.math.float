@@ -6,14 +6,14 @@ pragma solidity ^0.8.25;
 /// reaches, for region-weighted fuzzes beside the full-domain ones.
 library LibTestRegion {
     /// An exponent within 76 of `exponent`, the window where comparisons
-    /// rescale: `exponent + d` for `d = offset % 77`, or `exponent - d` where
-    /// `exponent + d` leaves int256.
+    /// rescale: `exponent + delta` for `delta = offset % 77`, or
+    /// `exponent - delta` where `exponent + delta` leaves int256.
     function nearExponent(int256 exponent, int256 offset) internal pure returns (int256) {
-        int256 d = offset % 77;
-        if ((d > 0 && exponent > type(int256).max - d) || (d < 0 && exponent < type(int256).min - d)) {
-            d = -d;
+        int256 delta = offset % 77;
+        if ((delta > 0 && exponent > type(int256).max - delta) || (delta < 0 && exponent < type(int256).min - delta)) {
+            delta = -delta;
         }
-        return exponent + d;
+        return exponent + delta;
     }
 
     /// `signedCoefficient` with `drop % 77` low digits dropped, so the digit
