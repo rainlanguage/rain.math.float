@@ -15,7 +15,10 @@ import {
     AgreeToleranceNegative,
     AgreeNoPositiveTolerance
 } from "../error/ErrDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImplementation.sol";
+import {
+    LibDecimalFloatImplementation,
+    INT256_MAX_POW10_EXPONENT
+} from "./implementation/LibDecimalFloatImplementation.sol";
 
 /// A decimal floating point number packed into 32 bytes. The high 32 bits are
 /// a signed int32 exponent; the low 224 bits are a signed int224 coefficient.
@@ -960,7 +963,7 @@ library LibDecimalFloat {
         // An integer part past int256 is over 5.7e76, far past the range on
         // the side of its sign.
         if (
-            exponent > 76
+            exponent > INT256_MAX_POW10_EXPONENT
                 || (exponent > 0
                     // exponent is in [1, 76] here, so 10 ** exponent fits int256.
                     // forge-lint: disable-next-line(unsafe-typecast)
@@ -1166,7 +1169,7 @@ library LibDecimalFloat {
                     // but 1 is at least 1e-67 from it, so |b log10(a)| is over
                     // 2.5e9: the power is past the range, on the side a is of 1.
                     if (
-                        exponentB > 76
+                        exponentB > INT256_MAX_POW10_EXPONENT
                             || (exponentB > 0
                                 // forge-lint: disable-next-line(unsafe-typecast)
                                 && signedCoefficientB > type(int256).max / int256(10 ** uint256(exponentB)))
@@ -1179,7 +1182,7 @@ library LibDecimalFloat {
                         // forge-lint: disable-next-line(unsafe-typecast)
                         exponentBInteger *= 10 ** uint256(exponentB);
                     }
-                } else if (exponentB >= -76) {
+                } else if (exponentB >= -INT256_MAX_POW10_EXPONENT) {
                     // forge-lint: disable-next-line(unsafe-typecast)
                     int256 unit = int256(10 ** uint256(-exponentB));
                     fractionB = signedCoefficientB % unit;
