@@ -86,3 +86,16 @@ branch runs only under `nonZeroCursor != fracStart`, so there
 input (both offsets are memory addresses far below 2^255, so the difference does
 not wrap). Negating the guard to `exponent < 0` is not equivalent: it reverts on
 every fraction with a nonzero digit, and the parse suite kills it.
+
+## Equivalent mutant: `parseDecimalFloat` assembly without `memory-safe`
+
+`src/lib/parse/LibParseDecimalFloat.sol`, `parseDecimalFloat`. Removing the
+`("memory-safe")` annotation from the block that computes `start` and `end`
+changes nothing: the annotation is a promise to the compiler about how the block
+uses memory, not an operation. The block reads the string's length word and adds
+offsets; it writes nothing, so the promise is true, and the EVM semantics of the
+block are the same with or without it. The annotation only widens the
+optimizer's freedom (the stack-to-memory mover may use scratch space in a
+function whose blocks are all memory-safe), which no test can observe: every
+return value and every revert of the function is a pure function of the input
+string either way.
