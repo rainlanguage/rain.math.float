@@ -436,8 +436,8 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         checkBothModes(1e50 - z, 1e50 + z, -expected, -75);
     }
 
-    /// zSquared is Z = 2^102 5^17 + 1e10, so the z^6 product term Z, about
-    /// Z^3 / 1e50, is just past 5 2^256 and past a word: the z^6 term comes
+    /// zSquared is Z = 2^102 5^17 + 1e10, so the z^6 product, term times Z,
+    /// about Z^3 / 1e50, is just past 5 2^256 and past a word: the z^6 term comes
     /// from the 2^50 split, with low part v = 1e10. Reference from `bc -l` at
     /// scale 200.
     function testLog10RatioZSixthProductPastAWord() external pure {
