@@ -418,8 +418,9 @@ library LibDecimalFloat {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 if (uint256(signedCoefficient + tenFold) <= uint256(tenFold + tenFold)) {
                     int256 boundExponent = exponent - 1;
-                    // Below the int32 floor the bound is skipped and the floor
-                    // path below keeps shedding.
+                    // Outside the int32 range the bound is skipped: below the
+                    // floor the floor path below keeps shedding, and above the
+                    // ceiling the value is past every Float.
                     // forge-lint: disable-next-line(unsafe-typecast)
                     if (int32(boundExponent) == boundExponent) {
                         int256 bound = type(int224).max;
@@ -457,13 +458,16 @@ library LibDecimalFloat {
                         revert ExponentOverflow(initialSignedCoefficient, initialExponent);
                     }
                     // Not past, so nothing was shed: a shed coefficient reaching
-                    // here is at least int224.max / 10 + 1 at int32.max + 1 or
-                    // beyond, and one that took the bound above returned. The
-                    // excess is in [1, 67], as a non-zero coefficient at a
-                    // higher one is past, so the power fits int256. Lifting
-                    // multiplies by ten per step, which is exact, and the
-                    // product fits int224: it is a multiple of ten below
-                    // 2^223 + 2 in magnitude, so at most 2^223 - 8.
+                    // here is either above int224.max / 10 at int32.max + 1 or
+                    // beyond, or at most that at int32.max + 2 or beyond, where
+                    // the bound is skipped and the value is at least
+                    // int224.max * 10^(int32.max + 1); both are past, and one
+                    // that took the bound above returned. The excess is in
+                    // [1, 67], as a non-zero coefficient at a higher one is
+                    // past, so the power fits int256. Lifting multiplies by ten
+                    // per step, which is exact, and the product fits int224: it
+                    // is a multiple of ten below 2^223 + 2 in magnitude, so at
+                    // most 2^223 - 8.
                     // forge-lint: disable-next-line(unsafe-typecast)
                     signedCoefficient = initialSignedCoefficient * int256(10 ** uint256(exponent - type(int32).max));
                     exponent = type(int32).max;
@@ -1340,20 +1344,16 @@ library LibDecimalFloat {
             LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
         // The rounded coefficient is at most 1e41, so it packs without overflow
         // at an exponent up to int32.max. Above it, only a carry can leave the
-        // unrounded value packable: when the rounded value cannot lift, the
-        // unrounded one is packed. Past an excess of 67 neither can lift.
+        // unrounded value packable: when the rounded value is past every Float,
+        // the unrounded one is packed. Past an excess of 67 neither can lift,
+        // so only the rounded value is checked there.
         int256 excess = roundedExponent - type(int32).max;
         if (excess > 0) {
-            if (excess <= 67) {
-                // excess is in [1, 67] so the casts cannot truncate.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                int256 scale = int256(10 ** uint256(excess));
-                if (roundedCoefficient > type(int224).max / scale || roundedCoefficient < type(int224).min / scale) {
-                    // Above int32.max this cannot underflow.
-                    revertIfPastLargestFloat(signedCoefficient, exponent, input);
-                    (Float unrounded,) = packLossy(signedCoefficient, exponent);
-                    return unrounded;
-                }
+            if (excess <= 67 && isPastEveryFloat(roundedCoefficient, roundedExponent)) {
+                // Above int32.max this cannot underflow.
+                revertIfPastLargestFloat(signedCoefficient, exponent, input);
+                (Float unrounded,) = packLossy(signedCoefficient, exponent);
+                return unrounded;
             }
             revertIfPastLargestFloat(roundedCoefficient, roundedExponent, input);
         }
