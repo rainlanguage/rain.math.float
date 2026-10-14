@@ -27,8 +27,9 @@ import {LibDecimalFloatImplementation} from "./implementation/LibDecimalFloatImp
 /// pack to different `bytes32`. Equality between Floats is therefore numeric
 /// (via `eq`, which rescales before comparing), not byte-level. `packLossy`
 /// does not strip trailing decimal zeros from the coefficient; it only
-/// shrinks the coefficient when it does not fit int224, or when the exponent
-/// is below int32.min and shedding digits is the only way to reach the floor.
+/// changes the coefficient when it does not fit int224, when the exponent is
+/// below int32.min and shedding digits is the only way to reach the floor, or
+/// when the exponent is above int32.max and multiplying by ten lowers it.
 /// This is deliberate:
 /// canonicalization is not free on the arithmetic hot path, and most
 /// operations do not care. Consumers that need a canonical form (raw-byte
@@ -147,15 +148,14 @@ library LibDecimalFloat {
         }
     }
 
-    /// Same as fromFixedDecimalLossy, but returns a Float struct instead of
-    /// separate values.
+    /// Same as fromFixedDecimalLossy, but returns a Float instead of separate
+    /// values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
     /// @param value The fixed point decimal value to convert.
     /// @param decimals The number of decimals in the fixed point representation.
     /// e.g. If 1e18 represents 1 this would be 18 decimals.
-    /// @return float The Float struct containing the signed coefficient and
-    /// exponent.
+    /// @return float The Float containing the signed coefficient and exponent.
     /// @return lossless `true` if the conversion is lossless.
     function fromFixedDecimalLossyPacked(uint256 value, uint8 decimals) internal pure returns (Float, bool) {
         (int256 signedCoefficient, int256 exponent, bool lossless) = fromFixedDecimalLossy(value, decimals);
@@ -184,8 +184,7 @@ library LibDecimalFloat {
     /// it. No value of a uint256 at most 255 decimals is past every Float.
     /// @param value As per `fromFixedDecimalLossyPacked`.
     /// @param decimals As per `fromFixedDecimalLossyPacked`.
-    /// @return float The Float struct containing the signed coefficient and
-    /// exponent.
+    /// @return float The Float containing the signed coefficient and exponent.
     function fromFixedDecimalLosslessPacked(uint256 value, uint8 decimals) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = fromFixedDecimalLossless(value, decimals);
         return packLossless(signedCoefficient, exponent);
@@ -291,12 +290,11 @@ library LibDecimalFloat {
         }
     }
 
-    /// Same as toFixedDecimalLossy, but accepts a Float struct instead of
-    /// separate values.
+    /// Same as toFixedDecimalLossy, but accepts a Float instead of separate
+    /// values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
-    /// @param float The Float struct containing the signed coefficient and
-    /// exponent.
+    /// @param float The Float containing the signed coefficient and exponent.
     /// @param decimals The number of decimals in the fixed point representation.
     /// e.g. If 1e18 represents 1 this would be 18 decimals.
     /// @return value The fixed point decimal value.
@@ -306,8 +304,10 @@ library LibDecimalFloat {
         return toFixedDecimalLossy(signedCoefficient, exponent, decimals);
     }
 
-    /// Lossless version of `toFixedDecimalLossy`. This will revert if the
-    /// conversion is lossy.
+    /// Lossless version of `toFixedDecimalLossy`. Any truncation reverts
+    /// `LossyConversionFromFloat(signedCoefficient, exponent)`; the
+    /// `NegativeFixedDecimalConversion` and `FixedDecimalOverflow` reverts of
+    /// `toFixedDecimalLossy` apply unchanged.
     /// @param signedCoefficient As per `toFixedDecimalLossy`.
     /// @param exponent As per `toFixedDecimalLossy`.
     /// @param decimals As per `toFixedDecimalLossy`.
@@ -324,12 +324,11 @@ library LibDecimalFloat {
         return value;
     }
 
-    /// Same as toFixedDecimalLossless, but accepts a Float struct instead of
-    /// separate values.
+    /// Same as toFixedDecimalLossless, but accepts a Float instead of separate
+    /// values.
     /// Costs more gas but helps mitigate stack depth issues, and is more
     /// ergonomic for the caller.
-    /// @param float The Float struct containing the signed coefficient and
-    /// exponent.
+    /// @param float The Float containing the signed coefficient and exponent.
     /// @param decimals The number of decimals in the fixed point representation.
     /// e.g. If 1e18 represents 1 this would be 18 decimals.
     /// @return value The fixed point decimal value.
@@ -562,6 +561,13 @@ library LibDecimalFloat {
     /// case when `lossless` is false (digit shedding stops at int32.min with a
     /// non-zero coefficient whenever one is reachable, so a zero from a
     /// non-zero input means every digit was shed and the magnitude is gone).
+    /// Reverts `ExponentOverflow(signedCoefficient, exponent)` as `packLossy`
+    /// does, for a value past every Float, and
+    /// `ExponentUnderflow(signedCoefficient, exponent)` when a non-zero value
+    /// packs to `FLOAT_ZERO`.
+    /// @param signedCoefficient As per `packLossy`.
+    /// @param exponent As per `packLossy`.
+    /// @return The packed Float, as `packLossy` returns it.
     function packArithmeticResult(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless && Float.unwrap(c) == bytes32(0)) {
@@ -570,8 +576,10 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Unpack a packed bytes32 into a signed coefficient and exponent. This is
-    /// the inverse of `pack`.
+    /// Unpack a Float into its coefficient, sign-extended from the low 224
+    /// bits, and its exponent, from the high 32 bits. Never reverts. For every
+    /// `f` with a non-zero coefficient, `packLossy(unpack(f))` is byte-equal
+    /// to `f`.
     /// @param float The packed representation of the signed coefficient and
     /// exponent.
     /// @return signedCoefficient The signed coefficient of the floating point
@@ -625,9 +633,7 @@ library LibDecimalFloat {
         return packLossless(signedCoefficient, exponent);
     }
 
-    /// Same as add, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
+    /// Adds `a` and `b`.
     ///
     /// The result is the exact sum rounded once towards zero: the closest
     /// Float that does not exceed it in magnitude, as every arithmetic result
@@ -636,10 +642,13 @@ library LibDecimalFloat {
     /// - `1e100 + -1` is `(1e67 - 1)e33`.
     /// - `1 + -1e-100` is `0.` then 67 nines.
     /// - `1e100 + -(1e33 + 1)` is `1e100 - 2e33`.
-    /// @param a The Float struct containing the signed coefficient and
-    /// exponent of the first floating point number.
-    /// @param b The Float struct containing the signed coefficient and
-    /// exponent of the second floating point number.
+    ///
+    /// A sum past every Float reverts `ExponentOverflow`, reporting the
+    /// unpacked sum handed to packing. No sum of two Floats is below every
+    /// Float: each is a whole multiple of 1e-2147483648, so a non-zero sum is
+    /// at least that in magnitude and packing never underflows.
+    /// @param a The first summand.
+    /// @param b The second summand.
     /// @return The sum of the two floats.
     function add(Float a, Float b) internal pure returns (Float) {
         (int256 signedCoefficientA, int256 exponentA) = a.unpack();
@@ -660,6 +669,10 @@ library LibDecimalFloat {
     /// negation of int224.min as int224.max: `-int224.max - int224.min` is
     /// `1`, where `-int224.max + minus(int224.min)` is `0`.
     /// `1 - 1e-100` is `0.` then 67 nines, and `1 - (-1e-100)` is `1`.
+    ///
+    /// A difference past every Float reverts `ExponentOverflow`, reporting
+    /// the unpacked sum handed to packing. As for `add`, no difference of two
+    /// Floats is below every Float, so packing never underflows.
     /// @param a The float to subtract from.
     /// @param b The float to subtract.
     /// @return The difference of the two floats (a - b).
@@ -675,9 +688,9 @@ library LibDecimalFloat {
     }
 
     /// Negates a float. The negation is packed as `packLossy` packs any value,
-    /// so it is exact at the same exponent for every coefficient but
+    /// so it is exact at the same exponent for every non-zero coefficient but
     /// int224.min, whose negation 2^223 is no int224 and packs as int224.max.
-    /// Never reverts.
+    /// Zero at any exponent is `FLOAT_ZERO`. Never reverts.
     /// @param float The float to negate.
     /// @return The negated float.
     function minus(Float float) internal pure returns (Float) {
@@ -686,7 +699,8 @@ library LibDecimalFloat {
     }
 
     /// Returns the absolute value of a float.
-    /// Identity if non-negative, `minus` if negative. Never reverts.
+    /// Identity if positive, `FLOAT_ZERO` for zero at any exponent, `minus` if
+    /// negative. Never reverts.
     ///
     /// https://speleotrove.com/decimal/daops.html#refabs
     /// > abs takes one operand. If the operand is negative, the result is the
@@ -707,6 +721,9 @@ library LibDecimalFloat {
 
     /// `minus` of an unpacked float, packed. A negation that fits int224 packs
     /// directly, as an unpacked exponent fits int32.
+    /// @param signedCoefficient The unpacked coefficient to negate.
+    /// @param exponent The unpacked exponent, an int32.
+    /// @return float The packed negation.
     function packNegated(int256 signedCoefficient, int256 exponent) private pure returns (Float float) {
         unchecked {
             // An int224 negates in int256 without overflow.
@@ -781,9 +798,9 @@ library LibDecimalFloat {
 
     /// The multiplicative inverse, `1 / float`, as `div` of one by `float`.
     /// No inverse is past every Float: the least magnitude, 1e-2147483648,
-    /// inverts to 10 10^int32.max, so packing never overflows.
-    /// A zero `float` reverts `DivisionByZero`. Both errors report `float`,
-    /// unpacked.
+    /// inverts to 10 × 10^int32.max, so packing never overflows. An inverse
+    /// below every non-zero Float reverts `ExponentUnderflow`, and a zero
+    /// `float` reverts `DivisionByZero`. Both errors report `float`, unpacked.
     /// @param float The float to invert.
     /// @return The multiplicative inverse (1 / float).
     function inv(Float float) internal pure returns (Float) {
@@ -800,9 +817,9 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Same as eq, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
+    /// Numeric equality for floats: true iff the two values are equal,
+    /// whatever their representations, so zero at one exponent equals zero
+    /// at any other. Exact for every pair; never reverts.
     /// @param a The first float to compare.
     /// @param b The second float to compare.
     /// @return True if the two floats are numerically equal.
@@ -935,11 +952,8 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Same as `pow10`, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
-    /// @param float The Float struct containing the signed coefficient and
-    /// exponent of the floating point number.
+    /// Ten to the power of `float`.
+    /// @param float The exponent to raise ten to.
     /// @return The result of 10^float, rounded to nearest at 41 significant
     /// digits, within half a unit in the 41st digit plus 1.12e-8 of a unit,
     /// under 5.00000012e-41 relative. A result below 1e-2147483608 sheds digits
@@ -988,9 +1002,7 @@ library LibDecimalFloat {
         return c;
     }
 
-    /// Same as log10, but accepts a Float struct instead of separate values.
-    /// Costs more gas but helps mitigate stack depth issues, and is more
-    /// ergonomic for the caller.
+    /// The base-10 logarithm of `a`.
     /// @param a The float to log10.
     /// @return The base-10 logarithm of a, rounded to nearest at 41
     /// significant digits, within half a unit in the 41st digit plus 1.0037e-50

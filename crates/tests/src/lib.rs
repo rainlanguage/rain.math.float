@@ -6,6 +6,8 @@
 #[cfg(test)]
 mod constants;
 #[cfg(test)]
+mod differential;
+#[cfg(test)]
 mod evm;
 #[cfg(test)]
 mod exact;

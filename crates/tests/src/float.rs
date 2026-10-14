@@ -298,9 +298,11 @@ fn test_parse_empty_string_error() {
 
 #[test]
 fn test_parse_exponent_overflow_error() {
-    // Extremely large exponent expected to overflow (exponent >> i32::MAX).
+    // Extremely large exponent expected to overflow (exponent >> i32::MAX),
+    // returned by value rather than reverted (#510).
     let err = Float::parse("1e3000000000".to_string()).unwrap_err();
-    assert!(matches!(err, Fail::Revert(e) if matches!(*e, Errors::ExponentOverflow(_))));
+    let want = RefError::ExponentOverflow.selector();
+    assert!(matches!(err, Fail::Selector(s) if s.0 == want), "{err:?}");
 }
 
 /// Malformed inputs ("1.2.3", "abc") return specific error selectors.

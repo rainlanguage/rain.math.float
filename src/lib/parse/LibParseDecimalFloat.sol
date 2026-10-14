@@ -33,12 +33,12 @@ library LibParseDecimalFloat {
     /// optional `-`, digits, optionally `.` and digits, and optionally `e` or
     /// `E`, an optional `+` or `-`, and digits. The cursor stops after it.
     /// Returns the literal's exact value as `signedCoefficient × 10^exponent`,
-    /// in no particular representation. A literal that is not exactly a Float
-    /// may instead return, with zeros and the cursor after the literal,
-    /// `ExponentOverflow` when it is at least `(2^223 + 2) × 10^int32.max` in
-    /// magnitude, where `packLossy` overflows, and `ParseDecimalPrecisionLoss`
-    /// otherwise, the band below that past the largest Float of a sign
-    /// included. A literal without integer digits is `ParseEmptyDecimalString`,
+    /// in no particular representation. A literal at least
+    /// `(2^223 + 2) × 10^int32.max` in magnitude, where `packLossy` overflows,
+    /// instead returns `ExponentOverflow`, with zeros and the cursor after the
+    /// literal. Any other literal that is not exactly a Float may instead
+    /// return `ParseDecimalPrecisionLoss` likewise, the band below that past
+    /// the largest Float of a sign included. A literal without integer digits is `ParseEmptyDecimalString`,
     /// a `.` without digits `MalformedDecimalPoint` and an `e` without digits
     /// `MalformedExponentDigits`, each with the cursor where it stopped.
     /// @param start The starting index of the substring (inclusive).
@@ -200,6 +200,18 @@ library LibParseDecimalFloat {
                     }
                     exponent = newExponent;
                 }
+                // Only an e-notation exponent reaches the overflow threshold.
+                if (
+                    exponent > type(int32).max - 10 && signedCoefficient != 0
+                        && isPastOverflowThreshold(
+                            // int256.min negates to itself, which casts to 2^255.
+                            // forge-lint: disable-next-line(unsafe-typecast)
+                            uint256(signedCoefficient < 0 ? -signedCoefficient : signedCoefficient),
+                            exponent
+                        )
+                ) {
+                    return (ExponentOverflow.selector, cursor, 0, 0);
+                }
             }
 
             if (signedCoefficient == 0) {
@@ -207,6 +219,31 @@ library LibParseDecimalFloat {
                 // floats follow the behaviour of packed floats.
                 exponent = 0;
             }
+        }
+    }
+
+    /// @notice Whether `magnitude × 10^exponent` is at least
+    /// `(2^223 + 2) × 10^int32.max`, where `packLossy` overflows. At an
+    /// exponent of `int32.max - 10` or below even 2^255 is under it.
+    /// @param magnitude A nonzero magnitude, at most 2^255.
+    /// @param exponent The exponent, above `int32.max - 10`.
+    /// @return Whether the value is at or past the threshold.
+    function isPastOverflowThreshold(uint256 magnitude, int256 exponent) private pure returns (bool) {
+        unchecked {
+            // exponent > int32.max - 10, so this does not wrap.
+            int256 excess = exponent - type(int32).max;
+            // 10^68 is past 2^223 + 2.
+            if (excess > 67) {
+                return true;
+            }
+            if (excess >= 0) {
+                // m × 10^x >= t iff m > floor((t - 1) / 10^x).
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return magnitude > (2 ** 223 + 1) / 10 ** uint256(excess);
+            }
+            // excess is in [-9, -1], so the product is below 2^256.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return magnitude >= (2 ** 223 + 2) * 10 ** uint256(-excess);
         }
     }
 
@@ -255,6 +292,9 @@ library LibParseDecimalFloat {
 
             bool isNegative = LibParseChar.isMask(start, end, CMASK_NEGATIVE_SIGN) == 1;
             if (digitCount <= 77 && magnitude <= uint256(type(int256).max) + (isNegative ? 1 : 0)) {
+                if (exponent > type(int32).max - 10 && isPastOverflowThreshold(magnitude, exponent)) {
+                    return (ExponentOverflow.selector, cursor, 0, 0);
+                }
                 // magnitude is at most 2^255, which casts to int256.min and
                 // negates to itself.
                 // forge-lint: disable-next-line(unsafe-typecast)
@@ -445,9 +485,8 @@ library LibParseDecimalFloat {
         // packLossy handles the two exponent-overflow directions differently:
         // - Positive exponent overflow is first met by lifting the
         //   coefficient to lower the exponent to int32.max (e.g.
-        //   1e2147483648 is 10e2147483647). Only when the coefficient
-        //   has no headroom left does packLossy revert with
-        //   ExponentOverflow, as there is no meaningful approximation.
+        //   1e2147483648 is 10e2147483647). Every value it would revert
+        //   ExponentOverflow on returned that selector above.
         // - Negative exponent overflow is first met by shedding trailing
         //   digits of the coefficient to lift the exponent to int32.min
         //   (e.g. 10e-2147483649 is 1e-2147483648, which packs
