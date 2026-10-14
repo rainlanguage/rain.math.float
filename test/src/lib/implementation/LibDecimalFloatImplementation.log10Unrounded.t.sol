@@ -236,15 +236,16 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
     }
 
     /// #699: 578960446186580977117854925 is the largest k with k 1e50 in
-    /// int256, and 5789604461865809771178549250 the largest with k 1e49, each
-    /// 0.0434 under `type(int256).max` at that unit, so log10 3 = 0.47712...
-    /// carries and `add` sheds a digit: the sum truncated toward zero to 1e-49
-    /// and 1e-48. 57896044618658097711785492 1e51 is 0.5043 under it, so
-    /// log10 4 = 0.60206... carries to 1e-50, where the correction is exact.
-    /// Each coefficient is k plus log10 3 or log10 4 from `bc -l` at scale
-    /// 120, truncated. The first value past the bound on each side is
-    /// rejected: one unit less, and above, two units more where two
-    /// corrections map to adjacent grid points, else one.
+    /// int256, 0.0434 under `type(int256).max` at that unit, and
+    /// 5789604461865809771178549250 the largest with k 1e49, 0.434 under it,
+    /// so log10 3 = 0.47712... carries in both and `add` sheds a digit: the
+    /// sum truncated toward zero to 1e-49 and 1e-48.
+    /// 57896044618658097711785492 1e51 is 0.5043 under it, so log10 4 =
+    /// 0.60206... carries to 1e-50, where the correction is exact. Each
+    /// coefficient is k plus log10 3 or log10 4 from `bc -l` at scale 120,
+    /// truncated. The first value past the bound on each side is rejected:
+    /// one unit less, and above, two units more where two corrections map to
+    /// adjacent grid points, else one.
     function testLog10UnroundedAddCarry() external pure {
         int256[2][3] memory inputs = [
             [int256(3), 578960446186580977117854925],
@@ -434,6 +435,31 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         assertTrue(absoluteOk(18, 0, truncated + 1, -50), "nearest above");
         assertFalse(absoluteOk(18, 0, truncated - 1, -50), "1.0271 below");
         assertFalse(absoluteOk(18, 0, truncated + 2, -50), "1.9729 above");
+    }
+
+    /// The oracle is within 1e-67, so a correction up to that past the bound
+    /// of the log is still taken, and one further is not. Each log is from
+    /// `bc -l` at scale 130. 1.9952...e76 at -75 has log 1.3 less 1.0037e-50
+    /// and 5e-68, so the correction 3e49 is 5e-68 past the bound of the log
+    /// and within 2.35e-68 to 7.65e-68 past the oracle's: taken, and the
+    /// result still is. 3.9810...e76 at -75 has log 1.6 less 1.0037e-50 and
+    /// 1.5e-67, so 6e49 is at least 1.235e-67 past the oracle's: rejected.
+    /// Either way the corrections 0.0037 above and 0.9963 below are taken and
+    /// 1.9963 below is not.
+    function testLog10UnroundedAbsoluteOracleError() external pure {
+        int256 taken = 19952623149688796013524553967395355579862743154052999866296163324547314936180;
+        checkAbsolute(taken, -75);
+        assertTrue(absoluteOk(taken, -75, 1.3e50, -50), "5e-68 past the bound");
+        assertFalse(absoluteOk(taken, -75, 1.3e50 + 1, -50), "2.0037 above");
+        assertTrue(absoluteOk(taken, -75, 1.3e50 - 1, -50), "0.0037 above");
+        assertTrue(absoluteOk(taken, -75, 1.3e50 - 2, -50), "0.9963 below");
+        assertFalse(absoluteOk(taken, -75, 1.3e50 - 3, -50), "1.9963 below");
+        int256 rejected = 39810717055349725077025230508775204348767703729737124619192229862208754183584;
+        checkAbsolute(rejected, -75);
+        assertFalse(absoluteOk(rejected, -75, 1.6e50, -50), "1.5e-67 past the bound");
+        assertTrue(absoluteOk(rejected, -75, 1.6e50 - 1, -50), "0.0037 above");
+        assertTrue(absoluteOk(rejected, -75, 1.6e50 - 2, -50), "0.9963 below");
+        assertFalse(absoluteOk(rejected, -75, 1.6e50 - 3, -50), "1.9963 below");
     }
 
     /// The raw log of 1.4482...e0 is 0.99988e-50 below its log from `bc -l`
