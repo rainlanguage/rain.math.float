@@ -26,6 +26,10 @@ contract TestDecimalFloatHarness {
         return LibDecimalFloat.isPastEveryFloat(magnitude, exponent);
     }
 
+    function isPastEveryFloat(int256 signedCoefficient, int256 exponent) external pure returns (bool) {
+        return LibDecimalFloat.isPastEveryFloat(signedCoefficient, exponent);
+    }
+
     function unpack(Float float) external pure returns (int256, int256) {
         return LibDecimalFloat.unpack(float);
     }

@@ -331,4 +331,28 @@ contract LibParseDecimalFloatPastInt256Test is Test {
             79
         );
     }
+
+    /// 77 significant digits written as an integer past int256 with a
+    /// trailing zero, so the past-int256 path reads them at exponent
+    /// int32.max - 9, one above NEVER_PAST_EXPONENT: at the threshold it is
+    /// `ExponentOverflow`, one below it parses exactly.
+    function testParsePastInt256FirstExponentPastNeverPast() external view {
+        uint256 threshold = (2 ** 223 + 2) * 1e9;
+        string memory e = Strings.toString(uint256(int256(type(int32).max)) - 10);
+        string[2] memory past = [
+            string.concat(Strings.toString(threshold), "0e", e), string.concat(Strings.toString(threshold + 1), "0e", e)
+        ];
+        for (uint256 i = 0; i < past.length; i++) {
+            checkFail(past[i], ExponentOverflow.selector, bytes(past[i]).length);
+            string memory negative = string.concat("-", past[i]);
+            checkFail(negative, ExponentOverflow.selector, bytes(negative).length);
+        }
+        string memory below = string.concat(Strings.toString(threshold - 1), "0e", e);
+        (bytes4 err, uint256 cursor, int256 c, int256 x) = this.parseInline(below);
+        assertEq(err, bytes4(0), "below inline error");
+        assertEq(cursor, bytes(below).length, "below cursor");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(c, int256(threshold - 1), "below coefficient");
+        assertEq(x, int256(type(int32).max) - 9, "below exponent");
+    }
 }

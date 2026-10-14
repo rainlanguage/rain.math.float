@@ -48,12 +48,12 @@ does and has no ruling yet.
   int224 has no headroom, which is exactly past every Float (#304, #333).
 - Zero packs as `FLOAT_ZERO` (all bits zero), lossless true, for any `e`
   (**UNRULED**).
-- `isPastEveryFloat(m, e)`: true iff `m × 10^e` is past every Float, exactly
-  where `packLossy` reverts `ExponentOverflow`, for any uint256 `m` and int256
-  `e`; zero is never past, and nothing is at an exponent at or below
-  `NEVER_PAST_EXPONENT` (`int32.max - 10`). `div`, `pow`, `pow10` and the parser
-  check the threshold through it, so it has one encoding outside `packLossy`
-  (#649).
+- `isPastEveryFloat(m, e)`: true iff `m × 10^e` is at least
+  `(2^223 + 2) × 10^int32.max`, for any uint256 `m` and int256 `e`; for `m` up
+  to 2^255 that is exactly where `packLossy` reverts `ExponentOverflow`. Zero is
+  never past, and no value at an exponent at or below `NEVER_PAST_EXPONENT`
+  (`int32.max - 10`) is past. `packLossy`, `div`, `pow`, `pow10` and the parser
+  check the threshold through it, so it has one encoding (#649).
 - `packLossless(c, e)`: as `packLossy`; reverts `ExponentOverflow(c, e)` for any
   value past `FLOAT_MAX_POSITIVE_VALUE` or `FLOAT_MIN_NEGATIVE_VALUE`, the band
   `packLossy` truncates into them included, and `LossyConversionToFloat(c, e)`
