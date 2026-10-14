@@ -10,46 +10,47 @@ import {LibParseDecimalFloatPr321} from "../lib/LibParseDecimalFloatPr321.sol";
 import {LibFormatDecimalFloatSolidity} from "../lib/LibFormatDecimalFloatSolidity.sol";
 
 /// Each function returns the gas of one format or parse call alone, between two
-/// `gasleft()` reads, as `g`, and the hash of its result as `h`.
+/// `gasleft()` reads, as `gasUsed`, and the hash of its result as
+/// `resultHash`.
 contract FormatParseGas {
     /// `toDecimalString` of the #321 copy, `LibFormatDecimalFloatPr321`.
-    function formatPr321(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
-        uint256 s = gasleft();
-        string memory r = LibFormatDecimalFloatPr321.toDecimalString(f, scientific);
-        g = s - gasleft();
-        h = keccak256(bytes(r));
+    function formatPr321(Float float, bool scientific) external view returns (uint256 gasUsed, bytes32 resultHash) {
+        uint256 gasBefore = gasleft();
+        string memory formatted = LibFormatDecimalFloatPr321.toDecimalString(float, scientific);
+        gasUsed = gasBefore - gasleft();
+        resultHash = keccak256(bytes(formatted));
     }
 
     /// `toDecimalString` of the live `LibFormatDecimalFloat`.
-    function formatLive(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
-        uint256 s = gasleft();
-        string memory r = LibFormatDecimalFloat.toDecimalString(f, scientific);
-        g = s - gasleft();
-        h = keccak256(bytes(r));
+    function formatLive(Float float, bool scientific) external view returns (uint256 gasUsed, bytes32 resultHash) {
+        uint256 gasBefore = gasleft();
+        string memory formatted = LibFormatDecimalFloat.toDecimalString(float, scientific);
+        gasUsed = gasBefore - gasleft();
+        resultHash = keccak256(bytes(formatted));
     }
 
     /// `toDecimalString` of the plain-Solidity copy,
     /// `LibFormatDecimalFloatSolidity`.
-    function formatSol(Float f, bool scientific) external view returns (uint256 g, bytes32 h) {
-        uint256 s = gasleft();
-        string memory r = LibFormatDecimalFloatSolidity.toDecimalString(f, scientific);
-        g = s - gasleft();
-        h = keccak256(bytes(r));
+    function formatSol(Float float, bool scientific) external view returns (uint256 gasUsed, bytes32 resultHash) {
+        uint256 gasBefore = gasleft();
+        string memory formatted = LibFormatDecimalFloatSolidity.toDecimalString(float, scientific);
+        gasUsed = gasBefore - gasleft();
+        resultHash = keccak256(bytes(formatted));
     }
 
     /// `parseDecimalFloat` of the #321 copy, `LibParseDecimalFloatPr321`.
-    function parsePr321(string memory str) external view returns (uint256 g, bytes32 h) {
-        uint256 s = gasleft();
-        (bytes4 e, Float f) = LibParseDecimalFloatPr321.parseDecimalFloat(str);
-        g = s - gasleft();
-        h = keccak256(abi.encode(e, f));
+    function parsePr321(string memory str) external view returns (uint256 gasUsed, bytes32 resultHash) {
+        uint256 gasBefore = gasleft();
+        (bytes4 errorSelector, Float parsed) = LibParseDecimalFloatPr321.parseDecimalFloat(str);
+        gasUsed = gasBefore - gasleft();
+        resultHash = keccak256(abi.encode(errorSelector, parsed));
     }
 
     /// `parseDecimalFloat` of the live `LibParseDecimalFloat`.
-    function parseLive(string memory str) external view returns (uint256 g, bytes32 h) {
-        uint256 s = gasleft();
-        (bytes4 e, Float f) = LibParseDecimalFloat.parseDecimalFloat(str);
-        g = s - gasleft();
-        h = keccak256(abi.encode(e, f));
+    function parseLive(string memory str) external view returns (uint256 gasUsed, bytes32 resultHash) {
+        uint256 gasBefore = gasleft();
+        (bytes4 errorSelector, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(str);
+        gasUsed = gasBefore - gasleft();
+        resultHash = keccak256(abi.encode(errorSelector, parsed));
     }
 }

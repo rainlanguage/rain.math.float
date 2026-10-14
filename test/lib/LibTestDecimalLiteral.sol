@@ -86,9 +86,9 @@ library LibTestDecimalLiteral {
         }
         // Below 2^200.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 v = int256(x.magnitude);
+        int256 value = int256(x.magnitude);
         // forge-lint: disable-next-line(boolean-cst)
-        return (true, x.negative ? -v : v);
+        return (true, x.negative ? -value : value);
     }
 
     /// The digits `s[from, to)` as a signed integer.

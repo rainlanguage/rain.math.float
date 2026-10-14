@@ -576,10 +576,10 @@ library LibExactFloat {
     function int256UnitShift(int256 signedCoefficient) internal pure returns (int256) {
         uint256 magnitude = abs(signedCoefficient);
         uint256 limit = signedCoefficient < 0 ? uint256(type(int256).max) + 1 : uint256(type(int256).max);
-        int256 n = digits(u512(magnitude));
-        // n is at most 77, and a 77 digit magnitude fits uint256.
+        int256 count = digits(u512(magnitude));
+        // count is at most 77, and a 77 digit magnitude fits uint256.
         // forge-lint: disable-next-line(unsafe-typecast)
-        return magnitude * 10 ** uint256(77 - n) <= limit ? 77 - n : 76 - n;
+        return magnitude * 10 ** uint256(77 - count) <= limit ? 77 - count : 76 - count;
     }
 
     /// The exponent of a non-zero coefficient's int256 unit.
@@ -753,36 +753,37 @@ library LibExactFloat {
     }
 
     /// `a / b` for a nonzero `b`, truncated towards zero once, so under 1e-74
-    /// relative: `q = floor(|a| 10^k / |b|)` with `k = 75 + digits(b) -
-    /// digits(a)` puts the exact ratio in (1e74, 1e76), so `q` is in
-    /// [1e74, 1e76), 75 or 76 digits. That is more than any Float holds, so
-    /// the closest Float not above the exact quotient is the closest not above
-    /// `q × 10^e`.
+    /// relative: `truncatedQuotient = floor(|a| 10^shift / |b|)` with
+    /// `shift = 75 + digits(b) - digits(a)` puts the exact ratio in
+    /// (1e74, 1e76), so `truncatedQuotient` is in [1e74, 1e76), 75 or 76
+    /// digits. That is more than any Float holds, so the closest Float not
+    /// above the exact quotient is the closest not above
+    /// `truncatedQuotient × 10^(ea - eb - shift)`.
     function quotient(int256 ca, int256 ea, int256 cb, int256 eb) internal pure returns (int256, int256) {
         if (ca == 0) {
             return (0, 0);
         }
         uint256 magnitudeA = abs(ca);
         uint256 magnitudeB = abs(cb);
-        // Both at most 77 digits, so k is in [-1, 151].
+        // Both at most 77 digits, so shift is in [-1, 151].
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 k = 75 + int256(Math.log10(magnitudeB)) - int256(Math.log10(magnitudeA));
-        uint256 q;
-        if (k < 0) {
-            // k = -1 only where |b| has one digit, so 10 |b| fits.
-            q = magnitudeA / (magnitudeB * 10);
-        } else if (k <= 77) {
+        int256 shift = 75 + int256(Math.log10(magnitudeB)) - int256(Math.log10(magnitudeA));
+        uint256 truncatedQuotient;
+        if (shift < 0) {
+            // shift = -1 only where |b| has one digit, so 10 |b| fits.
+            truncatedQuotient = magnitudeA / (magnitudeB * 10);
+        } else if (shift <= 77) {
             // forge-lint: disable-next-line(unsafe-typecast)
-            q = Math.mulDiv(magnitudeA, 10 ** uint256(k), magnitudeB);
+            truncatedQuotient = Math.mulDiv(magnitudeA, 10 ** uint256(shift), magnitudeB);
         } else {
-            // |a| 10^(k - 77) is below 10^(digits(b) - 2).
+            // |a| 10^(shift - 77) is below 10^(digits(b) - 2).
             // forge-lint: disable-next-line(unsafe-typecast)
-            q = Math.mulDiv(magnitudeA * 10 ** uint256(k - 77), 1e77, magnitudeB);
+            truncatedQuotient = Math.mulDiv(magnitudeA * 10 ** uint256(shift - 77), 1e77, magnitudeB);
         }
-        // q is below 1e76.
+        // truncatedQuotient is below 1e76.
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 signedQ = int256(q);
-        return ((ca < 0) != (cb < 0) ? -signedQ : signedQ, ea - eb - k);
+        int256 signedQuotient = int256(truncatedQuotient);
+        return ((ca < 0) != (cb < 0) ? -signedQuotient : signedQuotient, ea - eb - shift);
     }
 
     /// The coefficient of `c × 10^e` at exponent `target`, truncated towards
