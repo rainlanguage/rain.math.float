@@ -1,0 +1,20 @@
+name: gas-snapshot
+on: [push]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: rainlanguage/rainix/.github/actions/nix-cachix-setup@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      # .gas-snapshot is committed as the baseline for `forge snapshot --diff`.
+      # It must list exactly the current tests at their current gas, so a diff
+      # against it shows real gas changes, not a stale baseline. The fixed fuzz
+      # seed makes the fuzz runs/μ/~ columns reproducible. To regenerate:
+      #   nix develop -c forge snapshot --fuzz-seed 0
+      - run: nix develop -c forge soldeer install
+      - run: |
+          nix develop -c forge snapshot --check --fuzz-seed 0 || {
+            echo "::error file=.gas-snapshot::stale: regenerate with 'nix develop -c forge snapshot --fuzz-seed 0' and commit it"
+            exit 1
+          }
