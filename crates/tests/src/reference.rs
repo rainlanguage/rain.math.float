@@ -587,7 +587,7 @@ pub fn to_fixed_decimal_lossy(x: &Dec, decimals: u8) -> Result<(U256, bool), Ref
     if int > u256_to_big(U256::MAX) {
         return Err(RefError::FixedDecimalOverflow);
     }
-    let value = U256::from_str_radix(&int.to_string(), 10).unwrap();
+    let value = crate::common::u256(&int);
     Ok((value, t.eq_value(&scaled)))
 }
 
@@ -859,7 +859,6 @@ pub fn pin(e: &BigInt) -> i64 {
         })
 }
 
-#[cfg(test)]
 mod tests {
     use super::*;
 
@@ -1090,7 +1089,7 @@ mod tests {
             format!("1{}", "0".repeat(1000))
         );
         assert_eq!(
-            format_plain(&Dec::new(BigInt::from(10).pow(66), -1001)).unwrap(),
+            format_plain(&Dec::new(pow10(66), -1001)).unwrap(),
             format!("0.{}1", "0".repeat(934))
         );
         assert_eq!(
