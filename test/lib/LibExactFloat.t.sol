@@ -249,6 +249,34 @@ contract LibExactFloatTest is Test {
         );
     }
 
+    /// Every value that does not overflow packs to the nearest Float toward
+    /// zero by `isNearestTowardZero`, or to zero below every Float, and
+    /// `unpackBits` reads its parts back (#672).
+    function testPackTowardZeroIsNearest(int256 c, int256 e) external pure {
+        e = bound(e, int256(type(int32).min) - 100, int256(type(int32).max) + 100);
+        U512 memory magnitude = LibExactFloat.u512(LibExactFloat.abs(c));
+        vm.assume(!LibExactFloat.overflows(magnitude, e));
+        (int256 rc, int256 re) = LibExactFloat.unpackBits(LibExactFloat.packTowardZero(c, e));
+        if (LibExactFloat.underflows(magnitude, e)) {
+            assertEq(rc, 0, "underflow is zero");
+            assertEq(re, 0, "underflow exponent");
+            return;
+        }
+        assertTrue(LibExactFloat.isNearestTowardZero(c < 0, magnitude, e, rc, re), "nearest");
+    }
+
+    /// A Float's own parts pack to its own bits.
+    function testPackTowardZeroRoundTrip(int224 c, int32 e) external pure {
+        bytes32 packed = LibExactFloat.packTowardZero(c, e);
+        (int256 rc, int256 re) = LibExactFloat.unpackBits(packed);
+        if (c == 0) {
+            assertEq(packed, bytes32(0), "zero");
+            return;
+        }
+        assertEq(rc, c, "coefficient");
+        assertEq(re, e, "exponent");
+    }
+
     /// Below `type(int256).min`, every distance under 2999 comes back exact.
     function testWideExponentExactDistanceBelow2999(uint256 distance, int256 k) external pure {
         distance = bound(distance, 1, 2998);
@@ -301,33 +329,5 @@ contract LibExactFloatTest is Test {
     function testMaxPowerRevertsFive() external {
         vm.expectRevert(bytes("prime"));
         this.maxPowerExternal(5);
-    }
-
-    /// Every value that does not overflow packs to the nearest Float toward
-    /// zero by `isNearestTowardZero`, or to zero below every Float, and
-    /// `unpackBits` reads its parts back (#672).
-    function testPackTowardZeroIsNearest(int256 c, int256 e) external pure {
-        e = bound(e, int256(type(int32).min) - 100, int256(type(int32).max) + 100);
-        U512 memory magnitude = LibExactFloat.u512(LibExactFloat.abs(c));
-        vm.assume(!LibExactFloat.overflows(magnitude, e));
-        (int256 rc, int256 re) = LibExactFloat.unpackBits(LibExactFloat.packTowardZero(c, e));
-        if (LibExactFloat.underflows(magnitude, e)) {
-            assertEq(rc, 0, "underflow is zero");
-            assertEq(re, 0, "underflow exponent");
-            return;
-        }
-        assertTrue(LibExactFloat.isNearestTowardZero(c < 0, magnitude, e, rc, re), "nearest");
-    }
-
-    /// A Float's own parts pack to its own bits.
-    function testPackTowardZeroRoundTrip(int224 c, int32 e) external pure {
-        bytes32 packed = LibExactFloat.packTowardZero(c, e);
-        (int256 rc, int256 re) = LibExactFloat.unpackBits(packed);
-        if (c == 0) {
-            assertEq(packed, bytes32(0), "zero");
-            return;
-        }
-        assertEq(rc, c, "coefficient");
-        assertEq(re, e, "exponent");
     }
 }
