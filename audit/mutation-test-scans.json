@@ -1107,5 +1107,26 @@
       "testsAfter": 186,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-14T19:55:28Z",
+    "commit": "098fbae57fdeb17d7e6cbb5e41e6dd43816f3714",
+    "testsAfterCommit": "eeae7a4fae0cf0ae9c5e427fe3ce88c773414fa3",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 5,
+    "scope": "pr:719: testFuzzWeiFloorCeilSafeSide's domain bounded to a*b <= WEI_SAFE_SIDE_AB_MAX = int224.max / 20 (main's 1e66 admitted the lossless-flag ceiling undershoot from about 0.0701 int224.max), the pinned counterexamples above the bound, and README consumer rule 1. No src/ change, so mutants target the changed domain-defining test lines only (the constant and the b clamp); assertion lines and pinned inputs are the oracle and were not mutated. Before = 098fbae5's consumerHazards suite (20 tests); after = eeae7a4's (23 tests); probe suite for both: FOUNDRY_FUZZ_RUNS=256 forge test --match-path test/src/lib/LibDecimalFloat.consumerHazards.t.sol. Mutants: M01-M03 divisor 20 -> 10, 20 -> 14, int224 -> int256 (killed before and after by the assertGt in testWeiCeilUndershootAboveBound and testWeiCeilUndershootJustAboveBound and by testFuzzWeiFloorCeilSafeSideBoundsCounterexample); M04/M05 divisor 20 -> 15 and 20 -> 40 (equivalent: below the smallest known failure, tighter domain); M06/M07/M11/M12 clamp deleted, guard never true, division by a dropped, clamp on c instead of b (killed by testFuzzWeiFloorCeilSafeSideBoundsCounterexample); M08 guard a >= 0 (killed by testFuzzWeiFloorCeilSafeSide: the zero draw divides by zero); M09 guard a > 1 (equivalent: the clamp is a no-op for a <= WEI_SAFE_SIDE_AB_MAX / 1e33, recorded this run); M10 clamp lower bound 1 -> 0 (survived before, killed after by the new testFuzzWeiFloorCeilSafeSideClampWrapsToOne); M13/M14 clamp on a, clamp moved before bound(b, 1, 1e33) (equivalent, same domain). All five equivalents carry proofs in audit/known-false-positives.md. Adversarial: the 20ab <= int224.max argument re-derived from the packing rule (lossy packing keeps every digit that fits, so the coefficient stays above int224.max / 10 and each truncation moves a value by under 10 / int224.max of it) and holds in all three operand orders; 100,000 fuzz runs inside the domain pass. README rule 1's claim that one mul or div can drop a sub-ulp fraction while the conversion reports lossless is pinned by testSingleMulSubUlpFractionReadsLossless (2e18 * (1 + 1e-67)) and the new testSingleDivSubUlpFractionReadsLossless ((1e67 + 3) / 7); both are spec-conformant truncation toward zero, not library defects. No candidates, nothing filed.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 14,
+      "killedBefore": 8,
+      "killedAfter": 9,
+      "equivalent": 5,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 20,
+      "testsAfter": 23,
+      "filed": []
+    }
   }
 ]
