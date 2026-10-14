@@ -117,3 +117,20 @@ error AbsCoefficientOverflow(int256 signedCoefficient);
 /// @param signedCoefficient The coefficient as given.
 /// @param exponent The exponent as given.
 error ScaleUpOutOfRange(int256 signedCoefficient, int256 exponent);
+
+/// @dev Thrown by `withTargetExponent` when growing the coefficient to the
+/// target exponent takes it outside int256.
+/// @param signedCoefficient The coefficient as given.
+/// @param exponent The exponent as given.
+/// @param targetExponent The target exponent as given.
+error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
+
+/// @dev Thrown by `unabsUnsignedMulOrDivLossy` when a magnitude that does not
+/// fit int256 at the result's sign must shed a digit at exponent
+/// `type(int256).max`. `mul` and `div` revert `ExponentOverflow` before they
+/// pass it such an input.
+/// @param a The signed coefficient of the first operand.
+/// @param b The signed coefficient of the second operand.
+/// @param signedCoefficientAbs The magnitude of the result coefficient.
+/// @param exponent The exponent of the result.
+error UnabsExponentOverflow(int256 a, int256 b, uint256 signedCoefficientAbs, int256 exponent);

@@ -276,6 +276,38 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
         assertTrue(actualCoefficient / 1e75 != 0, "full magnitude");
     }
 
+    /// The shortfall never exceeds the digit count of the largest power of ten
+    /// not above the maximized magnitude: 76 from 1e76 up, 75 below. `div`
+    /// scales by that power, so its exponent adjustment stays non-negative.
+    function checkShortfallWithinScaleDigits(int256 signedCoefficient, int256 exponent) internal pure {
+        (int256 c,, int256 shortfall) = LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+        int256 scaleDigits = c / 1e76 != 0 ? int256(76) : int256(75);
+        assertLe(shortfall, scaleDigits, "shortfall within scale digits");
+    }
+
+    function testMaximizeShortfallWithinScaleDigits(int256 signedCoefficient, uint256 headroom) external pure {
+        checkShortfallWithinScaleDigits(signedCoefficient, type(int256).min + int256(bound(headroom, 0, 80)));
+    }
+
+    function testMaximizeShortfallWithinScaleDigitsExamples() external {
+        int256 min = type(int256).min;
+        // 1 lifts 76 digits to 1e76.
+        checkShortfall(1, min, 1e76, 76);
+        // 6 lifts 75 digits to 6e75, as 6e76 does not fit int256.
+        checkShortfall(6, min, 6e75, 75);
+        checkShortfall(-6, min, -6e75, 75);
+        // 57 lifts 75 digits to 5.7e76, which fits.
+        checkShortfall(57, min, 57e75, 75);
+        // 58 lifts 74 digits to 5.8e75, as 5.8e76 does not fit.
+        checkShortfall(58, min, 58e74, 74);
+        checkShortfallWithinScaleDigits(1, min);
+        checkShortfallWithinScaleDigits(6, min);
+        checkShortfallWithinScaleDigits(57, min);
+        checkShortfallWithinScaleDigits(58, min);
+        checkShortfallWithinScaleDigits(type(int256).min, min);
+        checkShortfallWithinScaleDigits(type(int256).max, min);
+    }
+
     /// Zero canonicalizes to maximized zero `(0, 0, 0)` for any input
     /// exponent.
     function testMaximizeZeroCanonicalizes(int256 exponent) external pure {

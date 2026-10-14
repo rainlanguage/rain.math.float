@@ -313,17 +313,18 @@ digits (#306).
 
 Named errors at the internal guards (#429, closes #422; #336):
 
-| Function                | Error                                 | Fires when                                                        |
-| ----------------------- | ------------------------------------- | ----------------------------------------------------------------- |
-| `mulDivFixed`, `mulDiv` | `MulDivOverflow(x, y, d)`             | the 512-bit quotient is past uint256                              |
-| `log10Ratio`            | `Log10RatioOutOfRange(a, b)`          | `a + b` past uint256, `b` zero, or z past the proven series range |
-| `log10Ratio` (relative) | `Log10RatioRelativeSumTooSmall(a, b)` | `a + b < 1e50` (#336)                                             |
-| `log10Unrounded`        | `ExponentOverflow(input)`             | characteristic past int256                                        |
-| `sqrt` (implementation) | `SqrtOutOfRange(c, e)`                | `c` outside `(0, 1e76)` or `e` too near `int256.min`              |
-| `exp10Fixed`            | `Exp10FixedOutOfRange(x)`             | `x` outside `[0, 1)` at the 1e50 scale                            |
-| `log10Reduce`           | `Log10ReduceOutOfRange(x)`            | `x` outside `[1e75, 1e76)`                                        |
-| `absCoefficient`        | `AbsCoefficientOverflow(c)`           | `c` is `int256.min`                                               |
-| `scaleUp`               | `ScaleUpOutOfRange(c, e)`             | `c` outside `(0, 1e76)` or the shift passes `int256.min`          |
+| Function                     | Error                                 | Fires when                                                                                                                                          |
+| ---------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mulDivFixed`, `mulDiv`      | `MulDivOverflow(x, y, d)`             | the 512-bit quotient is past uint256                                                                                                                |
+| `log10Ratio`                 | `Log10RatioOutOfRange(a, b)`          | `a + b` past uint256, `b` zero, or z past the proven series range                                                                                   |
+| `log10Ratio` (relative)      | `Log10RatioRelativeSumTooSmall(a, b)` | `a + b < 1e50` (#336)                                                                                                                               |
+| `log10Unrounded`             | `ExponentOverflow(input)`             | characteristic past int256                                                                                                                          |
+| `sqrt` (implementation)      | `SqrtOutOfRange(c, e)`                | `c` outside `(0, 1e76)` or `e` too near `int256.min`                                                                                                |
+| `exp10Fixed`                 | `Exp10FixedOutOfRange(x)`             | `x` outside `[0, 1)` at the 1e50 scale                                                                                                              |
+| `log10Reduce`                | `Log10ReduceOutOfRange(x)`            | `x` outside `[1e75, 1e76)`                                                                                                                          |
+| `absCoefficient`             | `AbsCoefficientOverflow(c)`           | `c` is `int256.min`                                                                                                                                 |
+| `scaleUp`                    | `ScaleUpOutOfRange(c, e)`             | `c` outside `(0, 1e76)` or the shift passes `int256.min`                                                                                            |
+| `unabsUnsignedMulOrDivLossy` | `UnabsExponentOverflow(a, b, c, e)`   | a magnitude above int256 at its sign must shed a digit at `e = int256.max`; unreachable from `mul` and `div`, which revert `ExponentOverflow` first |
 
 - `withTargetExponent(c, e, t)` truncates toward zero when shrinking; growing by
   `d` digits returns `c × 10^d`, zero for zero at any `d`, and reverts

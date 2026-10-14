@@ -4,10 +4,8 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-import {
-    LibDecimalFloatImplementation,
-    UnabsExponentOverflow
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {UnabsExponentOverflow} from "src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationUnabsUnsignedMulOrDivLossyTest is Test {
     function unabsExternal(int256 a, int256 b, uint256 c, int256 exponent) external pure returns (int256, int256) {
