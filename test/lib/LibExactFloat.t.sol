@@ -248,4 +248,86 @@ contract LibExactFloatTest is Test {
             e == type(int32).min || LibExactFloat.abs(c) * 10 > LibExactFloat.coefficientLimit(negative), "lowest"
         );
     }
+
+    /// Every value that does not overflow packs to the nearest Float toward
+    /// zero by `isNearestTowardZero`, or to zero below every Float, and
+    /// `unpackBits` reads its parts back (#672).
+    function testPackTowardZeroIsNearest(int256 c, int256 e) external pure {
+        e = bound(e, int256(type(int32).min) - 100, int256(type(int32).max) + 100);
+        U512 memory magnitude = LibExactFloat.u512(LibExactFloat.abs(c));
+        vm.assume(!LibExactFloat.overflows(magnitude, e));
+        (int256 rc, int256 re) = LibExactFloat.unpackBits(LibExactFloat.packTowardZero(c, e));
+        if (LibExactFloat.underflows(magnitude, e)) {
+            assertEq(rc, 0, "underflow is zero");
+            assertEq(re, 0, "underflow exponent");
+            return;
+        }
+        assertTrue(LibExactFloat.isNearestTowardZero(c < 0, magnitude, e, rc, re), "nearest");
+    }
+
+    /// A Float's own parts pack to its own bits.
+    function testPackTowardZeroRoundTrip(int224 c, int32 e) external pure {
+        bytes32 packed = LibExactFloat.packTowardZero(c, e);
+        (int256 rc, int256 re) = LibExactFloat.unpackBits(packed);
+        if (c == 0) {
+            assertEq(packed, bytes32(0), "zero");
+            return;
+        }
+        assertEq(rc, c, "coefficient");
+        assertEq(re, e, "exponent");
+    }
+
+    /// Below `type(int256).min`, every distance under 2999 comes back exact.
+    function testWideExponentExactDistanceBelow2999(uint256 distance, int256 k) external pure {
+        distance = bound(distance, 1, 2998);
+        k = bound(k, -999, 999);
+        // `min - q + k` is `distance` under `min`.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 q = int256(distance) + k;
+        (int256 cls, int256 value) = LibExactFloat.wideExponent(type(int256).min, q, 0, k);
+        assertEq(cls, -1, "cls");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(value, int256(distance), "distance");
+    }
+
+    /// Past that the stand-in 10^6 can come back in place of the distance.
+    function testWideExponentStandIn() external pure {
+        (int256 cls, int256 value) = LibExactFloat.wideExponent(type(int256).min, 4004, 0, 0);
+        assertEq(cls, -1, "cls");
+        assertEq(value, 1e6, "stand-in");
+        // 4999 under is still exact, so the stand-in is no saturation.
+        (cls, value) = LibExactFloat.wideExponent(type(int256).min, 4000, 0, -999);
+        assertEq(cls, -1, "cls exact");
+        assertEq(value, 4999, "exact");
+    }
+
+    function maxPowerExternal(uint256 prime) external pure returns (uint256) {
+        return LibExactFloat.maxPower(prime);
+    }
+
+    /// For each prime it knows, `maxPower` is the largest `j` with
+    /// `prime^j` below 1e30.
+    function testMaxPowerKnownPrimes() external pure {
+        uint256[3] memory primes = [uint256(2), 3, 7];
+        for (uint256 i = 0; i < primes.length; i++) {
+            uint256 prime = primes[i];
+            uint256 power = LibExactFloat.maxPower(prime);
+            assertLt(prime ** power, 1e30, "below");
+            assertGe(prime ** (power + 1), 1e30, "largest");
+        }
+    }
+
+    /// Any other input reverts, as `log10Prime` does, rather than returning a
+    /// power that holds for none of them: 5 would be 42, not 35.
+    function testMaxPowerRevertsUnknownPrime(uint256 prime) external {
+        vm.assume(prime != 2 && prime != 3 && prime != 7);
+        vm.expectRevert(bytes("prime"));
+        this.maxPowerExternal(prime);
+    }
+
+    /// 5, the smallest prime it does not know, reverts.
+    function testMaxPowerRevertsFive() external {
+        vm.expectRevert(bytes("prime"));
+        this.maxPowerExternal(5);
+    }
 }
