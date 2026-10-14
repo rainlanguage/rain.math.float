@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {INT256_MAX_POW10_EXPONENT} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {INT256_MAX_POW10_EXPONENT} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationInt256MaxPow10ExponentTest is Test {
     /// `INT256_MAX_POW10_EXPONENT` is the largest k with 10^k in int256, from
