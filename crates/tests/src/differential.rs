@@ -648,7 +648,7 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
     });
     // `isPastEveryFloat` of the magnitude is exactly where `packLossy`
     // reverts `ExponentOverflow` (#649).
-    let is_past = evm::harness(H::isPastEveryFloatCall {
+    let is_past = evm::harness(H::isPastEveryFloat_0Call {
         magnitude: sc.unsigned_abs(),
         exponent: se,
     })
