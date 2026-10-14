@@ -7,9 +7,9 @@ import {
     LibDecimalFloatImplementation,
     DivisionByZero,
     ExponentOverflow
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibCommonResults} from "../../../lib/LibCommonResults.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationDivTest is Test {
     function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -219,12 +219,12 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     /// 1 / 3
     function testDiv1Over3() external pure {
-        checkDiv(1, 0, 3, 0, THREES, -76);
+        checkDiv(1, 0, 3, 0, LibCommonResults.THREES, -76);
     }
 
     /// - 1 / 3
     function testDivNegative1Over3() external pure {
-        checkDiv(-1, 0, 3, 0, -THREES, -76);
+        checkDiv(-1, 0, 3, 0, -LibCommonResults.THREES, -76);
     }
 
     /// 1 / 3 gas
@@ -235,7 +235,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
 
     /// 1e18 / 3
     function testDiv1e18Over3() external pure {
-        checkDiv(1e18, 0, 3, 0, THREES, -58);
+        checkDiv(1e18, 0, 3, 0, LibCommonResults.THREES, -58);
     }
 
     /// 10,0 / 1e38,-37 == 1
@@ -257,18 +257,18 @@ contract LibDecimalFloatImplementationDivTest is Test {
     function testDiv1Over9Over1Over3() external pure {
         // 1 / 9
         (int256 signedCoefficientA, int256 exponentA) = LibDecimalFloatImplementation.div(1, 0, 9, 0);
-        assertEq(signedCoefficientA, ONES);
+        assertEq(signedCoefficientA, LibCommonResults.ONES);
         assertEq(exponentA, -76);
 
         // 1 / 3
         (int256 signedCoefficientB, int256 exponentB) = LibDecimalFloatImplementation.div(1, 0, 3, 0);
-        assertEq(signedCoefficientB, THREES);
+        assertEq(signedCoefficientB, LibCommonResults.THREES);
         assertEq(exponentB, -76);
 
         // (1 / 9) / (1 / 3)
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        assertEq(signedCoefficient, THREES);
+        assertEq(signedCoefficient, LibCommonResults.THREES);
         assertEq(exponent, -76);
 
         // (1 / 3) / (1 / 9) == 3
@@ -319,9 +319,9 @@ contract LibDecimalFloatImplementationDivTest is Test {
         }
     }
 
-    /// `i / d` is `THREES × 10^(exponentA - exponentB + j)`: `ExponentOverflow`
-    /// above `type(int256).max`, and below `10^type(int256).min` its digits
-    /// truncated towards zero.
+    /// `i / d` is `LibCommonResults.THREES × 10^(exponentA - exponentB + j)`:
+    /// `ExponentOverflow` above `type(int256).max`, and below
+    /// `10^type(int256).min` its digits truncated towards zero.
     function checkThrees(int256 i, int256 exponentA, int256 d, int256 exponentB, int256 j) internal {
         (int256 cls, int256 e) = LibExactFloat.wideExponent(exponentA, exponentB, 0, j);
         if (cls == 1) {
@@ -338,7 +338,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
             }
             return;
         }
-        int256 c = THREES;
+        int256 c = LibCommonResults.THREES;
         if (cls == -1) {
             (c, e) = LibExactFloat.atFloor(c, -e);
         }
@@ -440,7 +440,7 @@ contract LibDecimalFloatImplementationDivTest is Test {
     function testDivAdjustExponentSpillsToExponentB() external pure {
         int256 min = type(int256).min;
         // 1e76 * 10^min / (3e75 * 10^min) == 10/3.
-        checkDiv(1e76, min, 3e75, min, THREES, -75);
+        checkDiv(1e76, min, 3e75, min, LibCommonResults.THREES, -75);
     }
 
     /// When the adjustment cannot be applied to `exponentA` (already at the
@@ -476,6 +476,24 @@ contract LibDecimalFloatImplementationDivTest is Test {
         );
     }
 
+    /// The adjustment spills onto `exponentB` only when `exponentA` sits
+    /// within it of `type(int256).min`, so the spill is at least one digit.
+    /// Every headroom below and past the adjustment, at both scales, with
+    /// and without a dividend shortfall, against the exact quotient.
+    function testDivAdjustExponentSpillIsPositive() external {
+        int256 min = type(int256).min;
+        for (int256 headroom = 0; headroom <= 80; headroom++) {
+            // 6e75 is maximized below 1e76: scale 1e75, adjustment 75.
+            checkDivExact(1e76, min + headroom, 6e75, 0);
+            checkDivExact(-1e76, min + headroom, 6e75, 0);
+            // 3e76 is at or above 1e76: scale 1e76, adjustment 76.
+            checkDivExact(1e76, min + headroom, 3e76, 0);
+            // 7 maximizes to 7e75, with a shortfall of 75 - headroom while headroom
+            // is below 75 and none after.
+            checkDivExact(7, min + headroom, -3, 0);
+        }
+    }
+
     /// A division whose true exponent underflows below what a single result can
     /// represent returns maximized zero.
     function testDivUnderflowReturnsZero() external pure {
@@ -485,13 +503,13 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// A numerator that cannot be maximized because its exponent is pinned at
     /// `type(int256).min` keeps full precision.
     function testDivUnfullNumeratorOneThird() external pure {
-        checkDiv(1, type(int256).min, 3, type(int256).min, THREES, -76);
-        checkDiv(-1, type(int256).min, 3, type(int256).min, -THREES, -76);
+        checkDiv(1, type(int256).min, 3, type(int256).min, LibCommonResults.THREES, -76);
+        checkDiv(-1, type(int256).min, 3, type(int256).min, -LibCommonResults.THREES, -76);
     }
 
     /// An unfull numerator over a divisor that maximizes past `1e76`.
     function testDivUnfullNumeratorLargeDivisor() external pure {
-        checkDiv(1, type(int256).min, 3, type(int256).min + 76, THREES, -152);
+        checkDiv(1, type(int256).min, 3, type(int256).min + 76, LibCommonResults.THREES, -152);
     }
 
     /// A numerator at the floor, full or not, divides to the exact quotient
@@ -555,14 +573,14 @@ contract LibDecimalFloatImplementationDivTest is Test {
     /// Signs are the exclusive or of the operand signs for an unfull numerator.
     function testDivUnfullNumeratorSigns() external pure {
         int256 min = type(int256).min;
-        checkDiv(1, min, 3, min, THREES, -76);
-        checkDiv(-1, min, 3, min, -THREES, -76);
-        checkDiv(1, min, -3, min, -THREES, -76);
-        checkDiv(-1, min, -3, min, THREES, -76);
-        checkDiv(1, min, 3, min + 76, THREES, -152);
-        checkDiv(-1, min, 3, min + 76, -THREES, -152);
-        checkDiv(1, min, -3, min + 76, -THREES, -152);
-        checkDiv(-1, min, -3, min + 76, THREES, -152);
+        checkDiv(1, min, 3, min, LibCommonResults.THREES, -76);
+        checkDiv(-1, min, 3, min, -LibCommonResults.THREES, -76);
+        checkDiv(1, min, -3, min, -LibCommonResults.THREES, -76);
+        checkDiv(-1, min, -3, min, LibCommonResults.THREES, -76);
+        checkDiv(1, min, 3, min + 76, LibCommonResults.THREES, -152);
+        checkDiv(-1, min, 3, min + 76, -LibCommonResults.THREES, -152);
+        checkDiv(1, min, -3, min + 76, -LibCommonResults.THREES, -152);
+        checkDiv(-1, min, -3, min + 76, LibCommonResults.THREES, -152);
     }
 
     /// Every numerator digit count that is one digit short or more at the
@@ -572,9 +590,9 @@ contract LibDecimalFloatImplementationDivTest is Test {
         int256 min = type(int256).min;
         int256 numerator = 1;
         for (int256 digits = 1; digits <= 76; ++digits) {
-            checkDiv(numerator, min, 3, min, THREES, -77 + digits);
-            checkDiv(-numerator, min, 3, min, -THREES, -77 + digits);
-            checkDiv(numerator, min, 3, min + 76, THREES, -153 + digits);
+            checkDiv(numerator, min, 3, min, LibCommonResults.THREES, -77 + digits);
+            checkDiv(-numerator, min, 3, min, -LibCommonResults.THREES, -77 + digits);
+            checkDiv(numerator, min, 3, min + 76, LibCommonResults.THREES, -153 + digits);
             (int256 quotient, int256 quotientExponent) = LibDecimalFloatImplementation.div(numerator * 7, min, 7, min);
             assertTrue(LibExactFloat.eq(quotient, quotientExponent, 1, digits - 1), "7n / 7 == n");
             numerator *= 10;

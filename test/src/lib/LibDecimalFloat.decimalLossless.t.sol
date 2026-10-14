@@ -9,7 +9,7 @@ import {
     Float
 } from "../../../src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {LibExactFloat} from "../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatDecimalLosslessTest is Test {
     using LibDecimalFloat for Float;

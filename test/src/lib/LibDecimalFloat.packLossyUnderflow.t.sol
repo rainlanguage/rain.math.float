@@ -2,9 +2,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, ExponentOverflow, Float} from "../../../src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
+import {LibExactFloat, U512} from "../../lib/LibExactFloat.sol";
 
 /// Adversarial coverage for `packLossy`'s underflow and coefficient-truncation
 /// paths. The tests here derive an INDEPENDENT oracle for the normalisation

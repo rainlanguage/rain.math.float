@@ -2,12 +2,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow} from "../../src/error/ErrDecimalFloat.sol";
 import {
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT,
     FIVE_INVERSE
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 /// `mul`, `mulExponentBelowFloor`, `mulExponentNearCeiling`, `maximize` and
 /// `mulDivPow10` verbatim from main 8fd3980250fae214fc2b4273545654ee1921c0ad,
@@ -16,7 +16,9 @@ import {
 /// Equivalence tests only.
 /// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
 /// nothing about a value. Expected values come from `LibExactFloat`.
-library LibDecimalFloatGasMain {
+library LibDecimalFloatPre310Mul {
+    /// `LibDecimalFloatImplementation.mul` verbatim at 8fd3980; see its NatSpec
+    /// there.
     function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -100,6 +102,8 @@ library LibDecimalFloatGasMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.mulExponentBelowFloor` verbatim at
+    /// 8fd3980; see its NatSpec there.
     function mulExponentBelowFloor(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -122,6 +126,8 @@ library LibDecimalFloatGasMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.mulExponentNearCeiling` verbatim at
+    /// 8fd3980; see its NatSpec there.
     function mulExponentNearCeiling(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -139,6 +145,8 @@ library LibDecimalFloatGasMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.maximize` verbatim at 8fd3980; see its
+    /// NatSpec there.
     function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, int256) {
         unchecked {
             if (signedCoefficient == 0) {
@@ -193,6 +201,8 @@ library LibDecimalFloatGasMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.mulDivPow10` verbatim at 8fd3980; see its
+    /// NatSpec there.
     function mulDivPow10(uint256 x, uint256 y, uint256 n) internal pure returns (uint256 result) {
         (uint256 prod1, uint256 prod0) = mul512(x, y);
         if (prod1 == 0) {

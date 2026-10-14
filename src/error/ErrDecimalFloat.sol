@@ -16,11 +16,10 @@ import {Float} from "../lib/LibDecimalFloat.sol";
 /// @param exponent The exponent of the value reported.
 error ExponentOverflow(int256 signedCoefficient, int256 exponent);
 
-/// @dev Thrown when an exponent underflows. Exponent underflow means the
-/// magnitude is smaller than any representable Float. Without this revert,
-/// arithmetic ops that compose to underflow (e.g. `mul` with two operands
-/// whose exponents sum below `int32.min`) would silently return `FLOAT_ZERO`,
-/// breaking downstream code that branches on `result == 0`.
+/// @dev Thrown when a non-zero result is below every non-zero Float, so that
+/// the closest Float toward zero would be zero: magnitude below
+/// 1e-2147483648 (e.g. `mul` of 1e-2147483648 by 0.1). Returning `FLOAT_ZERO`
+/// instead would break code that branches on `result == 0`.
 /// @param signedCoefficient The signed coefficient of the value reported:
 /// the unpacked result handed to `packArithmeticResult` by the operations it
 /// finalises, or the Float `div`, `inv`, `pow` or `pow10` was called with.
@@ -86,8 +85,9 @@ error ZeroNegativePower(Float b);
 /// @param denominator The divisor, `POW_FIXED_ONE` from `mulDivFixed`.
 error MulDivOverflow(uint256 x, uint256 y, uint256 denominator);
 
-/// @dev Thrown by `maximizeFull` when the exponent cannot take the whole
-/// shift to a maximized coefficient.
+/// @dev Thrown by `maximizeFull` when the shift that maximizes the
+/// coefficient would take the exponent below `type(int256).min`, where
+/// `maximize` instead stops at the floor and reports the shortfall.
 /// @param signedCoefficient The coefficient as given.
 /// @param exponent The exponent as given.
 error MaximizeOverflow(int256 signedCoefficient, int256 exponent);
@@ -158,3 +158,20 @@ error AbsCoefficientOverflow(int256 signedCoefficient);
 /// @param signedCoefficient The coefficient as given.
 /// @param exponent The exponent as given.
 error ScaleUpOutOfRange(int256 signedCoefficient, int256 exponent);
+
+/// @dev Thrown by `withTargetExponent` when growing the coefficient to the
+/// target exponent takes it outside int256.
+/// @param signedCoefficient The coefficient as given.
+/// @param exponent The exponent as given.
+/// @param targetExponent The target exponent as given.
+error WithTargetExponentOverflow(int256 signedCoefficient, int256 exponent, int256 targetExponent);
+
+/// @dev Thrown by `unabsUnsignedMulOrDivLossy` when a magnitude that does not
+/// fit int256 at the result's sign must shed a digit at exponent
+/// `type(int256).max`. `mul` and `div` revert `ExponentOverflow` before they
+/// pass it such an input.
+/// @param a The signed coefficient of the first operand.
+/// @param b The signed coefficient of the second operand.
+/// @param signedCoefficientAbs The magnitude of the result coefficient.
+/// @param exponent The exponent of the result.
+error UnabsExponentOverflow(int256 a, int256 b, uint256 signedCoefficientAbs, int256 exponent);

@@ -23,4 +23,12 @@ library LibTestRegion {
         // forge-lint: disable-next-line(unsafe-typecast)
         return signedCoefficient / int256(10 ** (drop % 77));
     }
+
+    /// An int32 exponent within `maxLift` of the int32 floor,
+    /// `type(int32).min + lift % (maxLift + 1)`.
+    function nearInt32Floor(uint256 lift, uint256 maxLift) internal pure returns (int256) {
+        // Safe: the lift is at most `maxLift`, which callers keep small.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return int256(type(int32).min) + int256(lift % (maxLift + 1));
+    }
 }
