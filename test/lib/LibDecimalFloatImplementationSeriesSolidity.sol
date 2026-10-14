@@ -9,6 +9,8 @@ import {
     POW_FIXED_SQRT_ONE,
     POW_FIXED_TWO_SQRT_ONE,
     POW_FIXED_ONE_ODD_INVERSE,
+    POW_FIXED_ONE_ODD,
+    POW_FIXED_ONE_TWOS_MASK,
     EXP10_THRESHOLD_1,
     EXP10_THRESHOLD_2,
     EXP10_THRESHOLD_3,
@@ -54,7 +56,8 @@ import {
 import {Exp10FixedOutOfRange, Log10RatioOutOfRange, Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
 
 /// `log10Ratio` and `exp10Fixed` with the library's unrolled algorithm (seven
-/// atanh terms, the 1e25 split of z^2, every `mulDivFixed` written out in place,
+/// atanh terms, the 1e25 split of z^2 and z^4, z^6 split by 2^50 over
+/// `POW_FIXED_ONE_ODD` (#475), exp10Fixed's `mulDivFixed` written out in place,
 /// the same constants) and every assembly block written as plain Solidity.
 /// Gas comparison and equivalence tests only, isolating the assembly.
 /// GAS AND EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: the same algorithm
@@ -126,31 +129,17 @@ library LibDecimalFloatImplementationSeriesSolidity {
             }
         }
         uint256 series;
-        uint256 inverse = POW_FIXED_ONE_ODD_INVERSE;
-        // Wrapping is the written-out mulDiv's own mod 2^256 arithmetic, and
-        // the library proves every other step fits a word.
+        // The library proves every step fits a word.
         unchecked {
             uint256 u = z / POW_FIXED_SQRT_ONE;
             uint256 v = z % POW_FIXED_SQRT_ONE;
             uint256 zSquared = u * u + (u * v * POW_FIXED_TWO_SQRT_ONE + v * v) / POW_FIXED_ONE;
             series = POW_FIXED_ONE + zSquared / 3;
-            uint256 mm;
-            uint256 prod0;
-            uint256 remainder;
-            uint256 term;
-            mm = mulmod(zSquared, zSquared, type(uint256).max);
-            prod0 = zSquared * zSquared;
-            remainder = mulmod(zSquared, zSquared, POW_FIXED_ONE);
-            term =
-                (((prod0 - remainder) >> 50)
-                            | ((mm - prod0 - (mm < prod0 ? 1 : 0) - (remainder > prod0 ? 1 : 0)) << 206)) * inverse;
+            u = zSquared / POW_FIXED_SQRT_ONE;
+            v = zSquared % POW_FIXED_SQRT_ONE;
+            uint256 term = u * u + (u * v * POW_FIXED_TWO_SQRT_ONE + v * v) / POW_FIXED_ONE;
             series += term / 5;
-            mm = mulmod(term, zSquared, type(uint256).max);
-            prod0 = term * zSquared;
-            remainder = mulmod(term, zSquared, POW_FIXED_ONE);
-            term =
-                (((prod0 - remainder) >> 50)
-                            | ((mm - prod0 - (mm < prod0 ? 1 : 0) - (remainder > prod0 ? 1 : 0)) << 206)) * inverse;
+            term = (term * (zSquared >> 50) + ((term * (zSquared & POW_FIXED_ONE_TWOS_MASK)) >> 50)) / POW_FIXED_ONE_ODD;
             series += term / 7;
             term = term * zSquared / POW_FIXED_ONE;
             series += term / 9;

@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatPackLossyLiftFirst} from "test/lib/LibDecimalFloatPackLossyLiftFirst.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatPackLossyLiftFirst} from "../../lib/LibDecimalFloatPackLossyLiftFirst.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 /// `packLossy` returns and reverts the same bytes as the lift-first version

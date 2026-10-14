@@ -7,7 +7,7 @@ import {
     POW_FIXED_SQRT_ONE,
     POW_FIXED_TWO_SQRT_ONE,
     POW_FIXED_ONE_ODD_INVERSE
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
 /// Logs the gas of `log10Ratio`'s z^4 step, floor(x^2 / 1e50) for x its

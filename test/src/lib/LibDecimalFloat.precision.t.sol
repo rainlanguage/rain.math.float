@@ -3,10 +3,10 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
-import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
-import {LibTestPowRange, PowRange, Log10} from "test/lib/LibTestPowRange.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibExactFloat} from "../../lib/LibExactFloat.sol";
+import {LibTestErrorBound} from "../../lib/LibTestErrorBound.sol";
+import {LibTestPowRange, PowRange, Log10} from "../../lib/LibTestPowRange.sol";
 
 /// log10, pow10, pow and sqrt against the `bc` constant oracle, within 1e-67,
 /// and against each other, each within the proven bound LibTestErrorBound
