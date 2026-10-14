@@ -10,6 +10,7 @@ import {
 import {LOG10_RAW_ERROR_E54} from "../../../lib/LibTestErrorBound.sol";
 import {Log10Zero, Log10Negative, ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
 import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
+import {SafeCast} from "@openzeppelin-contracts-5.7.0/utils/math/SafeCast.sol";
 
 /// @dev log10 of 1448249443771554926630073670106315934706894775468672318138123474693615199258e-75
 /// in units of 1e-76, from `bc -l` at scale 130, truncated.
@@ -121,8 +122,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         int256 expected = characteristic * 1e70 + int256(fraction);
         int256[] memory boundCoefficients = new int256[](2);
         int256[] memory boundExponents = new int256[](2);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        (boundCoefficients[0], boundExponents[0]) = (int256(LibExactFloat.abs(expected)) * 311, -121);
+        (boundCoefficients[0], boundExponents[0]) = (SafeCast.toInt256(LibExactFloat.abs(expected)) * 311, -121);
         (boundCoefficients[1], boundExponents[1]) = (1, -67);
         (int256 c, int256 e) = LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         assertTrue(

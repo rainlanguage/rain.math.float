@@ -12,6 +12,7 @@ import {
 import {LibExactFloat, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {Log10RatioRelativeSumTooSmall, Log10RatioOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
+import {SafeCast} from "@openzeppelin-contracts-5.7.0/utils/math/SafeCast.sol";
 
 /// Bounds from the `log10Ratio` NatSpec, for z = |a - b| / (a + b) at most
 /// 5.1e-4: the magnitude is at most 1.3e-51 relative above the true log, and
@@ -49,13 +50,11 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
     ) internal pure {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, relative);
         assertTrue(expectedCoefficient < 0 ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 c = int256(LibExactFloat.abs(signedCoefficient));
+        int256 c = SafeCast.toInt256(LibExactFloat.abs(signedCoefficient));
         int256[] memory coefficients = new int256[](2);
         int256[] memory exponents = new int256[](2);
         (coefficients[0], exponents[0]) = (c, exponent);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        (coefficients[1], exponents[1]) = (-int256(LibExactFloat.abs(expectedCoefficient)), expectedExponent);
+        (coefficients[1], exponents[1]) = (-SafeCast.toInt256(LibExactFloat.abs(expectedCoefficient)), expectedExponent);
         int256[] memory boundCoefficients = new int256[](5);
         int256[] memory boundExponents = new int256[](5);
         (boundCoefficients[0], boundExponents[0], boundCoefficients[1], boundExponents[1]) =
@@ -281,8 +280,7 @@ contract LibDecimalFloatImplementationLog10RatioTest is Test {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloatImplementation.log10Ratio(a, b, false);
         assertEq(exponent, -50, "exponent");
         assertTrue(below ? signedCoefficient <= 0 : signedCoefficient >= 0, "sign");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 actual = int256(LibExactFloat.abs(signedCoefficient)) * 1e20;
+        int256 actual = SafeCast.toInt256(LibExactFloat.abs(signedCoefficient)) * 1e20;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 expected = int256(Math.mulDiv(d, oracleRatio(d, b, below), b));
         assertLe(LibExactFloat.abs(actual - expected), 1.0036e20 + 2, "fixed point error");
