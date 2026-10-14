@@ -988,7 +988,7 @@
     "testsAfterCommit": "347bd3a8ca13f063d9c2487955ea9503f36e6b6d",
     "publishedTag": "sol-v0.2.38",
     "commitsAheadOfTag": 0,
-    "scope": "Issue #376: LibFormatDecimalFloat formats every Float. Before = main 369aee0 source and tests. After = 347bd3a, both UnformatableExponent guards deleted, only the ±1000 non-scientific cap left. Probe suite: forge test --mc \"LibFormatDecimalFloat|LibDecimalFloatFormatParse|LibDecimalFloatExoticFloat\". Shared mutants in both trees: S1 cap upper > to >=, S2 cap lower side dropped, S3 display exponent 75 to 76, S4 negative exponent magnitude off by one, S5 exponent marker e to E, S6 exponent digits start one byte low. Guard behaviour, mirrored: before, M1-M3 delete the scientific int32 guard, the exponent >= 68 guard and the int224 quotient guard; after, R1-R3 reintroduce each one. Before 8/9 killed: S1 survived because main expected (1, 1000) to revert, and the cap reverts it with the same data. After 9/9 killed: testFormatNonScientificCapBoundaries and testFormatEveryFloatNonScientificInsideCap kill S1. R1-R3 are also killed by the format suite alone (--mc LibFormatDecimalFloatToDecimalStringTest), by testFormatEveryFloatScientific, testFormatExtremeFloats, testFormatScientificExponentPastInt32, testFormatNonScientificIntegerPastInt224 and testFormatNonScientificCapBoundaries.",
+    "scope": "Issue #376: LibFormatDecimalFloat formats every Float. Before = main 369aee0 source and tests. After = 347bd3a, both UnformatableExponent guards deleted, only the \u00b11000 non-scientific cap left. Probe suite: forge test --mc \"LibFormatDecimalFloat|LibDecimalFloatFormatParse|LibDecimalFloatExoticFloat\". Shared mutants in both trees: S1 cap upper > to >=, S2 cap lower side dropped, S3 display exponent 75 to 76, S4 negative exponent magnitude off by one, S5 exponent marker e to E, S6 exponent digits start one byte low. Guard behaviour, mirrored: before, M1-M3 delete the scientific int32 guard, the exponent >= 68 guard and the int224 quotient guard; after, R1-R3 reintroduce each one. Before 8/9 killed: S1 survived because main expected (1, 1000) to revert, and the cap reverts it with the same data. After 9/9 killed: testFormatNonScientificCapBoundaries and testFormatEveryFloatNonScientificInsideCap kill S1. R1-R3 are also killed by the format suite alone (--mc LibFormatDecimalFloatToDecimalStringTest), by testFormatEveryFloatScientific, testFormatExtremeFloats, testFormatScientificExponentPastInt32, testFormatNonScientificIntegerPastInt224 and testFormatNonScientificCapBoundaries.",
     "tool": "adversarial-mutation-test",
     "skillVersion": "0.35.0",
     "summary": {
@@ -1105,6 +1105,27 @@
       "confirmed": 0,
       "testsBefore": 145,
       "testsAfter": 186,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-14T20:37:49Z",
+    "commit": "618904e55245e3e3c3eb14cff692a00f6f57d3e6",
+    "testsAfterCommit": "5850b78292aec4a5c45452b7e19b208ac2d76063",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 3,
+    "scope": "PR #718 (freeze the sqrt, LiftFirst and Pr321 baselines; guard every live library), its changed lines: the private copies scaleUp, mulDiv and mul512 in test/lib/LibDecimalFloatSqrtVariants.sol; FLOAT_ZERO and its return sites in test/lib/LibDecimalFloatPackLossyLiftFirst.sol; unpack, maximizeFull, maximize and their constants in test/lib/LibFormatDecimalFloatPr321.sol; packLossy and FLOAT_ZERO in test/lib/LibParseDecimalFloatPr321.sol; and the guard in crates/tests/src/baselines.rs. Probe suites: forge test --match-contract over the files that import each copy (Pr321|FormatParse 16 tests, LiftFirst 6, the two sqrt contracts 39) at 256 fuzz runs, and cargo test --lib baselines (5). Before = 618904e5's tests on the PR source; after = the same match at testsAfterCommit (22, 8, 44 and 5 tests). Mutants: 58 on the format and parse copies, 4 LiftFirst, 23 sqrt, 13 on the original guard and 11 on the rewritten one (104). Before kills 49; the new tests kill 40 more, among them the parse copy's nearest-bound, ceiling-headroom and floor-shedding paths, its 1e5 shortcut, the lossless test (never exercised before), maximize's E74/E75 steps and times-ten window against the exact LibExactFloat.maximize oracle, the 512-bit borrow in the mulDiv copy, the Newton step's rounding at f^2 + f, and mul512's carry at 2^256 - 64. 13 survivors are equivalent with proofs in audit/known-false-positives.md: gate redistribution in scaleUp and maximize, the mulDiv fast path and overflow check (unreachable from sqrt), maximizeFull's shortfall (int32 exponents only), and in packLossy the discarded bound value, the gas-only shortcut gate, initialExponent >= 0, the redundant !fits and 10**0. Adversarial: the guard did not see `LibDecimalFloat. unpack` (whitespace after the dot) or `using LibDecimalFloat\\n`; both fixed (whitespace-tolerant use_on, binds()), which removed two mutant targets. Not fixed, already on the PR as rain-marvin findings from the base branch: aliased imports evade the guard; BASELINES is a hand-maintained list.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 104,
+      "killedBefore": 49,
+      "killedAfter": 40,
+      "equivalent": 13,
+      "candidates": 2,
+      "confirmed": 2,
+      "testsBefore": 66,
+      "testsAfter": 79,
       "filed": []
     }
   }
