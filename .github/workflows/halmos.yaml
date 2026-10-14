@@ -43,6 +43,9 @@ env:
   # Every halmos run must prove in this many seconds; a slice that reaches it
   # fails and is cut smaller.
   HALMOS_RUN_SECONDS: 300
+  # Foundry's nightly banner names FOUNDRY_DISABLE_NIGHTLY_WARNING, which the
+  # WARNING check below would read as a halmos warning.
+  FOUNDRY_DISABLE_NIGHTLY_WARNING: 1
 defaults:
   run:
     shell: bash
