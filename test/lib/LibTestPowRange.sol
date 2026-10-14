@@ -144,7 +144,7 @@ library LibTestPowRange {
     /// Where pow10(x) lands. L is x itself, exact. E is `POW10_HALF_UNIT_E52`
     /// plus `POW10_RAW_ERROR_E52` units of 1e-52.
     function pow10Range(Float x) internal pure returns (PowRange) {
-        (int256 signedCoefficient, int256 exponent) = unpack(x);
+        (int256 signedCoefficient, int256 exponent) = LibExactFloat.unpackBits(Float.unwrap(x));
         (uint256 lowMagnitude, uint256 highMagnitude) = magnitudeUnits(LibExactFloat.abs(signedCoefficient), exponent);
         (int256 low, int256 high) = signed(signedCoefficient < 0, lowMagnitude, highMagnitude);
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -211,8 +211,8 @@ library LibTestPowRange {
     /// Bounds on L = b log10 |a| in units, widened by the oracle's error:
     /// 1e-67 |b|, or for `nearOne` 6e-69 |L|, rounded up to 1e-68.
     function powLog(Float a, Float b) internal pure returns (int256, int256) {
-        (int256 signedCoefficientA, int256 exponentA) = unpack(a);
-        (int256 signedCoefficientB, int256 exponentB) = unpack(b);
+        (int256 signedCoefficientA, int256 exponentA) = LibExactFloat.unpackBits(Float.unwrap(a));
+        (int256 signedCoefficientB, int256 exponentB) = LibExactFloat.unpackBits(Float.unwrap(b));
         uint256 magnitudeB = LibExactFloat.abs(signedCoefficientB);
         Log10 memory log = log10Abs(signedCoefficientA, exponentA);
         uint256 lowMagnitude = Math.min(
@@ -239,7 +239,8 @@ library LibTestPowRange {
     /// lower bound.
     function powRange(Float a, Float b) internal pure returns (PowRange) {
         (int256 low, int256 high) = powLog(a, b);
-        (int256 errorCoefficient, int256 errorExponent) = unpack(LibTestErrorBound.pow(a, b));
+        (int256 errorCoefficient, int256 errorExponent) =
+            LibExactFloat.unpackBits(Float.unwrap(LibTestErrorBound.pow(a, b)));
         // E is positive, so its coefficient is.
         // forge-lint: disable-next-line(unsafe-typecast)
         uint256 error = uint256(errorCoefficient);
@@ -250,14 +251,6 @@ library LibTestPowRange {
             : CAP;
         // forge-lint: disable-next-line(unsafe-typecast)
         return classify(low - int256(down), high + int256(up));
-    }
-
-    function unpack(Float x) internal pure returns (int256 signedCoefficient, int256 exponent) {
-        uint256 bits = uint256(Float.unwrap(x));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        signedCoefficient = int224(uint224(bits));
-        // forge-lint: disable-next-line(unsafe-typecast)
-        exponent = int32(uint32(bits >> 224));
     }
 
     /// Whether a range allows a return.
@@ -278,7 +271,7 @@ library LibTestPowRange {
     /// The revert of pow or pow10 past the range on the `over` side: the
     /// call's input `x`, its coefficient and exponent read from its bits.
     function rangeError(bool over, Float x) internal pure returns (bytes memory) {
-        (int256 signedCoefficient, int256 exponent) = unpack(x);
+        (int256 signedCoefficient, int256 exponent) = LibExactFloat.unpackBits(Float.unwrap(x));
         return abi.encodeWithSelector(
             over ? ExponentOverflow.selector : ExponentUnderflow.selector, signedCoefficient, exponent
         );

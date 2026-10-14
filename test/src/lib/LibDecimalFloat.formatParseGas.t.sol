@@ -7,6 +7,11 @@ import {FormatParseGas} from "test/concrete/FormatParseGas.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 
+/// Gas of `toDecimalString` and `parseDecimalFloat` against their copies from
+/// before #310's format and parse changes, measured the same way: the library
+/// call alone between two `gasleft()` reads. Every row asserts the same result
+/// bytes and no more gas. Run with `forge test --mc
+/// LibDecimalFloatFormatParseGasTest -vv`; each line is
 /// `GAS|op|case|before|after|delta`.
 contract LibDecimalFloatFormatParseGasTest is Test {
     FormatParseGas internal immutable B = new FormatParseGas();
@@ -33,8 +38,8 @@ contract LibDecimalFloatFormatParseGasTest is Test {
 
     function fmt(string memory label, int256 c, int256 e, bool scientific) internal view {
         Float f = LibDecimalFloat.packLossless(c, e);
-        (uint256 g0, bytes32 h0) = B.formatBase(f, scientific);
-        (uint256 g1, bytes32 h1) = B.formatPr(f, scientific);
+        (uint256 g0, bytes32 h0) = B.formatPr321(f, scientific);
+        (uint256 g1, bytes32 h1) = B.formatLive(f, scientific);
         assertEq(h1, h0, label);
         row(scientific ? "formatSci" : "format", label, g0, g1);
         // The same digit-buffer algorithm in plain Solidity, so the
@@ -59,7 +64,7 @@ contract LibDecimalFloatFormatParseGasTest is Test {
     }
 
     function checkSolidityCopy(Float f, bool scientific) internal {
-        try B.formatPr(f, scientific) returns (uint256, bytes32 h) {
+        try B.formatLive(f, scientific) returns (uint256, bytes32 h) {
             (, bytes32 hSol) = B.formatSol(f, scientific);
             assertEq(hSol, h);
         } catch (bytes memory err) {
@@ -69,8 +74,8 @@ contract LibDecimalFloatFormatParseGasTest is Test {
     }
 
     function parse(string memory str) internal view {
-        (uint256 g0, bytes32 h0) = B.parseBase(str);
-        (uint256 g1, bytes32 h1) = B.parsePr(str);
+        (uint256 g0, bytes32 h0) = B.parsePr321(str);
+        (uint256 g1, bytes32 h1) = B.parseLive(str);
         assertEq(h1, h0, str);
         row("parse", str, g0, g1);
     }
