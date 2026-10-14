@@ -3,9 +3,10 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
+import {LibTestRegion} from "../../../lib/LibTestRegion.sol";
+import {ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationSubTest is Test {
     function subExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -41,20 +42,17 @@ contract LibDecimalFloatImplementationSubTest is Test {
         }
     }
 
-    /// `c` with its last `shift % 78` digits dropped.
-    function dropDigits(int256 c, uint8 shift) internal pure returns (int256) {
-        return c / int256(10 ** (uint256(shift) % 78));
-    }
-
     function testSubMatchesRule(int256 a, int256 ea, int256 b, int256 eb, uint8 sa, uint8 sb) external view {
-        checkSubMatchesRule(dropDigits(a, sa), ea, dropDigits(b, sb), eb);
+        checkSubMatchesRule(LibTestRegion.anyDigits(a, sa), ea, LibTestRegion.anyDigits(b, sb), eb);
     }
 
     /// As `testSubMatchesRule`, with the operands' digits overlapping or
     /// adjacent, so the difference can carry past int256.
     function testSubMatchesRuleNearby(int256 a, int256 ea, int256 b, int256 gap, uint8 sa, uint8 sb) external view {
         ea = bound(ea, type(int256).min + 80, type(int256).max - 80);
-        checkSubMatchesRule(dropDigits(a, sa), ea, dropDigits(b, sb), ea + bound(gap, -80, 80));
+        checkSubMatchesRule(
+            LibTestRegion.anyDigits(a, sa), ea, LibTestRegion.anyDigits(b, sb), ea + bound(gap, -80, 80)
+        );
     }
 
     /// As `testSubMatchesRule`, with exponents at or near the floor, where the
@@ -64,13 +62,13 @@ contract LibDecimalFloatImplementationSubTest is Test {
         int256 exponentA = type(int256).min + int256(bound(ea, 0, 160));
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = type(int256).min + int256(bound(eb, 0, 160));
-        checkSubMatchesRule(dropDigits(a, sa), exponentA, dropDigits(b, sb), exponentB);
+        checkSubMatchesRule(LibTestRegion.anyDigits(a, sa), exponentA, LibTestRegion.anyDigits(b, sb), exponentB);
     }
 
     /// As `testSubMatchesRuleNearby`, with `b` int256.min.
     function testSubMinSignedValue(int256 a, int256 ea, int256 gap, uint8 sa) external view {
         ea = bound(ea, type(int256).min + 80, type(int256).max - 80);
-        checkSubMatchesRule(dropDigits(a, sa), ea, type(int256).min, ea + bound(gap, -80, 80));
+        checkSubMatchesRule(LibTestRegion.anyDigits(a, sa), ea, type(int256).min, ea + bound(gap, -80, 80));
     }
 
     /// `b` int256.min at the extreme exponents.
@@ -124,6 +122,31 @@ contract LibDecimalFloatImplementationSubTest is Test {
         checkSub(min, min, min, min, 0, 0);
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, max));
         this.subExternal(0, 0, min, max);
+    }
+
+    /// #538: `sub` reverts `ExponentOverflow` as `add` does for `a + (-b)`,
+    /// with its payload, so `-b` where `b` is the operand at
+    /// `type(int256).max`. For `b = type(int256).min` the sum is `-a + b`:
+    /// its payload is `-a` where `a` is unshifted at `type(int256).max`, and
+    /// `b` otherwise; a sum of `type(int256).min` there is `minus`'s
+    /// `ExponentOverflow(type(int256).min, type(int256).max)`. A cancelling
+    /// pair returns: `-6e75 - -2^255` is `2^255 - 6e75` (bc).
+    function testSubRevertPayload() external {
+        int256 min = type(int256).min;
+        int256 max = type(int256).max;
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(3e76), max));
+        this.subExternal(3e76, max, -4e76, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, max, max));
+        this.subExternal(1, max, -max, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(-6e75), max));
+        this.subExternal(6e75, max, min, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, max));
+        this.subExternal(1, max, min, max);
+        vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, max));
+        this.subExternal(3, 0, min, max);
+        checkSub(
+            -6e75, max, min, max, 51896044618658097711785492504343953926634992332820282019728792003956564819968, max
+        );
     }
 
     /// `min e d - min e 0` is `-2^255 (1 - 10^-d)` units of `10^d`, which

@@ -2,11 +2,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloatImplementationMain} from "test/lib/LibDecimalFloatImplementationMain.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementationMain} from "../../../lib/LibDecimalFloatImplementationMain.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {MaximizeOverflow, ExponentOverflow, DivisionByZero} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {MaximizeOverflow, ExponentOverflow, DivisionByZero} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 /// Wherever main returns, the PR returns the same bytes, and wherever main
 /// reverts, the PR reverts the same bytes, except in the floor shortfall,
@@ -242,6 +242,12 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
                         LibDecimalFloatImplementation.eq(mc, me - ea + eb, qc, qe), "main is the quotient mod 2^256"
                     );
                 }
+            } else if (selector(m) == bytes4(keccak256("Panic(uint256)"))) {
+                // #645: a positive quotient past int256.max sheds a digit in
+                // main's `unabsUnsignedMulOrDivLossy`, whose checked
+                // `exponent + 1` panics at type(int256).max.
+                assertEq(m, abi.encodeWithSignature("Panic(uint256)", 0x11), "main panics on overflow");
+                assertTrue((a < 0) == (b < 0), "positive quotient");
             } else {
                 assertEq(selector(m), MaximizeOverflow.selector, "main MaximizeOverflow");
                 assertTrue(b == 1 || b == -1, "divisor is one");
@@ -365,6 +371,18 @@ contract LibDecimalFloatImplementationMainEquivalenceTest is Test {
         vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, min, ea - 34));
         this.prDiv(min, ea, 1, eb);
         checkDiv(min, ea, 1, eb);
+    }
+
+    /// #645: at 2b19ed13 a positive 2^255 quotient at exponent
+    /// type(int256).max sheds a digit in `unabsUnsignedMulOrDivLossy`, whose
+    /// checked `exponent + 1` panics. The baseline must reproduce that, not
+    /// the live helper's later `UnabsExponentOverflow` (#502).
+    function testMainDivShedAtExponentMaxPanics() external {
+        int256 min = type(int256).min;
+        int256 max = type(int256).max;
+        vm.expectRevert(abi.encodeWithSignature("Panic(uint256)", 0x11));
+        this.mainDiv(min, max, -1e76, -76);
+        checkDiv(min, max, -1e76, -76);
     }
 
     function testMainEquivalenceDivPacked(int224 a, int32 ea, int224 b, int32 eb) external view {

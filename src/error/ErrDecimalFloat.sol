@@ -4,18 +4,32 @@ pragma solidity ^0.8.25;
 
 import {Float} from "../lib/LibDecimalFloat.sol";
 
-/// @dev Thrown when an exponent overflows.
+/// @dev Thrown when a value is past every Float, or an exponent passes
+/// int256. `div`, `inv`, `pow` and `pow10` report the Float they were called
+/// with. Every other public operation, `packLossy` and `packLossless` report
+/// the unpacked value handed to packing. The implementation's `add`, `sub`,
+/// `mul` and `div` report their first operand where an exponent passes
+/// int256; `log10Unrounded`, `minus` and `roundSignificant` their input.
+/// `LibParseDecimalFloat` returns the selector by value and never reverts
+/// with it.
+/// @param signedCoefficient The signed coefficient of the value reported.
+/// @param exponent The exponent of the value reported.
 error ExponentOverflow(int256 signedCoefficient, int256 exponent);
 
-/// @dev Thrown when an exponent underflows. Exponent underflow means the
-/// magnitude is smaller than any representable Float. Without this revert,
-/// arithmetic ops that compose to underflow (e.g. `mul` with two operands
-/// whose exponents sum below `int32.min`) would silently return `FLOAT_ZERO`,
-/// breaking downstream code that branches on `result == 0`.
+/// @dev Thrown when a non-zero result is below every non-zero Float, so that
+/// the closest Float toward zero would be zero: magnitude below
+/// 1e-2147483648 (e.g. `mul` of 1e-2147483648 by 0.1). Returning `FLOAT_ZERO`
+/// instead would break code that branches on `result == 0`.
+/// @param signedCoefficient The signed coefficient of the value reported:
+/// the unpacked result handed to `packArithmeticResult` by the operations it
+/// finalises, or the Float `div`, `inv`, `pow` or `pow10` was called with.
+/// @param exponent The exponent of the value reported.
 error ExponentUnderflow(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when attempting to convert a negative number to an unsigned
 /// fixed-point number.
+/// @param signedCoefficient The negative coefficient as given.
+/// @param exponent The exponent as given.
 error NegativeFixedDecimalConversion(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when converting a Float to a fixed-decimal uint256 and the
@@ -23,21 +37,32 @@ error NegativeFixedDecimalConversion(int256 signedCoefficient, int256 exponent);
 /// `lossless=false` would decapitate the high bits of the value;
 /// reverting surfaces the overflow with the original inputs so callers can
 /// rescale or reject.
+/// @param signedCoefficient The coefficient as given.
+/// @param exponent The exponent as given.
+/// @param decimals The target decimals as given.
 error FixedDecimalOverflow(int256 signedCoefficient, int256 exponent, uint8 decimals);
 
 /// @dev Thrown when attempting to calculate the log of 0.
 error Log10Zero();
 
 /// @dev Thrown when attempting to calculate the log of a negative number.
+/// @param signedCoefficient The negative coefficient as given.
+/// @param exponent The exponent as given.
 error Log10Negative(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown by a lossless conversion to a Float when the value is not
 /// exactly a Float and is not past the largest one, which is
 /// `ExponentOverflow`. A value smaller than every Float is this error.
+/// @param signedCoefficient The coefficient of the value: `packLossless`'s
+/// input, or `fromFixedDecimalLossy`'s result for the fixed-decimal
+/// conversions.
+/// @param exponent The exponent of that same value.
 error LossyConversionToFloat(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when converting a float to some value when the conversion
 /// is lossy.
+/// @param signedCoefficient The signed coefficient of the Float converted.
+/// @param exponent The exponent of the Float converted.
 error LossyConversionFromFloat(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when `log10Ratio` is asked for a relative log with a + b below
@@ -48,21 +73,37 @@ error LossyConversionFromFloat(int256 signedCoefficient, int256 exponent);
 error Log10RatioRelativeSumTooSmall(uint256 a, uint256 b);
 
 /// @dev Thrown when attempting to exponentiate 0^b where b is negative.
+/// @param b The negative power as given.
 error ZeroNegativePower(Float b);
 
-/// @dev Thrown when the quotient of mulDiv internal to division is 2^256 or
-/// more, or its denominator is zero.
+/// @dev Thrown by the implementation's `mulDiv`, which `div`, `sqrt` and
+/// `log10Ratio` call, when floor(x y / denominator) is 2^256 or more or
+/// `denominator` is zero, and by `mulDivFixed` when floor(x y / 1e50) is
+/// 2^256 or more.
+/// @param x The first factor.
+/// @param y The second factor.
+/// @param denominator The divisor, `POW_FIXED_ONE` from `mulDivFixed`.
 error MulDivOverflow(uint256 x, uint256 y, uint256 denominator);
 
-/// @dev Thrown when a maximize overflows where it is not appropriate.
+/// @dev Thrown by `maximizeFull` when the shift that maximizes the
+/// coefficient would take the exponent below `type(int256).min`, where
+/// `maximize` instead stops at the floor and reports the shortfall.
+/// @param signedCoefficient The coefficient as given.
+/// @param exponent The exponent as given.
 error MaximizeOverflow(int256 signedCoefficient, int256 exponent);
 
-/// @dev Thrown when dividing by zero.
-/// @param signedCoefficient The signed coefficient of the numerator.
-/// @param exponent The exponent of the numerator.
+/// @dev Thrown when dividing by zero. `div` reports its dividend; the public
+/// `inv` reports the zero it was asked to invert, and the implementation's
+/// `inv` its dividend, one as `1e76 × 10^-76`.
+/// @param signedCoefficient The signed coefficient of the dividend for
+/// `div`, of the inverted zero for the public `inv`.
+/// @param exponent The exponent of that same value.
 error DivisionByZero(int256 signedCoefficient, int256 exponent);
 
-/// @dev Thrown when attempting to raise a negative base to a fractional power.
+/// @dev Thrown when raising a negative base to a fractional power, and by
+/// `sqrt` of a negative.
+/// @param signedCoefficient The base's signed coefficient, unpacked.
+/// @param exponent The base's exponent.
 error PowNegativeBase(int256 signedCoefficient, int256 exponent);
 
 /// @dev Thrown when `agree` is given a negative tolerance. A spread is a

@@ -3,7 +3,6 @@
 pragma solidity ^0.8.25;
 
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {UnformatableExponent} from "src/error/ErrFormat.sol";
 
 /// `LibFormatDecimalFloat`'s digit-buffer algorithm with every assembly block
@@ -11,8 +10,8 @@ import {UnformatableExponent} from "src/error/ErrFormat.sol";
 /// copied into an output of exact length, and trailing zeros come out with the
 /// same 64/32/16/8/4/2/1 cascade. Gas comparison only, isolating the assembly.
 /// GAS AND EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: the same algorithm
-/// in plain Solidity, to measure the assembly against. Expected values come
-/// from `LibExactFloat`.
+/// in plain Solidity, to measure the assembly against. Expected strings come
+/// from `expectedFormat` in `LibFormatDecimalFloat.toDecimalString.t.sol`.
 library LibFormatDecimalFloatSolidity {
     int256 internal constant MAX_NON_SCIENTIFIC_EXPONENT = 1000;
 
@@ -47,21 +46,21 @@ library LibFormatDecimalFloatSolidity {
     }
 
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
-
         bool isNeg = signedCoefficient < 0;
         uint256 absCoef;
         unchecked {
-            // A maximized packed coefficient is never `type(int256).min`.
             // forge-lint: disable-next-line(unsafe-typecast)
             absCoef = isNeg ? uint256(-signedCoefficient) : uint256(signedCoefficient);
         }
-        int256 displayExponent = exponent + (absCoef >= 1e76 ? int256(76) : int256(75));
-        (uint256 significand,) = stripTrailingZeros(absCoef);
+        (uint256 significand, uint256 trailingZeros) = stripTrailingZeros(absCoef);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 displayExponent = exponent + int256(trailingZeros);
 
         unchecked {
             (bytes memory digitBuffer, uint256 start) = _digits(significand);
             uint256 digits = DIGITS_BUFFER - start;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            displayExponent += int256(digits) - 1;
 
             bool expNeg = displayExponent < 0;
             bytes memory expBuffer = new bytes(EXPONENT_BUFFER);

@@ -5,7 +5,7 @@ pragma solidity =0.8.25;
 import {
     LibDecimalFloatImplementation,
     WithTargetExponentOverflow
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 

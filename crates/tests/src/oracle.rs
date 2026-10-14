@@ -26,9 +26,7 @@ impl Oracle {
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
-            .unwrap_or_else(|e| {
-                panic!("python3 {SCRIPT} (the flake's dev shell provides python3): {e}")
-            });
+            .unwrap_or_else(|e| panic!("python3 {SCRIPT}: {e}"));
         let stdin = child.stdin.take().unwrap();
         let stdout = BufReader::new(child.stdout.take().unwrap());
         Self {
