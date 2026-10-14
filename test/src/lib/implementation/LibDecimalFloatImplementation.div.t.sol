@@ -488,7 +488,8 @@ contract LibDecimalFloatImplementationDivTest is Test {
             checkDivExact(-1e76, min + headroom, 6e75, 0);
             // 3e76 is at or above 1e76: scale 1e76, adjustment 76.
             checkDivExact(1e76, min + headroom, 3e76, 0);
-            // 7 maximizes to 7e75 with a shortfall of 75 - headroom.
+            // 7 maximizes to 7e75, with a shortfall of 75 - headroom while headroom
+            // is below 75 and none after.
             checkDivExact(7, min + headroom, -3, 0);
         }
     }

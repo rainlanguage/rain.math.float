@@ -280,8 +280,9 @@ contract LibDecimalFloatImplementationMaximizeTest is Test {
     /// not above the maximized magnitude: 76 from 1e76 up, 75 below. `div`
     /// scales by that power, so its exponent adjustment stays non-negative.
     function checkShortfallWithinScaleDigits(int256 signedCoefficient, int256 exponent) internal pure {
-        (int256 c,, int256 shortfall) = LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
-        int256 scaleDigits = c / 1e76 != 0 ? int256(76) : int256(75);
+        (int256 maximizedCoefficient,, int256 shortfall) =
+            LibDecimalFloatImplementation.maximize(signedCoefficient, exponent);
+        int256 scaleDigits = maximizedCoefficient / 1e76 != 0 ? int256(76) : int256(75);
         assertLe(shortfall, scaleDigits, "shortfall within scale digits");
     }
 
