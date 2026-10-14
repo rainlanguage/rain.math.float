@@ -165,6 +165,38 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         );
     }
 
+    /// README precision example: 1/3 keeps 67 threes, 1/9 keeps 68 ones
+    /// because 1.1e67 fits int224 where 3.3e67 does not, and so
+    /// (1/3) / (1/9) is exactly 3 (10^68 - 10) / (10^68 - 1) < 3, which
+    /// truncates to 2.(66 nines). (1/9) / (1/3) is exactly 0.(67 threes).
+    function testReadmeThirdsAndNinths() external pure {
+        Float one = LibDecimalFloat.FLOAT_ONE;
+        Float three = LibDecimalFloat.packLossless(3, 0);
+        Float third = one.div(three);
+        Float ninth = one.div(LibDecimalFloat.packLossless(9, 0));
+        assertEq(
+            Float.unwrap(third),
+            Float.unwrap(
+                LibDecimalFloat.packLossless(3333333333333333333333333333333333333333333333333333333333333333333, -67)
+            )
+        );
+        assertEq(
+            Float.unwrap(ninth),
+            Float.unwrap(
+                LibDecimalFloat.packLossless(11111111111111111111111111111111111111111111111111111111111111111111, -68)
+            )
+        );
+        assertEq(Float.unwrap(ninth.div(third)), Float.unwrap(third));
+        Float thirdOverNinth = third.div(ninth);
+        assertEq(
+            Float.unwrap(thirdOverNinth),
+            Float.unwrap(
+                LibDecimalFloat.packLossless(2999999999999999999999999999999999999999999999999999999999999999999, -66)
+            )
+        );
+        assertTrue(thirdOverNinth.lt(three));
+    }
+
     /// Integer inputs with a*b at most 1e66: the floor of the Float result of
     /// a*b/c never exceeds mulDiv floor and the lossless-flag ceiling never
     /// falls below mulDiv ceiling, whichever of three operand orders computes

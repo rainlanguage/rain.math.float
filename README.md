@@ -94,18 +94,16 @@ bit logic for intermediate calculations as much as possible to ensure the final
 values are as precise as possible, despite potentially inevitable precision
 loss.
 
-For example, 1/3 yields
-`0.3333333333333333333333333333333333333333333333333333333333333333333333333333`
-because internally first `1` is represented as `1e152` in 512 bits and 3 becomes
-`3e76` so when we divide back into 256 bits we retain the full 76 digits
-representable in signed 256 bit values.
+For example, 1/3 yields `0.` then 67 threes. Internally `1` is `1e76` and `3` is
+`3e76`, so the 512-bit quotient `1e152 / 3e76` keeps 76 digits, and packing then
+truncates it toward zero to the 67 digits an int224 coefficient holds.
 
 Note that 10/3 has the same coefficient as 1/3, but a different exponent so the
 precision is decoupled from the scale of the result.
 
-This approach is necessary to get useful results from scenarios such as
-`( 1 / 9 ) / ( 1 / 3 ) == 0.33..` and `( 1 / 3 ) / (1 / 9) == 3` where precision
-loss quickly compounds to incorrect final values.
+Composition still rounds once per operation: `(1 / 9) / (1 / 3)` is `0.` then 67
+threes, but `(1 / 3) / (1 / 9)` is `2.` then 66 nines, not 3, because 1/9 keeps
+68 ones where 1/3 keeps 67 threes.
 
 #### Exponent underflow
 
