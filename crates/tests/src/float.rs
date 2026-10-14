@@ -7,7 +7,7 @@ use crate::reference::{self as r, Dec, I32_MIN, RefError, int224_max};
 use T::TestDecimalFloatErrors as Errors;
 use alloy::primitives::I256;
 use alloy::primitives::aliases::I224;
-use alloy::primitives::{B256, Bytes, FixedBytes, U256, fixed_bytes};
+use alloy::primitives::{B256, Bytes, FixedBytes, U256};
 use alloy::sol_types::{SolCall, SolInterface};
 use core::cmp::Ordering;
 use core::fmt::Debug;
@@ -25,10 +25,12 @@ enum Fail {
 
 type R<V> = Result<V, Fail>;
 
+/// The concrete's result, or its revert decoded as one of its errors.
 fn call<C: SolCall>(c: C) -> R<C::Return> {
     evm::concrete(c).map_err(|out: Bytes| Fail::Revert(Box::new(Errors::abi_decode(&out).unwrap())))
 }
 
+/// A packed Float, shown unpacked.
 #[derive(Clone, Copy)]
 struct Float(B256);
 
@@ -38,10 +40,14 @@ impl Debug for Float {
     }
 }
 
+/// `call` for a Float result.
 fn float<C: SolCall<Return = B256>>(c: C) -> R<Float> {
     call(c).map(Float)
 }
 
+/// The concrete's functions, each by its name, through `call`: `parse`
+/// returns a non-zero selector as `Fail::Selector`, and `pack_lossless` is
+/// the harness's.
 impl Float {
     fn zero() -> R<Float> {
         float(T::zeroCall {})
@@ -171,6 +177,7 @@ impl Float {
     }
 }
 
+/// The operators as the concrete's `add`, `sub`, `mul` and `div`.
 macro_rules! binary {
     ($($op:ident $f:ident $call:ident),*) => {$(
         impl core::ops::$op for Float {
@@ -209,6 +216,7 @@ impl Float {
     }
 }
 
+/// Whether a failure is the reference's error, by selector.
 fn fail_is(f: &Fail, e: RefError) -> bool {
     match f {
         Fail::Revert(x) => x.selector() == e.selector(),
@@ -232,6 +240,7 @@ fn agrees<V: Debug, W: Debug>(
     Ok(())
 }
 
+/// `agrees` for a Float result: equal in value to the reference's.
 fn agrees_float(
     case: &str,
     lib: &R<Float>,
@@ -251,6 +260,7 @@ fn step(
     Ok(lib.ok().zip(want.ok()))
 }
 
+/// 1, as a Float and as the reference's value.
 fn one() -> (Float, Dec) {
     let d = Dec::new(1, 0);
     (Float(d.to_bytes()), d)
@@ -288,39 +298,46 @@ fn chain_against(
     Ok(())
 }
 
-/// Parsing an empty string returns an error selector.
+/// The selector of `ParseEmptyDecimalString(uint256)`, which `RefError`
+/// has no variant for.
+fn parse_empty_selector() -> [u8; 4] {
+    alloy::primitives::keccak256("ParseEmptyDecimalString(uint256)")[..4]
+        .try_into()
+        .unwrap()
+}
+
+/// Parsing an empty string returns ParseEmptyDecimalString by value.
 #[test]
 fn test_parse_empty_string_error() {
     let err = Float::parse("".to_string()).unwrap_err();
-    // We don't know the exact selector here, just ensure the error path is hit.
-    assert!(matches!(err, Fail::Selector(_)));
+    assert!(
+        matches!(err, Fail::Selector(s) if s.0 == parse_empty_selector()),
+        "{err:?}"
+    );
 }
 
+/// An exponent far past int32 is `ExponentOverflow`, returned by value
+/// rather than reverted (#510).
 #[test]
 fn test_parse_exponent_overflow_error() {
-    // Extremely large exponent expected to overflow (exponent >> i32::MAX),
-    // returned by value rather than reverted (#510).
     let err = Float::parse("1e3000000000".to_string()).unwrap_err();
     let want = RefError::ExponentOverflow.selector();
     assert!(matches!(err, Fail::Selector(s) if s.0 == want), "{err:?}");
 }
 
-/// Malformed inputs ("1.2.3", "abc") return specific error selectors.
+/// "1.2.3" is the literal "1.2" then excess characters; "abc" has no
+/// integer digits.
 #[test]
 fn test_parse_edge_cases() {
     let err = Float::parse("1.2.3".to_string()).unwrap_err();
-    assert!(matches!(
-        err,
-        Fail::Selector(selector)
-        if selector == fixed_bytes!("ad384e87")
-    ));
+    let excess = RefError::ParseDecimalFloatExcessCharacters.selector();
+    assert!(matches!(err, Fail::Selector(s) if s.0 == excess), "{err:?}");
 
     let err = Float::parse("abc".to_string()).unwrap_err();
-    assert!(matches!(
-        err,
-        Fail::Selector(selector)
-        if selector == fixed_bytes!("34bd2069")
-    ));
+    assert!(
+        matches!(err, Fail::Selector(s) if s.0 == parse_empty_selector()),
+        "{err:?}"
+    );
 }
 
 /// Boundary constants are distinct, correctly signed, correctly ordered,
@@ -393,8 +410,7 @@ proptest! {
 /// Adding two max-exponent floats overflows with ExponentOverflow.
 #[test]
 fn test_add_exponent_overflow_error() {
-    let max_coeff_str = "13479973333575319897333507543509815336818572211270286240551805124607";
-    let large_coeff_i224 = I224::from_str(max_coeff_str).unwrap();
+    let large_coeff_i224 = I224::from_str(&int224_max().to_string()).unwrap();
     let exponent_max = i32::MAX;
 
     let a = Float::pack_lossless(large_coeff_i224, exponent_max).unwrap();
@@ -407,8 +423,7 @@ fn test_add_exponent_overflow_error() {
 /// Subtracting opposite-sign max-exponent floats overflows.
 #[test]
 fn test_sub_exponent_overflow_error() {
-    let max_coeff_str = "13479973333575319897333507543509815336818572211270286240551805124607";
-    let large_coeff_i224 = I224::from_str(max_coeff_str).unwrap();
+    let large_coeff_i224 = I224::from_str(&int224_max().to_string()).unwrap();
     let exponent_max = i32::MAX;
 
     let a = Float::pack_lossless(large_coeff_i224, exponent_max).unwrap();
@@ -1141,6 +1156,7 @@ fn test_to_fixed_decimal_lossy() {
         (U256::from(123456789), 2u8, 12345678u128),
     ];
 
+    // Each case converts from decimals + 1 to decimals.
     for (input, decimals, expected) in lossy_cases {
         let float = Float::from_fixed_decimal(input, decimals + 1).unwrap();
         let (fixed, lossless) = float.to_fixed_decimal_lossy(decimals).unwrap();
@@ -1163,7 +1179,7 @@ fn test_to_fixed_decimal_lossy() {
         // Zero is always lossless
         (U256::from(0), 0u8, 0u128),
         (U256::from(0), 18u8, 0u128),
-        // Converting 12340 with 3 decimals (12.340) to 2 decimals (12.34) is lossless
+        // 12340 at 4 decimals (1.2340) to 3 decimals (1234) is lossless
         (U256::from(12340), 3u8, 1234u128),
     ];
 
@@ -1238,47 +1254,6 @@ proptest! {
         if float.lt(zero).unwrap() {
             prop_assert!(float.lte(max_neg).unwrap());
             prop_assert!(float.gte(min_neg).unwrap());
-        }
-
-        // Constants should be consistent regardless of arbitrary float
-        prop_assert!(max_pos.gt(zero).unwrap());
-        prop_assert!(min_pos.gt(zero).unwrap());
-        prop_assert!(max_neg.lt(zero).unwrap());
-        prop_assert!(min_neg.lt(zero).unwrap());
-
-        // Verify constants maintain their ordering
-        prop_assert!(min_pos.lt(max_pos).unwrap());
-        prop_assert!(min_neg.lt(max_neg).unwrap());
-        prop_assert!(max_neg.lt(zero).unwrap());
-        prop_assert!(min_pos.gt(zero).unwrap());
-    }
-}
-
-proptest! {
-    #[test]
-    /// No arbitrary float exceeds max_positive or is below min_negative.
-    fn test_constants_edge_cases(float in arb_float()) {
-        let max_pos = Float::max_positive_value().unwrap();
-        let min_pos = Float::min_positive_value().unwrap();
-        let max_neg = Float::max_negative_value().unwrap();
-        let min_neg = Float::min_negative_value().unwrap();
-
-        // Constants should always be distinct
-        prop_assert!(!max_pos.eq(min_pos).unwrap());
-        prop_assert!(!max_neg.eq(min_neg).unwrap());
-        prop_assert!(!max_pos.eq(max_neg).unwrap());
-        prop_assert!(!min_pos.eq(min_neg).unwrap());
-
-        // Test that constants are at the boundaries
-        // (Note: We can't test arithmetic operations that would overflow/underflow
-        // since those would fail, but we can test comparisons)
-
-        // No arbitrary float should be greater than max_pos or less than min_neg
-        if !float.eq(max_pos).unwrap() {
-            prop_assert!(!float.gt(max_pos).unwrap());
-        }
-        if !float.eq(min_neg).unwrap() {
-            prop_assert!(!float.lt(min_neg).unwrap());
         }
     }
 }
