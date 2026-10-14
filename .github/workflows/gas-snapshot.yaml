@@ -7,18 +7,10 @@ jobs:
       - uses: rainlanguage/rainix/.github/actions/nix-cachix-setup@main
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      # .gas-snapshot is committed as the baseline for `forge snapshot --diff`.
-      # It must list exactly the current tests, at their current gas for every
-      # non-fuzz test, so a diff against it shows real gas changes, not a stale
-      # baseline. To regenerate:
-      #   nix develop -c forge snapshot --fuzz-seed 0
-      #
-      # Fuzz rows' μ/~ differ between machines even with a fixed seed (they
-      # did between a local run and this runner), so they are compared by name
-      # only: every `(runs: N, μ: X, ~: Y)` is reduced to `(fuzz)` on both
-      # sides. A fuzz test added, removed or renamed still fails the check.
-      # `forge snapshot --check` has no per-row mode, and `--tolerance` would
-      # loosen the non-fuzz rows too, so the comparison is done here.
+      # Non-fuzz rows must match exactly. Fuzz μ/~ are not reproducible with a
+      # fixed seed, so every `(runs: N, μ: X, ~: Y)` is reduced to `(fuzz)` on
+      # both sides: fuzz rows compare by name only. `forge snapshot --check`
+      # has no per-row mode, and `--tolerance` would loosen non-fuzz rows too.
       - run: nix develop -c forge soldeer install
       - run: nix develop -c forge snapshot --fuzz-seed 0 --snap "$RUNNER_TEMP/fresh.gas-snapshot"
       - run: |
