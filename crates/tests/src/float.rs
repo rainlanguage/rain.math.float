@@ -2,7 +2,7 @@
 //! concrete in revm.
 
 use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
-use crate::exact::show;
+use crate::exact::{config, show};
 use crate::reference::{self as r, Dec, I32_MIN, RefError, int224_max};
 use T::TestDecimalFloatErrors as Errors;
 use alloy::primitives::I256;
@@ -367,6 +367,7 @@ fn test_float_constants() {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// Formatting in either notation is the documented string, and parsing
     /// it is the reference's parse, an equal value wherever it formats.
@@ -420,6 +421,7 @@ fn test_sub_exponent_overflow_error() {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// Addition is the reference's.
     fn test_add(a in arb_float(), b in arb_float()) {
@@ -428,6 +430,7 @@ proptest! {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// Subtraction is the reference's.
     fn test_sub(a in arb_float(), b in arb_float()) {
@@ -436,6 +439,7 @@ proptest! {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// (a + b) - b is the reference's chain, and a wherever both steps are
     /// exact.
@@ -475,6 +479,7 @@ fn test_lt_eq_gt() {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// a == a; a - 1, then + 1, then + 1 again are the reference's chain,
     /// and each compares with a as the reference values do.
@@ -526,6 +531,7 @@ fn test_abs() {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// Multiplication is the reference's.
     fn test_mul(a in arb_float(), b in arb_float()) {
@@ -553,6 +559,7 @@ fn test_minus_format() {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// -(-a) is the reference's chain, and a wherever -a is exact.
     fn test_minus_minus(float in arb_float()) {
@@ -571,6 +578,7 @@ proptest! {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// inv(a) and a * inv(a) are the reference's chain, and the product is in
     /// (1 - 2 / c_min, 1] wherever inv(a) packs above the exponent floor.
@@ -660,6 +668,7 @@ fn test_inv_prod_exact() {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// abs and its string are the reference's, never starting with "-".
     fn test_abs_no_minus_sign(float in arb_float(), scientific in any::<bool>()) {
@@ -689,6 +698,7 @@ proptest! {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// Division is the reference's, a zero divisor included.
     fn test_div(a in arb_float(), b in arb_float()) {
@@ -697,6 +707,7 @@ proptest! {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// (a * b) / b is the reference's chain, and a wherever the product is
     /// exact.
@@ -899,6 +910,7 @@ fn test_integer_whole_numbers() {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// from_fixed_decimal then to_fixed_decimal are the reference's, and
     /// round-trip wherever the first is lossless.
@@ -915,6 +927,7 @@ proptest! {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// integer(a) + frac(a) == a, frac has no integer part, integer has
     /// no fractional part, and |frac| < 1.
@@ -1001,6 +1014,7 @@ fn test_is_zero_manual() {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// min(a,b) <= both, max(a,b) >= both, each equals one operand,
     /// and min <= max.
@@ -1085,6 +1099,7 @@ fn test_lte_gte() {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// a lte a and gte a; a - 1, then + 1, then + 1 again are the
     /// reference's chain, and each lte and gte a as the reference values do.
@@ -1186,6 +1201,7 @@ fn test_to_fixed_decimal_lossy() {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// Lossy fixed-decimal round-trip: from(d) then to(d'), for d' one below
     /// d or any, are the reference's. Where from(d) is lossless and d' is
@@ -1216,6 +1232,7 @@ proptest! {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// Every positive Float is bounded by min/max_positive_value,
     /// every negative one by min/max_negative_value.
@@ -1255,6 +1272,7 @@ proptest! {
 }
 
 proptest! {
+    #![proptest_config(config())]
     #[test]
     /// No arbitrary float exceeds max_positive or is below min_negative.
     fn test_constants_edge_cases(float in arb_float()) {
