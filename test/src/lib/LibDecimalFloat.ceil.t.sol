@@ -148,4 +148,33 @@ contract LibDecimalFloatCeilTest is Test {
         (int256 xc, int256 xe) = LibExactFloat.ceilParts(c, e);
         assertEq(LibExactFloat.cmpParts(rc, re, xc, xe), 0, "exact ceil");
     }
+
+    /// A zero Float at exponent `e`, with the exponent in the high 32 bits:
+    /// `packLossless(0, e)` would already be `FLOAT_ZERO`.
+    function zeroAt(int32 e) internal pure returns (Float) {
+        // The exponent's two's complement bits, as packing places them.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return Float.wrap(bytes32(uint256(uint32(e)) << 224));
+    }
+
+    /// A zero input of any exponent gives `FLOAT_ZERO`, byte for byte (#687).
+    function testFloatCeilZeroBytesExamples() external pure {
+        int32[5] memory exponents = [int32(5), type(int32).max, -2, -77, type(int32).min];
+        for (uint256 i = 0; i < exponents.length; i++) {
+            assertEq(
+                Float.unwrap(LibDecimalFloat.ceil(zeroAt(exponents[i]))),
+                Float.unwrap(LibDecimalFloat.FLOAT_ZERO),
+                "ceil of zero is not FLOAT_ZERO"
+            );
+        }
+    }
+
+    /// A zero input of any exponent gives `FLOAT_ZERO`, byte for byte (#687).
+    function testFloatCeilZeroBytes(int32 e) external pure {
+        assertEq(
+            Float.unwrap(LibDecimalFloat.ceil(zeroAt(e))),
+            Float.unwrap(LibDecimalFloat.FLOAT_ZERO),
+            "ceil of zero is not FLOAT_ZERO"
+        );
+    }
 }

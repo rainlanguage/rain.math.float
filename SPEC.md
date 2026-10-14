@@ -140,6 +140,8 @@ All **UNRULED**.
   for `f > 0` and `integer(f) - 1` for `f < 0`.
 - `ceil(f)`: `f` when `e >= 0` or the fraction is zero; otherwise
   `integer(f) + 1` for `f > 0` and `integer(f)` for `f < 0`.
+- A zero input to `floor` or `ceil` returns `FLOAT_ZERO`, at every exponent
+  (#687).
 - None reverts: each result is zero exactly or at least 1 in magnitude, so
   `packArithmeticResult` never underflows, and none lifts the exponent above
   `int32.max`.

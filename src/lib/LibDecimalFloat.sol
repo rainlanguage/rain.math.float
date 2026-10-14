@@ -906,11 +906,17 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Greatest integer value less than or equal to the float.
+    /// Greatest integer value less than or equal to the float. A zero of any
+    /// exponent is `FLOAT_ZERO`.
     /// @param float The float to floor.
     /// @return The floored float.
     function floor(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
+        // A zero of any exponent is FLOAT_ZERO, as every arithmetic result
+        // packs it (#687).
+        if (signedCoefficient == 0) {
+            return FLOAT_ZERO;
+        }
         // If the exponent is 0 or greater then the float is already an integer.
         if (exponent >= 0) {
             return float;
@@ -925,11 +931,17 @@ library LibDecimalFloat {
         return result;
     }
 
-    /// Smallest integer value greater than or equal to the float.
+    /// Smallest integer value greater than or equal to the float. A zero of any
+    /// exponent is `FLOAT_ZERO`.
     /// @param float The float to ceil.
     /// @return The ceiled float.
     function ceil(Float float) internal pure returns (Float) {
         (int256 signedCoefficient, int256 exponent) = float.unpack();
+        // A zero of any exponent is FLOAT_ZERO, as every arithmetic result
+        // packs it (#687).
+        if (signedCoefficient == 0) {
+            return FLOAT_ZERO;
+        }
         // If the exponent is 0 or greater then the float is already an integer.
         if (exponent >= 0) {
             return float;
