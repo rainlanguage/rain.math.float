@@ -120,6 +120,14 @@ contract LibDecimalFloatOpsGasTest is Test {
         logAgree("agree zero spread", f(1, -20), f(0, 0), f(100, 0), f(100, 0));
         logAgree("agree reversed accepts", f(0, 0), f(1, -2), f(100, 0), f(99, 0));
         logAgree("agree reversed refuses", f(0, 0), f(1, -2), f(100, 0), f(98999, -3));
+        logAgree("agree absolute accepts", f(2, 0), f(1, -2), f(98, 0), f(100, 0));
+        logAgree(
+            "agree limit past int256",
+            f(0, 0),
+            f(1e66 + 658505972, -66),
+            f(-38124891136564819967, 0),
+            f(5789604461865809771178549250434395392663499233282028201969066711282, 10)
+        );
     }
 
     function testGasTranscendental() external view {

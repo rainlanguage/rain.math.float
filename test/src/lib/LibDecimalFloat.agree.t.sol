@@ -681,4 +681,112 @@ contract LibDecimalFloatAgreeTest is Test {
         vm.expectRevert(abi.encodeWithSelector(AgreeNoPositiveTolerance.selector, f(0, 0), f(0, 0)));
         this.agreeExternal(f(0, 0), f(0, 0), f(100, 0), f(101, 0));
     }
+
+    /// Whether `agree` accepts by SPEC's rule, the proportional term included:
+    /// `add`'s documented spread against
+    /// `max(absolute, proportional × max(|lowest|, |highest|))`, the product
+    /// taken exactly in 512 bits.
+    function expectedAgreeExactLimit(Float absolute, Float proportional, Float lowest, Float highest)
+        internal
+        pure
+        returns (bool)
+    {
+        if (expectedAgree(absolute, lowest, highest)) {
+            return true;
+        }
+        (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
+        (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
+        (, int256 spreadCoefficient, int256 spreadExponent) =
+            LibExactFloat.addPartsWide(highestCoefficient, highestExponent, -lowestCoefficient, lowestExponent);
+        (U512 memory limitMagnitude, int256 limitExponent) = exactProportionalLimit(proportional, lowest, highest);
+        return LibExactFloat.cmpScaled(
+            LibExactFloat.u512(LibExactFloat.abs(spreadCoefficient)), spreadExponent, limitMagnitude, limitExponent
+        ) <= 0;
+    }
+
+    /// `proportional × max(|lowest|, |highest|)`, exact.
+    function exactProportionalLimit(Float proportional, Float lowest, Float highest)
+        internal
+        pure
+        returns (U512 memory, int256)
+    {
+        (int256 lowestCoefficient, int256 lowestExponent) = lowest.unpack();
+        (int256 highestCoefficient, int256 highestExponent) = highest.unpack();
+        U512 memory lowestMagnitude = LibExactFloat.u512(LibExactFloat.abs(lowestCoefficient));
+        U512 memory highestMagnitude = LibExactFloat.u512(LibExactFloat.abs(highestCoefficient));
+        (U512 memory anchorMagnitude, int256 anchorExponent) = LibExactFloat.cmpScaled(
+                lowestMagnitude, lowestExponent, highestMagnitude, highestExponent
+            ) > 0
+            ? (lowestMagnitude, lowestExponent)
+            : (highestMagnitude, highestExponent);
+        (int256 proportionalCoefficient, int256 proportionalExponent) = proportional.unpack();
+        return (
+            LibExactFloat.mul(LibExactFloat.abs(proportionalCoefficient), anchorMagnitude.lo),
+            proportionalExponent + anchorExponent
+        );
+    }
+
+    /// The exact limit `proportional × anchor` can pass `type(int256).max` at
+    /// the spread's exponent while the spread stays under it. `mul` then sheds
+    /// a digit from the limit, and must not reject the spread for it.
+    ///
+    /// Here the spread `h - l` is `type(int256).max - j` at exponent 0, `sub`'s
+    /// exact result, and the exact limit `(1 + 658505972e-66) × h` is
+    /// `2^255 + 1.37`, which `mul` truncates to `2^255 - 8`. Every `j` from 0
+    /// to 7 is within the exact limit.
+    function testAgreeLimitPastInt256() external pure {
+        int256 anchorCoefficient = 5789604461865809771178549250434395392663499233282028201969066711282;
+        Float proportional = f(1e66 + 658505972, -66);
+        for (int256 j = 0; j < 8; j++) {
+            Float lowest = f(-38124891136564819967 + j, 0);
+            Float highest = f(anchorCoefficient, 10);
+            assertTrue(expectedAgreeExactLimit(f(0, 0), proportional, lowest, highest), "oracle");
+            assertTrue(LibDecimalFloat.agree(f(0, 0), proportional, lowest, highest), "sorted");
+            assertTrue(LibDecimalFloat.agree(f(0, 0), proportional, highest, lowest), "reversed");
+            assertTrue(LibDecimalFloat.agree(f(0, 0), proportional, lowest.minus(), highest.minus()), "negated");
+        }
+    }
+
+    /// `testAgreeLimitPastInt256` at any common exponent shift, either sign
+    /// and either order, and for spreads past the exact limit as well as
+    /// within it, against the exact rule.
+    function testAgreeLimitPastInt256Shifted(int256 shift, int256 j, bool negate, bool reverse) external pure {
+        shift = bound(shift, -1e6, 1e6);
+        j = bound(j, -40, 40);
+        Float proportional = f(1e66 + 658505972, -66);
+        Float lowest = f(-38124891136564819967 + j, shift);
+        Float highest = f(5789604461865809771178549250434395392663499233282028201969066711282, shift + 10);
+        if (negate) {
+            (lowest, highest) = (lowest.minus(), highest.minus());
+        }
+        if (reverse) {
+            (lowest, highest) = (highest, lowest);
+        }
+        assertEq(
+            LibDecimalFloat.agree(f(0, 0), proportional, lowest, highest),
+            expectedAgreeExactLimit(f(0, 0), proportional, lowest, highest)
+        );
+    }
+
+    /// The proportional term is compared exactly, for arbitrary extremes and
+    /// tolerances that keep the product inside the 512 bit oracle.
+    function testAgreeMatchesExactLimit(
+        int224 lowestCoefficient,
+        int224 highestCoefficient,
+        int256 lowestExponent,
+        int256 highestExponent,
+        int224 absoluteCoefficient,
+        int224 proportionalCoefficient,
+        int256 proportionalExponent
+    ) external pure {
+        Float lowest = f(lowestCoefficient, bound(lowestExponent, -100, 100));
+        Float highest = f(highestCoefficient, bound(highestExponent, -100, 100));
+        Float absolute = f(bound(absoluteCoefficient, 0, type(int224).max), -200);
+        Float proportional =
+            f(bound(proportionalCoefficient, 1, type(int224).max), bound(proportionalExponent, -140, 0));
+        assertEq(
+            LibDecimalFloat.agree(absolute, proportional, lowest, highest),
+            expectedAgreeExactLimit(absolute, proportional, lowest, highest)
+        );
+    }
 }

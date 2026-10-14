@@ -2314,6 +2314,16 @@ mod oracle_checks {
         assert_eq!(want(&close, &z, &z, &n(1, 0)), Ok(None));
         let far = Dec::new(p10(70) - 1, -70);
         assert_eq!(want(&far, &z, &z, &n(1, 0)), Ok(Some(false)));
+        // a limit past int256.max that mul would truncate below the spread.
+        let h = Dec::new(
+            "5789604461865809771178549250434395392663499233282028201969066711282"
+                .parse::<BigInt>()
+                .unwrap(),
+            10,
+        );
+        let l = Dec::new(BigInt::from(-38124891136564819967i128), 0);
+        let p = Dec::new(p10(66) + 658505972u32, -66);
+        assert_eq!(want(&z, &p, &l, &h), Ok(Some(true)));
     }
 
     /// sqrt(c 10^e) correctly rounded half away at 41 digits, by integer
