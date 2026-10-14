@@ -6,9 +6,13 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
 import {ExponentUnderflow, ExponentOverflow, DivisionByZero} from "src/error/ErrDecimalFloat.sol";
 
-/// The README's consumer guidance, one test per hazard. Expected values are
-/// the exact result rounded toward zero to the nearest Float (`div`, `mul`,
-/// `add`, `sub`, `inv`) or to nearest at 41 digits (`pow`), per SPEC.md.
+// Bound on a*b under which testFuzzWeiFloorCeilSafeSide holds in every operand
+// order: 20ab <= int224.max.
+uint256 constant WEI_SAFE_SIDE_AB_MAX = uint256(int256(type(int224).max)) / 20;
+
+/// Tests behind the README's consumer guidance. Expected values are the exact
+/// result rounded toward zero to the nearest Float (`div`, `mul`, `add`, `sub`,
+/// `inv`) or to nearest at 41 digits (`pow`), per SPEC.md.
 contract LibDecimalFloatConsumerHazardsTest is Test {
     using LibDecimalFloat for Float;
 
@@ -172,17 +176,17 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// integer.
     ///
     /// Each operation truncates toward zero to a Float, moving its result by
-    /// under 10 / int224.max of it. With q = a*b/c, a non-integer q has a
-    /// fraction of at least 1/c. a * (b / c) truncates twice, each time taking
-    /// under 10q / int224.max = (1/c)(10ab / int224.max) off the result, so the
-    /// two together stay under 1/c while
-    /// 20ab <= int224.max, so the result keeps a non-zero fraction and the
-    /// lossless flag stays false.
+    /// under 10 / int224.max of it. With q = a*b/c, a non-integer q is at least
+    /// 1/c from both neighbouring integers. a * (b / c) truncates twice, each
+    /// step taking under (1/c)(10ab / int224.max) off q, and a / (c / b) adds at
+    /// most about as much through the truncated divisor. While 20ab <= int224.max
+    /// either total stays under 1/c, so the result keeps a fraction, its floor is
+    /// exact and the lossless flag stays false.
     function testFuzzWeiFloorCeilSafeSide(uint256 a, uint256 b, uint256 c) external pure {
         a = bound(a, 0, 1e33);
         b = bound(b, 1, 1e33);
         if (a > 0) {
-            b = bound(b, 1, uint256(int256(type(int224).max)) / 20 / a);
+            b = bound(b, 1, WEI_SAFE_SIDE_AB_MAX / a);
         }
         c = bound(c, 1, 1e33);
         Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
@@ -219,7 +223,7 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         uint256 a = 987095638915421968423246895997630;
         uint256 b = 999999999999999999999999999999999;
         uint256 c = 7;
-        assertGt(a * b, uint256(int256(type(int224).max)) / 20);
+        assertGt(a * b, WEI_SAFE_SIDE_AB_MAX);
         Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
         Float fb = LibDecimalFloat.fromFixedDecimalLosslessPacked(b, 0);
         Float fc = LibDecimalFloat.fromFixedDecimalLosslessPacked(c, 0);
@@ -227,6 +231,26 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         (uint256 got, bool lossless) = fa.mul(fb.div(fc)).toFixedDecimalLossy(0);
         assertEq(got, a * b / c);
         assertEq(got, 141013662702203138346178127999661287557765869225433082393300571767);
+        assertTrue(lossless);
+    }
+
+    /// The smallest a*b found where a * (b / c) reports an exact integer for a
+    /// non-integer a*b/c: about 0.0701 int224.max. Any fuzz bound above it
+    /// admits a failing input, so the assertGt pins WEI_SAFE_SIDE_AB_MAX from
+    /// above.
+    function testWeiCeilUndershootJustAboveBound() external pure {
+        uint256 a = 982988587715706933722833015409834;
+        uint256 b = 961104254074084716688159570998290;
+        uint256 c = 7;
+        assertGt(a * b, WEI_SAFE_SIDE_AB_MAX);
+        assertLe(a, 1e33);
+        assertLe(b, 1e33);
+        Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
+        Float fb = LibDecimalFloat.fromFixedDecimalLosslessPacked(b, 0);
+        Float fc = LibDecimalFloat.fromFixedDecimalLosslessPacked(c, 0);
+        assertEq(a * b % c, 1);
+        (uint256 got, bool lossless) = fa.mul(fb.div(fc)).toFixedDecimalLossy(0);
+        assertEq(got, a * b / c);
         assertTrue(lossless);
     }
 
@@ -243,8 +267,9 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertFalse(lossless);
     }
 
-    /// Past about 1e66 the floor lands on the unsafe side: (7e66 + 2) * 3 / 7
-    /// is 3e66 + 6/7, and a / (7 / 3) floors to 3e66 + 1.
+    /// Far above WEI_SAFE_SIDE_AB_MAX a rounded divisor lifts the floor onto the
+    /// unsafe side: (7e66 + 2) * 3 / 7 is 3e66 + 6/7, and a / (7 / 3) floors to
+    /// 3e66 + 1.
     function testLargeMagnitudeFloorOvershoots() external pure {
         uint256 a = 7e66 + 2;
         Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);

@@ -312,10 +312,10 @@ Rules for protocols built on the library. Each example is a test in
 
 1. **Round up at the fixed-decimal boundary yourself.** `toFixedDecimalLossy`
    only truncates. For an amount a user owes, add 1 when `lossless` is false.
-   Each operation rounds on its own, so a multi-step calculation can be off by
-   more than that; leave a margin. Keep amounts as Floats through a calculation:
-   converting to wei on every step reintroduces Balancer/Bunni-style
-   amplification.
+   `lossless` reports only that final conversion, not the rounding of the
+   operations before it, so after several operations add a margin anyway. Keep
+   amounts as Floats through a calculation: converting to wei on every step
+   reintroduces Balancer/Bunni-style amplification.
 2. **Toward zero applies per operation, not per expression.** A rounded divisor
    biases the quotient upward: `inv(inv(6))` is `6.` then 65 zeros and a `2`. A
    negative result rounds toward +∞: `-1 / 3` is `-0.` then 67 threes. Get
