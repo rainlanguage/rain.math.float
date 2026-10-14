@@ -2,10 +2,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {AgreeToleranceNegative, AgreeNoPositiveTolerance} from "src/error/ErrDecimalFloat.sol";
-import {LibHalmosExact} from "test/halmos/LibHalmosExact.sol";
+import {Float, LibDecimalFloat} from "../../src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {AgreeToleranceNegative, AgreeNoPositiveTolerance} from "../../src/error/ErrDecimalFloat.sol";
+import {LibHalmosExact} from "./LibHalmosExact.sol";
 
 /// Halmos proofs of SPEC.md's `agree` rules.
 ///
