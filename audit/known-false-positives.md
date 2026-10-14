@@ -94,3 +94,28 @@ with the same 38-digit shift; lowering the `1e66` gate to `1e65` likewise sends
 `[1e65, 1e66)` through `x1e5`, `x1e3` and `x1e2` for the same 10-digit shift.
 The gates distribute gas, not results. Changing a step's multiplier or shift is
 not equivalent and is killed.
+
+## Equivalent mutant: frozen `maximize` copy, outer gate
+
+`test/lib/LibFormatDecimalFloatPr321.sol`, the `iszero(sdiv(c, E75))` gate
+around `maximize`'s five steps forced true. Each inner step has its own gate
+(`E38`, `E57`, `E66`, the `E74` loop and `E75`) that a coefficient of magnitude
+at least `1e75` fails, so every step is a no-op for exactly the coefficients the
+outer gate excludes. Only gas changes.
+
+## Equivalent mutant: frozen `packLossy` copy, excess cap
+
+`test/lib/LibParseDecimalFloatPr321.sol`, `excess > 67` relaxed to `> 68`. At an
+excess of 68 the coefficient fits int224 (otherwise the `!fits` term reverts
+first) and is nonzero (zero returned earlier), and `10 ** 68` fits int256;
+`type(int224).max / 1e68` and `type(int224).min / 1e68` are both 0, so the
+headroom check rejects every nonzero coefficient with the same
+`ExponentOverflow(initialSignedCoefficient, initialExponent)`.
+
+## Equivalent mutant: frozen `packLossy` copy, ceiling branch
+
+`test/lib/LibParseDecimalFloatPr321.sol`, `initialExponent > 0` raised to
+`> 10`. The branch is entered only when shedding pushed the exponent past
+`int32.max`, and shedding raises it by at most ten (a coefficient has at most 77
+digits and int224 keeps 67), so an initial exponent in `[1, 10]` ends in
+`[1, 20]`, inside int32, and the branch never sees it.

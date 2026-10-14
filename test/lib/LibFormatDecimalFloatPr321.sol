@@ -3,24 +3,26 @@
 pragma solidity ^0.8.25;
 
 import {Float} from "../../src/lib/LibDecimalFloat.sol";
-import {
-    MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
-    MAXIMIZED_ZERO_EXPONENT
-} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {MaximizeOverflow} from "../../src/error/ErrDecimalFloat.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
 import {UnformatableExponent} from "../../src/error/ErrFormat.sol";
 
 /// `LibFormatDecimalFloat` verbatim from
 /// `src/lib/format/LibFormatDecimalFloat.sol` at ce55522 (#321), before #310's
-/// format change, with `LibDecimalFloat.unpack` and
-/// `LibDecimalFloatImplementation.maximizeFull`, `maximize` and their constants
-/// copied from the same commit as private functions, so it calls nothing on
-/// the live library. Equivalence tests only.
+/// format change, with `LibDecimalFloat.unpack`,
+/// `LibDecimalFloatImplementation.maximizeFull` and their constants copied from
+/// the same commit as private functions, and `maximize` as internal so
+/// `testFrozenMaximizeOracle` can check it against `LibExactFloat.maximize`.
+/// It calls nothing on the live library. Equivalence tests only.
 /// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
 /// nothing about a value. Expected strings come from `expectedFormat` in
 /// `LibFormatDecimalFloat.toDecimalString.t.sol`.
 library LibFormatDecimalFloatPr321 {
+    /// The signed coefficient of maximized zero, from ce55522.
+    int256 private constant MAXIMIZED_ZERO_SIGNED_COEFFICIENT = 0;
+    /// The exponent of maximized zero, from ce55522.
+    int256 private constant MAXIMIZED_ZERO_EXPONENT = 0;
+
     /// Inline assembly takes only literal constants.
     uint256 private constant E10 = 1e10;
     uint256 private constant E19 = 1e19;
@@ -283,6 +285,7 @@ library LibFormatDecimalFloatPr321 {
         return (trySignedCoefficient, tryExponent);
     }
 
+    /// Frozen at ce55522, not the live maximize.
     /// Maximizes a float's signed coefficient by increasing its magnitude
     /// and decreasing its exponent accordingly. Greatly simplified a lot of
     /// private logic that involves comparing signed coefficients as integers,
