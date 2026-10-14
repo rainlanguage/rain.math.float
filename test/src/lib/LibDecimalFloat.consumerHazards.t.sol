@@ -251,6 +251,32 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         }
     }
 
+    /// The pinned inputs above WEI_SAFE_SIDE_AB_MAX where a * (b / c) reports an
+    /// exact integer for a non-integer a*b/c, with a*b at about 0.0732, 0.0701,
+    /// 0.0630 and 0.0510 of int224.max.
+    function weiCeilUndershootInputs() internal pure returns (uint256[3][4] memory) {
+        return [
+            [uint256(987095638915421968423246895997630), 999999999999999999999999999999999, 7],
+            [uint256(982988587715706933722833015409834), 961104254074084716688159570998290, 7],
+            [uint256(991490827453364970410514390968066), 857267960192621109581636881564001, 63],
+            [uint256(999999999999999999999999999999959), 687478640012341314764008884719033, 51]
+        ];
+    }
+
+    /// a * (b / c) is exactly floor(a*b/c) and the conversion reports lossless
+    /// although c does not divide a*b, so the lossless-flag ceiling is one below
+    /// the exact ceiling. Only inputs above WEI_SAFE_SIDE_AB_MAX can do this.
+    function assertCeilUndershoot(uint256 a, uint256 b, uint256 c) internal pure {
+        assertGt(a * b, WEI_SAFE_SIDE_AB_MAX);
+        assertTrue(a * b % c != 0);
+        Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
+        Float fb = LibDecimalFloat.fromFixedDecimalLosslessPacked(b, 0);
+        Float fc = LibDecimalFloat.fromFixedDecimalLosslessPacked(c, 0);
+        (uint256 got, bool lossless) = fa.mul(fb.div(fc)).toFixedDecimalLossy(0);
+        assertEq(got, a * b / c);
+        assertTrue(lossless);
+    }
+
     /// Above int224.max / 20 the lossless-flag ceiling can fall below the exact
     /// ceiling. a*b is about 0.073 int224.max and a*b/c is
     /// 141013662702203138346178127999661287557765869225433082393300571767 + 1/7.
@@ -259,54 +285,31 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// the fraction. The Float is an integer, the flag reports lossless, and the
     /// ceiling is the floor.
     function testWeiCeilUndershootAboveBound() external pure {
-        uint256 a = 987095638915421968423246895997630;
-        uint256 b = 999999999999999999999999999999999;
-        uint256 c = 7;
-        assertGt(a * b, WEI_SAFE_SIDE_AB_MAX);
-        Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
-        Float fb = LibDecimalFloat.fromFixedDecimalLosslessPacked(b, 0);
-        Float fc = LibDecimalFloat.fromFixedDecimalLosslessPacked(c, 0);
-        assertEq(a * b % c, 1);
-        (uint256 got, bool lossless) = fa.mul(fb.div(fc)).toFixedDecimalLossy(0);
-        assertEq(got, a * b / c);
-        assertEq(got, 141013662702203138346178127999661287557765869225433082393300571767);
-        assertTrue(lossless);
+        uint256[3] memory t = weiCeilUndershootInputs()[0];
+        assertCeilUndershoot(t[0], t[1], t[2]);
+        assertEq(t[0] * t[1] % t[2], 1);
+        assertEq(t[0] * t[1] / t[2], 141013662702203138346178127999661287557765869225433082393300571767);
     }
 
     /// A failing a*b of about 0.0701 int224.max, inside the 1e33 operand bounds:
     /// a * (b / c) reports an exact integer for a non-integer a*b/c. The assertGt
-    /// pins WEI_SAFE_SIDE_AB_MAX below it.
+    /// in assertCeilUndershoot pins WEI_SAFE_SIDE_AB_MAX below it.
     function testWeiCeilUndershootJustAboveBound() external pure {
-        uint256 a = 982988587715706933722833015409834;
-        uint256 b = 961104254074084716688159570998290;
-        uint256 c = 7;
-        assertGt(a * b, WEI_SAFE_SIDE_AB_MAX);
-        assertLe(a, 1e33);
-        assertLe(b, 1e33);
-        Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
-        Float fb = LibDecimalFloat.fromFixedDecimalLosslessPacked(b, 0);
-        Float fc = LibDecimalFloat.fromFixedDecimalLosslessPacked(c, 0);
-        assertEq(a * b % c, 1);
-        (uint256 got, bool lossless) = fa.mul(fb.div(fc)).toFixedDecimalLossy(0);
-        assertEq(got, a * b / c);
-        assertTrue(lossless);
+        uint256[3] memory t = weiCeilUndershootInputs()[1];
+        assertCeilUndershoot(t[0], t[1], t[2]);
+        assertLe(t[0], 1e33);
+        assertLe(t[1], 1e33);
+        assertEq(t[0] * t[1] % t[2], 1);
+        assertEq(t[0] * t[1] / t[2], 134964930479977501092417587112111680069047645347077958594980454837);
     }
 
     /// a*b about 0.0630 int224.max, inside int224.max / 15: a * (b / c) reports
     /// an exact integer for a non-integer a*b/c.
     function testWeiCeilUndershootInsideFifteenth() external pure {
-        uint256 a = 991490827453364970410514390968066;
-        uint256 b = 857267960192621109581636881564001;
-        uint256 c = 63;
-        assertGt(a * b, WEI_SAFE_SIDE_AB_MAX);
-        assertLe(a * b, uint256(int256(type(int224).max)) / 15);
-        Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
-        Float fb = LibDecimalFloat.fromFixedDecimalLosslessPacked(b, 0);
-        Float fc = LibDecimalFloat.fromFixedDecimalLosslessPacked(c, 0);
-        assertTrue(a * b % c != 0);
-        (uint256 got, bool lossless) = fa.mul(fb.div(fc)).toFixedDecimalLossy(0);
-        assertEq(got, a * b / c);
-        assertTrue(lossless);
+        uint256[3] memory t = weiCeilUndershootInputs()[2];
+        assertCeilUndershoot(t[0], t[1], t[2]);
+        assertLe(t[0] * t[1], uint256(int256(type(int224).max)) / 15);
+        assertEq(t[0] * t[1] / t[2], 13491639987311749946720071013608698805283216399205952474008352255);
     }
 
     /// The bound is tight: a*b about 0.0510 int224.max, inside int224.max / 19,
@@ -318,18 +321,11 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// a*b/c has fraction 1/51. The same construction with c = 5 * 10^(k-2) + 1
     /// fails at about (1/20 + 10^-k) int224.max.
     function testWeiCeilUndershootNearBound() external pure {
-        uint256 a = 999999999999999999999999999999959;
-        uint256 b = 687478640012341314764008884719033;
-        uint256 c = 51;
-        assertGt(a * b, WEI_SAFE_SIDE_AB_MAX);
-        assertLe(a * b, uint256(int256(type(int224).max)) / 19);
-        Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
-        Float fb = LibDecimalFloat.fromFixedDecimalLosslessPacked(b, 0);
-        Float fc = LibDecimalFloat.fromFixedDecimalLosslessPacked(c, 0);
-        assertEq(a * b % c, 1);
-        (uint256 got, bool lossless) = fa.mul(fb.div(fc)).toFixedDecimalLossy(0);
-        assertEq(got, a * b / c);
-        assertTrue(lossless);
+        uint256[3] memory t = weiCeilUndershootInputs()[3];
+        assertCeilUndershoot(t[0], t[1], t[2]);
+        assertLe(t[0] * t[1], uint256(int256(type(int224).max)) / 19);
+        assertEq(t[0] * t[1] % t[2], 1);
+        assertEq(t[0] * t[1] / t[2], 13479973333575319897333507543509898301485480274629307365406402346);
     }
 
     /// One mul can drop a sub-ulp fraction: 2e18 * (1 + 1e-67) is
@@ -400,10 +396,10 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
 
     /// The fuzz domain excludes the known counterexamples above the bound.
     function testFuzzWeiFloorCeilSafeSideBoundsCounterexample() external view {
-        this.testFuzzWeiFloorCeilSafeSide(987095638915421968423246895997630, 999999999999999999999999999999999, 7);
-        this.testFuzzWeiFloorCeilSafeSide(982988587715706933722833015409834, 961104254074084716688159570998290, 7);
-        this.testFuzzWeiFloorCeilSafeSide(991490827453364970410514390968066, 857267960192621109581636881564001, 63);
-        this.testFuzzWeiFloorCeilSafeSide(999999999999999999999999999999959, 687478640012341314764008884719033, 51);
+        uint256[3][4] memory inputs = weiCeilUndershootInputs();
+        for (uint256 i = 0; i < inputs.length; i++) {
+            this.testFuzzWeiFloorCeilSafeSide(inputs[i][0], inputs[i][1], inputs[i][2]);
+        }
     }
 
     /// The clamp admits a*b up to WEI_SAFE_SIDE_AB_MAX exactly, wraps the input
@@ -421,6 +417,28 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertEq(b, 1);
         (, b,) = boundWeiSafeSide(a, 2, 7);
         assertEq(b, 2);
+    }
+
+    /// Below a = 1e33 the clamp limit is WEI_SAFE_SIDE_AB_MAX / a, and each
+    /// operand wraps at 1e33.
+    function testWeiSafeSideDomainInteriorEdges() external pure {
+        uint256 a = 8e32;
+        uint256 edge = WEI_SAFE_SIDE_AB_MAX / a;
+        assertLt(edge, 1e33);
+        (, uint256 b,) = boundWeiSafeSide(a, edge, 7);
+        assertEq(b, edge);
+        (, b,) = boundWeiSafeSide(a, edge + 1, 7);
+        assertEq(b, 1);
+        (, b,) = boundWeiSafeSide(1, 1e33, 7);
+        assertEq(b, 1e33);
+        (, b,) = boundWeiSafeSide(1, 1e33 + 1, 7);
+        assertEq(b, 1);
+        (uint256 aOut,, uint256 cOut) = boundWeiSafeSide(1e33 + 1, 1, 1e33 + 1);
+        assertEq(aOut, 0);
+        assertEq(cOut, 1);
+        (aOut,, cOut) = boundWeiSafeSide(1e33, 1, 1e33);
+        assertEq(aOut, 1e33);
+        assertEq(cOut, 1e33);
     }
 
     /// a = 0 is in the domain and skips the clamp; b and c floor at 1, so no
