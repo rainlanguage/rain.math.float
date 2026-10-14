@@ -188,7 +188,7 @@ contract LibParseDecimalFloatPastInt256Test is Test {
     /// value is past every Float and parses to `ExponentOverflow` by value,
     /// never a wrapped exponent's `ParseDecimalPrecisionLoss` (#649).
     function testParsePastInt256FloorExponentPastInt256() external view {
-        string memory digits = string.concat("1", zeros(79), "1");
+        string memory digits = string.concat("1", LibTestDecimalLiteral.zeroString(79), "1");
         string[4] memory exponents = [
             INT256_MAX,
             "57896044618658097711785492504343953926634992332820282019728792003956564819963",

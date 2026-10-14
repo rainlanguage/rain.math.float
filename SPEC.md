@@ -172,7 +172,7 @@ All **UNRULED** except the zero rule for `floor` and `ceil` (#687).
   set instead of reverting (PR #278).
 - The spread is the implementation `sub`, so on a cancelling spread it truncates
   toward zero like `sub`; a spread accepted at the boundary exceeds the limit by
-  under `1.7273e-76` of its magnitude (PR #278, PR #434, #627).
+  under `1.7273e-76` of its magnitude (PR #278, PR #434, PR #710).
 - The extremes may come in either order: `agree(a, p, x, y)` equals
   `agree(a, p, y, x)`; a negative spread is negated before the comparison (#481,
   PR #498).
