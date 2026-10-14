@@ -3,8 +3,8 @@
 pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
-import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {LibParseDecimalFloat} from "../../../../src/lib/parse/LibParseDecimalFloat.sol";
+import {Float, LibDecimalFloat} from "../../../../src/lib/LibDecimalFloat.sol";
 
 /// Logs the gas of one `parseDecimalFloat` per literal, for comparison across
 /// revisions.

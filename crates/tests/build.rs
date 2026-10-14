@@ -6,7 +6,13 @@ use std::process::Command;
 
 fn main() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for watched in ["foundry.toml", "soldeer.lock", "src", "test"] {
+    for watched in [
+        "foundry.toml",
+        "remappings.txt",
+        "soldeer.lock",
+        "src",
+        "test",
+    ] {
         println!("cargo:rerun-if-changed={}", root.join(watched).display());
     }
     forge(&root, &["soldeer", "install"]);
