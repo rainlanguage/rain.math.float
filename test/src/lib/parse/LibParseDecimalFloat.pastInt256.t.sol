@@ -369,7 +369,7 @@ contract LibParseDecimalFloatPastInt256Test is Test {
             -13479973333575319897333507543509815336818572211270286240551805124609999999999,
             2147483638
         );
-        string memory s = string.concat("15", zeros(74), "10e2147483637");
+        string memory s = string.concat("15", LibTestDecimalLiteral.zeroString(74), "10e2147483637");
         checkFail(s, ExponentOverflow.selector, bytes(s).length);
     }
 }
