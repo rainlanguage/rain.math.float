@@ -3,8 +3,8 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
-import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
+import {Float, LibDecimalFloat} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibFormatDecimalFloat} from "../../../src/lib/format/LibFormatDecimalFloat.sol";
 
 /// Probe hand-constructed "exotic" Floats — valid packings with extreme
 /// trailing-zero coefficients and negative exponents beyond the formatter's

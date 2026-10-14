@@ -2,11 +2,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float, ExponentOverflow, ExponentUnderflow} from "../../../src/lib/LibDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "test/lib/LibTestPowRange.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
-import {POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "test/lib/LibTestErrorBound.sol";
+import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "../../lib/LibTestPowRange.sol";
+import {LibExactFloat} from "../../lib/LibExactFloat.sol";
+import {POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "../../lib/LibTestErrorBound.sol";
 
 contract LibDecimalFloatPow10Test is Test {
     using LibDecimalFloat for Float;
