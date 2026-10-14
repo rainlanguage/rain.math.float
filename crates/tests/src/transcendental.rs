@@ -16,6 +16,7 @@
 //! - sqrt: correctly rounded, half a unit in the 41st digit.
 //! - pow10 and pow: a result below 1e-2147483608 adds 1e-2147483648.
 
+use crate::common::word;
 use crate::evm::{self, TestDecimalFloat as T};
 use crate::exact::{config, float, show};
 use crate::oracle::{self, ask};
@@ -37,14 +38,6 @@ type Sol = Result<Dec, Vec<u8>>;
 
 fn call<C: SolCall<Return = B256>>(c: C) -> Sol {
     evm::float(c).map_err(|output| output.to_vec())
-}
-
-/// `x` as an int256 word.
-fn word(x: &BigInt) -> [u8; 32] {
-    let mut w = [if x.is_negative() { 0xff } else { 0 }; 32];
-    let b = x.to_signed_bytes_be();
-    w[32 - b.len()..].copy_from_slice(&b);
-    w
 }
 
 /// The revert data of `e` from a call whose first input is `a`. Every error
@@ -91,9 +84,9 @@ fn sol_sqrt(a: &Dec) -> Sol {
 /// log10Unrounded's error, absolute, in units of 1e-54: `LOG10_RAW_ERROR_E54`.
 const LOG10_RAW_E54: i64 = 10_037;
 
-/// pow10Unrounded's error in units of 1e-52 of 10^k, k the integer part of
-/// x: `POW10_RAW_ERROR_E52`.
-const POW10_RAW_E52: i64 = 11_111;
+/// pow10Unrounded's error in units of 1e-52 of 10^k, k = floor(x):
+/// `POW10_RAW_ERROR_E52`.
+pub(crate) const POW10_RAW_E52: i64 = 11_111;
 
 /// Half a unit in the 41st digit of a power below 10, in units of 1e-52.
 const POW10_HALF_UNIT_E52: i64 = 500_000_000_000;
@@ -124,6 +117,53 @@ const POW_INVERSE_K2_E42: i64 = 34_786;
 
 fn pow_base() -> Dec {
     Dec::new(POW_RELATIVE_E52, -52)
+}
+
+/// The bounds as `test/lib/LibTestErrorBound.sol` states them.
+const BOUNDS: &str = include_str!("../../../test/lib/LibTestErrorBound.sol");
+
+/// The literal `LibTestErrorBound.sol` assigns to `name`: `10037` or `5e11`.
+fn sol_bound(name: &str) -> i64 {
+    let decl = format!("uint256 constant {name} = ");
+    let at = BOUNDS
+        .find(&decl)
+        .unwrap_or_else(|| panic!("{name} is not in LibTestErrorBound.sol"));
+    let rest = &BOUNDS[at + decl.len()..];
+    let literal = &rest[..rest.find(';').unwrap()];
+    match literal.split_once('e') {
+        Some((mantissa, exponent)) => {
+            mantissa.parse::<i64>().unwrap() * 10i64.pow(exponent.parse().unwrap())
+        }
+        None => literal.parse().unwrap(),
+    }
+}
+
+/// Every bound `LibTestErrorBound.sol` declares is a constant above with the
+/// same value, so the two suites assert one contract.
+#[test]
+fn bounds_are_the_solidity_bounds() {
+    let twins = [
+        ("LOG10_RAW_ERROR_E54", LOG10_RAW_E54),
+        ("POW10_RAW_ERROR_E52", POW10_RAW_E52),
+        ("POW10_HALF_UNIT_E52", POW10_HALF_UNIT_E52),
+        ("POW_RELATIVE_ERROR_E52", POW_RELATIVE_E52),
+        ("POW_K1_E80", POW_K1_E80),
+        ("POW_INVERSE_K1_E80", POW_INVERSE_K1_E80),
+        ("POW_K2_E42", POW_K2_E42),
+        ("POW_INVERSE_K2_E42", POW_INVERSE_K2_E42),
+    ];
+    let declared: Vec<&str> = BOUNDS
+        .match_indices("\nuint256 constant ")
+        .map(|(at, decl)| {
+            let rest = &BOUNDS[at + decl.len()..];
+            &rest[..rest.find(' ').unwrap()]
+        })
+        .collect();
+    assert_eq!(declared.len(), twins.len(), "{declared:?}");
+    for (name, value) in twins {
+        assert!(declared.contains(&name), "{name} is not a Solidity bound");
+        assert_eq!(sol_bound(name), value, "{name}");
+    }
 }
 
 /// What the documented contract says of one call: the true value (within the
@@ -189,11 +229,6 @@ pub fn truth_pow10(x: &Dec) -> Truth {
 
 fn is_integer(b: &Dec) -> bool {
     b.normalized().e >= 0
-}
-
-fn is_odd(b: &Dec) -> bool {
-    let n = b.normalized();
-    n.e == 0 && n.c.is_odd()
 }
 
 /// `roundSignificant`: 41 significant digits, half away from zero.
@@ -280,10 +315,11 @@ fn exact_power(a: &Dec, b: &Dec) -> Option<Dec> {
     let s = if c == BigInt::from(1) {
         c
     } else {
-        // c >= 3, so s >= 3 and a 41 digit s^p has 0 < p <= 84.
+        // c >= 3, so s >= 3 and a 41 digit s^p has 0 < p <= 85: 3^85 has 41
+        // digits, 3^86 has 42.
         let k = u32::try_from(&q).ok()?;
         let s = c.nth_root(k);
-        if num_traits::pow(s.clone(), k as usize) != c || p.is_negative() || p > BigInt::from(84) {
+        if num_traits::pow(s.clone(), k as usize) != c || p.is_negative() || p > BigInt::from(85) {
             return None;
         }
         s
@@ -338,7 +374,7 @@ pub fn truth_pow(a: &Dec, b: &Dec) -> Truth {
         if !is_integer(b) {
             return Truth::err(RefError::PowNegativeBase);
         }
-        negate = is_odd(b);
+        negate = r::is_odd(b);
         base = a.neg();
     }
     let sign = |d: Dec| if negate { d.neg() } else { d };
@@ -417,7 +453,7 @@ fn check_python(case: &str, truth: &Truth, py: &Value) -> Result<(), TestCaseErr
 #[derive(Debug, Clone)]
 pub enum Bound {
     Log10,
-    /// pow10 of x with integer part `k`.
+    /// pow10 of x with k = floor(x), so 10^x is in [10^k, 10^(k+1)).
     Pow10(i64),
     Pow(PowTerm),
     Sqrt,
@@ -450,7 +486,8 @@ impl PowTerm {
         };
         let (k1, k2) = (Dec::new(k1, -80), Dec::new(k2, -42));
         let m = a.abs();
-        // Past 1e-100 of one either way K2 d is past K1.
+        // |a| at least 1e100 or below 1e-99 puts d above 1e98, far past
+        // K1 / K2 (under 4e-38 for either sign of b): K1 is the lesser.
         if order(&m) >= 100 || order(&m) <= -100 {
             return Self {
                 num: k1.mul_exact(&n),
@@ -511,19 +548,6 @@ fn largest(negative: bool) -> Dec {
         r::int224_max()
     };
     Dec::new(c, I32_MAX)
-}
-
-/// The exponent floor's carve-out applies below 1e-2147483608, for `lowest`
-/// times `scale`.
-fn floor_carve(lowest: &Dec, scale: &Dec) -> Dec {
-    if lowest
-        .cmp_value(&Dec::new(1, I32_MIN + 40).mul_exact(scale))
-        .is_lt()
-    {
-        Dec::new(1, I32_MIN)
-    } else {
-        Dec::zero()
-    }
 }
 
 /// `want` is the revert data of each error from this call.
@@ -589,11 +613,6 @@ fn check_sol(
     let scaled = |x: &Dec| x.mul_exact(&scale);
     let lowest = sum(&scaled(&sum(&magnitude, &err.neg())), &within.neg());
     let highest = sum(&scaled(&sum(&magnitude, &err)), &within);
-    let carve = if carve.is_zero() {
-        carve
-    } else {
-        floor_carve(&lowest, &scale)
-    };
     // Only pow10 and pow reach past every Float.
     let ranged = matches!(bound, Bound::Pow10(_) | Bound::Pow(_));
     let least = scaled(&Dec::new(1, I32_MIN));
@@ -608,6 +627,10 @@ fn check_sol(
                 !under && !over,
                 "{case}: solidity {s:?}, true {t:?} is past every Float"
             );
+            // The carve-out is for a result that shed digits to reach the
+            // exponent floor: one nonzero and below 1e-2147483608.
+            let shed = !s.is_zero() && s.abs().cmp_value(&Dec::new(1, I32_MIN + 40)).is_lt();
+            let carve = if shed { carve } else { Dec::zero() };
             // (|s - v| + err) scale <= within + carve scale, exactly: within's
             // exponent and the carve-out's are billions apart.
             let side = match Dec::sign_of_sum(&[s.clone(), t.value.neg()]) {
@@ -765,12 +788,18 @@ fn check_monotone(case: &str, lower: Point, upper: Point) -> Result<(), TestCase
         !matches!(lower.bound, Bound::Sqrt),
         "{case}: {a:?} > {b:?}, and sqrt is monotone"
     );
-    let larger = if a.abs().cmp_value(&b.abs()).is_gt() {
-        a.abs()
+    // The unit of the smaller magnitude: adjacent 41 digit results across a
+    // power of ten are one unit of the lower decade apart, and their
+    // midpoint is then the rounding tie.
+    let (x, y) = (a.abs(), b.abs());
+    let smaller = if x.is_zero() {
+        y
+    } else if y.is_zero() || x.cmp_value(&y).is_lt() {
+        x
     } else {
-        b.abs()
+        y
     };
-    let ulp = Dec::new(1, order(&larger) - 40);
+    let ulp = Dec::new(1, order(&smaller) - 40);
     let gap = sum(a, &b.neg());
     prop_assert!(
         !gap.cmp_value(&ulp).is_gt(),
@@ -930,14 +959,17 @@ fn edge_integer() -> BoxedStrategy<i64> {
     .boxed()
 }
 
+/// Past int32 either side, so 10^x reaches past both ends of the Float range.
+const PAST_INT32: i64 = 2_200_000_000;
+
 pub(crate) fn x_pow10() -> BoxedStrategy<Dec> {
     prop_oneof![
         2 => float(),
-        3 => with_fraction((-2_200_000_000i64..=2_200_000_000).boxed(), 55),
+        3 => with_fraction((-PAST_INT32..=PAST_INT32).boxed(), 55),
         3 => with_fraction((-120i64..=120).boxed(), 66),
         2 => with_fraction(edge_integer(), 56),
         1 => spread(edge_integer()),
-        1 => spread((-2_200_000_000i64..=2_200_000_000).boxed()),
+        1 => spread((-PAST_INT32..=PAST_INT32).boxed()),
         // Within 1e-50 of an integer, where the fraction truncates to zero.
         1 => (edge_integer(), 51u64..=66, any::<bool>()).prop_map(|(k, n, up)| {
             let c = BigInt::from(k) * pow10(n) + if up { 1 } else { -1 };
@@ -1239,7 +1271,8 @@ mod checker {
 
     #[test]
     fn pow10_bound() {
-        // 3.5 has integer part 0: half a unit plus 1.1111e-8 of one, 1e-40.
+        // 3.5 is 10^x for x in [0, 1), k = 0: half a unit plus 1.1111e-8 of
+        // one, 1e-40.
         let within = pow10_within(0);
         edge(
             &Dec::new(35, -1),
@@ -1337,7 +1370,7 @@ mod checker {
     #[test]
     fn pow_bound_past_one() {
         let v = Dec::new(31, 145_000_000);
-        let n = BigInt::from(33333347515073147437056u128) * pow10(52);
+        let n = BigInt::from(N_3_3E74_E52) * pow10(52);
         let relative = Dec::new(
             BigInt::from(POW_RELATIVE_E52) * pow10(28) + &n * POW_INVERSE_K1_E80,
             -80,
@@ -1358,6 +1391,31 @@ mod checker {
         let k = -2147483620;
         let within = sum(&pow10_within(k), &Dec::new(1, I32_MIN));
         edge(&Dec::new(5, k), &Bound::Pow10(k), &within, &step);
+    }
+
+    /// The carve-out is for a result that shed digits, one below
+    /// 1e-2147483608: a true value just above it whose bound reaches below
+    /// grants nothing to a result at or above it.
+    #[test]
+    fn floor_carve_out_needs_a_shed_result() {
+        let k = -2147483608;
+        let truth = near(Dec::new(pow10(41) + 2, k - 41));
+        let s = Dec::new(pow10(40) + 1, I32_MIN);
+        assert!(!accepts(&truth, &Bound::Pow10(k), Ok(s)));
+        // Just below it the result sheds to 40 digits, 9e-2147483649 off:
+        // past the half unit, inside the carve-out.
+        let truth = near(Dec::new(pow10(41) - 1, k - 41));
+        let shed = Dec::new(pow10(40) - 1, I32_MIN);
+        assert!(accepts(&truth, &Bound::Pow10(k - 1), Ok(shed)));
+    }
+
+    /// Zero sheds no digits, so it gets no carve-out: a true value just above
+    /// 1e-2147483648 is 1e-2147483648 from zero, past the half unit
+    /// (5e-2147483689) and inside the bound only with the carve-out.
+    #[test]
+    fn floor_carve_out_needs_a_nonzero_result() {
+        let truth = near(sum(&Dec::new(1, I32_MIN), &Dec::new(1, I32_MIN - 52)));
+        assert!(!accepts(&truth, &Bound::Pow10(I32_MIN), Ok(Dec::zero())));
     }
 
     /// A revert is accepted only where the bound reaches past every Float.
@@ -1410,21 +1468,7 @@ mod checker {
     /// so only exactness rejects it, for every q and every count of decimals.
     #[test]
     fn pow_exact_past_small_ratios() {
-        for (a, b, want) in [
-            ("42535295865117307932921825928971026432", "0.008", "2"),
-            ("42535295865117307932921825928971026432", "-0.008", "0.5"),
-            (
-                "42535295865117307932921825928971026432",
-                "1.056",
-                "5444517870735015415413993718908291383296",
-            ),
-            (
-                "11790184577738583171520872861412518665678211592275841109096961",
-                "0.0078125",
-                "3",
-            ),
-            ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
-        ] {
+        for (a, b, want) in EXACT_POWERS_PAST_SMALL_RATIOS {
             let (a, b, want) = (
                 r::literal_value(a),
                 r::literal_value(b),
@@ -1576,7 +1620,7 @@ mod checker {
         }
         // sqrt: never, even with both true values at the tie.
         assert!(reorder(Bound::Sqrt, &Dec::zero()).is_err());
-        // pow: 3.3006e-48 relative to the larger true value, the lower point's.
+        // pow: 1.1343e-48 relative to the larger true value, the lower point's.
         let tie = Dec::new(BigInt::from(2) * pow10(40) + 1, -40).mul_exact(&Dec::new(5, -1));
         let raw = Dec::new(POW_RELATIVE_E52 - POW10_HALF_UNIT_E52, -52);
         let pow = |d: &Dec| {
@@ -1602,15 +1646,24 @@ mod checker {
             point(Dec::new(1, 0), mid, Bound::Log10),
         );
         assert!(two.is_err());
-        // The unit is the larger result's: 1 against 1 - 1e-40.
-        let below = Dec::new(pow10(40) - 1, -40);
-        let tie = sum(&Dec::new(1, 0), &Dec::new(-5, -41));
+        // Across a power of ten the unit is the smaller result's: 1 against
+        // 1 - 1e-41 at their tie 1 - 5e-42; 1 against 1 - 1e-40 is ten units.
+        let below = Dec::new(pow10(41) - 1, -41);
+        let tie = sum(&Dec::new(1, 0), &Dec::new(-5, -42));
         let across = check_monotone(
             "m",
             point(Dec::new(1, 0), tie.clone(), Bound::Log10),
             point(below, tie, Bound::Log10),
         );
         assert!(across.is_ok());
+        let ten = Dec::new(pow10(40) - 1, -40);
+        let mid = sum(&Dec::new(1, 0), &Dec::new(-5, -41));
+        let across_ten = check_monotone(
+            "m",
+            point(Dec::new(1, 0), mid.clone(), Bound::Log10),
+            point(ten, mid, Bound::Log10),
+        );
+        assert!(across_ten.is_err());
         // In order is always fine.
         assert!(
             check_monotone(
@@ -1634,16 +1687,38 @@ mod checker {
     }
 }
 
+/// Exact powers `(a, b, a^b)` whose b has q past 64 or more than 6 decimals.
+const EXACT_POWERS_PAST_SMALL_RATIOS: [(&str, &str, &str); 5] = [
+    ("42535295865117307932921825928971026432", "0.008", "2"),
+    ("42535295865117307932921825928971026432", "-0.008", "0.5"),
+    (
+        "42535295865117307932921825928971026432",
+        "1.056",
+        "5444517870735015415413993718908291383296",
+    ),
+    (
+        "11790184577738583171520872861412518665678211592275841109096961",
+        "0.0078125",
+        "3",
+    ),
+    ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
+];
+
+/// 3^85, the largest power of 3 with 41 digits, as a literal.
+macro_rules! three_pow_85 {
+    () => {
+        "35917545547686059365808220080151141317043"
+    };
+}
+
+/// An N of about 3.3e74, as its coefficient at exponent 52.
+const N_3_3E74_E52: u128 = 33333347515073147437056;
+
 /// The documented anchors, each checked against the reference's own answer
 /// and then through the same checks as the fuzz.
 mod anchors {
     use super::*;
-
-    fn run(r: Result<(), TestCaseError>) {
-        if let Err(e) = r {
-            panic!("{e}");
-        }
-    }
+    use crate::common::run;
 
     fn int(s: &str) -> BigInt {
         BigInt::parse_bytes(s.as_bytes(), 10).expect("decimal")
@@ -1766,6 +1841,11 @@ mod anchors {
             ),
             ("2", "-136", None),
             ("2", "-40", Some("9094947017729282379150390625e-40")),
+            // 3^85 has 41 digits, 3^86 has 42.
+            ("3", "85", Some(three_pow_85!())),
+            ("9", "42.5", Some(three_pow_85!())),
+            ("0.3", "85", Some(concat!(three_pow_85!(), "e-85"))),
+            ("3", "86", None),
             ("0.04", "0.5", Some("0.2")),
             ("0.04", "-1.5", Some("125")),
             ("1e-10", "0.2", Some("0.01")),
@@ -1803,29 +1883,21 @@ mod anchors {
             ("-0.1", "-3", "-1000"),
             ("7", "0", "1"),
             ("1", "1e100", "1"),
-            // q past 64, or b past 6 decimals.
-            ("42535295865117307932921825928971026432", "0.008", "2"),
-            ("42535295865117307932921825928971026432", "-0.008", "0.5"),
-            (
-                "42535295865117307932921825928971026432",
-                "1.056",
-                "5444517870735015415413993718908291383296",
-            ),
-            (
-                "11790184577738583171520872861412518665678211592275841109096961",
-                "0.0078125",
-                "3",
-            ),
-            ("1267650600228229401496703205376e-1000", "0.01", "2e-10"),
-        ] {
+            // 41 digits exactly: 3^85.
+            ("3", "85", three_pow_85!()),
+            ("-3", "85", concat!("-", three_pow_85!())),
+            ("9", "42.5", three_pow_85!()),
+            ("0.3", "85", concat!(three_pow_85!(), "e-85")),
+        ]
+        .into_iter()
+        .chain(EXACT_POWERS_PAST_SMALL_RATIOS)
+        {
             exactly(truth_pow(&d(a), &d(b)), want);
             run(check_pow(&d(a), &d(b)));
         }
-        exactly(
-            truth_pow(&d("152415787532388367501905199875019052100"), &d("0.5")),
-            "12345678901234567890",
-        );
-        run(check_sqrt(&d("152415787532388367501905199875019052100")));
+        let square = d("152415787532388367501905199875019052100");
+        exactly(truth_pow(&square, &d("0.5")), "12345678901234567890");
+        run(check_sqrt(&square));
         run(check_sqrt(&d("4")));
         run(check_sqrt(&d("0")));
     }
@@ -1971,7 +2043,7 @@ mod anchors {
     #[test]
     fn pow_near_one_past_1e74() {
         let a = Dec::new(pow10(66) + 1, -66);
-        let b = Dec::new("33333347515073147437056".parse::<BigInt>().unwrap(), 52);
+        let b = Dec::new(BigInt::from(N_3_3E74_E52), 52);
         run(check_pow(&a, &b));
     }
 

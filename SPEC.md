@@ -3,8 +3,8 @@
 The rules every public operation of `LibDecimalFloat`, `LibParseDecimalFloat`
 and `LibFormatDecimalFloat` follows, for maintainer sign-off (#438). Each rule
 cites the ruling it comes from: a maintainer comment on the issue or PR, or the
-body of a merged PR. A rule marked **UNRULED** describes what the code does at
-886ca07 and has no ruling yet.
+body of a merged PR. A rule marked **UNRULED** describes what the code on main
+does and has no ruling yet.
 
 ## Terms
 
@@ -48,6 +48,12 @@ body of a merged PR. A rule marked **UNRULED** describes what the code does at
   int224 has no headroom, which is exactly past every Float (#304, #333).
 - Zero packs as `FLOAT_ZERO` (all bits zero), lossless true, for any `e`
   (**UNRULED**).
+- `isPastEveryFloat(m, e)`: true iff `m × 10^e` is at least
+  `(2^223 + 2) × 10^int32.max`, for any uint256 `m` and int256 `e`; for `m` up
+  to 2^255 that is exactly where `packLossy` reverts `ExponentOverflow`. Zero is
+  never past, and no value at an exponent at or below `NEVER_PAST_EXPONENT`
+  (`int32.max - 10`) is past. `packLossy`, `div`, `pow`, `pow10` and the parser
+  check the threshold through it, so it has one encoding (#649).
 - `packLossless(c, e)`: as `packLossy`; reverts `ExponentOverflow(c, e)` for any
   value past `FLOAT_MAX_POSITIVE_VALUE` or `FLOAT_MIN_NEGATIVE_VALUE`, the band
   `packLossy` truncates into them included, and `LossyConversionToFloat(c, e)`
@@ -130,18 +136,18 @@ binary path (#306).
 
 ### integer, frac, floor, ceil
 
-All **UNRULED**.
+All **UNRULED** except the zero rule for `floor` and `ceil` (#687).
 
 - `integer(f)` truncates toward zero at `f`'s exponent; `frac(f)` is
   `f - integer(f)` at the same exponent, carrying `f`'s sign. Exponent `>= 0`:
   `integer` is `f`, `frac` is zero. Exponent `< -76`: `integer` is zero, `frac`
   is `f`.
-- `floor(f)`: `f` when `e >= 0` or the fraction is zero; otherwise `integer(f)`
-  for `f > 0` and `integer(f) - 1` for `f < 0`.
-- `ceil(f)`: `f` when `e >= 0` or the fraction is zero; otherwise
-  `integer(f) + 1` for `f > 0` and `integer(f)` for `f < 0`.
-- A zero input to `floor` or `ceil` returns `FLOAT_ZERO`, at every exponent
-  (#687).
+- `floor(f)`: `FLOAT_ZERO` for a zero `f` at any exponent (#687); otherwise `f`
+  when `e >= 0` or the fraction is zero; otherwise `integer(f)` for `f > 0` and
+  `integer(f) - 1` for `f < 0`.
+- `ceil(f)`: `FLOAT_ZERO` for a zero `f` at any exponent (#687); otherwise `f`
+  when `e >= 0` or the fraction is zero; otherwise `integer(f) + 1` for `f > 0`
+  and `integer(f)` for `f < 0`.
 - None reverts: each result is zero exactly or at least 1 in magnitude, so
   `packArithmeticResult` never underflows, and none lifts the exponent above
   `int32.max`.
@@ -161,18 +167,20 @@ All **UNRULED**.
 ## agree
 
 - `agree(absolute, proportional, lowest, highest)` is
-  `highest - lowest <= max(absolute, proportional × max(|lowest|, |highest|))`,
+  `|highest - lowest| <= max(absolute, proportional × max(|lowest|, |highest|))`,
   computed unpacked, never packed back, so it answers for every representable
   set instead of reverting (PR #278).
 - The spread is the implementation `sub`, so on a cancelling spread it truncates
   toward zero like `sub`; a spread accepted at the boundary exceeds the limit by
-  under `1.7273e-76` of its magnitude (PR #278, PR #434, #627).
+  under `1.7273e-76` of its magnitude (PR #278, PR #434, PR #710).
 - The limit is exact: the proportional product is not truncated like `mul`
   (#573).
+- The extremes may come in either order: `agree(a, p, x, y)` equals
+  `agree(a, p, y, x)`; a negative spread is negated before the comparison (#481,
+  PR #498).
 - A negative tolerance reverts `AgreeToleranceNegative(absolute, proportional)`;
   neither tolerance positive reverts
-  `AgreeNoPositiveTolerance(absolute,
-  proportional)`. Either alone may be zero
+  `AgreeNoPositiveTolerance(absolute, proportional)`. Either alone may be zero
   (PR #281).
 
 ## Fixed-decimal conversions
@@ -317,17 +325,19 @@ digits (#306).
 
 Named errors at the internal guards (#429, closes #422; #336):
 
-| Function                | Error                                 | Fires when                                                        |
-| ----------------------- | ------------------------------------- | ----------------------------------------------------------------- |
-| `mulDivFixed`, `mulDiv` | `MulDivOverflow(x, y, d)`             | the 512-bit quotient is past uint256                              |
-| `log10Ratio`            | `Log10RatioOutOfRange(a, b)`          | `a + b` past uint256, `b` zero, or z past the proven series range |
-| `log10Ratio` (relative) | `Log10RatioRelativeSumTooSmall(a, b)` | `a + b < 1e50` (#336)                                             |
-| `log10Unrounded`        | `ExponentOverflow(input)`             | characteristic past int256                                        |
-| `sqrt` (implementation) | `SqrtOutOfRange(c, e)`                | `c` outside `(0, 1e76)` or `e` too near `int256.min`              |
-| `exp10Fixed`            | `Exp10FixedOutOfRange(x)`             | `x` outside `[0, 1)` at the 1e50 scale                            |
-| `log10Reduce`           | `Log10ReduceOutOfRange(x)`            | `x` outside `[1e75, 1e76)`                                        |
-| `absCoefficient`        | `AbsCoefficientOverflow(c)`           | `c` is `int256.min`                                               |
-| `scaleUp`               | `ScaleUpOutOfRange(c, e)`             | `c` outside `(0, 1e76)` or the shift passes `int256.min`          |
+| Function                        | Error                                    | Fires when                                                                                                             |
+| ------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `mulDivFixed`, `mulDiv`         | `MulDivOverflow(x, y, d)`                | the 512-bit quotient is past uint256, or `d` is zero (#486)                                                            |
+| `log10Ratio`                    | `Log10RatioOutOfRange(a, b)`             | `a + b` past uint256, `b` zero, or z past the proven series range                                                      |
+| `log10Ratio` (relative)         | `Log10RatioRelativeSumTooSmall(a, b)`    | `a + b < 1e50` (#336)                                                                                                  |
+| `log10Unrounded`                | `ExponentOverflow(input)`                | characteristic past int256                                                                                             |
+| `sqrt` (implementation)         | `SqrtOutOfRange(c, e)`                   | `c` outside `(0, 1e76)`; every exponent has a root (#451, PR #497)                                                     |
+| `exp10Fixed`                    | `Exp10FixedOutOfRange(x)`                | `x` outside `[0, 1)` at the 1e50 scale                                                                                 |
+| `log10Reduce`                   | `Log10ReduceOutOfRange(x)`               | `x` outside `[1e75, 1e76)`                                                                                             |
+| `absCoefficient`                | `AbsCoefficientOverflow(c)`              | `c` is `int256.min`                                                                                                    |
+| `scaleUp`                       | `ScaleUpOutOfRange(c, e)`                | `c` outside `(0, 1e76)` or the shift passes `int256.min`                                                               |
+| `unabsUnsignedMulOrDivLossy`    | `UnabsExponentOverflow(a, b, abs, e)`    | a magnitude past int256 at the result's sign must shed a digit at `e = int256.max` (#502, PR #518)                     |
+| `readSignificantDigits` (parse) | `ParseDecimalNoSignificantDigits(start)` | a mantissa with no nonzero digit is read; unreachable from the parse entry points, which pass only a mantissa with one |
 
 - `withTargetExponent(c, e, t)` truncates toward zero when shrinking; growing by
   `d` digits returns `c × 10^d`, zero for zero at any `d`, and reverts

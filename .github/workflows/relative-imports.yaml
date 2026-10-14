@@ -1,0 +1,8 @@
+name: relative-imports
+on: [push]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: "! grep -rnE '\"(src|test)/' --include=*.sol src test"

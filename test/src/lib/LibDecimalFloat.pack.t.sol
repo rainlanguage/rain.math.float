@@ -2,9 +2,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
-import {LossyConversionToFloat} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloat, ExponentOverflow, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibExactFloat} from "../../lib/LibExactFloat.sol";
+import {LossyConversionToFloat} from "../../../src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatPackTest is Test {
@@ -149,14 +149,20 @@ contract LibDecimalFloatPackTest is Test {
     /// packLossy reverts exactly when the value is at least
     /// (int224.max / 10 + 1) 10^(int32.max + 1), which is
     /// (2^223 + 2) 10^int32.max, in magnitude (#452).
+    /// `isPastEveryFloat` is that rule, so it is checked at every point too
+    /// (#649).
     function checkPackLossyOverflowThreshold(int256 signedCoefficient, int256 exponent) internal view {
         bool over = LibExactFloat.overflows(LibExactFloat.u512(LibExactFloat.abs(signedCoefficient)), exponent);
         bool reverted;
         try this.packLossyExternal(signedCoefficient, exponent) {}
-        catch {
+        catch (bytes memory err) {
+            assertEq(err, abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent), "error");
             reverted = true;
         }
         assertEq(reverted, over, "reverted");
+        assertEq(
+            LibDecimalFloat.isPastEveryFloat(LibExactFloat.abs(signedCoefficient), exponent), over, "isPastEveryFloat"
+        );
     }
 
     function testPackLossyOverflowThreshold(int256 signedCoefficient, int256 exponent) external view {
@@ -187,6 +193,84 @@ contract LibDecimalFloatPackTest is Test {
             checkPackLossyOverflowThreshold(lift + 1, exponent);
             checkPackLossyOverflowThreshold(-lift, exponent);
             checkPackLossyOverflowThreshold(-lift - 1, exponent);
+        }
+    }
+
+    /// `isPastEveryFloat` is where `packLossy` reverts `ExponentOverflow`, by
+    /// packLossy's own behaviour rather than an oracle, at every exponent
+    /// from which packLossy can shed or lift to the ceiling (#649).
+    function testIsPastEveryFloatIsPackLossyOverflow(int256 signedCoefficient, int256 exponent) external view {
+        exponent = bound(exponent, int256(type(int32).max) - 90, int256(type(int32).max) + 90);
+        bool past = LibDecimalFloat.isPastEveryFloat(LibExactFloat.abs(signedCoefficient), exponent);
+        try this.packLossyExternal(signedCoefficient, exponent) {
+            assertFalse(past, "packs but past");
+        } catch (bytes memory err) {
+            assertEq(err, abi.encodeWithSelector(ExponentOverflow.selector, signedCoefficient, exponent), "error");
+            assertTrue(past, "overflows but not past");
+        }
+    }
+
+    function checkIsPastEveryFloatExact(uint256 magnitude, int256 exponent) internal pure {
+        assertEq(
+            LibDecimalFloat.isPastEveryFloat(magnitude, exponent),
+            LibExactFloat.overflows(LibExactFloat.u512(magnitude), exponent),
+            "isPastEveryFloat"
+        );
+    }
+
+    /// `isPastEveryFloat` is the exact threshold for every uint256 magnitude,
+    /// including those past int256 that only the parse callers pass, and
+    /// every exponent.
+    function testIsPastEveryFloatExact(uint256 magnitude, int256 exponent) external pure {
+        checkIsPastEveryFloatExact(magnitude, exponent);
+    }
+
+    function testIsPastEveryFloatExactNearCeiling(uint256 magnitude, int256 exponent) external pure {
+        exponent = bound(exponent, int256(type(int32).max) - 90, int256(type(int32).max) + 90);
+        checkIsPastEveryFloatExact(magnitude, exponent);
+    }
+
+    /// Either side of the threshold at every exponent where a uint256
+    /// magnitude can straddle it, zero at every such exponent, and the
+    /// extreme exponents.
+    function testIsPastEveryFloatExactEdges() external pure {
+        uint256 threshold = 2 ** 223 + 2;
+        int256 ceiling = type(int32).max;
+        for (uint256 k = 0; k <= 70; k++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 exponent = ceiling + int256(k);
+            uint256 below = (threshold - 1) / 10 ** k;
+            checkIsPastEveryFloatExact(below, exponent);
+            checkIsPastEveryFloatExact(below + 1, exponent);
+            checkIsPastEveryFloatExact(0, exponent);
+            checkIsPastEveryFloatExact(1, exponent);
+            checkIsPastEveryFloatExact(type(uint256).max, exponent);
+        }
+        for (uint256 k = 1; k <= 11; k++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256 exponent = ceiling - int256(k);
+            // 10^10 times the threshold is past uint256.
+            if (k < 10) {
+                uint256 at = threshold * 10 ** k;
+                checkIsPastEveryFloatExact(at - 1, exponent);
+                checkIsPastEveryFloatExact(at, exponent);
+            }
+            checkIsPastEveryFloatExact(0, exponent);
+            checkIsPastEveryFloatExact(type(uint256).max, exponent);
+        }
+        // NEVER_PAST_EXPONENT is tight: nothing is past at it, the largest
+        // magnitude is one exponent up.
+        assertFalse(
+            LibDecimalFloat.isPastEveryFloat(type(uint256).max, LibDecimalFloat.NEVER_PAST_EXPONENT), "never past"
+        );
+        assertTrue(
+            LibDecimalFloat.isPastEveryFloat(type(uint256).max, LibDecimalFloat.NEVER_PAST_EXPONENT + 1), "tight"
+        );
+        int256[4] memory extremes = [type(int256).max, type(int256).min, int256(0), ceiling - 400];
+        for (uint256 i = 0; i < extremes.length; i++) {
+            checkIsPastEveryFloatExact(0, extremes[i]);
+            checkIsPastEveryFloatExact(1, extremes[i]);
+            checkIsPastEveryFloatExact(type(uint256).max, extremes[i]);
         }
     }
 

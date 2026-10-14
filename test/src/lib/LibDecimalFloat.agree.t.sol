@@ -3,10 +3,10 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {AgreeToleranceNegative, AgreeNoPositiveTolerance} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
+import {Float, LibDecimalFloat} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {AgreeToleranceNegative, AgreeNoPositiveTolerance} from "../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat, U512} from "../../lib/LibExactFloat.sol";
 
 // The exponent gap at which the spread subtraction stops seeing a smaller
 // operand of 1 against a larger operand of 1. `add` truncates the smaller

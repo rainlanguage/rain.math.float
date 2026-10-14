@@ -2,8 +2,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibExactFloat} from "../../lib/LibExactFloat.sol";
+import {LibTestFloatZero} from "../../lib/LibTestFloatZero.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatFloorTest is Test {
@@ -154,30 +155,22 @@ contract LibDecimalFloatFloorTest is Test {
         assertEq(LibExactFloat.cmpParts(rc, re, xc, xe), 0, "exact floor");
     }
 
-    /// A zero Float at exponent `e`, with the exponent in the high 32 bits:
-    /// `packLossless(0, e)` would already be `FLOAT_ZERO`.
-    function zeroAt(int32 e) internal pure returns (Float) {
-        // The exponent's two's complement bits, as packing places them.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        return Float.wrap(bytes32(uint256(uint32(e)) << 224));
-    }
-
-    /// A zero input of any exponent gives `FLOAT_ZERO`, byte for byte (#687).
+    /// A zero input of any exponent gives `FLOAT_ZERO`, byte for byte.
     function testFloatFloorZeroBytesExamples() external pure {
         int32[5] memory exponents = [int32(5), type(int32).max, -2, -77, type(int32).min];
         for (uint256 i = 0; i < exponents.length; i++) {
             assertEq(
-                Float.unwrap(LibDecimalFloat.floor(zeroAt(exponents[i]))),
+                Float.unwrap(LibDecimalFloat.floor(LibTestFloatZero.zeroAt(exponents[i]))),
                 Float.unwrap(LibDecimalFloat.FLOAT_ZERO),
                 "floor of zero is not FLOAT_ZERO"
             );
         }
     }
 
-    /// A zero input of any exponent gives `FLOAT_ZERO`, byte for byte (#687).
+    /// A zero input of any exponent gives `FLOAT_ZERO`, byte for byte.
     function testFloatFloorZeroBytes(int32 e) external pure {
         assertEq(
-            Float.unwrap(LibDecimalFloat.floor(zeroAt(e))),
+            Float.unwrap(LibDecimalFloat.floor(LibTestFloatZero.zeroAt(e))),
             Float.unwrap(LibDecimalFloat.FLOAT_ZERO),
             "floor of zero is not FLOAT_ZERO"
         );

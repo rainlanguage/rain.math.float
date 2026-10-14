@@ -4,11 +4,16 @@ pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {ZeroNegativePower, PowNegativeBase, ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
-import {LibTestErrorBound, POW_RELATIVE_ERROR_E52} from "test/lib/LibTestErrorBound.sol";
-import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "test/lib/LibTestPowRange.sol";
-import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {
+    ZeroNegativePower,
+    PowNegativeBase,
+    ExponentOverflow,
+    ExponentUnderflow
+} from "../../../src/error/ErrDecimalFloat.sol";
+import {LibTestErrorBound, POW_RELATIVE_ERROR_E52} from "../../lib/LibTestErrorBound.sol";
+import {LibTestPowRange, PowRange, LOG10_OVERFLOW, THRESHOLD_SLACK} from "../../lib/LibTestPowRange.sol";
+import {LibExactFloat, U512} from "../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 contract LibDecimalFloatPowTest is Test {
@@ -1137,6 +1142,18 @@ contract LibDecimalFloatPowTest is Test {
 
     function powExternal(Float a, Float b) external pure returns (Float) {
         return a.pow(b);
+    }
+
+    /// The squaring loop stops after the top bit of N, so `1.5^3` squares the
+    /// base once, not twice. The ceiling sits between the two costs: 4955
+    /// with the early break, 5624 without it.
+    function testPowSkipsUnusedFinalSquareGas() external view {
+        Float a = LibDecimalFloat.packLossless(15, -1);
+        Float b = LibDecimalFloat.packLossless(3, 0);
+        uint256 before = gasleft();
+        this.powExternal(a, b);
+        uint256 used = before - gasleft();
+        assertLt(used, 5300, "pow squares the base past the top bit of N");
     }
 
     /// `pow` raises to an integer exponent via exponentiation by squaring,

@@ -8,9 +8,9 @@ import {
     LibDecimalFloatImplementation,
     MAXIMIZED_ZERO_EXPONENT,
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {MaximizeOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {MaximizeOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationMaximizeTest is Test {
     /// External wrapper so `vm.expectRevert` has a call boundary to catch the

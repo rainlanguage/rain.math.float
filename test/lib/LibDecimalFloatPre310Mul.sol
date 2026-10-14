@@ -2,22 +2,23 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow} from "../../src/error/ErrDecimalFloat.sol";
 import {
-    LibDecimalFloatImplementation,
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT,
     FIVE_INVERSE
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 /// `mul`, `mulExponentBelowFloor`, `mulExponentNearCeiling`, `maximize` and
 /// `mulDivPow10` verbatim from main 8fd3980250fae214fc2b4273545654ee1921c0ad,
-/// before the gas changes of issue #310. The other helpers they call are
-/// unchanged on main, so they are qualified to the live library. Equivalence
-/// tests only.
+/// before the gas changes of issue #310, with the other helpers they call
+/// copied from the same commit, so they call nothing on the live library.
+/// Equivalence tests only.
 /// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
 /// nothing about a value. Expected values come from `LibExactFloat`.
-library LibDecimalFloatGasMain {
+library LibDecimalFloatPre310Mul {
+    /// `LibDecimalFloatImplementation.mul` verbatim at 8fd3980; see its NatSpec
+    /// there.
     function mul(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -59,12 +60,10 @@ library LibDecimalFloatGasMain {
 
             // mulDiv only works with unsigned integers, so get the absolute
             // values of the coefficients.
-            uint256 signedCoefficientAAbs =
-                LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientA);
-            uint256 signedCoefficientBAbs =
-                LibDecimalFloatImplementation.absUnsignedSignedCoefficient(signedCoefficientB);
+            uint256 signedCoefficientAAbs = absUnsignedSignedCoefficient(signedCoefficientA);
+            uint256 signedCoefficientBAbs = absUnsignedSignedCoefficient(signedCoefficientB);
 
-            (uint256 prod1,) = LibDecimalFloatImplementation.mul512(signedCoefficientAAbs, signedCoefficientBAbs);
+            (uint256 prod1,) = mul512(signedCoefficientAAbs, signedCoefficientBAbs);
 
             uint256 adjustExponent = 0;
             unchecked {
@@ -94,7 +93,7 @@ library LibDecimalFloatGasMain {
                 exponent += int256(adjustExponent);
             }
 
-            (signedCoefficient, exponent) = LibDecimalFloatImplementation.unabsUnsignedMulOrDivLossy(
+            (signedCoefficient, exponent) = unabsUnsignedMulOrDivLossy(
                 signedCoefficientA,
                 signedCoefficientB,
                 mulDivPow10(signedCoefficientAAbs, signedCoefficientBAbs, adjustExponent),
@@ -103,6 +102,8 @@ library LibDecimalFloatGasMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.mulExponentBelowFloor` verbatim at
+    /// 8fd3980; see its NatSpec there.
     function mulExponentBelowFloor(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -125,6 +126,8 @@ library LibDecimalFloatGasMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.mulExponentNearCeiling` verbatim at
+    /// 8fd3980; see its NatSpec there.
     function mulExponentNearCeiling(
         int256 signedCoefficientA,
         int256 exponentA,
@@ -142,6 +145,8 @@ library LibDecimalFloatGasMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.maximize` verbatim at 8fd3980; see its
+    /// NatSpec there.
     function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, int256) {
         unchecked {
             if (signedCoefficient == 0) {
@@ -196,8 +201,10 @@ library LibDecimalFloatGasMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.mulDivPow10` verbatim at 8fd3980; see its
+    /// NatSpec there.
     function mulDivPow10(uint256 x, uint256 y, uint256 n) internal pure returns (uint256 result) {
-        (uint256 prod1, uint256 prod0) = LibDecimalFloatImplementation.mul512(x, y);
+        (uint256 prod1, uint256 prod0) = mul512(x, y);
         if (prod1 == 0) {
             unchecked {
                 return prod0 / 10 ** n;
@@ -209,6 +216,91 @@ library LibDecimalFloatGasMain {
             prod1 := sub(prod1, gt(remainder, prod0))
             prod0 := sub(prod0, remainder)
             result := mul(or(shr(n, prod0), shl(sub(256, n), prod1)), exp(inverse, n))
+        }
+    }
+
+    // The helpers the copies above call, verbatim from the same commit, so
+    // this baseline calls nothing on the live library.
+
+    /// Returns the absolute value of a signed coefficient as an unsigned
+    /// integer.
+    /// @param signedCoefficient The signed coefficient.
+    /// @return The absolute value as an unsigned integer.
+    function absUnsignedSignedCoefficient(int256 signedCoefficient) private pure returns (uint256) {
+        unchecked {
+            if (signedCoefficient < 0) {
+                if (signedCoefficient == type(int256).min) {
+                    return uint256(type(int256).max) + 1;
+                } else {
+                    // signedCoefficient < 0
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    return uint256(-signedCoefficient);
+                }
+            } else {
+                // signedCoefficient >= 0
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return uint256(signedCoefficient);
+            }
+        }
+    }
+
+    /// Given the absolute value of the result coefficient, and the signs of
+    /// the input coefficients, returns the signed coefficient and exponent of
+    /// the result of a multiplication or division operation.
+    /// @param a The signed coefficient of the first operand.
+    /// @param b The signed coefficient of the second operand.
+    /// @param signedCoefficientAbs The absolute value of the result coefficient.
+    /// @param exponent The exponent of the result.
+    /// @return signedCoefficient The signed coefficient of the result.
+    /// @return exponent The exponent of the result.
+    function unabsUnsignedMulOrDivLossy(int256 a, int256 b, uint256 signedCoefficientAbs, int256 exponent)
+        private
+        pure
+        returns (int256, int256)
+    {
+        // Need to minus the coefficient because a and b had different signs.
+        if ((a ^ b) < 0) {
+            if (signedCoefficientAbs > uint256(type(int256).max)) {
+                if (signedCoefficientAbs == uint256(type(int256).max) + 1) {
+                    // Edge case where the absolute value is exactly
+                    // type(int256).min.
+                    return (type(int256).min, exponent);
+                } else {
+                    // signedCoefficientAbs divided by 10 so won't truncate when
+                    // cast.
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    return (-int256(signedCoefficientAbs / 10), exponent + 1);
+                }
+            } else {
+                // signedCoefficientAbs [0, type(int256).max]
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return (-int256(signedCoefficientAbs), exponent);
+            }
+        } else {
+            if (signedCoefficientAbs > uint256(type(int256).max)) {
+                // signedCoefficientAbs divided by 10 so won't truncate when
+                // cast.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return (int256(signedCoefficientAbs / 10), exponent + 1);
+            } else {
+                // signedCoefficientAbs is bound to the int256 range.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return (int256(signedCoefficientAbs), exponent);
+            }
+        }
+    }
+
+    /// mul512 from Open Zeppelin.
+    /// Simply part of the original mulDiv function abstracted out for reuse
+    /// elsewhere.
+    function mul512(uint256 a, uint256 b) private pure returns (uint256 high, uint256 low) {
+        // 512-bit multiply [high low] = x * y. Compute the product mod 2²⁵⁶ and mod 2²⁵⁶ - 1, then use
+        // the Chinese Remainder Theorem to reconstruct the 512 bit result. The result is stored in two 256
+        // variables such that product = high * 2²⁵⁶ + low.
+        assembly ("memory-safe") {
+            let mm := mulmod(a, b, not(0))
+            low := mul(a, b)
+            high := sub(sub(mm, low), lt(mm, low))
         }
     }
 }

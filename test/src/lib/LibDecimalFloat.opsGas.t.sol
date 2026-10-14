@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
 
 /// Gas of every packing operation on packed inputs whose result fits, and on
 /// the results that shed digits or take the int224 bound. Run with
