@@ -101,8 +101,7 @@ library LibParseDecimalFloat {
                 // The scan stops at the decimal point at the latest.
                 uint256 nonZeroCursor = cursor;
                 assembly ("memory-safe") {
-                    // 0x30 is '0'.
-                    for {} eq(byte(0, mload(sub(nonZeroCursor, 1))), 0x30) {} {
+                    for {} eq(byte(0, mload(sub(nonZeroCursor, 1))), ASCII_ZERO) {} {
                         nonZeroCursor := sub(nonZeroCursor, 1)
                     }
                 }
