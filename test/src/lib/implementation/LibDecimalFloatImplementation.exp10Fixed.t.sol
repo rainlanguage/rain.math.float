@@ -14,9 +14,9 @@ import {
     EXP10_HORNER_7,
     EXP10_HORNER_8,
     EXP10_HORNER_9
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {Exp10FixedOutOfRange} from "src/error/ErrDecimalFloat.sol";
+import {Exp10FixedOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationExp10FixedTest is Test {
     /// The true power is in [truncated, truncated + 1), and exp10Fixed is

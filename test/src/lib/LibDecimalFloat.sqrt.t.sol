@@ -4,12 +4,12 @@ pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {PowNegativeBase, ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
-import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
-import {LibDecimalFloatSqrtVariants} from "test/lib/LibDecimalFloatSqrtVariants.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {PowNegativeBase, ExponentOverflow} from "../../../src/error/ErrDecimalFloat.sol";
+import {LibTestErrorBound} from "../../lib/LibTestErrorBound.sol";
+import {LibExactFloat, U512} from "../../lib/LibExactFloat.sol";
+import {LibDecimalFloatSqrtVariants} from "../../lib/LibDecimalFloatSqrtVariants.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
 contract LibDecimalFloatSqrtTest is Test {

@@ -4,12 +4,11 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloat, Float} from "../../../../src/lib/LibDecimalFloat.sol";
 import {LibExactFloat, ORACLE_ONE} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibTestErrorBound, POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "../../../lib/LibTestErrorBound.sol";
-import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 /// @dev 10^x for x = 999989412444502470160818040289325468267883913374439598768578152671e-66
 /// in units of 1e-70, from `bc -l` at scale 130, truncated.
