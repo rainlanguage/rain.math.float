@@ -286,6 +286,17 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertTrue(lossless);
     }
 
+    /// One mul can drop a sub-ulp fraction: 2e18 * (1 + 1e-67) is
+    /// 2e18 + 2e-49, the Float is exactly 2e18 and the conversion reports
+    /// lossless, so the lossless-flag ceiling is 1 below the exact ceiling.
+    function testSingleMulSubUlpFractionReadsLossless() external pure {
+        Float amount = LibDecimalFloat.fromFixedDecimalLosslessPacked(2e18, 0);
+        Float rate = LibDecimalFloat.packLossless(1e67 + 1, -67);
+        (uint256 got, bool lossless) = amount.mul(rate).toFixedDecimalLossy(0);
+        assertEq(got, 2e18);
+        assertTrue(lossless);
+    }
+
     /// Dividing by a truncated price turns an exact integer into a lossy
     /// result: the lossless-flag ceiling charges 1 more than mulDivUp.
     function testExactIntegerCeilOvercharge() external pure {
@@ -333,5 +344,11 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     function testFuzzWeiFloorCeilSafeSideBoundsCounterexample() external view {
         this.testFuzzWeiFloorCeilSafeSide(987095638915421968423246895997630, 999999999999999999999999999999999, 7);
         this.testFuzzWeiFloorCeilSafeSide(982988587715706933722833015409834, 961104254074084716688159570998290, 7);
+    }
+
+    /// The clamp wraps an input just above it onto b = 1, never b = 0.
+    function testFuzzWeiFloorCeilSafeSideClampWrapsToOne() external view {
+        uint256 a = 1e33;
+        this.testFuzzWeiFloorCeilSafeSide(a, WEI_SAFE_SIDE_AB_MAX / a + 1, 7);
     }
 }

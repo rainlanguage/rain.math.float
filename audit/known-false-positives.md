@@ -20,3 +20,25 @@ comparison is free at its boundary in both directions.
 20 to 40 shrinks the fuzz domain to one where the property still holds, and 20
 to 15 (0.0667 of int224.max) stays below the smallest known failing input at
 0.0701 of int224.max, so no known input distinguishes either from the original.
+
+## Equivalent mutants: `testFuzzWeiFloorCeilSafeSide` clamp rearranged
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The assertions read only
+the bounded `a`, `b` and `c`, and the clamp exists to keep `a * b` at or below
+`WEI_SAFE_SIDE_AB_MAX`. Two rearrangements keep that domain exactly.
+
+Moving the clamp before `b = bound(b, 1, 1e33)`: both orders land `b` in
+`[1, min(X, 1e33)]` for `X = WEI_SAFE_SIDE_AB_MAX / a`. Bounding into `[1, X]`
+then `[1, 1e33]` is a no-op on the second step when `X <= 1e33` and on the first
+when `X > 1e33`, and the same holds with the steps swapped. A raw `b` can map to
+a different point of that interval, but the property holds across all of it, so
+every input passes under both.
+
+Clamping `a` instead, as `a = bound(a, 1, WEI_SAFE_SIDE_AB_MAX / b)`: for every
+`b` in `[1, 1e33]` the divisor is at least `WEI_SAFE_SIDE_AB_MAX / 1e33 > 1`, so
+the domain is again every `(a, b)` with `a <= 1e33`, `1 <= b <= 1e33` and
+`a * b <= WEI_SAFE_SIDE_AB_MAX`, plus `a = 0`. The pinned callers
+`testFuzzWeiFloorCeilSafeSideBoundsCounterexample` and
+`testFuzzWeiFloorCeilSafeSideClampWrapsToOne` wrap into that domain under both
+clamps. A test that told either mutant apart would need the property to fail
+inside the domain the test asserts it on.
