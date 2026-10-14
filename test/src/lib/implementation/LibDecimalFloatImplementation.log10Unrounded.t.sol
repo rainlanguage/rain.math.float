@@ -414,6 +414,25 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         checkAbsolute(9, min);
     }
 
+    /// `floorE20` is the floor: zero and an exact multiple of 1e20 of either
+    /// sign are their quotient, a positive non-multiple truncates to it, and a
+    /// negative non-multiple is one below it, whether a unit of 1e20 off, a
+    /// tenth of one, or one.
+    function testLog10UnroundedFloorE20() external pure {
+        assertEq(floorE20(0), 0, "zero");
+        assertEq(floorE20(1), 0, "one");
+        assertEq(floorE20(1e20 - 1), 0, "under a unit");
+        assertEq(floorE20(1e20), 1, "a unit");
+        assertEq(floorE20(1e20 + 1), 1, "over a unit");
+        assertEq(floorE20(-1), -1, "minus one");
+        assertEq(floorE20(-1e19), -1, "minus a tenth of a unit");
+        assertEq(floorE20(-1e20 + 1), -1, "over minus a unit");
+        assertEq(floorE20(-1e20), -1, "minus a unit");
+        assertEq(floorE20(-1e20 - 1), -2, "under minus a unit");
+        assertEq(floorE20(-3e20), -3, "minus three units");
+        assertEq(floorE20(-1e21), -10, "minus ten units");
+    }
+
     /// `absoluteOk` takes only the truncation toward zero, not the integer
     /// either side of it, at both limits.
     function testLog10UnroundedAbsoluteRejectsNeighbours() external pure {
@@ -465,6 +484,26 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         assertTrue(absoluteOk(rejected, -75, 1.6e50 - 1, -50), "0.0037 above");
         assertTrue(absoluteOk(rejected, -75, 1.6e50 - 2, -50), "0.9963 below");
         assertFalse(absoluteOk(rejected, -75, 1.6e50 - 3, -50), "1.9963 below");
+    }
+
+    /// At -76 the same coefficients have characteristic zero, so the result is
+    /// the correction alone and `absoluteOk` compares it with the oracle
+    /// directly, under the same bound and 1e-67 term: the same corrections,
+    /// less the characteristic, are taken and rejected.
+    function testLog10UnroundedAbsoluteOracleErrorZeroCharacteristic() external pure {
+        int256 taken = 19952623149688796013524553967395355579862743154052999866296163324547314936180;
+        checkAbsolute(taken, -76);
+        assertTrue(absoluteOk(taken, -76, 3e49, -50), "5e-68 past the bound");
+        assertFalse(absoluteOk(taken, -76, 3e49 + 1, -50), "2.0037 above");
+        assertTrue(absoluteOk(taken, -76, 3e49 - 1, -50), "0.0037 above");
+        assertTrue(absoluteOk(taken, -76, 3e49 - 2, -50), "0.9963 below");
+        assertFalse(absoluteOk(taken, -76, 3e49 - 3, -50), "1.9963 below");
+        int256 rejected = 39810717055349725077025230508775204348767703729737124619192229862208754183584;
+        checkAbsolute(rejected, -76);
+        assertFalse(absoluteOk(rejected, -76, 6e49, -50), "1.5e-67 past the bound");
+        assertTrue(absoluteOk(rejected, -76, 6e49 - 1, -50), "0.0037 above");
+        assertTrue(absoluteOk(rejected, -76, 6e49 - 2, -50), "0.9963 below");
+        assertFalse(absoluteOk(rejected, -76, 6e49 - 3, -50), "1.9963 below");
     }
 
     /// 2.000...0006887905026949290612024572e1 has an oracle log of 1 and
