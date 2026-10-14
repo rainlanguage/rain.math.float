@@ -52,3 +52,31 @@ Changing it to `<= type(int256).max - adjustExponent - 1` changes the outcome
 only at the same `exponentB`, where the mutant returns `(0, 0)` directly and the
 original returns the same `(0, 0)` through `underflowExponentBy > 76`. The
 comparison is free at its boundary in both directions.
+
+## Equivalent mutant: `floor` zero guard narrowed to `exponent >= 0`
+
+`src/lib/LibDecimalFloat.sol`, `floor`. Guarding only a zero at a non-negative
+exponent changes nothing: a zero at a negative exponent reaches `intFrac`, which
+returns `(0, 0)` for a zero coefficient at every exponent (the whole coefficient
+on one side, `0 % unit` on the other), the sign test fails, and
+`packArithmeticResult(0, exponent)` is `FLOAT_ZERO` before `packLossy` looks at
+the exponent. `ceil` differs: its `fraction == 0` arm returns the input bytes,
+so the same narrowing there is killed.
+
+## Equivalent mutant: `powUnrounded` top-bit `break` as `continue`
+
+`src/lib/LibDecimalFloat.sol`, `powUnrounded`'s squaring loop. `continue` jumps
+to the `while` condition, `exponentBInteger >= 1`, which is false at the zero
+the branch tests for, so the loop exits exactly where `break` leaves it.
+
+## Equivalent mutant: `agreeValidateTolerances` zero from `packLossless(0, 0)`
+
+`src/lib/LibDecimalFloat.sol`, `agreeValidateTolerances`. `packLossless(0, 0)`
+returns `FLOAT_ZERO` through `packLossy`'s zero arm, byte for byte the constant.
+
+## Equivalent mutant: `agreeValidateTolerances` zero at a non-zero exponent
+
+`src/lib/LibDecimalFloat.sol`, `agreeValidateTolerances`. Comparing against a
+zero coefficient at exponent one (`Float.wrap(bytes32(uint256(1) << 224))`)
+changes nothing: `lt` and `gt` unpack both operands and compare numerically, and
+a zero coefficient is zero at every exponent, as the function's NatSpec states.
