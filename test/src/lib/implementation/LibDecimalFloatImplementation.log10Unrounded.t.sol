@@ -68,13 +68,14 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
 
     /// Whether `(c, e)` is `log10Unrounded` of the input within its proven
     /// bound. For a characteristic k other than zero the result is `add` of
-    /// k and a correction 10^-50 within `LOG10_RAW_ERROR_E54` units of 1e-54
-    /// of the log less k, below 1e25 by a fixed point sum that is exact, as
-    /// `add` is there. The oracle is within 1e-67, so the correction is one of
-    /// the integers within both errors of it, and the result is
-    /// `LibExactFloat.addPartsWide` of k and that correction, which truncates toward
-    /// zero to k's int256 unit and sheds one more digit where the sum passes
-    /// int256. Zero k is the correction alone, which may be relative.
+    /// k and an integer correction d at 10^-50, d 10^-50 within
+    /// `LOG10_RAW_ERROR_E54` units of 1e-54 of the log less k, below 1e25 by
+    /// a fixed point sum that is exact, as `add` is there. The oracle is
+    /// within 1e-67, so d is one of the integers within both errors of it,
+    /// and the result is `LibExactFloat.addPartsWide` of k and d 10^-50,
+    /// which truncates toward zero to k's int256 unit and sheds one more digit
+    /// where the sum passes int256. Zero k is the correction alone, which may
+    /// be relative.
     function absoluteOk(int256 signedCoefficient, int256 exponent, int256 c, int256 e) internal pure returns (bool) {
         int256 k = exponent + characteristicRise(signedCoefficient);
         if (k != 0) {
@@ -259,15 +260,18 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         ];
         int256[3] memory above = [int256(2), 1, 2];
         for (uint256 i = 0; i < inputs.length; i++) {
-            (int256 c, int256 e) = LibDecimalFloatImplementation.log10Unrounded(inputs[i][0], inputs[i][1]);
-            assertEq(c, expected[i][0], "coefficient");
-            assertEq(e, expected[i][1], "exponent");
-            assertTrue(absoluteOk(inputs[i][0], inputs[i][1], c, e), "log10Unrounded error");
-            assertFalse(absoluteOk(inputs[i][0], inputs[i][1], c - 1, e), "one unit below");
-            for (int256 j = 1; j < above[i]; j++) {
-                assertTrue(absoluteOk(inputs[i][0], inputs[i][1], c + j, e), "within bound above");
+            (int256 coefficient, int256 exponent) =
+                LibDecimalFloatImplementation.log10Unrounded(inputs[i][0], inputs[i][1]);
+            assertEq(coefficient, expected[i][0], "coefficient");
+            assertEq(exponent, expected[i][1], "exponent");
+            assertTrue(absoluteOk(inputs[i][0], inputs[i][1], coefficient, exponent), "log10Unrounded error");
+            assertFalse(absoluteOk(inputs[i][0], inputs[i][1], coefficient - 1, exponent), "one unit below");
+            for (int256 unitsAbove = 1; unitsAbove < above[i]; unitsAbove++) {
+                assertTrue(
+                    absoluteOk(inputs[i][0], inputs[i][1], coefficient + unitsAbove, exponent), "within bound above"
+                );
             }
-            assertFalse(absoluteOk(inputs[i][0], inputs[i][1], c + above[i], e), "past bound above");
+            assertFalse(absoluteOk(inputs[i][0], inputs[i][1], coefficient + above[i], exponent), "past bound above");
         }
     }
 
@@ -288,8 +292,9 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 scale = int256(10 ** shift);
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256 k = negative ? type(int256).min / scale + int256(below) : type(int256).max / scale - int256(below);
-        checkAbsolute(signedCoefficient, k - characteristicRise(signedCoefficient));
+        int256 characteristic =
+            negative ? type(int256).min / scale + int256(below) : type(int256).max / scale - int256(below);
+        checkAbsolute(signedCoefficient, characteristic - characteristicRise(signedCoefficient));
     }
 
     /// #537: `add` sums a characteristic of n digits, n at least 26, at
@@ -427,10 +432,10 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
     /// ...351. ...349 is 1.0271 units away, under 3% past the bound, and
     /// ...352 is 1.9729 away.
     function testLog10UnroundedAbsoluteRejectsPastSlack() external pure {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.log10Unrounded(18, 0);
-        assertEq(e, -50, "exponent");
+        (int256 coefficient, int256 exponent) = LibDecimalFloatImplementation.log10Unrounded(18, 0);
+        assertEq(exponent, -50, "exponent");
         int256 truncated = 125527250510330606980379470123472364516844760984350;
-        assertTrue(absoluteOk(18, 0, c, e), "result");
+        assertTrue(absoluteOk(18, 0, coefficient, exponent), "result");
         assertTrue(absoluteOk(18, 0, truncated, -50), "nearest below");
         assertTrue(absoluteOk(18, 0, truncated + 1, -50), "nearest above");
         assertFalse(absoluteOk(18, 0, truncated - 1, -50), "1.0271 below");
@@ -460,6 +465,20 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         assertTrue(absoluteOk(rejected, -75, 1.6e50 - 1, -50), "0.0037 above");
         assertTrue(absoluteOk(rejected, -75, 1.6e50 - 2, -50), "0.9963 below");
         assertFalse(absoluteOk(rejected, -75, 1.6e50 - 3, -50), "1.9963 below");
+    }
+
+    /// 2.000...0006887905026949290612024572e1 has an oracle log of 1 and
+    /// 30102999566398119521373889472449302676818988146211.00370000000000001
+    /// units of 1e-50: exactly `LOG10_RAW_ERROR_E54` units of 1e-54 and the
+    /// oracle's 1e-67 above ...210, so the bottom of the window is an exact
+    /// multiple of 1e20 at 1e-70 and `floorE20` must not step past it. That
+    /// correction sits on the bound: taken, and ...209 is not.
+    function testLog10UnroundedAbsoluteWindowInclusive() external pure {
+        int256 signedCoefficient = 2000000000000000000000000000000000000000000000000006887905026949290612024572;
+        checkAbsolute(signedCoefficient, -74);
+        int256 bottom = 130102999566398119521373889472449302676818988146210;
+        assertTrue(absoluteOk(signedCoefficient, -74, bottom, -50), "on the bound");
+        assertFalse(absoluteOk(signedCoefficient, -74, bottom - 1, -50), "one past the bound");
     }
 
     /// The raw log of 1.4482...e0 is 0.99988e-50 below its log from `bc -l`
