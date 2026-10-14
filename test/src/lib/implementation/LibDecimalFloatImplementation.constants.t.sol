@@ -7,7 +7,7 @@ import {
     FIVE_INVERSE,
     POW_FIXED_ONE_ODD,
     POW_FIXED_ONE_ODD_INVERSE
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 /// The modular inverses the implementation divides by: each times what it
 /// inverts is one modulo 2^256.
