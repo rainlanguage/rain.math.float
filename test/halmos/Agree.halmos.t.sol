@@ -21,7 +21,8 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// `AddSubRoundOnce.halmos.t.sol`'s lemmas:
 ///
 /// - ZERO here: a zero extreme gives the same spread in either order.
-/// - MINUS: `Impl.sub(h, l)` is `Impl.add(h, -l)` for an int224 l.
+/// - MINUS: `Impl.sub(h, l)` is `Impl.add(h, -l)` for an int224 l. Not yet
+///   proved under CI's 5-minute limit (#513), so the composition is open.
 /// - MAX, IDEM: for nonzero int224 x at an int32 exponent, `Impl.add` on x
 ///   takes the same steps as on M(x), the maximized parts, whose exponent is
 ///   x's less k in [8, 76], so in [int32.min - 76, int32.max - 8].
