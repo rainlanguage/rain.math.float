@@ -7,15 +7,7 @@ jobs:
       - uses: rainlanguage/rainix/.github/actions/nix-cachix-setup@main
         with:
           cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      # Non-fuzz rows must match exactly. Fuzz μ/~ are not reproducible with a
-      # fixed seed, so every `(runs: N, μ: X, ~: Y)` is reduced to `(fuzz)` on
-      # both sides: fuzz rows compare by name only. `forge snapshot --check`
-      # has no per-row mode, and `--tolerance` would loosen non-fuzz rows too.
+      - run: bash script/check-gas-snapshot-test.sh
       - run: nix develop -c forge soldeer install
       - run: nix develop -c forge snapshot --fuzz-seed 0 --snap "$RUNNER_TEMP/fresh.gas-snapshot"
-      - run: |
-          normalise() { sed -E 's/\(runs: [0-9]+, μ: [0-9]+, ~: [0-9]+\)$/(fuzz)/' "$1"; }
-          diff -u <(normalise .gas-snapshot) <(normalise "$RUNNER_TEMP/fresh.gas-snapshot") || {
-            echo "::error file=.gas-snapshot::stale: regenerate with 'nix develop -c forge snapshot --fuzz-seed 0' and commit it"
-            exit 1
-          }
+      - run: bash script/check-gas-snapshot.sh .gas-snapshot "$RUNNER_TEMP/fresh.gas-snapshot"
