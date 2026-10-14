@@ -629,6 +629,20 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
         signedCoefficient: sc,
         exponent: se,
     });
+    // `isPastEveryFloat` of the magnitude is exactly where `packLossy`
+    // reverts `ExponentOverflow` (#649).
+    let is_past = evm::harness(H::isPastEveryFloatCall {
+        magnitude: sc.unsigned_abs(),
+        exponent: se,
+    })
+    .unwrap();
+    prop_assert_eq!(
+        is_past,
+        matches!(want, Err(RefError::ExponentOverflow)),
+        "isPastEveryFloat({}, {})",
+        c,
+        e
+    );
     match (lossy, &want) {
         (Ok(r), Ok((w, l))) => {
             let s = d(&Dec::from_bytes(r._0));
