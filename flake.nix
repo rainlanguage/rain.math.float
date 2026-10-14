@@ -24,7 +24,8 @@
           inherit (rainix.devShells.${system}.default) shellHook;
           inputsFrom = [ rainix.devShells.${system}.default ];
           # crates/tests runs test/oracle/decimal_oracle.py (standard library
-          # only) as a second reference.
+          # only) as a second reference. Local runs only: CI's `cargo test`
+          # runs in rainix#rust-shell, which takes python3 from the runner.
           packages = [ pkgs.python3 ];
         };
       }
