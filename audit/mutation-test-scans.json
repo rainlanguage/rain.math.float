@@ -1128,5 +1128,26 @@
       "testsAfter": 322,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-14T21:06:05Z",
+    "commit": "1fc0f0fbec8c1fb6773de5fedc3d6a7faf21fec7",
+    "testsAfterCommit": "1fc0f0fbec8c1fb6773de5fedc3d6a7faf21fec7",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 17,
+    "scope": "PR #709 (#613, #615, #617, #619, #621, #623, #625; on #712): the parse audit's own lines, the diff against #712's head 4ed1ba4a after merging it (f7cf3b8f) and fixing the merge's zeros helper (2e84f4bd). Units: the fraction branch guard `exponent >= 0` that now reverts ParseDecimalNonNegativeFractionExponent(start); the ASCII_DECIMAL_POINT and ASCII_ZERO constants in readSignificantDigits; the SPEC.md Range guards row; and, added mid-run, the inline past check calling the signed isPastEveryFloat(int256, int256) overload instead of negating by hand (1fc0f0fb). The memory-safe annotation on parseDecimalFloat's assembly and the NatSpec/comment edits have no runtime behaviour and were verified by reading against the declared error signatures (ParseEmptyDecimalString(uint256) in rain-string 0.3.9, ExponentOverflow(int256, int256)) and the code paths, not probed. #712's own lines carry the pr:712 record; its two NEVER_PAST_EXPONENT parse gates were probed once more only to attribute #709's new test. Suite per Solidity probe: forge test --match-contract 'Parse|ToDecimalString' (the six contracts that reach the parser, 128 tests) at 256 fuzz runs, seed 0x709; the SPEC row probe ran cargo test spec_names_every_error (1 test). Pass 1 (M01-M10, S01) ran the pre-existing suite at 2e84f4bd; pass 2 (M11-M13) at 1fc0f0fb. Mutants: M01 guard relaxed to > 0; M02 guard dropped; M03 guard negated; M04 guard reverts with cursor; M05 ASCII_DECIMAL_POINT 0x2f; M06 ASCII_ZERO 0x31; M07 point test inverted; M08 digit value operands swapped; M09 past-int256 gate at NEVER_PAST_EXPONENT + 1; M10 inline gate at NEVER_PAST_EXPONENT + 1; S01 SPEC row name broken; M11 inline past check casts the signed coefficient without its magnitude; M12 inline past check at exponent - 1; M13 inline past check forced true past NEVER_PAST_EXPONENT. 11/14 killed, all by pre-existing tests: M03 testParseGasCommon, testParseGas, testParseDecimalFloatExcessCharacters, testParseExponentLeadingZeros, testParseExponentSumBelowInt256; M05 testParseOverflowThresholdPointPositions; M06-M08 testParseGasPastInt256, testParseIntegerPastInt256Boundary, testParseIntegerPastInt256Exponent, testParseIntegerPastInt256Fraction, testParseIntegerPastInt256Int224Bounds; M09 testParsePastInt256FirstExponentPastNeverPast and #709's testParsePastInt256GateAtNeverPastExponentPlusOne; M10 testParseOverflowThresholdExcesses; S01 constants::spec_names_every_error; M11 testFormatExtremeFloats, testParseOverflowThresholdExcesses; M12 testParseDecimalFloatExponentOverflowFromPackLossy, testParseOverflowThresholdExcesses, testParsePastRangeOneChannel; M13 testParseZeroHugeExponent, testFormatExtremeFloats, testFormatScientificExponentPastInt32, testParsePr321EquivalenceExamples, testParseDecimalFloatExponentOverflowFromPackLossy. M01, M02 and M04 survived and are equivalent: the guarded branch is dead, as the trailing-zero scan stops at the `.` at the latest so the fraction exponent is negative on every input; the proof is in audit/known-false-positives.md (\"the fraction exponent guard in parseDecimalFloatInline\"). No tests added. Adversarial pass: each ParseDecimalPrecisionLoss return site is below the overflow threshold as ErrParse.sol now states; the MalformedDecimalPoint and MalformedExponentDigits positions match both parse paths; packLossy reverts ExponentOverflow exactly when isPastEveryFloat holds on its out-of-int32 path, so the wrapper comment holds; the signed overload maps int256.min to 2^255 as the removed hand negation did. No candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 14,
+      "killedBefore": 11,
+      "killedAfter": 11,
+      "equivalent": 3,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 129,
+      "testsAfter": 129,
+      "filed": []
+    }
   }
 ]
