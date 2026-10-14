@@ -217,12 +217,7 @@ library LibParseDecimalFloat {
                 // Only an e-notation exponent reaches the overflow threshold.
                 if (
                     exponent > LibDecimalFloat.NEVER_PAST_EXPONENT
-                        && LibDecimalFloat.isPastEveryFloat(
-                            // int256.min negates to itself, which casts to 2^255.
-                            // forge-lint: disable-next-line(unsafe-typecast)
-                            uint256(signedCoefficient < 0 ? -signedCoefficient : signedCoefficient),
-                            exponent
-                        )
+                        && LibDecimalFloat.isPastEveryFloat(signedCoefficient, exponent)
                 ) {
                     return (ExponentOverflow.selector, cursor, 0, 0);
                 }
