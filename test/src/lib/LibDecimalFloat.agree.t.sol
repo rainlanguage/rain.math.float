@@ -660,6 +660,32 @@ contract LibDecimalFloatAgreeTest is Test {
         );
     }
 
+    /// A zero proportional tolerance leaves only the absolute one: `mul`'s zero
+    /// product carries exponent 0, which must not read as a truncated limit.
+    function testAgreeZeroProportionalRefusesPastAbsolute() external pure {
+        assertFalse(LibDecimalFloat.agree(f(1, -2), f(0, 0), f(0, 0), f(5, -1)), "a");
+        assertFalse(LibDecimalFloat.agree(f(1, -2), f(0, 0), f(5, -1), f(0, 0)), "b");
+        assertFalse(LibDecimalFloat.agree(f(1, -2), f(0, -5), f(0, 0), f(5, -1)), "c");
+        assertFalse(LibDecimalFloat.agree(f(1, -2), f(0, 0), f(-5, -1), f(0, 0)), "d");
+        assertTrue(LibDecimalFloat.agree(f(5, -1), f(0, 0), f(0, 0), f(5, -1)), "at absolute");
+    }
+
+    /// With a zero proportional tolerance, at any exponent of the zero, `agree`
+    /// is exactly the absolute check.
+    function testAgreeZeroProportionalIsAbsolute(
+        int224 xCoefficient,
+        int224 yCoefficient,
+        int256 xExponent,
+        int256 yExponent,
+        int224 absoluteCoefficient,
+        int32 zeroExponent
+    ) external pure {
+        Float x = f(xCoefficient, bound(xExponent, -100, 100));
+        Float y = f(yCoefficient, bound(yExponent, -100, 100));
+        Float absolute = f(bound(absoluteCoefficient, 1, type(int224).max), -2);
+        assertEq(LibDecimalFloat.agree(absolute, f(0, zeroExponent), x, y), expectedAgreeSorted(absolute, x, y));
+    }
+
     /// `expectedAgree` of `x` and `y` sorted by `LibExactFloat.cmpParts`.
     function expectedAgreeSorted(Float limit, Float x, Float y) internal pure returns (bool) {
         (int256 xCoefficient, int256 xExponent) = x.unpack();
