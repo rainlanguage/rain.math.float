@@ -52,8 +52,8 @@ import {
     EXP10_HORNER_3,
     EXP10_HORNER_2,
     LOG10_RATIO_Z_MAX
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Exp10FixedOutOfRange, Log10RatioOutOfRange, Log10RatioRelativeSumTooSmall} from "src/error/ErrDecimalFloat.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Exp10FixedOutOfRange, Log10RatioOutOfRange, Log10RatioRelativeSumTooSmall} from "../../src/error/ErrDecimalFloat.sol";
 
 /// `log10Ratio` and `exp10Fixed` with the library's unrolled algorithm (seven
 /// atanh terms, the 1e25 split of z^2 and z^4, z^6 split by 2^50 over

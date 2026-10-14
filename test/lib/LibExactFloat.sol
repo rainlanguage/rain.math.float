@@ -3,7 +3,7 @@
 pragma solidity ^0.8.25;
 
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {NegativeFixedDecimalConversion, FixedDecimalOverflow} from "src/error/ErrDecimalFloat.sol";
+import {NegativeFixedDecimalConversion, FixedDecimalOverflow} from "../../src/error/ErrDecimalFloat.sol";
 
 /// @dev Fixed point one for the oracle, twenty digits past the library's 1e50.
 uint256 constant ORACLE_ONE = 1e70;

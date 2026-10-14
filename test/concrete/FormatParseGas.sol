@@ -2,12 +2,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
-import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
-import {LibFormatDecimalFloatPr321} from "test/lib/LibFormatDecimalFloatPr321.sol";
-import {LibParseDecimalFloatPr321} from "test/lib/LibParseDecimalFloatPr321.sol";
-import {LibFormatDecimalFloatSolidity} from "test/lib/LibFormatDecimalFloatSolidity.sol";
+import {LibDecimalFloat, Float} from "../../src/lib/LibDecimalFloat.sol";
+import {LibFormatDecimalFloat} from "../../src/lib/format/LibFormatDecimalFloat.sol";
+import {LibParseDecimalFloat} from "../../src/lib/parse/LibParseDecimalFloat.sol";
+import {LibFormatDecimalFloatPr321} from "../lib/LibFormatDecimalFloatPr321.sol";
+import {LibParseDecimalFloatPr321} from "../lib/LibParseDecimalFloatPr321.sol";
+import {LibFormatDecimalFloatSolidity} from "../lib/LibFormatDecimalFloatSolidity.sol";
 
 /// Each function returns the gas of one format or parse call alone, between two
 /// `gasleft()` reads, as `g`, and the hash of its result as `h`.

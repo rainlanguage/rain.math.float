@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibExactFloat, U512} from "test/lib/LibExactFloat.sol";
+import {LibExactFloat, U512} from "./LibExactFloat.sol";
 
 /// The helpers the error bounds use, against plain 512 bit alignment.
 contract LibExactFloatTest is Test {

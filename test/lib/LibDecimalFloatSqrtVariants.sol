@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {SqrtOutOfRange} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {SqrtOutOfRange} from "../../src/error/ErrDecimalFloat.sol";
 
 /// Variants of `LibDecimalFloatImplementation.sqrt`, for equivalence and gas
 /// comparison only.

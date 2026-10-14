@@ -1,0 +1,12 @@
+name: relative-imports
+on: [push]
+jobs:
+  relative-imports:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: No bare src/ or test/ first-party imports
+        run: |
+          if grep -rnE '(from|import) "(src|test)/' --include=*.sol src test; then
+            exit 1
+          fi

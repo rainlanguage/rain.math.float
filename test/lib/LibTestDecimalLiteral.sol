@@ -3,8 +3,8 @@
 pragma solidity ^0.8.25;
 
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
-import {MalformedExponentDigits, MalformedDecimalPoint} from "src/error/ErrParse.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {MalformedExponentDigits, MalformedDecimalPoint} from "../../src/error/ErrParse.sol";
+import {LibExactFloat} from "./LibExactFloat.sol";
 
 /// A signed integer below 2^256 in magnitude, or `huge` past it with its sign.
 struct Wide {

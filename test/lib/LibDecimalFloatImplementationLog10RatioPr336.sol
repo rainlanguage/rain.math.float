@@ -10,8 +10,8 @@ import {
     POW_FIXED_SQRT_ONE,
     POW_FIXED_TWO_SQRT_ONE,
     POW_FIXED_ONE_ODD_INVERSE
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Log10RatioRelativeSumTooSmall, MaximizeOverflow, MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Log10RatioRelativeSumTooSmall, MaximizeOverflow, MulDivOverflow} from "../../src/error/ErrDecimalFloat.sol";
 
 /// `log10Ratio` as at 5210e11, the #336 head, before the relative path scaled
 /// by a cascade, with the pre-#475 series written out in place, which returns

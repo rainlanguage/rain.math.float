@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {UnformatableExponent} from "src/error/ErrFormat.sol";
+import {LibDecimalFloat, Float} from "../../src/lib/LibDecimalFloat.sol";
+import {UnformatableExponent} from "../../src/error/ErrFormat.sol";
 
 /// `LibFormatDecimalFloat`'s digit-buffer algorithm with every assembly block
 /// written as plain Solidity: digits go backwards into a buffer, then are

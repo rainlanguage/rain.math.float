@@ -2,11 +2,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ExponentOverflow, MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow, MulDivOverflow} from "../../src/error/ErrDecimalFloat.sol";
 import {
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 /// `mul` and its two cold helpers verbatim from
 /// `src/lib/implementation/LibDecimalFloatImplementation.sol` at

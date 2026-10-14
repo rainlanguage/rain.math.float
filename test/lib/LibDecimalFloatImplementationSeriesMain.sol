@@ -7,13 +7,13 @@ import {
     POW_FIXED_LN10,
     POW_FIXED_ONE_ODD_INVERSE,
     LOG10_RATIO_Z_MAX
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {
     Exp10FixedOutOfRange,
     Log10RatioOutOfRange,
     Log10RatioRelativeSumTooSmall,
     MulDivOverflow
-} from "src/error/ErrDecimalFloat.sol";
+} from "../../src/error/ErrDecimalFloat.sol";
 
 /// `mulDivFixedUnguarded`, `log10Ratio` and `exp10Fixed` verbatim from
 /// `src/lib/implementation/LibDecimalFloatImplementation.sol` at 9d843e7,

@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {ExponentOverflow} from "../../src/error/ErrDecimalFloat.sol";
+import {Float, LibDecimalFloat} from "../../src/lib/LibDecimalFloat.sol";
 
 /// `packLossy` verbatim from `src/lib/LibDecimalFloat.sol` at
 /// 4d2d1e8ea388257fb9a5526748f15ea935c82002, which lifts an exponent above

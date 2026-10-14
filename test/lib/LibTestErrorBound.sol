@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Float} from "src/lib/LibDecimalFloat.sol";
-import {LibExactFloat, ORACLE_ONE} from "test/lib/LibExactFloat.sol";
+import {Float} from "../../src/lib/LibDecimalFloat.sol";
+import {LibExactFloat, ORACLE_ONE} from "./LibExactFloat.sol";
 
 /// @dev log10Unrounded's error, in units of 1e-54, from its steps:
 /// `log10Reduce` leaves R within 16.7 units of C / 10^S, 1.67e-74 relative,
