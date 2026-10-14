@@ -25,10 +25,11 @@ use proptest::test_runner::TestCaseError;
 const EXP10_FIXED_E52: u64 = 8_808;
 /// exp10Fixed is under 1.408e-49 of 10^x below it.
 const EXP10_FIXED_RELATIVE_E52: u64 = 1_408;
-/// The series is under 1.07902 units of 1e-50 below 10^r 1e50: its floored
-/// coefficients and Horner steps, under 1 + 2r / (1 - r), and the terms past
-/// the ninth, under (ln 10 2^-16)^10 / 10! 1e50 / (1 - r), 0.079.
-const SERIES_LOSS_E5: u64 = 107_902;
+/// The series is under 1.07903 units of 1e-50 below 10^r 1e50: its floored
+/// coefficients and Horner steps, under 1 + 2r / (1 - r), 1.0000306, and the
+/// terms past the ninth, under (ln 10 2^-16)^10 / 10! 1e50 / (1 - r),
+/// 0.078996. `series_loss_is_the_least_bound_on_its_derivation` re-derives it.
+const SERIES_LOSS_E5: u64 = 107_903;
 /// For z = |a - b| / (a + b) at most 5.1e-4, as log10Unrounded passes,
 /// log10Ratio relative is under C 8.03e-50 plus a unit below the true log.
 const LOG10_RATIO_RELATIVE_E53: u64 = 8_030;
@@ -261,6 +262,30 @@ fn oracle_constants_are_their_derivations() {
     }
 }
 
+/// SERIES_LOSS_E5 is the least five-place bound on its derivation: the floors'
+/// (1 + r) / (1 - r) plus the tail (ln 10 r)^10 / 10! 1e50 / (1 - r), at
+/// r = 2^-16 with ln 10 taken from above.
+#[test]
+fn series_loss_is_the_least_bound_on_its_derivation() {
+    let r_den = BigInt::from(1u32 << 16);
+    let ln10_hi = ln10_floor() + 2;
+    let fact10: BigInt = (1..=10u32).map(BigInt::from).product();
+    // Both parts over (1 - r) 2^16 10^(10 LN10_SCALE) 2^160 10!.
+    let common = &r_den * pow10(10 * LN10_SCALE) * num_traits::pow(r_den.clone(), 10) * &fact10;
+    let den = (&r_den - 1) * &common;
+    let floors = (&r_den + 1) * &common;
+    let tail = num_traits::pow(ln10_hi, 10) * pow10(50) * &r_den * &r_den;
+    let loss = (floors + tail) * pow10(5);
+    assert!(
+        loss <= BigInt::from(SERIES_LOSS_E5) * &den,
+        "SERIES_LOSS_E5 is below its derivation"
+    );
+    assert!(
+        loss > BigInt::from(SERIES_LOSS_E5 - 1) * &den,
+        "SERIES_LOSS_E5 is not the least five-place bound"
+    );
+}
+
 /// At x = 2^-i only step i is taken, so the result is its constant:
 /// 10^(2^-i) 1e50 floored.
 #[test]
@@ -318,7 +343,7 @@ fn fine_units(e52: u64) -> BigInt {
 /// What every cell of exp10Fixed reaches, in units of 1e-80. For x in the
 /// cell k 2^-16 + r, r in [0, 2^-16), P is the steps' product, which is the
 /// result at r = 0, and E = 10^(k 2^-16) 1e50 - P. The result is under
-/// E 10^r + 1.07902 P / 1e50 + 1 below 10^x 1e50, and pow10 adds its
+/// E 10^r + 1.07903 P / 1e50 + 1 below 10^x 1e50, and pow10 adds its
 /// truncation of x to 1e-50, under ln 10 10^x units.
 struct Cell {
     /// 10^(k 2^-16) 1e80, at least.
@@ -562,7 +587,7 @@ proptest! {
     }
 }
 
-// ------------------------------------------- log10Ratio in-place multiplies
+// ---------------------------------------------- log10Ratio split multiplies
 
 /// log10Ratio's zSquared, floor(z^2 / 1e50): at most this for z at most
 /// `LOG10_RATIO_Z_MAX`, and every integer up to it.
