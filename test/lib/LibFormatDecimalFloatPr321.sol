@@ -2,14 +2,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {Float} from "src/lib/LibDecimalFloat.sol";
+import {Float} from "../../src/lib/LibDecimalFloat.sol";
 import {
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {MaximizeOverflow} from "src/error/ErrDecimalFloat.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {MaximizeOverflow} from "../../src/error/ErrDecimalFloat.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
-import {UnformatableExponent} from "src/error/ErrFormat.sol";
+import {UnformatableExponent} from "../../src/error/ErrFormat.sol";
 
 /// `LibFormatDecimalFloat` verbatim from
 /// `src/lib/format/LibFormatDecimalFloat.sol` at ce55522 (#321), before #310's

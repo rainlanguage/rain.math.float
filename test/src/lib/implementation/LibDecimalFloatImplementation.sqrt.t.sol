@@ -2,48 +2,23 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloatSqrtVariants} from "test/lib/LibDecimalFloatSqrtVariants.sol";
+import {console2} from "forge-std-1.17.0/src/Test.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatSqrtVariants} from "../../../lib/LibDecimalFloatSqrtVariants.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {SqrtOutOfRange} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {SqrtOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
+import {SqrtCorrectlyRoundedTest} from "../../../abstract/SqrtCorrectlyRoundedTest.sol";
 
-contract LibDecimalFloatImplementationSqrtTest is Test {
-    /// x 10^d > m^2 in 512 bits.
-    function past(uint256 x, uint256 d, uint256 m) internal pure returns (bool) {
-        (uint256 xHigh, uint256 xLow) = LibExactFloat.mulWords(x, 10 ** d);
-        (uint256 mHigh, uint256 mLow) = LibExactFloat.mulWords(m, m);
-        return xHigh > mHigh || (xHigh == mHigh && xLow > mLow);
-    }
-
-    /// The root r 10^e of c 10^f, r in [1e40, 1e41], is correctly rounded
-    /// exactly when (r - 1/2)^2 10^2e < c 10^f < (r + 1/2)^2 10^2e. With c
-    /// scaled into [1e75, 1e76) both compare 4c 10^(f - 2e) against
-    /// (2r +- 1)^2.
+contract LibDecimalFloatImplementationSqrtTest is SqrtCorrectlyRoundedTest {
+    /// The implementation returns its root normalized to 41 digits, so on top
+    /// of correct rounding the root is in `[1e40, 1e41]`.
     function assertCorrectlyRounded(int256 signedCoefficient, int256 exponent, int256 root, int256 rootExponent)
         internal
         pure
     {
         assertGe(root, 1e40, "root low");
         assertLe(root, 1e41, "root high");
-        int256 t = 0;
-        while (signedCoefficient < 1e75) {
-            signedCoefficient *= 10;
-            t += 1;
-        }
-        // e - 2 re - t, each step within int256 for any exponent, as the
-        // root's exponent is near half the input's.
-        int256 d = exponent - rootExponent - rootExponent - t;
-        assertTrue(d >= 4 && d <= 7, "root scale");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 x = uint256(signedCoefficient) * 4;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 m = uint256(2 * root);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assertFalse(past(x, uint256(d), m + 1), "above upper midpoint");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assertTrue(past(x, uint256(d), m - 1), "below lower midpoint");
+        assertSqrtCorrectlyRounded(signedCoefficient, exponent, root, rootExponent);
     }
 
     function testSqrtCorrectlyRounded(int256 signedCoefficient, int256 exponent) external pure {
@@ -148,21 +123,21 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
 
     /// Byte-identical to the integer sqrt of #309's branch, which compares the
     /// residual in 512 bits.
-    function testSqrtBaseEquivalence(int256 signedCoefficient, int256 exponent) external pure {
+    function testSqrtPr309Equivalence(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, 1e76 - 1);
         exponent = bound(exponent, type(int256).min + 81, type(int256).max);
         (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
-        (int256 baseRoot, int256 baseExponent) = LibDecimalFloatSqrtVariants.sqrtBase(signedCoefficient, exponent);
-        assertEq(root, baseRoot, "root");
-        assertEq(rootExponent, baseExponent, "exponent");
+        (int256 pr309Root, int256 pr309Exponent) = LibDecimalFloatSqrtVariants.sqrtPr309(signedCoefficient, exponent);
+        assertEq(root, pr309Root, "root");
+        assertEq(rootExponent, pr309Exponent, "exponent");
     }
 
-    function testSqrtBaseEquivalencePacked(int224 signedCoefficient, int32 exponent) external pure {
+    function testSqrtPr309EquivalencePacked(int224 signedCoefficient, int32 exponent) external pure {
         vm.assume(signedCoefficient > 0);
         (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
-        (int256 baseRoot, int256 baseExponent) = LibDecimalFloatSqrtVariants.sqrtBase(signedCoefficient, exponent);
-        assertEq(root, baseRoot, "root");
-        assertEq(rootExponent, baseExponent, "exponent");
+        (int256 pr309Root, int256 pr309Exponent) = LibDecimalFloatSqrtVariants.sqrtPr309(signedCoefficient, exponent);
+        assertEq(root, pr309Root, "root");
+        assertEq(rootExponent, pr309Exponent, "exponent");
     }
 
     /// Variant `i` of sqrt: 0 the library, 1 plain Newton, 2 assembly
@@ -223,15 +198,15 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
         g -= gasleft();
     }
 
-    function baseGas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
+    function pr309Gas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
         g = gasleft();
-        LibDecimalFloatSqrtVariants.sqrtBase(signedCoefficient, exponent);
+        LibDecimalFloatSqrtVariants.sqrtPr309(signedCoefficient, exponent);
         g -= gasleft();
     }
 
-    function mainGas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
+    function pre359Gas(int256 signedCoefficient, int256 exponent) external view returns (uint256 g) {
         g = gasleft();
-        LibDecimalFloatSqrtVariants.sqrtMain(signedCoefficient, exponent);
+        LibDecimalFloatSqrtVariants.sqrtPre359(signedCoefficient, exponent);
         g -= gasleft();
     }
 
@@ -256,16 +231,16 @@ contract LibDecimalFloatImplementationSqrtTest is Test {
     function logGas(string memory name, int256 signedCoefficient, int256 exponent) internal view {
         console2.log(name);
         console2.log("  library", this.sqrtGas(signedCoefficient, exponent));
-        console2.log("  sqrtBase", this.baseGas(signedCoefficient, exponent));
-        console2.log("  pre-#359 main", this.mainGas(signedCoefficient, exponent));
+        console2.log("  sqrtPr309", this.pr309Gas(signedCoefficient, exponent));
+        console2.log("  sqrtPre359", this.pre359Gas(signedCoefficient, exponent));
         console2.log("  512-bit residual", this.residual512Gas(signedCoefficient, exponent));
         console2.log("  plain Newton", this.plainNewtonGas(signedCoefficient, exponent));
         console2.log("  assembly residual", this.asmResidualGas(signedCoefficient, exponent));
     }
 
-    /// Run with `-vv`: the library against #309's `sqrtBase`, the library before
-    /// #359, the library with `sqrtBase`'s 512-bit residual, Newton in plain
-    /// Solidity, and the residual in assembly.
+    /// Run with `-vv`: the library against `sqrtPr309`, the library
+    /// before #359, the library with `sqrtPr309`'s 512-bit residual, Newton in
+    /// plain Solidity, and the residual in assembly.
     function testSqrtGas() external view {
         logGas("2", 2, 0);
         logGas("2e-1", 2, -1);

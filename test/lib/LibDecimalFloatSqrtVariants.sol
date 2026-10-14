@@ -2,8 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {MulDivOverflow, SqrtOutOfRange} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {MulDivOverflow, SqrtOutOfRange} from "../../src/error/ErrDecimalFloat.sol";
 
 /// Variants of `LibDecimalFloatImplementation.sqrt`, for equivalence and gas
 /// comparison only.
@@ -13,7 +13,7 @@ library LibDecimalFloatSqrtVariants {
     /// The integer sqrt verbatim from 0a8065d and 7459101 on #309's branch, its
     /// residual compared in 512 bits, calling the private `mulDiv` and
     /// `mul512` copied from those commits.
-    function sqrtBase(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    function sqrtPr309(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 coefficient = uint256(signedCoefficient);
@@ -92,7 +92,7 @@ library LibDecimalFloatSqrtVariants {
     /// `src/lib/implementation/LibDecimalFloatImplementation.sol` at
     /// 26a3cf068ebf6c5bb418744f62abfe4be95b1fc7, calling the private
     /// `scaleUp`, `mulDiv` and `mul512` copied from that commit.
-    function sqrtMain(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    function sqrtPre359(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (signedCoefficient, exponent) = scaleUp(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -217,7 +217,7 @@ library LibDecimalFloatSqrtVariants {
     }
 
     /// The library's sqrt with its low-word residual rounding replaced by
-    /// `sqrtBase`'s 512-bit residual compare.
+    /// `sqrtPr309`'s 512-bit residual compare.
     /// Not frozen: it shares the live `mulDiv` and `mul512`, so it differs from the library only in its named step.
     function sqrt512Residual(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         int256 inputExponent = exponent;

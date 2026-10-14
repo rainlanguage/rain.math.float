@@ -3,8 +3,8 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {AbsCoefficientOverflow} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {AbsCoefficientOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
 
 contract LibDecimalFloatImplementationAbsCoefficientTest is Test {
     function testAbsCoefficientPositiveUnchanged(int256 signedCoefficient) external pure {

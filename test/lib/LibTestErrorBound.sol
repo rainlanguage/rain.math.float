@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: LicenseRef-DCL-1.0
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
-pragma solidity =0.8.25;
+pragma solidity ^0.8.25;
 
-import {Float} from "src/lib/LibDecimalFloat.sol";
-import {LibExactFloat, ORACLE_ONE} from "test/lib/LibExactFloat.sol";
+import {Float} from "../../src/lib/LibDecimalFloat.sol";
+import {LibExactFloat, ORACLE_ONE} from "./LibExactFloat.sol";
 
 /// @dev log10Unrounded's error, in units of 1e-54, from its steps:
 /// `log10Reduce` leaves R within 16.7 units of C / 10^S, 1.67e-74 relative,
@@ -16,11 +16,11 @@ uint256 constant LOG10_RAW_ERROR_E54 = 10037;
 /// @dev pow10Unrounded's error, in units of 1e-52 of a power in [1e50, 1e51)
 /// units of 1e-50, from its steps. For m = k 2^-16 + r, r below 2^-16,
 /// `exp10Fixed`'s steps give P, E_k = 10^(k 2^-16) 1e50 - P below the power
-/// at r = 0; its floored series is under 1.07902 units below 10^r 1e50 and
-/// its last multiply under a unit, so it is under E_k 10^r + 1.07902 P / 1e50
+/// at r = 0; its floored series is under 1.07903 units below 10^r 1e50 and
+/// its last multiply under a unit, so it is under E_k 10^r + 1.07903 P / 1e50
 /// + 1 below 10^m 1e50. Truncating x's fraction to 1e-50 moves 10^x by under
 /// ln 10 10^m units. Over every k (crates/tests `fixed.rs` enumerates them)
-/// that is at most 111.1006 units of 1e-50, at k = 2^16 - 1.
+/// that is at most 111.1007 units of 1e-50, at k = 2^16 - 1.
 uint256 constant POW10_RAW_ERROR_E52 = 11111;
 
 /// @dev Half a unit in the 41st digit of a power in [1e50, 1e51) units of

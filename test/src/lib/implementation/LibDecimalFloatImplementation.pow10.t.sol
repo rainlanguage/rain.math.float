@@ -4,12 +4,11 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloat, Float} from "../../../../src/lib/LibDecimalFloat.sol";
 import {LibExactFloat, ORACLE_ONE} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 import {LibTestErrorBound, POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "../../../lib/LibTestErrorBound.sol";
-import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 /// @dev 10^x for x = 999989412444502470160818040289325468267883913374439598768578152671e-66
 /// in units of 1e-70, from `bc -l` at scale 130, truncated.
@@ -480,15 +479,10 @@ contract LibDecimalFloatImplementationPow10Test is Test {
         }
     }
 
-    function prime(uint256 primeSeed) internal pure returns (uint256) {
-        uint256[3] memory primes = [uint256(2), 3, 7];
-        return primes[primeSeed % 3];
-    }
-
     /// 10^(j log10(prime) + n) is prime^j 10^n exactly, as prime^j is below
     /// 1e30 and so has fewer than the 41 digits pow10 keeps.
     function testPow10PrimePowersExact(uint256 primeSeed, uint256 j, int256 n) external pure {
-        uint256 base = prime(primeSeed);
+        uint256 base = LibExactFloat.seededPrime(primeSeed);
         j = bound(j, 0, LibExactFloat.maxPower(base));
         n = bound(n, -1e6, 1e6);
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -502,7 +496,7 @@ contract LibDecimalFloatImplementationPow10Test is Test {
     /// for x = j log10(prime) + d + n with |d| up to 1e-3, which spreads the
     /// fraction over [0, 1).
     function pow10OracleError(uint256 primeSeed, uint256 j, int256 d, int256 n) internal pure returns (uint256) {
-        uint256 base = prime(primeSeed);
+        uint256 base = LibExactFloat.seededPrime(primeSeed);
         j = bound(j, 0, LibExactFloat.maxPower(base));
         d = bound(d, -1e67, 1e67);
         n = bound(n, -1e6, 1e6);

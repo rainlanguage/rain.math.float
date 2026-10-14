@@ -2,12 +2,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow} from "../../src/error/ErrDecimalFloat.sol";
 import {
     ADD_MAX_EXPONENT_DIFF,
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 /// `add` verbatim from `src/lib/implementation/LibDecimalFloatImplementation.sol`
 /// at 8fcfeb3, before its overflow shed kept the carry (#394), with
@@ -32,6 +32,8 @@ library LibDecimalFloatImplementationAddPre394 {
     uint256 private constant TIMES_TEN_SPAN =
         11579208923731619542357098500868790785326998466564056403945758400791312963993;
 
+    /// `LibDecimalFloatImplementation.add` verbatim at 8fcfeb3; see its NatSpec
+    /// there.
     function add(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure

@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: LicenseRef-DCL-1.0
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
-pragma solidity =0.8.25;
+pragma solidity ^0.8.25;
 
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibExactFloat, ORACLE_LN10, ORACLE_ONE} from "test/lib/LibExactFloat.sol";
-import {LibTestErrorBound, POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "test/lib/LibTestErrorBound.sol";
-import {Float} from "src/lib/LibDecimalFloat.sol";
-import {ExponentOverflow, ExponentUnderflow} from "src/error/ErrDecimalFloat.sol";
+import {LibExactFloat, ORACLE_LN10, ORACLE_ONE} from "./LibExactFloat.sol";
+import {LibTestErrorBound, POW10_HALF_UNIT_E52, POW10_RAW_ERROR_E52} from "./LibTestErrorBound.sol";
+import {Float} from "../../src/lib/LibDecimalFloat.sol";
+import {ExponentOverflow, ExponentUnderflow} from "../../src/error/ErrDecimalFloat.sol";
 
 /// Where a result R lands against the Float range, given bounds on log10 R.
 /// `Inside` demands a value, `Over` and `Under` the matching revert. At an

@@ -93,7 +93,7 @@ const LOG10_RAW_E54: i64 = 10_037;
 
 /// pow10Unrounded's error in units of 1e-52 of 10^k, k = floor(x):
 /// `POW10_RAW_ERROR_E52`.
-const POW10_RAW_E52: i64 = 11_111;
+pub(crate) const POW10_RAW_E52: i64 = 11_111;
 
 /// Half a unit in the 41st digit of a power below 10, in units of 1e-52.
 const POW10_HALF_UNIT_E52: i64 = 500_000_000_000;
@@ -124,6 +124,53 @@ const POW_INVERSE_K2_E42: i64 = 34_786;
 
 fn pow_base() -> Dec {
     Dec::new(POW_RELATIVE_E52, -52)
+}
+
+/// The bounds as `test/lib/LibTestErrorBound.sol` states them.
+const BOUNDS: &str = include_str!("../../../test/lib/LibTestErrorBound.sol");
+
+/// The literal `LibTestErrorBound.sol` assigns to `name`: `10037` or `5e11`.
+fn sol_bound(name: &str) -> i64 {
+    let decl = format!("uint256 constant {name} = ");
+    let at = BOUNDS
+        .find(&decl)
+        .unwrap_or_else(|| panic!("{name} is not in LibTestErrorBound.sol"));
+    let rest = &BOUNDS[at + decl.len()..];
+    let literal = &rest[..rest.find(';').unwrap()];
+    match literal.split_once('e') {
+        Some((mantissa, exponent)) => {
+            mantissa.parse::<i64>().unwrap() * 10i64.pow(exponent.parse().unwrap())
+        }
+        None => literal.parse().unwrap(),
+    }
+}
+
+/// Every bound `LibTestErrorBound.sol` declares is a constant above with the
+/// same value, so the two suites assert one contract.
+#[test]
+fn bounds_are_the_solidity_bounds() {
+    let twins = [
+        ("LOG10_RAW_ERROR_E54", LOG10_RAW_E54),
+        ("POW10_RAW_ERROR_E52", POW10_RAW_E52),
+        ("POW10_HALF_UNIT_E52", POW10_HALF_UNIT_E52),
+        ("POW_RELATIVE_ERROR_E52", POW_RELATIVE_E52),
+        ("POW_K1_E80", POW_K1_E80),
+        ("POW_INVERSE_K1_E80", POW_INVERSE_K1_E80),
+        ("POW_K2_E42", POW_K2_E42),
+        ("POW_INVERSE_K2_E42", POW_INVERSE_K2_E42),
+    ];
+    let declared: Vec<&str> = BOUNDS
+        .match_indices("\nuint256 constant ")
+        .map(|(at, decl)| {
+            let rest = &BOUNDS[at + decl.len()..];
+            &rest[..rest.find(' ').unwrap()]
+        })
+        .collect();
+    assert_eq!(declared.len(), twins.len(), "{declared:?}");
+    for (name, value) in twins {
+        assert!(declared.contains(&name), "{name} is not a Solidity bound");
+        assert_eq!(sol_bound(name), value, "{name}");
+    }
 }
 
 /// What the documented contract says of one call: the true value (within the

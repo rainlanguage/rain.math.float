@@ -3,8 +3,8 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibTestErrorBound} from "test/lib/LibTestErrorBound.sol";
+import {LibDecimalFloat, Float} from "../../src/lib/LibDecimalFloat.sol";
+import {LibTestErrorBound} from "./LibTestErrorBound.sol";
 
 /// Each bound and monotonicity limit at values worked by hand.
 contract LibTestErrorBoundTest is Test {

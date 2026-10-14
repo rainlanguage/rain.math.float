@@ -2380,7 +2380,7 @@ mod oracle_checks {
     }
 
     proptest! {
-        #![proptest_config(ProptestConfig::with_cases(20000))]
+        #![proptest_config(ProptestConfig::with_cases(config().cases.saturating_mul(10)))]
 
         /// dashu's division at P digits is the exact quotient truncated at
         /// P digits.

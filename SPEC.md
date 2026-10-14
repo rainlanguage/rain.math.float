@@ -3,8 +3,8 @@
 The rules every public operation of `LibDecimalFloat`, `LibParseDecimalFloat`
 and `LibFormatDecimalFloat` follows, for maintainer sign-off (#438). Each rule
 cites the ruling it comes from: a maintainer comment on the issue or PR, or the
-body of a merged PR. A rule marked **UNRULED** describes what the code does at
-886ca07 and has no ruling yet.
+body of a merged PR. A rule marked **UNRULED** describes what the code on main
+does and has no ruling yet.
 
 ## Terms
 
@@ -159,16 +159,18 @@ All **UNRULED**.
 ## agree
 
 - `agree(absolute, proportional, lowest, highest)` is
-  `highest - lowest <= max(absolute, proportional × max(|lowest|, |highest|))`,
+  `|highest - lowest| <= max(absolute, proportional × max(|lowest|, |highest|))`,
   computed unpacked, never packed back, so it answers for every representable
   set instead of reverting (PR #278).
 - The spread is the implementation `sub`, so on a cancelling spread it truncates
   toward zero like `sub`; a spread accepted at the boundary exceeds the limit by
   under `1e-76` of its magnitude (PR #278, PR #434).
+- The extremes may come in either order: `agree(a, p, x, y)` equals
+  `agree(a, p, y, x)`; a negative spread is negated before the comparison (#481,
+  PR #498).
 - A negative tolerance reverts `AgreeToleranceNegative(absolute, proportional)`;
   neither tolerance positive reverts
-  `AgreeNoPositiveTolerance(absolute,
-  proportional)`. Either alone may be zero
+  `AgreeNoPositiveTolerance(absolute, proportional)`. Either alone may be zero
   (PR #281).
 
 ## Fixed-decimal conversions
@@ -313,17 +315,19 @@ digits (#306).
 
 Named errors at the internal guards (#429, closes #422; #336):
 
-| Function                | Error                                 | Fires when                                                        |
-| ----------------------- | ------------------------------------- | ----------------------------------------------------------------- |
-| `mulDivFixed`, `mulDiv` | `MulDivOverflow(x, y, d)`             | the 512-bit quotient is past uint256                              |
-| `log10Ratio`            | `Log10RatioOutOfRange(a, b)`          | `a + b` past uint256, `b` zero, or z past the proven series range |
-| `log10Ratio` (relative) | `Log10RatioRelativeSumTooSmall(a, b)` | `a + b < 1e50` (#336)                                             |
-| `log10Unrounded`        | `ExponentOverflow(input)`             | characteristic past int256                                        |
-| `sqrt` (implementation) | `SqrtOutOfRange(c, e)`                | `c` outside `(0, 1e76)` or `e` too near `int256.min`              |
-| `exp10Fixed`            | `Exp10FixedOutOfRange(x)`             | `x` outside `[0, 1)` at the 1e50 scale                            |
-| `log10Reduce`           | `Log10ReduceOutOfRange(x)`            | `x` outside `[1e75, 1e76)`                                        |
-| `absCoefficient`        | `AbsCoefficientOverflow(c)`           | `c` is `int256.min`                                               |
-| `scaleUp`               | `ScaleUpOutOfRange(c, e)`             | `c` outside `(0, 1e76)` or the shift passes `int256.min`          |
+| Function                        | Error                                    | Fires when                                                                                                             |
+| ------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `mulDivFixed`, `mulDiv`         | `MulDivOverflow(x, y, d)`                | the 512-bit quotient is past uint256, or `d` is zero (#486)                                                            |
+| `log10Ratio`                    | `Log10RatioOutOfRange(a, b)`             | `a + b` past uint256, `b` zero, or z past the proven series range                                                      |
+| `log10Ratio` (relative)         | `Log10RatioRelativeSumTooSmall(a, b)`    | `a + b < 1e50` (#336)                                                                                                  |
+| `log10Unrounded`                | `ExponentOverflow(input)`                | characteristic past int256                                                                                             |
+| `sqrt` (implementation)         | `SqrtOutOfRange(c, e)`                   | `c` outside `(0, 1e76)`; every exponent has a root (#451, PR #497)                                                     |
+| `exp10Fixed`                    | `Exp10FixedOutOfRange(x)`                | `x` outside `[0, 1)` at the 1e50 scale                                                                                 |
+| `log10Reduce`                   | `Log10ReduceOutOfRange(x)`               | `x` outside `[1e75, 1e76)`                                                                                             |
+| `absCoefficient`                | `AbsCoefficientOverflow(c)`              | `c` is `int256.min`                                                                                                    |
+| `scaleUp`                       | `ScaleUpOutOfRange(c, e)`                | `c` outside `(0, 1e76)` or the shift passes `int256.min`                                                               |
+| `unabsUnsignedMulOrDivLossy`    | `UnabsExponentOverflow(a, b, abs, e)`    | a magnitude past int256 at the result's sign must shed a digit at `e = int256.max` (#502, PR #518)                     |
+| `readSignificantDigits` (parse) | `ParseDecimalNoSignificantDigits(start)` | a mantissa with no nonzero digit is read; unreachable from the parse entry points, which pass only a mantissa with one |
 
 - `withTargetExponent(c, e, t)` truncates toward zero when shrinking; growing by
   `d` digits returns `c × 10^d`, zero for zero at any `d`, and reverts

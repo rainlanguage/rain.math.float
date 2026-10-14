@@ -17,10 +17,10 @@ import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters
-} from "src/error/ErrParse.sol";
+} from "../../src/error/ErrParse.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
-import {Float} from "src/lib/LibDecimalFloat.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
+import {Float} from "../../src/lib/LibDecimalFloat.sol";
+import {ExponentOverflow} from "../../src/error/ErrDecimalFloat.sol";
 
 /// `LibParseDecimalFloat` verbatim from
 /// `src/lib/parse/LibParseDecimalFloat.sol` at ff6d70c (main), before #310's

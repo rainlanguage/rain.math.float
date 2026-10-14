@@ -35,13 +35,13 @@ const SQRT_VARIANT: &str = "differs from the live sqrt only in its named step, \
 
 const BASELINES: [Baseline; 10] = [
     Baseline {
-        name: "LibDecimalFloatImplementationMain",
-        source: include_str!("../../../test/lib/LibDecimalFloatImplementationMain.sol"),
+        name: "LibDecimalFloatImplementationPreShortfall",
+        source: include_str!("../../../test/lib/LibDecimalFloatImplementationPreShortfall.sol"),
         variants: &[],
     },
     Baseline {
-        name: "LibDecimalFloatGasMain",
-        source: include_str!("../../../test/lib/LibDecimalFloatGasMain.sol"),
+        name: "LibDecimalFloatPre310Mul",
+        source: include_str!("../../../test/lib/LibDecimalFloatPre310Mul.sol"),
         variants: &[],
     },
     Baseline {
@@ -50,8 +50,8 @@ const BASELINES: [Baseline; 10] = [
         variants: &[],
     },
     Baseline {
-        name: "LibDecimalFloatImplementationSeriesMain",
-        source: include_str!("../../../test/lib/LibDecimalFloatImplementationSeriesMain.sol"),
+        name: "LibDecimalFloatImplementationSeriesLoop",
+        source: include_str!("../../../test/lib/LibDecimalFloatImplementationSeriesLoop.sol"),
         variants: &[],
     },
     Baseline {

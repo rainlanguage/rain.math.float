@@ -2,9 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {UnformatableExponent} from "src/error/ErrFormat.sol";
+import {LibDecimalFloat, Float} from "../../src/lib/LibDecimalFloat.sol";
+import {UnformatableExponent} from "../../src/error/ErrFormat.sol";
 
 /// `LibFormatDecimalFloat`'s digit-buffer algorithm with every assembly block
 /// written as plain Solidity: digits go backwards into a buffer, then are
@@ -21,6 +20,8 @@ library LibFormatDecimalFloatSolidity {
     /// Longer than any display exponent magnitude, int32 plus 76, in decimal.
     uint256 private constant EXPONENT_BUFFER = 11;
 
+    /// `LibFormatDecimalFloat.toDecimalString` with its assembly written as
+    /// plain Solidity; see its NatSpec there.
     function toDecimalString(Float float, bool scientific) internal pure returns (string memory) {
         (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
         if (signedCoefficient == 0) {
@@ -32,6 +33,8 @@ library LibFormatDecimalFloatSolidity {
         return _toNonScientific(signedCoefficient, exponent);
     }
 
+    /// The decimal digits of `value`, written backwards into the end of a
+    /// `DIGITS_BUFFER` byte buffer, and the index of the first.
     function _digits(uint256 value) private pure returns (bytes memory buffer, uint256 start) {
         buffer = new bytes(DIGITS_BUFFER);
         start = DIGITS_BUFFER;
@@ -46,22 +49,24 @@ library LibFormatDecimalFloatSolidity {
         }
     }
 
+    /// `LibFormatDecimalFloat._toScientific` with its assembly written as plain
+    /// Solidity; see its NatSpec there.
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
-
         bool isNeg = signedCoefficient < 0;
         uint256 absCoef;
         unchecked {
-            // A maximized packed coefficient is never `type(int256).min`.
             // forge-lint: disable-next-line(unsafe-typecast)
             absCoef = isNeg ? uint256(-signedCoefficient) : uint256(signedCoefficient);
         }
-        int256 displayExponent = exponent + (absCoef >= 1e76 ? int256(76) : int256(75));
-        (uint256 significand,) = stripTrailingZeros(absCoef);
+        (uint256 significand, uint256 trailingZeros) = stripTrailingZeros(absCoef);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 displayExponent = exponent + int256(trailingZeros);
 
         unchecked {
             (bytes memory digitBuffer, uint256 start) = _digits(significand);
             uint256 digits = DIGITS_BUFFER - start;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            displayExponent += int256(digits) - 1;
 
             bool expNeg = displayExponent < 0;
             bytes memory expBuffer = new bytes(EXPONENT_BUFFER);
@@ -108,6 +113,8 @@ library LibFormatDecimalFloatSolidity {
         }
     }
 
+    /// `LibFormatDecimalFloat._toNonScientific` with its assembly written as
+    /// plain Solidity; see its NatSpec there.
     function _toNonScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
         bool isNeg = signedCoefficient < 0;
         uint256 absCoef;
@@ -174,6 +181,8 @@ library LibFormatDecimalFloatSolidity {
         }
     }
 
+    /// `LibFormatDecimalFloat.stripTrailingZeros` with its assembly written as
+    /// plain Solidity; see its NatSpec there.
     function stripTrailingZeros(uint256 value) private pure returns (uint256 significand, uint256 trailingZeros) {
         unchecked {
             if (value % 10 == 0) {
