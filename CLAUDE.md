@@ -29,11 +29,10 @@ dashu-float (`differential.rs`) and the Python `decimal` oracle
 - **`lib/LibDecimalFloat.sol`** — Public API: arithmetic, comparison,
   conversion, formatting, parsing. User-defined type `Float` wrapping `bytes32`.
 - **`lib/implementation/`** — Internal arithmetic (512-bit intermediates for
-  mul/div), normalization, packing. Declares its own guards
-  `WithTargetExponentOverflow` and `UnabsExponentOverflow`.
+  mul/div), normalization, packing.
 - **`lib/parse/`** — String-to-Float parsing.
 - **`lib/format/`** — Float-to-string formatting.
-- **`error/`** — Every other custom error.
+- **`error/`** — Every custom error.
 
 ### Tests (`test/`)
 
