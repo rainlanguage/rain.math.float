@@ -237,6 +237,27 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         checkAbsolute(31415926535, 1e40);
     }
 
+    /// #537: `add` sums a characteristic of n digits, n at least 26, at
+    /// exponent n - 77, or n - 76 where it keeps 76 digits, from about
+    /// 5.79 10^(n - 1), or where the 77 digit sum carries.
+    /// 578960446186580977117854925e50 is the largest 77 digit multiple of 1e50
+    /// in int256, 0.0434e50 under `type(int256).max`, so log10(2) = 0.30103
+    /// carries.
+    function testLog10UnroundedAddGridExponent() external pure {
+        int256[2][5] memory inputs = [
+            [int256(2), 1e25],
+            [int256(2), 1e30],
+            [int256(2), -1e25],
+            [int256(2), 6e25],
+            [int256(2), 578960446186580977117854925]
+        ];
+        int256[5] memory exponents = [int256(-51), -46, -51, -50, -49];
+        for (uint256 i = 0; i < inputs.length; i++) {
+            (, int256 e) = LibDecimalFloatImplementation.log10Unrounded(inputs[i][0], inputs[i][1]);
+            assertEq(e, exponents[i], "grid exponent");
+        }
+    }
+
     function testLog10UnroundedOracle(int256 signedCoefficient, int256 exponent) external pure {
         signedCoefficient = bound(signedCoefficient, 1, type(int256).max);
         exponent = bound(exponent, -200, 200);
