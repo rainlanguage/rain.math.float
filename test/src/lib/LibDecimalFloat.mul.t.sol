@@ -51,16 +51,36 @@ contract LibDecimalFloatMulTest is Test {
         assertEq(Float.unwrap(p), Float.unwrap(largest));
     }
 
-    /// `mul` of two operands whose exponents sum below `int32.min` reverts
-    /// instead of silently producing `FLOAT_ZERO`. Without this, downstream
-    /// code that branches on `result == 0` would mistake a tiny magnitude
-    /// for an exact zero. The product `1 × 1` needs no digit shed, so the
-    /// error carries it at the exponent sum.
+    /// `mul` of a product below every non-zero Float reverts instead of
+    /// silently producing `FLOAT_ZERO`. Without this, downstream code that
+    /// branches on `result == 0` would mistake a tiny magnitude for an exact
+    /// zero. The product `1 × 1` needs no digit shed, so the error carries it
+    /// at the exponent sum.
     function testMulRevertsOnExponentUnderflow() external {
         Float a = LibDecimalFloat.packLossless(1, type(int32).min);
         Float b = LibDecimalFloat.packLossless(1, type(int32).min);
         vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(-4294967296)));
         this.mulExternal(a, b);
+    }
+
+    /// `ExponentUnderflow`'s NatSpec example: 1e-2147483648 × 0.1 is exactly
+    /// 1 × 10^(int32.min - 1), below every non-zero Float, so the closest
+    /// Float toward zero is zero and `mul` reverts with that product.
+    function testMulUnderflowNatSpecExample() external {
+        Float a = LibDecimalFloat.packLossless(1, type(int32).min);
+        Float b = LibDecimalFloat.packLossless(1, -1);
+        vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(type(int32).min) - 1));
+        this.mulExternal(a, b);
+    }
+
+    /// Exponents summing below `int32.min` are not underflow: 1e66 ×
+    /// 10^int32.min times 1e66 × 10^-1 is exactly 1e132 × 10^(int32.min - 1),
+    /// which is the Float 1e66 × 10^(int32.min + 65), so `mul` returns it.
+    function testMulExponentSumBelowFloorIsNotUnderflow() external view {
+        Float a = LibDecimalFloat.packLossless(1e66, type(int32).min);
+        Float b = LibDecimalFloat.packLossless(1e66, -1);
+        (int256 c, int256 e) = this.mulExternal(a, b).unpack();
+        assertTrue(LibExactFloat.eq(c, e, 1e66, int256(type(int32).min) + 65), "product");
     }
 
     /// A product that fits int224 one exponent above `int32.max` but has no

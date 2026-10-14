@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {Float} from "src/lib/LibDecimalFloat.sol";
 import {LibExactFloat, ORACLE_ONE} from "test/lib/LibExactFloat.sol";
 
 /// @dev log10Unrounded's error, in units of 1e-54, from its steps:
@@ -64,20 +64,31 @@ uint256 constant POW_INVERSE_K2_E42 = 34786;
 
 /// The proven error bound E of each transcendental function, and the
 /// monotonicity it implies: for x < y, the results r have r(x) <= r(y) + 2E.
+/// Every bound is packed and unpacked from its bits by `LibExactFloat`, never
+/// by the library under test (#672).
 library LibTestErrorBound {
-    using LibDecimalFloat for Float;
+    /// The Float toward zero of `signedCoefficient × 10^exponent`, from its
+    /// bits.
+    function pack(int256 signedCoefficient, int256 exponent) private pure returns (Float) {
+        return Float.wrap(LibExactFloat.packTowardZero(signedCoefficient, exponent));
+    }
+
+    /// A Float's parts, from its bits.
+    function unpack(Float x) private pure returns (int256, int256) {
+        return LibExactFloat.unpackBits(Float.unwrap(x));
+    }
 
     /// Half a unit in the 41st significant digit of magnitude 10^exponent,
     /// zero for a zero magnitude.
     function halfUnit(uint256 magnitude, int256 exponent) internal pure returns (Float) {
         if (magnitude == 0) {
-            return LibDecimalFloat.FLOAT_ZERO;
+            return Float.wrap(0);
         }
         int256 order = exponent - 1;
         for (; magnitude > 0; magnitude /= 10) {
             order++;
         }
-        return LibDecimalFloat.packLossless(5, order - 41);
+        return pack(5, order - 41);
     }
 
     /// log10 of a positive input: half a unit of the true log plus
@@ -111,39 +122,36 @@ library LibTestErrorBound {
         } else {
             fraction = 0;
         }
-        (int256 unitCoefficient, int256 unitExponent) =
-            (whole > 0 ? halfUnit(whole, 0) : halfUnit(fraction, -70)).unpack();
+        (int256 unitCoefficient, int256 unitExponent) = unpack(whole > 0 ? halfUnit(whole, 0) : halfUnit(fraction, -70));
         // forge-lint: disable-next-line(unsafe-typecast)
         return sum(unitCoefficient, unitExponent, int256(LOG10_RAW_ERROR_E54), -54);
     }
 
-    /// Two bound terms summed by `addPartsWide` and packed, both truncating
-    /// towards zero, so a positive bound is never looser.
+    /// Two bound terms summed by `addPartsWide` and packed by `pack`, both
+    /// truncating towards zero, so a positive bound is never looser.
     function sum(int256 ca, int256 ea, int256 cb, int256 eb) private pure returns (Float) {
         (, ca, ea) = LibExactFloat.addPartsWide(ca, ea, cb, eb);
-        (Float bound,) = LibDecimalFloat.packLossy(ca, ea);
-        return bound;
+        return pack(ca, ea);
     }
 
     /// `sum` of two bound Floats.
     function plus(Float a, Float b) internal pure returns (Float) {
-        (int256 ca, int256 ea) = a.unpack();
-        (int256 cb, int256 eb) = b.unpack();
+        (int256 ca, int256 ea) = unpack(a);
+        (int256 cb, int256 eb) = unpack(b);
         return sum(ca, ea, cb, eb);
     }
 
     /// Two bound Floats multiplied by `mulPayload` and packed, both truncating.
     function times(Float a, Float b) internal pure returns (Float) {
-        (int256 ca, int256 ea) = a.unpack();
-        (int256 cb, int256 eb) = b.unpack();
+        (int256 ca, int256 ea) = unpack(a);
+        (int256 cb, int256 eb) = unpack(b);
         (ca, ea) = LibExactFloat.mulPayload(ca, ea, cb, eb);
-        (Float bound,) = LibDecimalFloat.packLossy(ca, ea);
-        return bound;
+        return pack(ca, ea);
     }
 
     /// `log10` of a positive Float input.
     function log10(Float a) internal pure returns (Float) {
-        (int256 signedCoefficient, int256 exponent) = a.unpack();
+        (int256 signedCoefficient, int256 exponent) = unpack(a);
         return log10(signedCoefficient, exponent);
     }
 
@@ -151,7 +159,7 @@ library LibTestErrorBound {
     /// a true power of at least 1e50 units.
     function pow10() internal pure returns (Float) {
         // forge-lint: disable-next-line(unsafe-typecast)
-        return LibDecimalFloat.packLossless(int256(POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52), -52);
+        return pack(int256(POW10_HALF_UNIT_E52 + POW10_RAW_ERROR_E52), -52);
     }
 
     /// pow, relative, for the integer part N of |b| and
@@ -163,7 +171,7 @@ library LibTestErrorBound {
     /// zero, so this is at most the bound. A zero a, whose d has no bound,
     /// takes K1.
     function pow(Float a, Float b) internal pure returns (Float) {
-        (int256 signedCoefficient, int256 exponent) = b.unpack();
+        (int256 signedCoefficient, int256 exponent) = unpack(b);
         // A Float coefficient is int224, so its magnitude fits int256.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 n = int256(LibExactFloat.abs(signedCoefficient));
@@ -174,7 +182,10 @@ library LibTestErrorBound {
             signedCoefficient < 0 ? (POW_INVERSE_K1_E80, POW_INVERSE_K2_E42) : (POW_K1_E80, POW_K2_E42);
         // forge-lint: disable-next-line(unsafe-typecast)
         (int256 perUnit, int256 perUnitExponent) = (int256(k1), int256(-80));
-        (int256 magnitude, int256 magnitudeExponent) = a.abs().unpack();
+        (int256 magnitude, int256 magnitudeExponent) = unpack(a);
+        // A Float coefficient is int224, so its magnitude fits int256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        magnitude = int256(LibExactFloat.abs(magnitude));
         if (magnitude != 0) {
             int256 d;
             int256 dExponent;
@@ -198,16 +209,16 @@ library LibTestErrorBound {
     /// sqrt, relative: correctly rounded, so half a unit in the 41st digit of
     /// a root of at least 1e40 units.
     function sqrt() internal pure returns (Float) {
-        return LibDecimalFloat.packLossless(5, -41);
+        return pack(5, -41);
     }
 
     /// For x < y, an absolute bound gives f(x) - f(y) <= E(x) + E(y).
     function monotoneAbsolute(Float low, Float high, Float lowError, Float highError) internal pure returns (bool) {
-        (int256 ca, int256 ea) = low.unpack();
-        (int256 cb, int256 eb) = high.unpack();
+        (int256 ca, int256 ea) = unpack(low);
+        (int256 cb, int256 eb) = unpack(high);
         (, int256 spreadCoefficient, int256 spreadExponent) = LibExactFloat.addPartsWideUp(ca, ea, -cb, eb);
-        (ca, ea) = lowError.unpack();
-        (cb, eb) = highError.unpack();
+        (ca, ea) = unpack(lowError);
+        (cb, eb) = unpack(highError);
         (, ca, ea) = LibExactFloat.addPartsWide(ca, ea, cb, eb);
         return LibExactFloat.cmpParts(spreadCoefficient, spreadExponent, ca, ea) <= 0;
     }
@@ -218,20 +229,25 @@ library LibTestErrorBound {
     /// that is 1e-2147483648 / |t|, zero where it is below the smallest Float.
     function floor(int256 signedCoefficient, int256 exponent) internal pure returns (Float) {
         (signedCoefficient, exponent) = LibExactFloat.quotient(1, type(int32).min, signedCoefficient, exponent);
-        (Float relative,) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
-        return relative.abs();
+        // The quotient's coefficient is at most 77 digits, so its magnitude
+        // fits int256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return pack(int256(LibExactFloat.abs(signedCoefficient)), exponent);
     }
 
     /// `floor` relative to a nonzero Float.
     function floor(Float x) internal pure returns (Float) {
-        (int256 signedCoefficient, int256 exponent) = x.unpack();
+        (int256 signedCoefficient, int256 exponent) = unpack(x);
         return floor(signedCoefficient, exponent);
     }
 
     /// E |x|, unpacked, as it underflows a Float near the floor.
     function scaled(Float error, Float x) private pure returns (int256, int256) {
-        (int256 errorCoefficient, int256 errorExponent) = error.unpack();
-        (int256 signedCoefficient, int256 exponent) = x.abs().unpack();
+        (int256 errorCoefficient, int256 errorExponent) = unpack(error);
+        (int256 signedCoefficient, int256 exponent) = unpack(x);
+        // A Float coefficient is int224, so its magnitude fits int256.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        signedCoefficient = int256(LibExactFloat.abs(signedCoefficient));
         return LibExactFloat.mulPayload(errorCoefficient, errorExponent, signedCoefficient, exponent);
     }
 
@@ -245,8 +261,8 @@ library LibTestErrorBound {
             LibExactFloat.addPartsWide(limitCoefficient, limitExponent, signedCoefficient, exponent);
         (, limitCoefficient, limitExponent) =
             LibExactFloat.addPartsWide(limitCoefficient, limitExponent, 3, type(int32).min);
-        (int256 lowCoefficient, int256 lowExponent) = low.unpack();
-        (int256 highCoefficient, int256 highExponent) = high.unpack();
+        (int256 lowCoefficient, int256 lowExponent) = unpack(low);
+        (int256 highCoefficient, int256 highExponent) = unpack(high);
         (, signedCoefficient, exponent) =
             LibExactFloat.addPartsWideUp(lowCoefficient, lowExponent, -highCoefficient, highExponent);
         return LibExactFloat.cmpParts(signedCoefficient, exponent, limitCoefficient, limitExponent) <= 0;

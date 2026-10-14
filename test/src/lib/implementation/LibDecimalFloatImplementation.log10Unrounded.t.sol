@@ -10,6 +10,7 @@ import {
 import {LOG10_RAW_ERROR_E54} from "../../../lib/LibTestErrorBound.sol";
 import {Log10Zero, Log10Negative, ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
 import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
+import {SafeCast} from "@openzeppelin-contracts-5.7.0/utils/math/SafeCast.sol";
 
 /// @dev log10 of 1448249443771554926630073670106315934706894775468672318138123474693615199258e-75
 /// in units of 1e-76, from `bc -l` at scale 130, truncated.
@@ -121,8 +122,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         int256 expected = characteristic * 1e70 + int256(fraction);
         int256[] memory boundCoefficients = new int256[](2);
         int256[] memory boundExponents = new int256[](2);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        (boundCoefficients[0], boundExponents[0]) = (int256(LibExactFloat.abs(expected)) * 311, -121);
+        (boundCoefficients[0], boundExponents[0]) = (SafeCast.toInt256(LibExactFloat.abs(expected)) * 311, -121);
         (boundCoefficients[1], boundExponents[1]) = (1, -67);
         (int256 c, int256 e) = LibDecimalFloatImplementation.log10Unrounded(signedCoefficient, exponent);
         assertTrue(
@@ -235,6 +235,27 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         checkAbsolute(2, -1e25);
         checkAbsolute(2, -9e26);
         checkAbsolute(31415926535, 1e40);
+    }
+
+    /// #537: `add` sums a characteristic of n digits, n at least 26, at
+    /// exponent n - 77, or n - 76 where it keeps 76 digits, from about
+    /// 5.79 10^(n - 1), or where the 77 digit sum carries.
+    /// 578960446186580977117854925e50 is the largest 77 digit multiple of 1e50
+    /// in int256, 0.0434e50 under `type(int256).max`, so log10(2) = 0.30103
+    /// carries.
+    function testLog10UnroundedAddGridExponent() external pure {
+        int256[2][5] memory inputs = [
+            [int256(2), 1e25],
+            [int256(2), 1e30],
+            [int256(2), -1e25],
+            [int256(2), 6e25],
+            [int256(2), 578960446186580977117854925]
+        ];
+        int256[5] memory exponents = [int256(-51), -46, -51, -50, -49];
+        for (uint256 i = 0; i < inputs.length; i++) {
+            (, int256 e) = LibDecimalFloatImplementation.log10Unrounded(inputs[i][0], inputs[i][1]);
+            assertEq(e, exponents[i], "grid exponent");
+        }
     }
 
     function testLog10UnroundedOracle(int256 signedCoefficient, int256 exponent) external pure {
