@@ -838,8 +838,9 @@ library LibDecimalFloatImplementation {
     /// sum rounded once towards zero. A zero sum returns
     /// `(MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT)`.
     /// A same sign sum past int256 at exponent `type(int256).max`, where no
-    /// digit can be shed, reverts `ExponentOverflow` with the operand at that
-    /// exponent as given, the first where both are. Nothing else reverts.
+    /// digit can be shed, reverts `ExponentOverflow` with the operand that
+    /// `maximize` leaves at that exponent; where it leaves both there, the one
+    /// with the smaller shortfall, `a` on a tie. Nothing else reverts.
     ///
     /// https://speleotrove.com/decimal/daops.html#refaddsub
     /// > add and subtract both take two operands. If either operand is a special
@@ -1041,9 +1042,9 @@ library LibDecimalFloatImplementation {
     /// no int256: `minus` sheds its last digit, which rounds twice or reverts
     /// where the difference is representable.
     ///
-    /// Reverts only `ExponentOverflow`, as `add` does for `a + (-b)` with the
-    /// same payload, so `(-b, exponentB)` where `b` is the operand at
-    /// `type(int256).max`. For `b = type(int256).min` the sum is `-a + b`, so
+    /// Reverts only `ExponentOverflow`, with the payload `add` gives for `a`
+    /// and `-b`, which may be either operand. For `b = type(int256).min` the
+    /// sum is `-a + b`, so
     /// the payload is `add`'s for those; a sum of `type(int256).min` at
     /// `type(int256).max`, which `minus` cannot negate, reverts
     /// `ExponentOverflow(type(int256).min, type(int256).max)`.
