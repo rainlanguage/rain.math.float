@@ -12,12 +12,12 @@ import {Log10RatioOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
 import {
     LibDecimalFloatImplementationSeriesSolidity
 } from "../../../lib/LibDecimalFloatImplementationSeriesSolidity.sol";
-import {LibDecimalFloatImplementationSeriesMain} from "../../../lib/LibDecimalFloatImplementationSeriesMain.sol";
+import {LibDecimalFloatImplementationSeriesLoop} from "../../../lib/LibDecimalFloatImplementationSeriesLoop.sol";
 
 /// The plain-Solidity copy of `log10Ratio` and `exp10Fixed` returns exactly
 /// what the library returns, so its gas rows compare one algorithm and
-/// isolate what the assembly saves. Main is the loop before unrolling.
-/// `GAS|function|case|main|solidity|assembly|assembly - solidity`.
+/// isolate what the assembly saves. Loop is the series before unrolling.
+/// `GAS|function|case|loop|solidity|assembly|assembly - solidity`.
 contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
     function log10RatioAsm(uint256 a, uint256 b, bool relative)
         external
@@ -39,19 +39,19 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
         gas -= gasleft();
     }
 
-    function log10RatioMain(uint256 a, uint256 b, bool relative)
+    function log10RatioLoop(uint256 a, uint256 b, bool relative)
         external
         view
         returns (uint256 gas, int256 signedCoefficient, int256 exponent)
     {
         gas = gasleft();
-        (signedCoefficient, exponent) = LibDecimalFloatImplementationSeriesMain.log10Ratio(a, b, relative);
+        (signedCoefficient, exponent) = LibDecimalFloatImplementationSeriesLoop.log10Ratio(a, b, relative);
         gas -= gasleft();
     }
 
-    function exp10FixedMain(uint256 x) external view returns (uint256 gas, uint256 result) {
+    function exp10FixedLoop(uint256 x) external view returns (uint256 gas, uint256 result) {
         gas = gasleft();
-        result = LibDecimalFloatImplementationSeriesMain.exp10Fixed(x);
+        result = LibDecimalFloatImplementationSeriesLoop.exp10Fixed(x);
         gas -= gasleft();
     }
 
@@ -189,7 +189,7 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
         }
     }
 
-    function row(string memory fn, string memory label, uint256 mainGas, uint256 solGas, uint256 asmGas) internal pure {
+    function row(string memory fn, string memory label, uint256 loopGas, uint256 solGas, uint256 asmGas) internal pure {
         console2.log(
             string.concat(
                 "GAS|",
@@ -197,7 +197,7 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
                 "|",
                 label,
                 "|",
-                vm.toString(mainGas),
+                vm.toString(loopGas),
                 "|",
                 vm.toString(solGas),
                 "|",
@@ -222,19 +222,19 @@ contract LibDecimalFloatImplementationSeriesSolidityTest is Test {
         (uint256 asmGas, int256 asmCoefficient, int256 asmExponent) = this.log10RatioAsm(a, b, relative);
         assertEq(solCoefficient, asmCoefficient, label);
         assertEq(solExponent, asmExponent, label);
-        (uint256 mainGas, int256 mainCoefficient, int256 mainExponent) = this.log10RatioMain(a, b, relative);
-        assertEq(mainCoefficient, asmCoefficient, label);
-        assertEq(mainExponent, asmExponent, label);
-        row("log10Ratio", label, mainGas, solGas, asmGas);
+        (uint256 loopGas, int256 loopCoefficient, int256 loopExponent) = this.log10RatioLoop(a, b, relative);
+        assertEq(loopCoefficient, asmCoefficient, label);
+        assertEq(loopExponent, asmExponent, label);
+        row("log10Ratio", label, loopGas, solGas, asmGas);
     }
 
     function benchExp10(string memory label, uint256 x) internal view {
         (uint256 solGas, uint256 solResult) = this.exp10FixedSol(x);
         (uint256 asmGas, uint256 asmResult) = this.exp10FixedAsm(x);
         assertEq(solResult, asmResult, label);
-        (uint256 mainGas, uint256 mainResult) = this.exp10FixedMain(x);
-        assertEq(mainResult, asmResult, label);
-        row("exp10Fixed", label, mainGas, solGas, asmGas);
+        (uint256 loopGas, uint256 loopResult) = this.exp10FixedLoop(x);
+        assertEq(loopResult, asmResult, label);
+        row("exp10Fixed", label, loopGas, solGas, asmGas);
     }
 
     /// The `log10Ratio` and `exp10Fixed` calls behind the log10 and pow10 gas

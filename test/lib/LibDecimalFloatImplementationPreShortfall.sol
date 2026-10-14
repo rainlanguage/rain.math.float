@@ -2,12 +2,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ExponentOverflow, DivisionByZero, MaximizeOverflow, MulDivOverflow} from "src/error/ErrDecimalFloat.sol";
+import {ExponentOverflow, DivisionByZero, MaximizeOverflow, MulDivOverflow} from "../../src/error/ErrDecimalFloat.sol";
 import {
     ADD_MAX_EXPONENT_DIFF,
     MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
     MAXIMIZED_ZERO_EXPONENT
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 /// `maximize`, `maximizeFull`, `div`, `add`, `sub` and `inv` verbatim
 /// from `src/lib/implementation/LibDecimalFloatImplementation.sol` at main
@@ -17,7 +17,9 @@ import {
 /// ORACLE: it copies the old steps, including the mixed-sign add rounding of
 /// #340, so agreeing with it says nothing about a value. Expected values come
 /// from `LibExactFloat` over exact math.
-library LibDecimalFloatImplementationMain {
+library LibDecimalFloatImplementationPreShortfall {
+    /// `LibDecimalFloatImplementation.maximize` verbatim at 2b19ed1; see its
+    /// NatSpec there.
     function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, bool) {
         unchecked {
             if (signedCoefficient == 0) {
@@ -68,6 +70,8 @@ library LibDecimalFloatImplementationMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.maximizeFull` verbatim at 2b19ed1; see
+    /// its NatSpec there.
     function maximizeFull(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (int256 trySignedCoefficient, int256 tryExponent, bool full) = maximize(signedCoefficient, exponent);
         if (!full) {
@@ -76,6 +80,8 @@ library LibDecimalFloatImplementationMain {
         return (trySignedCoefficient, tryExponent);
     }
 
+    /// `LibDecimalFloatImplementation.div` verbatim at 2b19ed1; see its NatSpec
+    /// there.
     //slither-disable-next-line cyclomatic-complexity
     function div(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
@@ -272,6 +278,8 @@ library LibDecimalFloatImplementationMain {
         }
     }
 
+    /// `LibDecimalFloatImplementation.add` verbatim at 2b19ed1; see its NatSpec
+    /// there.
     function add(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -357,6 +365,8 @@ library LibDecimalFloatImplementationMain {
         return (signedCoefficientA, exponentA);
     }
 
+    /// `LibDecimalFloatImplementation.sub` verbatim at 2b19ed1; see its NatSpec
+    /// there.
     function sub(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
         internal
         pure
@@ -366,6 +376,8 @@ library LibDecimalFloatImplementationMain {
         return add(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
     }
 
+    /// `LibDecimalFloatImplementation.inv` verbatim at 2b19ed1; see its NatSpec
+    /// there.
     function inv(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         return div(1e76, -76, signedCoefficient, exponent);
     }

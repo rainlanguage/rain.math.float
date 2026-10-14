@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
+import {console2} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
@@ -10,9 +10,10 @@ import {PowNegativeBase, ExponentOverflow} from "../../../src/error/ErrDecimalFl
 import {LibTestErrorBound} from "../../lib/LibTestErrorBound.sol";
 import {LibExactFloat, U512} from "../../lib/LibExactFloat.sol";
 import {LibDecimalFloatSqrtVariants} from "../../lib/LibDecimalFloatSqrtVariants.sol";
+import {SqrtCorrectlyRoundedTest} from "../../abstract/SqrtCorrectlyRoundedTest.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
-contract LibDecimalFloatSqrtTest is Test {
+contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
     using LibDecimalFloat for Float;
 
     /// The root is within E of sqrt a and its square, rounded, within E2 of
@@ -278,38 +279,38 @@ contract LibDecimalFloatSqrtTest is Test {
     }
 
     /// The root before #359's seed, and the exact one.
-    function checkMain(uint256 coefficient, int256 exponent) internal pure {
+    function checkPre359(uint256 coefficient, int256 exponent) internal pure {
         // coefficient is below 1e76, so it fits int256.
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 signedCoefficient = int256(coefficient);
         (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
-        (int256 mainCoefficient, int256 mainExponent) =
-            LibDecimalFloatSqrtVariants.sqrtMain(signedCoefficient, exponent);
-        assertEq(rootCoefficient, mainCoefficient, "main coefficient");
-        assertEq(rootExponent, mainExponent, "main exponent");
+        (int256 pre359Coefficient, int256 pre359Exponent) =
+            LibDecimalFloatSqrtVariants.sqrtPre359(signedCoefficient, exponent);
+        assertEq(rootCoefficient, pre359Coefficient, "pre-#359 coefficient");
+        assertEq(rootExponent, pre359Exponent, "pre-#359 exponent");
         checkReference(rootCoefficient, rootExponent, coefficient, exponent);
     }
 
-    function testImplementationSqrtMainFuzz(uint256 coefficient, int256 exponent) external pure {
-        checkMain(bound(coefficient, 1, 1e76 - 1), bound(exponent, type(int256).min + 81, type(int256).max));
+    function testImplementationSqrtPre359Fuzz(uint256 coefficient, int256 exponent) external pure {
+        checkPre359(bound(coefficient, 1, 1e76 - 1), bound(exponent, type(int256).min + 81, type(int256).max));
     }
 
-    function testImplementationSqrtMainPackedFuzz(int224 signedCoefficient, int32 exponent) external pure {
+    function testImplementationSqrtPre359PackedFuzz(int224 signedCoefficient, int32 exponent) external pure {
         vm.assume(signedCoefficient > 0);
         // forge-lint: disable-next-line(unsafe-typecast)
-        checkMain(uint256(int256(signedCoefficient)), exponent);
+        checkPre359(uint256(int256(signedCoefficient)), exponent);
     }
 
     /// The seed is furthest from the root at the ends of E's decade and at
     /// E = a b: 312e73 for an even exponent, where E is the coefficient, and
     /// 3116e71 for an odd one, where it is the coefficient over 10.
-    function testImplementationSqrtMainSeedExtremes() external pure {
+    function testImplementationSqrtPre359SeedExtremes() external pure {
         uint256[3] memory even = [uint256(1e75), 312e73 - 10, 1e76 - 21];
         uint256[3] memory odd = [uint256(1e75), 3116e72 - 10, 1e76 - 21];
         for (uint256 i = 0; i < 3; i++) {
             for (uint256 k = 0; k < 21; k++) {
-                checkMain(even[i] + k, 0);
-                checkMain(odd[i] + k, 1);
+                checkPre359(even[i] + k, 0);
+                checkPre359(odd[i] + k, 1);
             }
         }
     }
@@ -346,47 +347,9 @@ contract LibDecimalFloatSqrtTest is Test {
         assertTrue(LibExactFloat.cmpParts(lowCoefficient, lowExponent, highCoefficient, highExponent) <= 0, "monotone");
     }
 
-    /// x 10^d > m^2 in 512 bits, for x 10^d below 2^256 squared.
-    function past(uint256 x, uint256 d, uint256 m) internal pure returns (bool) {
-        (uint256 xHigh, uint256 xLow) = Math.mul512(x, 10 ** d);
-        (uint256 mHigh, uint256 mLow) = Math.mul512(m, m);
-        return xHigh > mHigh || (xHigh == mHigh && xLow > mLow);
-    }
-
-    /// The root c 10^e of a, c in [1e40, 1e41), is correctly rounded exactly
-    /// when (c - 1/2)^2 10^2e < a < (c + 1/2)^2 10^2e, with the lower midpoint
-    /// at c = 1e40 a twentieth of a unit below. With a = A 10^f for A in
-    /// [1e75, 1e76) both compare 4 A 10^(f - 2e) against (2c +- 1)^2.
     function assertCorrectlyRounded(int256 signedCoefficient, int256 exponent, Float root) internal pure {
-        (int256 c, int256 e) = root.unpack();
-        while (c < 1e40) {
-            c *= 10;
-            e -= 1;
-        }
-        while (c >= 1e41) {
-            assertEq(c % 10, 0, "root digits");
-            c /= 10;
-            e += 1;
-        }
-        while (signedCoefficient < 1e75) {
-            signedCoefficient *= 10;
-            exponent -= 1;
-        }
-        int256 d = exponent - 2 * e;
-        assertTrue(d >= 4 && d <= 7, "root scale");
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 x = uint256(signedCoefficient) * 4;
-        // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 m = uint256(2 * c);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        assertFalse(past(x, uint256(d), m + 1), "above upper midpoint");
-        if (c == 1e40) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            assertTrue(past(x, uint256(d + 2), 2e41 - 1), "below lower midpoint");
-        } else {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            assertTrue(past(x, uint256(d), m - 1), "below lower midpoint");
-        }
+        (int256 rootCoefficient, int256 rootExponent) = root.unpack();
+        assertSqrtCorrectlyRounded(signedCoefficient, exponent, rootCoefficient, rootExponent);
     }
 
     function testSqrtCorrectlyRoundedFuzz(int256 signedCoefficient, int256 exponent) external pure {
