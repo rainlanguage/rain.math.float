@@ -301,14 +301,35 @@ contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
         checkPre359(uint256(int256(signedCoefficient)), exponent);
     }
 
+    /// 2^250 * 1e6 is 15625 * 2^256, so the low word of mulDiv's product is
+    /// zero and the remainder borrows from the high word.
+    function testImplementationSqrtPre359MulDivBorrow() external pure {
+        checkPre359(2 ** 250, 0);
+    }
+
+    /// c * 1e6 is f^2 + f for f = 4e40, so its root is f + 0.5 - 1/(8f) and
+    /// rounds to f. The seed lands on f exactly and the Newton quotient is
+    /// f + 1, so (f + f + 1) >> 1 must round down: a quotient one too large
+    /// gives f + 1, which the one-sided residual check cannot undo.
+    function testImplementationSqrtPre359NewtonRoundsDown() external pure {
+        checkPre359(16e74 + 4e34, 0);
+    }
+
+    /// c * 1e6 is 21248 * 2^256 + 2^256 - 64: the low word is within the
+    /// high word of 2^256, so mul512's Chinese-remainder reconstruction of
+    /// the high word must borrow.
+    function testImplementationSqrtPre359Mul512Borrow() external pure {
+        checkPre359(2460466104203731836555459860449609353974133904160196345274434202584146091719, 0);
+    }
+
     /// At 26a3cf06 sqrt's unguarded `scaleUp` wraps 1 10^int256.min to 1e75
     /// 10^(int256.max - 74), so the root's exponent is int256.max / 2 - 39
     /// rather than the library's int256.min / 2 - 40 (#451). The baseline
     /// must reproduce that, not the live `scaleUp`'s `ScaleUpOutOfRange`.
     function testImplementationSqrtPre359ExponentFloorWraps() external pure {
         (int256 pre359Coefficient, int256 pre359Exponent) = LibDecimalFloatSqrtVariants.sqrtPre359(1, type(int256).min);
-        assertEq(pre359Coefficient, 1e40, "main coefficient");
-        assertEq(pre359Exponent, type(int256).max / 2 - 39, "main exponent");
+        assertEq(pre359Coefficient, 1e40, "pre-#359 coefficient");
+        assertEq(pre359Exponent, type(int256).max / 2 - 39, "pre-#359 exponent");
         (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(1, type(int256).min);
         assertEq(rootCoefficient, 1e40, "coefficient");
         assertEq(rootExponent, type(int256).min / 2 - 40, "exponent");

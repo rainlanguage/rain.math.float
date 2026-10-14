@@ -135,16 +135,35 @@ fn is_identifier(c: char) -> bool {
 }
 
 /// The first `<library>.<identifier>` in `code`, a call or a constant read on
-/// `library` itself, not on a library whose name merely ends in it.
+/// `library` itself, not on a library whose name merely starts or ends with
+/// it. Solidity allows whitespace either side of the dot, so both are skipped.
 fn use_on<'a>(library: &str, code: &'a str) -> Option<&'a str> {
-    let prefix = format!("{library}.");
-    code.match_indices(&prefix).find_map(|(at, _)| {
+    code.match_indices(library).find_map(|(at, _)| {
         if code[..at].chars().next_back().is_some_and(is_identifier) {
             return None;
         }
-        let rest = &code[at + prefix.len()..];
+        let rest = code[at + library.len()..]
+            .trim_start()
+            .strip_prefix('.')?
+            .trim_start();
         let end = rest.find(|c| !is_identifier(c)).unwrap_or(rest.len());
-        (end > 0).then(|| &rest[..end])
+        Some(&rest[..end])
+    })
+}
+
+/// Whether `code` binds `library` with a `using` directive: the word `using`,
+/// whitespace, the library name, then a character that cannot continue it.
+fn binds(library: &str, code: &str) -> bool {
+    code.match_indices("using").any(|(at, _)| {
+        if code[..at].chars().next_back().is_some_and(is_identifier) {
+            return false;
+        }
+        let after_using = &code[at + "using".len()..];
+        let rest = after_using.trim_start();
+        rest.len() < after_using.len()
+            && rest
+                .strip_prefix(library)
+                .is_some_and(|after| !after.starts_with(is_identifier))
     })
 }
 
@@ -186,7 +205,7 @@ fn live_use(source: &str, variants: &[(&str, &str)]) -> Result<Option<String>, S
         code = without_function(&code, variant).ok_or(format!("no function {variant}"))?;
     }
     for library in LIVE {
-        if code.contains(&format!("using {library} ")) {
+        if binds(library, &code) {
             return Ok(Some(format!("using {library}")));
         }
         if let Some(member) = use_on(library, &code) {
@@ -227,6 +246,27 @@ fn live_use_finds_code_only() {
         Ok(Some("using LibDecimalFloat".into()))
     );
     assert_eq!(
+        live_use("using LibDecimalFloat\nfor Float;", none),
+        Ok(Some("using LibDecimalFloat".into()))
+    );
+    assert_eq!(
+        live_use("using LibDecimalFloatPr321 for Float;", none),
+        Ok(None)
+    );
+    assert_eq!(live_use("usingLibDecimalFloat for Float;", none), Ok(None));
+    assert_eq!(
+        live_use("reusing LibDecimalFloat for Float;", none),
+        Ok(None)
+    );
+    assert_eq!(
+        live_use("LibDecimalFloat .unpack(f);", none),
+        Ok(Some("LibDecimalFloat.unpack".into()))
+    );
+    assert_eq!(
+        live_use("LibDecimalFloat. unpack(f);", none),
+        Ok(Some("LibDecimalFloat.unpack".into()))
+    );
+    assert_eq!(
         live_use(
             "import {A} from \"src/lib/implementation/LibDecimalFloatImplementation.sol\";",
             none
@@ -241,6 +281,12 @@ fn live_use_finds_code_only() {
         live_use("/* LibDecimalFloat.unpack(f) */ x = 1;", none),
         Ok(None)
     );
+    assert_eq!(live_use("// LibDecimalFloat.unpack(f)", none), Ok(None));
+    assert_eq!(
+        live_use("s = \"\\\"LibDecimalFloat.unpack\\\"\";", none),
+        Ok(None)
+    );
+    assert_eq!(live_use("$LibDecimalFloat.unpack(f);", none), Ok(None));
     assert_eq!(
         live_use("LibFormatDecimalFloatPr321.toDecimalString(f, true);", none),
         Ok(None)
@@ -260,6 +306,13 @@ fn live_use_skips_variants_only() {
     assert_eq!(
         live_use(source, &[("c", "why")]),
         Err("no function c".into())
+    );
+    // A variant's name that prefixes another function's blanks only its own.
+    let prefixed = "function ab() { LibDecimalFloat.unpack(f); }\n\
+                    function a() { LibDecimalFloat.pack(c, e); }";
+    assert_eq!(
+        live_use(prefixed, &[("a", "why")]),
+        Ok(Some("LibDecimalFloat.unpack".into()))
     );
 }
 

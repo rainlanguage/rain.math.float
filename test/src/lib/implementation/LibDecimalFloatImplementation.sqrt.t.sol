@@ -140,6 +140,24 @@ contract LibDecimalFloatImplementationSqrtTest is SqrtCorrectlyRoundedTest {
         assertEq(rootExponent, pr309Exponent, "exponent");
     }
 
+    /// 2^250 * 1e6 is 15625 * 2^256: mulDiv's remainder borrows from the high word.
+    function testSqrtPr309EquivalenceMulDivBorrow() external pure {
+        int256 signedCoefficient = int256(2 ** 250);
+        (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, 0);
+        (int256 pr309Root, int256 pr309Exponent) = LibDecimalFloatSqrtVariants.sqrtPr309(signedCoefficient, 0);
+        assertEq(root, pr309Root, "root");
+        assertEq(rootExponent, pr309Exponent, "exponent");
+    }
+
+    /// c * 1e6 is 21248 * 2^256 + 2^256 - 64: mul512's high word must borrow.
+    function testSqrtPr309EquivalenceMul512Borrow() external pure {
+        int256 signedCoefficient = 2460466104203731836555459860449609353974133904160196345274434202584146091719;
+        (int256 root, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, 0);
+        (int256 pr309Root, int256 pr309Exponent) = LibDecimalFloatSqrtVariants.sqrtPr309(signedCoefficient, 0);
+        assertEq(root, pr309Root, "root");
+        assertEq(rootExponent, pr309Exponent, "exponent");
+    }
+
     /// Variant `i` of sqrt: 0 the library, 1 plain Newton, 2 assembly
     /// residual, 3 512-bit residual.
     function variantExternal(uint256 i, int256 signedCoefficient, int256 exponent)
