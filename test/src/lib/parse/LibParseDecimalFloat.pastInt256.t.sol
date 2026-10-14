@@ -187,6 +187,26 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         checkFail(s, ExponentOverflow.selector, bytes(s).length);
     }
 
+    /// More than 77 significant digits at an exponent within reach of
+    /// int256.max: the exponent of the 77 digit floor is past int256, so the
+    /// value is past every Float and parses to `ExponentOverflow` by value,
+    /// never a wrapped exponent's `ParseDecimalPrecisionLoss` (#649).
+    function testParsePastInt256FloorExponentPastInt256() external view {
+        string memory digits = string.concat("1", zeros(79), "1");
+        string[4] memory exponents = [
+            INT256_MAX,
+            "57896044618658097711785492504343953926634992332820282019728792003956564819963",
+            "57896044618658097711785492504343953926634992332820282019728792003956564819960",
+            "2147483647"
+        ];
+        for (uint256 i = 0; i < exponents.length; i++) {
+            string memory s = string.concat(digits, "e", exponents[i]);
+            checkFail(s, ExponentOverflow.selector, bytes(s).length);
+            s = string.concat("-", s);
+            checkFail(s, ExponentOverflow.selector, bytes(s).length);
+        }
+    }
+
     /// Issue #375's literals take their errors by value: 2^255 written out is
     /// below every bound but no Float, `1e` 2^255 is past every Float, 78
     /// fraction digits are no Float, and `1e-` (2^255 + 1) is below every

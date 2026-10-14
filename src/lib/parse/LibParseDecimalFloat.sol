@@ -24,11 +24,6 @@ import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol"
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
 
-/// @dev The coefficient at 10^int32.max where `packLossy` overflows: a parsed
-/// literal at least `PARSE_OVERFLOW_FLOOR × 10^int32.max` in magnitude is
-/// `ExponentOverflow`.
-uint256 constant PARSE_OVERFLOW_FLOOR = 2 ** 223 + 2;
-
 /// @title LibParseDecimalFloat
 /// @notice Library for parsing decimal floating point numbers from strings.
 /// Not particularly gas efficient as it is intended for off-chain use cases.
@@ -221,8 +216,8 @@ library LibParseDecimalFloat {
                 }
                 // Only an e-notation exponent reaches the overflow threshold.
                 if (
-                    exponent > type(int32).max - 10 && signedCoefficient != 0
-                        && isPastOverflowThreshold(
+                    exponent > LibDecimalFloat.NEVER_PAST_EXPONENT
+                        && LibDecimalFloat.isPastEveryFloat(
                             // int256.min negates to itself, which casts to 2^255.
                             // forge-lint: disable-next-line(unsafe-typecast)
                             uint256(signedCoefficient < 0 ? -signedCoefficient : signedCoefficient),
@@ -238,37 +233,6 @@ library LibParseDecimalFloat {
                 // floats follow the behaviour of packed floats.
                 exponent = 0;
             }
-        }
-    }
-
-    /// @notice Whether `magnitude × 10^exponent` is at least
-    /// `PARSE_OVERFLOW_FLOOR × 10^int32.max`, where `packLossy` overflows.
-    /// Total over its inputs. At an exponent of `int32.max - 10` or below
-    /// every uint256 is under it.
-    /// @param magnitude Any magnitude.
-    /// @param exponent Any exponent.
-    /// @return Whether the value is at or past the threshold.
-    function isPastOverflowThreshold(uint256 magnitude, int256 exponent) internal pure returns (bool) {
-        unchecked {
-            // Zero is under the threshold, and so is every uint256 at
-            // 10^(int32.max - 10): 2^256 < PARSE_OVERFLOW_FLOOR × 10^10.
-            if (magnitude == 0 || exponent <= type(int32).max - 10) {
-                return false;
-            }
-            // exponent > int32.max - 10 above, so this does not wrap.
-            int256 excess = exponent - type(int32).max;
-            // 10^68 is past PARSE_OVERFLOW_FLOOR.
-            if (excess > 67) {
-                return true;
-            }
-            if (excess >= 0) {
-                // m × 10^x >= t iff m > floor((t - 1) / 10^x).
-                // forge-lint: disable-next-line(unsafe-typecast)
-                return magnitude > (PARSE_OVERFLOW_FLOOR - 1) / 10 ** uint256(excess);
-            }
-            // excess is in [-9, -1], so the product is below 2^256.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            return magnitude >= PARSE_OVERFLOW_FLOOR * 10 ** uint256(-excess);
         }
     }
 
@@ -303,7 +267,7 @@ library LibParseDecimalFloat {
             if (errorSelector != 0) {
                 return (errorSelector, cursor, 0, 0);
             }
-            (uint256 magnitude, uint256 leading, uint256 digitCount, int256 lastExponent) =
+            (uint256 magnitude, uint256 digitCount, int256 lastExponent) =
                 readSignificantDigits(start, intEnd, fracStart, cursor, end);
             int256 eValue;
             (errorSelector, cursor, eValue) = scanExponent(cursor, end);
@@ -319,7 +283,10 @@ library LibParseDecimalFloat {
 
             bool isNegative = LibParseChar.isMask(start, end, CMASK_NEGATIVE_SIGN) == 1;
             if (digitCount <= 77 && magnitude <= uint256(type(int256).max) + (isNegative ? 1 : 0)) {
-                if (exponent > type(int32).max - 10 && isPastOverflowThreshold(magnitude, exponent)) {
+                if (
+                    exponent > LibDecimalFloat.NEVER_PAST_EXPONENT
+                        && LibDecimalFloat.isPastEveryFloat(magnitude, exponent)
+                ) {
                     return (ExponentOverflow.selector, cursor, 0, 0);
                 }
                 // magnitude is at most 2^255, which casts to int256.min and
@@ -329,13 +296,15 @@ library LibParseDecimalFloat {
                 return (0, cursor, isNegative ? -signedCoefficient : signedCoefficient, exponent);
             }
 
-            // At least 77 significant digits, where packLossy overflows iff
-            // the floor at 10^int32.max is at least PARSE_OVERFLOW_FLOOR: the
-            // leading digit is above 10^(int32.max + 67), or at it with those
-            // 68 digits.
+            // At least 77 significant digits. magnitude is the first 77, the
+            // value's floor at 10^floorExponent, and a floor at or below
+            // 10^int32.max is past every Float exactly when the value is, as
+            // the threshold is a multiple of it. Above, 77 digits are past
+            // anyway. An exponent wrapped past int256.max is past too.
+            // digitCount is bounded by memory.
             // forge-lint: disable-next-line(unsafe-typecast)
-            int256 leadingAtCeiling = int256(type(int32).max) + 68 - int256(digitCount);
-            if (exponent > leadingAtCeiling || (exponent == leadingAtCeiling && leading >= PARSE_OVERFLOW_FLOOR)) {
+            int256 floorExponent = exponent + int256(digitCount - 77);
+            if (floorExponent < exponent || LibDecimalFloat.isPastEveryFloat(magnitude, floorExponent)) {
                 return (ExponentOverflow.selector, cursor, 0, 0);
             }
             return (ParseDecimalPrecisionLoss.selector, cursor, 0, 0);
@@ -384,14 +353,12 @@ library LibParseDecimalFloat {
     /// @param digitsEnd The end of the mantissa's digits.
     /// @param end The end of the whole string.
     /// @return magnitude The first 77 significant digits, which fit uint256.
-    /// @return leading The first 68 significant digits: the floor at
-    /// 10^int32.max of a value whose leading digit is at 10^(int32.max + 67).
     /// @return digitCount The number of significant digits, at least one.
     /// @return lastExponent The exponent of the last significant digit.
     function readSignificantDigits(uint256 start, uint256 intEnd, uint256 fracStart, uint256 digitsEnd, uint256 end)
         private
         pure
-        returns (uint256 magnitude, uint256 leading, uint256 digitCount, int256 lastExponent)
+        returns (uint256 magnitude, uint256 digitCount, int256 lastExponent)
     {
         unchecked {
             uint256 sigStart = LibParseChar.skipMask(start, intEnd, CMASK_NEGATIVE_SIGN | CMASK_ZERO);
@@ -420,9 +387,6 @@ library LibParseDecimalFloat {
                         magnitude = magnitude * 10 + (char - ASCII_ZERO);
                     }
                     digitCount++;
-                    if (digitCount == 68) {
-                        leading = magnitude;
-                    }
                 }
             }
         }
