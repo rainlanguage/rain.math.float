@@ -172,6 +172,9 @@ contract PackArithmeticResultHalmosTest {
 
     /// e in [int32.min - 77, int32.min], one constant e per path: case
     /// 11 j + i for e = int32.min - j.
+    /// CI proves cases 0-98 and 781-857. Cases 99-780 (e in [int32.min - 70,
+    /// int32.min - 9]) cost about 25s each under the 5-minute limit, more
+    /// slices than a matrix carries, so they are out: see #511.
     function check_packLow(int256 c, uint256 jBits, uint256 iBits) external view {
         uint256 j = LibHalmosExact.concrete(jBits, 7);
         if (j > 77 || !LibHalmosExact.overlapsSlice(j * 11, j * 11 + 10)) return;
