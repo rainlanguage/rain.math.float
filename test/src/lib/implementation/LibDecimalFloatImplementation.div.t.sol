@@ -7,9 +7,9 @@ import {
     LibDecimalFloatImplementation,
     DivisionByZero,
     ExponentOverflow
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {THREES, ONES} from "../../../lib/LibCommonResults.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationDivTest is Test {
     function divExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)

@@ -3,9 +3,9 @@
 pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
-import {FormatParseGas} from "test/concrete/FormatParseGas.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
+import {FormatParseGas} from "../../concrete/FormatParseGas.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibFormatDecimalFloat} from "../../../src/lib/format/LibFormatDecimalFloat.sol";
 
 /// `GAS|op|case|before|after|delta`.
 contract LibDecimalFloatFormatParseGasTest is Test {

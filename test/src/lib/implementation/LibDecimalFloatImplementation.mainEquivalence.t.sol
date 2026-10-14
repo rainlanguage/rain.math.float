@@ -2,11 +2,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloatImplementationMain} from "test/lib/LibDecimalFloatImplementationMain.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementationMain} from "../../../lib/LibDecimalFloatImplementationMain.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {MaximizeOverflow, ExponentOverflow, DivisionByZero} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {MaximizeOverflow, ExponentOverflow, DivisionByZero} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 /// Wherever main returns, the PR returns the same bytes, and wherever main
 /// reverts, the PR reverts the same bytes, except in the floor shortfall,

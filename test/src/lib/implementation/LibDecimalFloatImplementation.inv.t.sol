@@ -3,12 +3,12 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 import {
     LibDecimalFloatImplementation,
     DivisionByZero,
     ExponentOverflow
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 contract LibDecimalFloatImplementationInvTest is Test {
     function invExternal(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
