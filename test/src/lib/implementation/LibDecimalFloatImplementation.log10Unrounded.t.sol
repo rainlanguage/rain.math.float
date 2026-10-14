@@ -87,6 +87,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
             // The oracle's characteristic is within one of k.
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 offset = (characteristic - k) * 1e70 + int256(fraction);
+            // The 1e3 is the oracle's own error from `LibExactFloat.log10`: 1e-67 in units of 1e-70.
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 slack = int256(LOG10_RAW_ERROR_E54) * 1e16 + 1e3;
             // The span is 2.0074e-50, so at most three corrections.
@@ -274,9 +275,12 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
     }
 
     /// A characteristic within two of the largest magnitude k with k 10^s in
-    /// int256, either sign: for s from 1 to 51 `add` sums it and sheds a
-    /// digit where a correction past the gap takes the sum past int256, and
-    /// at s = 52, just under 1e25, the fixed point sum takes over.
+    /// int256, either sign. For a positive k and s from 1 to 51, `add` sums it
+    /// and sheds a digit where the correction passes the gap to int256. A
+    /// negative k cannot shed: the only corrections that move it toward
+    /// int256.min are under log10(1.001), below every gap here, so that side
+    /// checks the unshed sum at the edge. At s = 52, just under 1e25, the
+    /// fixed point sum takes over.
     function testLog10UnroundedOracleCarryEdge(int256 signedCoefficient, uint256 shift, uint256 below, bool negative)
         external
         pure
@@ -398,6 +402,21 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         assertTrue(absoluteOk(2, max - 1, max - 1, 0), "ceiling truncation");
         assertFalse(absoluteOk(2, max - 1, max - 2, 0), "ceiling below");
         assertFalse(absoluteOk(2, max - 1, max, 0), "ceiling above");
+    }
+
+    /// log10 18 is 125527250510330606980379470123472364516844760984350.0271
+    /// units of 1e-50, so the corrections within the bound are ...350 and
+    /// ...351. ...349 is 1.0271 units away, under 3% past the bound, and
+    /// ...352 is 1.9729 away.
+    function testLog10UnroundedAbsoluteRejectsPastSlack() external pure {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.log10Unrounded(18, 0);
+        assertEq(e, -50, "exponent");
+        int256 truncated = 125527250510330606980379470123472364516844760984350;
+        assertTrue(absoluteOk(18, 0, c, e), "result");
+        assertTrue(absoluteOk(18, 0, truncated, -50), "nearest below");
+        assertTrue(absoluteOk(18, 0, truncated + 1, -50), "nearest above");
+        assertFalse(absoluteOk(18, 0, truncated - 1, -50), "1.0271 below");
+        assertFalse(absoluteOk(18, 0, truncated + 2, -50), "1.9729 above");
     }
 
     /// The raw log of 1.4482...e0 is 0.99988e-50 below its log from `bc -l`
