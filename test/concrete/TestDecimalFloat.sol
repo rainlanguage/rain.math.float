@@ -7,38 +7,48 @@ import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
 import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
 
 /// The `DecimalFloat` ABI over this source, for the Rust bindings' tests.
+/// Every function not documented otherwise is the `LibDecimalFloat` function
+/// of its name.
 contract TestDecimalFloat {
     using LibDecimalFloat for Float;
 
+    /// `LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE`.
     function maxPositiveValue() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_MAX_POSITIVE_VALUE;
     }
 
+    /// `LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE`.
     function minPositiveValue() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_MIN_POSITIVE_VALUE;
     }
 
+    /// `LibDecimalFloat.FLOAT_MAX_NEGATIVE_VALUE`.
     function maxNegativeValue() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_MAX_NEGATIVE_VALUE;
     }
 
+    /// `LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE`.
     function minNegativeValue() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_MIN_NEGATIVE_VALUE;
     }
 
+    /// `LibDecimalFloat.FLOAT_ZERO`.
     function zero() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_ZERO;
     }
 
+    /// `LibDecimalFloat.FLOAT_E`.
     function e() external pure returns (Float) {
         return LibDecimalFloat.FLOAT_E;
     }
 
+    /// `LibParseDecimalFloat.parseDecimalFloat`.
     function parse(string memory str) external pure returns (bytes4, Float) {
         (bytes4 errorSelector, Float parsed) = LibParseDecimalFloat.parseDecimalFloat(str);
         return (errorSelector, parsed);
     }
 
+    /// `LibFormatDecimalFloat.toDecimalString`.
     function format(Float a, bool scientific) external pure returns (string memory) {
         return LibFormatDecimalFloat.toDecimalString(a, scientific);
     }
@@ -135,6 +145,7 @@ contract TestDecimalFloat {
         return a.isZero();
     }
 
+    /// `LibDecimalFloat.fromFixedDecimalLosslessPacked`.
     function fromFixedDecimalLossless(uint256 value, uint8 decimals) external pure returns (Float) {
         return LibDecimalFloat.fromFixedDecimalLosslessPacked(value, decimals);
     }
@@ -143,6 +154,7 @@ contract TestDecimalFloat {
         return LibDecimalFloat.toFixedDecimalLossless(float, decimals);
     }
 
+    /// `LibDecimalFloat.fromFixedDecimalLossyPacked`.
     function fromFixedDecimalLossy(uint256 value, uint8 decimals) external pure returns (Float, bool) {
         //slither-disable-next-line unused-return
         return LibDecimalFloat.fromFixedDecimalLossyPacked(value, decimals);

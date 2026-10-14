@@ -3,9 +3,9 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {ExponentOverflow} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationRoundSignificantTest is Test {
     /// 41 significant digits, half away from zero, by a digit loop, so

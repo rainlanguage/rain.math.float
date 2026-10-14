@@ -7,10 +7,12 @@ import {
     LibDecimalFloatImplementation,
     LOG10_RATIO_Z_MAX,
     LOG10_SKIP_BELOW
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
-import {LibDecimalFloatImplementationSeriesSolidity} from "test/lib/LibDecimalFloatImplementationSeriesSolidity.sol";
-import {LibDecimalFloatImplementationSeriesMain} from "test/lib/LibDecimalFloatImplementationSeriesMain.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Log10RatioOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
+import {
+    LibDecimalFloatImplementationSeriesSolidity
+} from "../../../lib/LibDecimalFloatImplementationSeriesSolidity.sol";
+import {LibDecimalFloatImplementationSeriesMain} from "../../../lib/LibDecimalFloatImplementationSeriesMain.sol";
 
 /// The plain-Solidity copy of `log10Ratio` and `exp10Fixed` returns exactly
 /// what the library returns, so its gas rows compare one algorithm and

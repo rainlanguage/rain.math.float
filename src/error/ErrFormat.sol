@@ -2,7 +2,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-/// @dev Thrown when the exponent cannot be formatted.
-/// @param exponent The exponent that cannot be formatted. Non-scientific mode
-/// reports the canonical exponent, after trailing coefficient zeros.
+/// @dev Thrown by non-scientific `toDecimalString` when the canonical
+/// exponent, after the coefficient's trailing zeros, is outside
+/// `[-MAX_NON_SCIENTIFIC_EXPONENT, MAX_NON_SCIENTIFIC_EXPONENT]`. Scientific
+/// mode never throws it.
+/// @param exponent The canonical exponent.
 error UnformatableExponent(int256 exponent);

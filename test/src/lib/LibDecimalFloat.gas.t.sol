@@ -4,8 +4,8 @@ pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibParseDecimalFloat} from "src/lib/parse/LibParseDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibParseDecimalFloat} from "../../../src/lib/parse/LibParseDecimalFloat.sol";
 
 /// Gas of log10, pow10, pow, sqrt, mul, the conversions and parse on packed inputs, the common shape
 /// as values arrive packed, and on each function's worst case. Run with
