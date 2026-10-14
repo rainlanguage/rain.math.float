@@ -8,8 +8,8 @@
 //! least `(2^223 + 2) × 10^int32.max` in magnitude is `ExponentOverflow`, so
 //! below that a positive result up to three units of `10^int32.max` past the
 //! largest Float, or a negative one up to two past the smallest, truncates
-//! into it (#452). Addition is the exact sum rounded once so, as
-//! `LibDecimalFloat.add` documents.
+//! into it (#452). Addition packs the exact sum, as `LibDecimalFloat.add`
+//! documents.
 
 use alloy::primitives::{B256, U256};
 use core::cmp::Ordering;
@@ -299,12 +299,6 @@ impl Dec {
             Self::new(shed(&self.c, (-self.e) as u64), 0)
         }
     }
-
-    /// Exactly representable as a Float: an int224 coefficient and an int32
-    /// exponent, after removing trailing zeros or adding them.
-    pub fn representable(&self) -> bool {
-        matches!(pack(self), Packed::Value(_, true))
-    }
 }
 
 fn sign_rank(s: Sign) -> i8 {
@@ -412,10 +406,9 @@ fn int256_unit(x: &Dec) -> i64 {
     }
 }
 
-/// `add`'s sum before packing, as its NatSpec states it: the exact sum
-/// truncated towards zero to a multiple of the larger operand's int256 unit.
-/// Packing truncates again, which composes, so `add` is the exact sum
-/// rounded once towards zero.
+/// `agree`'s spread, as SPEC defines it: the implementation `sub`, unpacked,
+/// which is the exact sum truncated towards zero to a multiple of the larger
+/// operand's int256 unit.
 fn rounded_sum(a: &Dec, b: &Dec) -> Dec {
     if a.is_zero() {
         return b.clone();
@@ -451,9 +444,23 @@ fn rounded_sum(a: &Dec, b: &Dec) -> Dec {
     Dec::new(shed(&exact.c, (unit - exact.e) as u64), unit)
 }
 
-/// `add`: the rounded sum, packed.
+/// `add`: the exact sum rounded once towards zero. Past `add_exact`'s gap the
+/// smaller operand lies wholly below `10^(top - 332)`, `top` the order of the
+/// larger, and no Float lies strictly within `10^(top - 68)` of the larger,
+/// so one unit of the smaller's sign at `top - 200` packs alike.
 pub fn add(a: &Dec, b: &Dec) -> Result<Dec, RefError> {
-    arithmetic(&rounded_sum(a, b))
+    let sum = a.add_exact(b).unwrap_or_else(|| {
+        let (big, small) = if a.abs().cmp_value(&b.abs()) == Ordering::Less {
+            (b, a)
+        } else {
+            (a, b)
+        };
+        let top = big.e + digits(&big.c) as i64;
+        let unit = if small.is_negative() { -1 } else { 1 };
+        big.add_exact(&Dec::new(unit, top - 200))
+            .expect("200 orders apart")
+    });
+    arithmetic(&sum)
 }
 
 pub fn sub(a: &Dec, b: &Dec) -> Result<Dec, RefError> {
@@ -986,6 +993,59 @@ mod tests {
                 r.eq_value(&want),
                 "sub({a:?}, -{b:?}) = {r:?}, want {want:?}"
             );
+        }
+    }
+
+    /// Sums past `add_exact`'s gap: the exact sum rounded once towards zero
+    /// is the larger operand when the signs agree, and the Float just below
+    /// it in magnitude when they differ.
+    #[test]
+    fn add_past_the_alignment_gap() {
+        let nines = |e| Dec::new(pow10(67) - 1u32, e);
+        let cases = [
+            (
+                (BigInt::from(1), 1000),
+                (BigInt::from(1), 0),
+                Dec::new(1, 1000),
+            ),
+            ((BigInt::from(1), 1000), (BigInt::from(-1), 0), nines(933)),
+            (
+                (BigInt::from(-1), 1000),
+                (BigInt::from(1), 0),
+                nines(933).neg(),
+            ),
+            ((BigInt::from(1), 0), (BigInt::from(-1), -1000), nines(-67)),
+            (
+                (int224_max(), 1000),
+                (BigInt::from(-1), 0),
+                Dec::new(int224_max() - 1u32, 1000),
+            ),
+            (
+                (BigInt::from(1), I32_MAX),
+                (BigInt::from(-1), I32_MIN),
+                nines(I32_MAX - 67),
+            ),
+            (
+                (int224_max(), I32_MAX),
+                (BigInt::from(1), I32_MIN),
+                Dec::new(int224_max(), I32_MAX),
+            ),
+        ];
+        for ((ca, ea), (cb, eb), want) in cases {
+            let (a, b) = (Dec::new(ca, ea), Dec::new(cb, eb));
+            assert!(a.add_exact(&b).is_none(), "{a:?} + {b:?} aligns");
+            for (x, y) in [(&a, &b), (&b, &a)] {
+                let r = add(x, y).unwrap();
+                assert!(
+                    r.eq_value(&want),
+                    "add({x:?}, {y:?}) = {r:?}, want {want:?}"
+                );
+                let r = sub(x, &y.neg()).unwrap();
+                assert!(
+                    r.eq_value(&want),
+                    "sub({x:?}, -{y:?}) = {r:?}, want {want:?}"
+                );
+            }
         }
     }
 

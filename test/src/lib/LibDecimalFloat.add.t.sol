@@ -2,9 +2,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, Float, ExponentOverflow} from "src/lib/LibDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloat, Float, ExponentOverflow} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibExactFloat} from "../../lib/LibExactFloat.sol";
+import {LibDecimalFloatImplementation} from "../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
@@ -60,6 +60,28 @@ contract LibDecimalFloatDecimalAddTest is Test {
         (int256 signedCoefficientUnpacked, int256 exponentUnpacked) = LibDecimalFloat.unpack(result);
         assertEq(signedCoefficient, signedCoefficientUnpacked);
         assertEq(exponent, exponentUnpacked);
+    }
+
+    /// `signedCoefficient` within `maxLift` exponents of the int32 floor.
+    function nearTheFloor(int224 signedCoefficient, uint256 lift, uint256 maxLift) internal pure returns (Float) {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 exponent = int256(type(int32).min) + int256(bound(lift, 0, maxLift));
+        return LibDecimalFloat.packLossless(signedCoefficient, exponent);
+    }
+
+    /// Every Float is a whole multiple of 1e-2147483648, so a sum of two is
+    /// zero or at least that in magnitude and `add` never reverts
+    /// `ExponentUnderflow`. `testAddPacked` in both orders with `a` within ten
+    /// exponents of the floor and `b` within eighty, where the fuzzer
+    /// otherwise never lands.
+    function testAddNearTheFloorNeverUnderflows(int224 coefficientA, int224 coefficientB, uint256 liftA, uint256 liftB)
+        external
+        view
+    {
+        Float a = nearTheFloor(coefficientA, liftA, 9);
+        Float b = nearTheFloor(coefficientB, liftB, 80);
+        checkAddValue(a, b, this.addExternal(a, b));
+        checkAddValue(b, a, this.addExternal(b, a));
     }
 
     /// #350: the oracle accepts the one Float the rule gives and not the

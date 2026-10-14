@@ -2,9 +2,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloat, ExponentOverflow, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
-import {LossyConversionToFloat} from "src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloat, ExponentOverflow, Float} from "../../../src/lib/LibDecimalFloat.sol";
+import {LibExactFloat} from "../../lib/LibExactFloat.sol";
+import {LossyConversionToFloat} from "../../../src/error/ErrDecimalFloat.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 contract LibDecimalFloatPackTest is Test {
@@ -24,6 +24,29 @@ contract LibDecimalFloatPackTest is Test {
         assertTrue(lossless, "lossless");
         assertEq(signedCoefficient, signedCoefficientOut, "coefficient");
         assertEq(signedCoefficient == 0 ? int256(0) : exponent, exponentOut, "exponent");
+    }
+
+    /// `unpack` then `packLossy` is the identity, byte for byte and lossless,
+    /// on every Float with a non-zero coefficient.
+    function testUnpackPackLossyRoundTrip(Float float) external pure {
+        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
+        vm.assume(signedCoefficient != 0);
+        (Float repacked, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
+        assertTrue(lossless, "lossless");
+        assertEq(Float.unwrap(repacked), Float.unwrap(float), "bytes");
+    }
+
+    /// Zero at any exponent unpacks to a zero coefficient at that exponent
+    /// and repacks as `FLOAT_ZERO`, the one Float the round trip rewrites.
+    function testUnpackPackLossyZeroAtAnyExponent(uint32 exponent) external pure {
+        Float zero = Float.wrap(bytes32(uint256(exponent) << 224));
+        (int256 signedCoefficient, int256 unpackedExponent) = LibDecimalFloat.unpack(zero);
+        assertEq(signedCoefficient, 0, "coefficient");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(unpackedExponent, int256(int32(exponent)), "exponent");
+        (Float repacked, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, unpackedExponent);
+        assertTrue(lossless, "lossless");
+        assertEq(Float.unwrap(repacked), Float.unwrap(LibDecimalFloat.FLOAT_ZERO), "float");
     }
 
     /// Packing 0 is always lossless and returns standard zero float.

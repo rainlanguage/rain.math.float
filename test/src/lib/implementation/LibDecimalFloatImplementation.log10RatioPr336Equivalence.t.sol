@@ -5,10 +5,12 @@ pragma solidity =0.8.25;
 import {
     LibDecimalFloatImplementation,
     LOG10_RATIO_Z_MAX
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Log10RatioOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibDecimalFloatImplementationLog10RatioPr336} from "test/lib/LibDecimalFloatImplementationLog10RatioPr336.sol";
+import {
+    LibDecimalFloatImplementationLog10RatioPr336
+} from "../../../lib/LibDecimalFloatImplementationLog10RatioPr336.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 /// `log10Ratio` returns and reverts the same bytes as the #336 head's
