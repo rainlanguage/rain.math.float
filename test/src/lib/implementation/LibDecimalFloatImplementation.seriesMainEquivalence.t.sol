@@ -6,9 +6,9 @@ import {
     LibDecimalFloatImplementation,
     LOG10_RATIO_Z_MAX,
     LOG10_SKIP_BELOW
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Exp10FixedOutOfRange, Log10RatioOutOfRange} from "src/error/ErrDecimalFloat.sol";
-import {LibDecimalFloatImplementationSeriesMain} from "test/lib/LibDecimalFloatImplementationSeriesMain.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Exp10FixedOutOfRange, Log10RatioOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibDecimalFloatImplementationSeriesMain} from "../../../lib/LibDecimalFloatImplementationSeriesMain.sol";
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 
 /// `log10Ratio` and `exp10Fixed` return exactly what main's copies return,

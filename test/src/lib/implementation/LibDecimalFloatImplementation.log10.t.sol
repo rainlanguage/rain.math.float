@@ -2,14 +2,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
-import {Log10Zero, Log10Negative} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat, ORACLE_ONE, ORACLE_LN10} from "../../../lib/LibExactFloat.sol";
+import {Log10Zero, Log10Negative} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat, ORACLE_ONE, ORACLE_LN10, U512} from "../../../lib/LibExactFloat.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "../../../../src/lib/LibDecimalFloat.sol";
 import {LibTestErrorBound, LOG10_RAW_ERROR_E54} from "../../../lib/LibTestErrorBound.sol";
-import {LibExactFloat, U512} from "../../../lib/LibExactFloat.sol";
 
 /// @dev log10 of 9999453323501747426601859962676171576268035899274424060577868894318634900000e-75
 /// in units of 1e-76, from `bc -l` at scale 130, truncated.

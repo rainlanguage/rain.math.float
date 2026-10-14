@@ -8,7 +8,7 @@ import {
     POW_FIXED_ONE_ODD,
     POW_FIXED_ONE_ODD_INVERSE,
     POW_FIXED_ONE_TWOS_MASK
-} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
 /// Logs the gas of `log10Ratio`'s z^6 step, floor(t x / 1e50) for x its
