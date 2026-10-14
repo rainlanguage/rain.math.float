@@ -3,7 +3,6 @@
 pragma solidity ^0.8.25;
 
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "../implementation/LibDecimalFloatImplementation.sol";
 import {UnformatableExponent} from "../../error/ErrFormat.sol";
 
 /// @dev Library for formatting DecimalFloat values as strings.
@@ -53,26 +52,30 @@ library LibFormatDecimalFloat {
         return _toNonScientific(signedCoefficient, exponent);
     }
 
-    /// Scientific notation: render as `d.dddeN` where the leading digit is the
-    /// most significant digit of the maximized coefficient, so the display
-    /// exponent is the maximized exponent plus 75 or 76. When `N` is zero the
-    /// `eN` part is omitted, so `1.5e0` formats as `1.5`.
+    /// Scientific notation: render as `d.dddeN` where `d` is the most
+    /// significant digit, so `N` is the exponent plus the coefficient's digit
+    /// count less one. When `N` is zero the `eN` part is omitted, so `1.5e0`
+    /// formats as `1.5`.
     /// @param signedCoefficient The nonzero coefficient, as unpacked.
     /// @param exponent The exponent, as unpacked.
     /// @return out The formatted string.
     //slither-disable-next-line cyclomatic-complexity
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory out) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
-
         bool isNeg = signedCoefficient < 0;
         uint256 absCoef;
         unchecked {
-            // A maximized packed coefficient is never `type(int256).min`.
+            // signedCoefficient came from `unpack` so |signedCoefficient| fits
+            // int224; negation always fits uint256.
             // forge-lint: disable-next-line(unsafe-typecast)
             absCoef = isNeg ? uint256(-signedCoefficient) : uint256(signedCoefficient);
         }
-        int256 displayExponent = exponent + (absCoef >= 1e76 ? int256(76) : int256(75));
-        (uint256 significand,) = stripTrailingZeros(absCoef);
+
+        // Strip trailing decimal zeros of the coefficient, raising the
+        // exponent by the same count.
+        (uint256 significand, uint256 trailingZeros) = stripTrailingZeros(absCoef);
+        // trailingZeros < 68.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 displayExponent = exponent + int256(trailingZeros);
 
         assembly ("memory-safe") {
             // Significand digits end at `out`, the exponent's digits end
@@ -87,6 +90,9 @@ library LibFormatDecimalFloat {
                 if iszero(significand) { break }
             }
             let digits := sub(out, start)
+            // The leading digit's exponent: `digits - 1` places above the
+            // significand's own.
+            displayExponent := add(displayExponent, sub(digits, 1))
 
             let cursor := add(out, 0x20)
             if isNeg {
