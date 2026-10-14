@@ -1722,7 +1722,8 @@ fn to_dec(x: &D) -> Dec {
 /// `AgreeNoPositiveTolerance(absolute, proportional)`. Otherwise it is
 /// `|x - y| <= max(absolute, proportional × max(|x|, |y|))` with the
 /// extremes in either order, but that a spread past the limit by under
-/// 1e-76 of the spread may be accepted, the spread being a truncating `sub`.
+/// 1.7273e-76 of the spread may be accepted, the spread being a truncating
+/// `sub`.
 /// dashu bounds the spread at 200 digits each way; within that of the
 /// boundary either answer passes.
 ///
@@ -1753,7 +1754,7 @@ fn want_agree(
             .unwrap(),
     );
     let limit = max_of(ta, scaled);
-    let within = D::from_parts(IBig::from(10).pow(76) - IBig::ONE, -76);
+    let within = D::from_parts(IBig::from(10).pow(80) - IBig::from(17_273), -80);
     Ok(if spread_hi <= limit {
         Some(true)
     } else if bound_mul(&spread_lo, &within) >= limit {
@@ -2324,11 +2325,16 @@ mod oracle_checks {
             want(&n(2, 0), &n(1, -1), &n(10, 0), &n(12, 0)),
             Ok(Some(true))
         );
-        // a spread past the limit by under 1e-76 of itself may go either way.
+        // a spread past the limit by under 1.7273e-76 of itself may go either way.
         let close = Dec::new(pow10(78) - 1, -78);
         assert_eq!(want(&close, &z, &z, &n(1, 0)), Ok(None));
         let far = Dec::new(pow10(70) - 1, -70);
         assert_eq!(want(&far, &z, &z, &n(1, 0)), Ok(Some(false)));
+        // 6 against -9e-76 is past 6 by 1.5e-76 of the spread, which the
+        // truncated spread holds as 6: the library accepts it.
+        let past = (n(6, 0), z.clone(), n(-9, -76), n(6, 0));
+        assert_ne!(want(&past.0, &past.1, &past.2, &past.3), Ok(Some(false)));
+        check_agree(&past.0, &past.1, &past.2, &past.3).unwrap();
     }
 
     /// sqrt(c 10^e) correctly rounded half away at 41 digits, by integer

@@ -11,8 +11,8 @@ import {UnformatableExponent} from "src/error/ErrFormat.sol";
 /// copied into an output of exact length, and trailing zeros come out with the
 /// same 64/32/16/8/4/2/1 cascade. Gas comparison only, isolating the assembly.
 /// GAS AND EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: the same algorithm
-/// in plain Solidity, to measure the assembly against. Expected values come
-/// from `LibExactFloat`.
+/// in plain Solidity, to measure the assembly against. Expected strings come
+/// from `expectedFormat` in `LibFormatDecimalFloat.toDecimalString.t.sol`.
 library LibFormatDecimalFloatSolidity {
     int256 internal constant MAX_NON_SCIENTIFIC_EXPONENT = 1000;
 
