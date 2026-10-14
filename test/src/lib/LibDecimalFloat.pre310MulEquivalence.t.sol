@@ -3,41 +3,41 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {LibDecimalFloatGasMain} from "test/lib/LibDecimalFloatGasMain.sol";
+import {LibDecimalFloatImplementation} from "../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatPre310Mul} from "../../lib/LibDecimalFloatPre310Mul.sol";
 
-/// Every input returns the same bytes, or reverts with the same bytes, as main
-/// before the #310 gas changes.
-contract LibDecimalFloatGasMainEquivalenceTest is Test {
-    function mainMaximize(int256 c, int256 e) external pure returns (int256, int256, int256) {
-        return LibDecimalFloatGasMain.maximize(c, e);
+/// Every input returns the same bytes, or reverts with the same bytes, as the
+/// baseline before the #310 gas changes.
+contract LibDecimalFloatPre310MulEquivalenceTest is Test {
+    function pre310Maximize(int256 c, int256 e) external pure returns (int256, int256, int256) {
+        return LibDecimalFloatPre310Mul.maximize(c, e);
     }
 
-    function prMaximize(int256 c, int256 e) external pure returns (int256, int256, int256) {
+    function liveMaximize(int256 c, int256 e) external pure returns (int256, int256, int256) {
         return LibDecimalFloatImplementation.maximize(c, e);
     }
 
-    function mainMul(int256 a, int256 ea, int256 b, int256 eb) external pure returns (int256, int256) {
-        return LibDecimalFloatGasMain.mul(a, ea, b, eb);
+    function pre310Mul(int256 a, int256 ea, int256 b, int256 eb) external pure returns (int256, int256) {
+        return LibDecimalFloatPre310Mul.mul(a, ea, b, eb);
     }
 
-    function prMul(int256 a, int256 ea, int256 b, int256 eb) external pure returns (int256, int256) {
+    function liveMul(int256 a, int256 ea, int256 b, int256 eb) external pure returns (int256, int256) {
         return LibDecimalFloatImplementation.mul(a, ea, b, eb);
     }
 
-    function same(bytes memory mainCall, bytes memory prCall) internal view {
-        (bool mainOk, bytes memory mainRet) = address(this).staticcall(mainCall);
-        (bool prOk, bytes memory prRet) = address(this).staticcall(prCall);
-        assertEq(prOk, mainOk, "success");
-        assertEq(prRet, mainRet, "bytes");
+    function same(bytes memory pre310Call, bytes memory liveCall) internal view {
+        (bool pre310Ok, bytes memory pre310Ret) = address(this).staticcall(pre310Call);
+        (bool liveOk, bytes memory liveRet) = address(this).staticcall(liveCall);
+        assertEq(liveOk, pre310Ok, "success");
+        assertEq(liveRet, pre310Ret, "bytes");
     }
 
     function checkMaximize(int256 c, int256 e) internal view {
-        same(abi.encodeCall(this.mainMaximize, (c, e)), abi.encodeCall(this.prMaximize, (c, e)));
+        same(abi.encodeCall(this.pre310Maximize, (c, e)), abi.encodeCall(this.liveMaximize, (c, e)));
     }
 
     function checkMul(int256 a, int256 ea, int256 b, int256 eb) internal view {
-        same(abi.encodeCall(this.mainMul, (a, ea, b, eb)), abi.encodeCall(this.prMul, (a, ea, b, eb)));
+        same(abi.encodeCall(this.pre310Mul, (a, ea, b, eb)), abi.encodeCall(this.liveMul, (a, ea, b, eb)));
     }
 
     /// A coefficient of `d` digits in [1, 77], either sign, `x` choosing where
@@ -95,7 +95,7 @@ contract LibDecimalFloatGasMainEquivalenceTest is Test {
         return raw;
     }
 
-    function testGasMainMaximize(uint256 ck, uint256 d, uint256 x, int256 raw, bool neg, uint256 ek, int256 e)
+    function testPre310Maximize(uint256 ck, uint256 d, uint256 x, int256 raw, bool neg, uint256 ek, int256 e)
         external
         view
     {
@@ -110,23 +110,20 @@ contract LibDecimalFloatGasMainEquivalenceTest is Test {
         );
     }
 
-    function testGasMainMul(uint256 seedA, int256 rawA, int256 ea, uint256 seedB, int256 rawB, int256 eb)
-        external
-        view
-    {
+    function testPre310Mul(uint256 seedA, int256 rawA, int256 ea, uint256 seedB, int256 rawB, int256 eb) external view {
         (int256 a, int256 exponentA) = operand(seedA, rawA, ea);
         (int256 b, int256 exponentB) = operand(seedB, rawB, eb);
         checkMul(a, exponentA, b, exponentB);
     }
 
     /// Packed operands, the shape every public `mul` passes.
-    function testGasMainMulPacked(int224 a, int32 ea, int224 b, int32 eb) external view {
+    function testPre310MulPacked(int224 a, int32 ea, int224 b, int32 eb) external view {
         checkMul(a, ea, b, eb);
     }
 
     /// Every digit count at both ends, both signs, against exponents near
     /// each bound.
-    function testGasMainDigitCounts() external view {
+    function testPre310DigitCounts() external view {
         int256[6] memory exponents =
             [int256(0), -18, type(int32).min, type(int32).max, type(int256).min + 40, type(int256).max];
         for (uint256 d = 1; d <= 77; d++) {
@@ -149,7 +146,7 @@ contract LibDecimalFloatGasMainEquivalenceTest is Test {
     }
 
     /// Both sides of the times-ten bound in `maximize`.
-    function testGasMainTimesTenBound() external view {
+    function testPre310TimesTenBound() external view {
         int256 m = type(int256).max / 10;
         for (int256 delta = -2; delta <= 2; delta++) {
             checkMaximize(m + delta, 0);

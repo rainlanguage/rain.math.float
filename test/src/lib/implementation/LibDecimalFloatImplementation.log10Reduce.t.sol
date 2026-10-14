@@ -3,9 +3,12 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation, POW_FIXED_ONE} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {Log10ReduceOutOfRange} from "src/error/ErrDecimalFloat.sol";
-import {LibExactFloat} from "test/lib/LibExactFloat.sol";
+import {
+    LibDecimalFloatImplementation,
+    POW_FIXED_ONE
+} from "../../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Log10ReduceOutOfRange} from "../../../../src/error/ErrDecimalFloat.sol";
+import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 
 contract LibDecimalFloatImplementationLog10ReduceTest is Test {
     /// 1e75 10^(2^-i) rounded up, for i in [1, 16], from `bc -l` at scale 140.

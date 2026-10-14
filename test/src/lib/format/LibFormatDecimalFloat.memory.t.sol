@@ -3,8 +3,8 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibFormatDecimalFloat} from "src/lib/format/LibFormatDecimalFloat.sol";
+import {LibDecimalFloat, Float} from "../../../../src/lib/LibDecimalFloat.sol";
+import {LibFormatDecimalFloat} from "../../../../src/lib/format/LibFormatDecimalFloat.sol";
 
 /// `toDecimalString` builds its string with assembly. It must leave memory
 /// allocated before the call untouched, allocate the whole string, and leave

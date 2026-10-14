@@ -2,7 +2,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {SqrtOutOfRange} from "../../src/error/ErrDecimalFloat.sol";
 
 /// Variants of `LibDecimalFloatImplementation.sqrt`, for equivalence and gas
 /// comparison only.
@@ -11,7 +12,7 @@ import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFl
 library LibDecimalFloatSqrtVariants {
     /// The integer sqrt verbatim from 0a8065d and 7459101 on #309's branch, its
     /// residual compared in 512 bits.
-    function sqrtBase(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    function sqrtPr309(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 coefficient = uint256(signedCoefficient);
@@ -87,7 +88,7 @@ library LibDecimalFloatSqrtVariants {
 
     /// The library's sqrt before #359, comments dropped: 2^125 seeds seven
     /// Newton steps over E.
-    function sqrtMain(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
+    function sqrtPre359(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.scaleUp(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -125,7 +126,14 @@ library LibDecimalFloatSqrtVariants {
 
     /// The library's sqrt with its Newton iterations in plain Solidity.
     function sqrtPlainNewton(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.scaleUp(signedCoefficient, exponent);
+        int256 inputExponent = exponent;
+        unchecked {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (uint256(signedCoefficient) - 1 >= 1e76 - 1) {
+                revert SqrtOutOfRange(signedCoefficient, exponent);
+            }
+        }
+        (signedCoefficient, exponent) = scaleUpUnguarded(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 coefficient = uint256(signedCoefficient);
@@ -137,7 +145,11 @@ library LibDecimalFloatSqrtVariants {
                 estimate = coefficient / 10;
                 root = estimate / 38e36 + 82e35;
             }
-            exponent = (exponent - (scale == 1e5 ? int256(5) : int256(6))) / 2;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            exponent -= scale == 1e5 ? int256(5) : int256(6);
+            assembly ("memory-safe") {
+                exponent := xor(sar(1, exponent), shl(255, sgt(exponent, inputExponent)))
+            }
             root = (root + estimate / root) >> 1;
             root = (root + estimate / root) >> 1;
             root = (root + estimate / root) >> 1;
@@ -157,7 +169,14 @@ library LibDecimalFloatSqrtVariants {
 
     /// The library's sqrt with its residual rounding in assembly.
     function sqrtAsmResidual(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.scaleUp(signedCoefficient, exponent);
+        int256 inputExponent = exponent;
+        unchecked {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (uint256(signedCoefficient) - 1 >= 1e76 - 1) {
+                revert SqrtOutOfRange(signedCoefficient, exponent);
+            }
+        }
+        (signedCoefficient, exponent) = scaleUpUnguarded(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 coefficient = uint256(signedCoefficient);
@@ -169,7 +188,11 @@ library LibDecimalFloatSqrtVariants {
                 estimate = coefficient / 10;
                 root = estimate / 38e36 + 82e35;
             }
-            exponent = (exponent - (scale == 1e5 ? int256(5) : int256(6))) / 2;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            exponent -= scale == 1e5 ? int256(5) : int256(6);
+            assembly ("memory-safe") {
+                exponent := xor(sar(1, exponent), shl(255, sgt(exponent, inputExponent)))
+            }
             assembly ("memory-safe") {
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))
@@ -188,9 +211,16 @@ library LibDecimalFloatSqrtVariants {
     }
 
     /// The library's sqrt with its low-word residual rounding replaced by
-    /// `sqrtBase`'s 512-bit residual compare.
+    /// `sqrtPr309`'s 512-bit residual compare.
     function sqrt512Residual(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.scaleUp(signedCoefficient, exponent);
+        int256 inputExponent = exponent;
+        unchecked {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            if (uint256(signedCoefficient) - 1 >= 1e76 - 1) {
+                revert SqrtOutOfRange(signedCoefficient, exponent);
+            }
+        }
+        (signedCoefficient, exponent) = scaleUpUnguarded(signedCoefficient, exponent);
         unchecked {
             // forge-lint: disable-next-line(unsafe-typecast)
             uint256 coefficient = uint256(signedCoefficient);
@@ -202,7 +232,11 @@ library LibDecimalFloatSqrtVariants {
                 estimate = coefficient / 10;
                 root = estimate / 38e36 + 82e35;
             }
-            exponent = (exponent - (scale == 1e5 ? int256(5) : int256(6))) / 2;
+            // forge-lint: disable-next-line(unsafe-typecast)
+            exponent -= scale == 1e5 ? int256(5) : int256(6);
+            assembly ("memory-safe") {
+                exponent := xor(sar(1, exponent), shl(255, sgt(exponent, inputExponent)))
+            }
             assembly ("memory-safe") {
                 root := shr(1, add(root, div(estimate, root)))
                 root := shr(1, add(root, div(estimate, root)))
@@ -224,6 +258,48 @@ library LibDecimalFloatSqrtVariants {
             }
             // forge-lint: disable-next-line(unsafe-typecast)
             return (int256(root), exponent);
+        }
+    }
+
+    /// The library's private `scaleUpUnguarded`, verbatim, as the library's
+    /// `sqrt` calls it.
+    function scaleUpUnguarded(int256 signedCoefficient, int256 exponent) private pure returns (int256, int256) {
+        unchecked {
+            // Each step multiplies by 10^s only when c < 10^(76 - s), so c
+            // stays below 1e76, and leaves c at least 10^(76 - s). That holds
+            // as the previous step left c at least 10^(76 - 2s) (c >= 1 for
+            // the first): s is half, rounded up, of the 76, 38, 19, 10, 5, 3
+            // and 2 digits c may lack to reach 1e76, so c ends at least 1e75.
+            // c gains exactly the digits shifted, under 76 from c >= 1.
+            if (signedCoefficient < 1e38) {
+                signedCoefficient *= 1e38;
+                exponent -= 38;
+            }
+            if (signedCoefficient < 1e57) {
+                signedCoefficient *= 1e19;
+                exponent -= 19;
+            }
+            if (signedCoefficient < 1e66) {
+                signedCoefficient *= 1e10;
+                exponent -= 10;
+            }
+            if (signedCoefficient < 1e71) {
+                signedCoefficient *= 1e5;
+                exponent -= 5;
+            }
+            if (signedCoefficient < 1e73) {
+                signedCoefficient *= 1e3;
+                exponent -= 3;
+            }
+            if (signedCoefficient < 1e74) {
+                signedCoefficient *= 1e2;
+                exponent -= 2;
+            }
+            if (signedCoefficient < 1e75) {
+                signedCoefficient *= 10;
+                exponent -= 1;
+            }
+            return (signedCoefficient, exponent);
         }
     }
 }
