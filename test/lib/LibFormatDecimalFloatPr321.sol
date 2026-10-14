@@ -2,18 +2,41 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {LibDecimalFloat, Float} from "src/lib/LibDecimalFloat.sol";
-import {LibDecimalFloatImplementation} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Float} from "src/lib/LibDecimalFloat.sol";
+import {
+    MAXIMIZED_ZERO_SIGNED_COEFFICIENT,
+    MAXIMIZED_ZERO_EXPONENT
+} from "src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {MaximizeOverflow} from "src/error/ErrDecimalFloat.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
 import {UnformatableExponent} from "src/error/ErrFormat.sol";
 
 /// `LibFormatDecimalFloat` verbatim from
 /// `src/lib/format/LibFormatDecimalFloat.sol` at ce55522 (#321), before #310's
-/// format change. Equivalence tests only.
+/// format change, with `LibDecimalFloat.unpack` and
+/// `LibDecimalFloatImplementation.maximizeFull`, `maximize` and their constants
+/// copied from the same commit as private functions, so it calls nothing on
+/// the live library. Equivalence tests only.
 /// EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing with it says
 /// nothing about a value. Expected strings come from `expectedFormat` in
 /// `LibFormatDecimalFloat.toDecimalString.t.sol`.
 library LibFormatDecimalFloatPr321 {
+    /// Inline assembly takes only literal constants.
+    uint256 private constant E10 = 1e10;
+    uint256 private constant E19 = 1e19;
+    uint256 private constant E38 = 1e38;
+    uint256 private constant E57 = 1e57;
+    uint256 private constant E66 = 1e66;
+    uint256 private constant E74 = 1e74;
+    uint256 private constant E75 = 1e75;
+    /// `type(int256).max / 10`. A coefficient times ten fits int256 iff its
+    /// magnitude is at most this.
+    uint256 private constant TIMES_TEN_MAX =
+        5789604461865809771178549250434395392663499233282028201972879200395656481996;
+    /// `2 * TIMES_TEN_MAX + 1`.
+    uint256 private constant TIMES_TEN_SPAN =
+        11579208923731619542357098500868790785326998466564056403945758400791312963993;
+
     /// Maximum `|exponent|` supported by non-scientific formatting. Exponents
     /// outside `[-MAX_NON_SCIENTIFIC_EXPONENT, MAX_NON_SCIENTIFIC_EXPONENT]`
     /// revert with `UnformatableExponent`. The cap exists to prevent unbounded
@@ -28,7 +51,7 @@ library LibFormatDecimalFloatPr321 {
     /// @param scientific Whether to format in scientific notation (e.g. 1e10).
     /// @return The string representation of the decimal float.
     function toDecimalString(Float float, bool scientific) internal pure returns (string memory) {
-        (int256 signedCoefficient, int256 exponent) = LibDecimalFloat.unpack(float);
+        (int256 signedCoefficient, int256 exponent) = unpack(float);
         if (signedCoefficient == 0) {
             return "0";
         }
@@ -44,7 +67,7 @@ library LibFormatDecimalFloatPr321 {
     /// `1e76` which both fit in int256.
     function _toScientific(int256 signedCoefficient, int256 exponent) private pure returns (string memory) {
         int256 originalExponent = exponent;
-        (signedCoefficient, exponent) = LibDecimalFloatImplementation.maximizeFull(signedCoefficient, exponent);
+        (signedCoefficient, exponent) = maximizeFull(signedCoefficient, exponent);
 
         uint256 scale;
         uint256 scaleExponent;
@@ -227,6 +250,100 @@ library LibFormatDecimalFloatPr321 {
                 out[2 + leadingZerosCount + i] = digits[i];
             }
             return string.concat(prefix, string(out));
+        }
+    }
+
+    /// Unpack a packed bytes32 into a signed coefficient and exponent. This is
+    /// the inverse of `pack`.
+    /// @param float The packed representation of the signed coefficient and
+    /// exponent.
+    /// @return signedCoefficient The signed coefficient of the floating point
+    /// representation.
+    /// @return exponent The exponent of the floating point representation.
+    function unpack(Float float) private pure returns (int256 signedCoefficient, int256 exponent) {
+        uint256 mask = type(uint224).max;
+        assembly ("memory-safe") {
+            signedCoefficient := signextend(27, and(float, mask))
+            exponent := sar(0xe0, float)
+        }
+    }
+
+    /// Maximizes a float as per `maximize` but errors if the exponent cannot
+    /// take the whole shift. This is analogous to other functions in the lib
+    /// that are "lossless".
+    /// @param signedCoefficient The signed coefficient.
+    /// @param exponent The exponent.
+    /// @return signedCoefficient The maximized signed coefficient.
+    /// @return exponent The maximized exponent.
+    function maximizeFull(int256 signedCoefficient, int256 exponent) private pure returns (int256, int256) {
+        (int256 trySignedCoefficient, int256 tryExponent, int256 shortfall) = maximize(signedCoefficient, exponent);
+        if (shortfall != 0) {
+            revert MaximizeOverflow(signedCoefficient, exponent);
+        }
+        return (trySignedCoefficient, tryExponent);
+    }
+
+    /// Maximizes a float's signed coefficient by increasing its magnitude
+    /// and decreasing its exponent accordingly. Greatly simplified a lot of
+    /// private logic that involves comparing signed coefficients as integers,
+    /// or wanting them to have comparable magnitudes.
+    ///
+    /// The coefficient is always fully maximized. Near `type(int256).min` the
+    /// exponent cannot take the whole shift, so it stops at the floor and the
+    /// digits it could not take are returned as the shortfall. The input value
+    /// is then `signedCoefficient * 10^(exponent - shortfall)`.
+    /// @return signedCoefficient The maximized signed coefficient.
+    /// @return exponent The maximized exponent.
+    /// @return shortfall The digits of shift the exponent could not take, in
+    /// [0, 76]. Nonzero only when the exponent is `type(int256).min`.
+    function maximize(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256, int256) {
+        unchecked {
+            if (signedCoefficient == 0) {
+                return (MAXIMIZED_ZERO_SIGNED_COEFFICIENT, MAXIMIZED_ZERO_EXPONENT, 0);
+            }
+
+            int256 maximizedExponent = exponent;
+            assembly ("memory-safe") {
+                // Check if already maximized before dropping into a block full
+                // of jumps.
+                if iszero(sdiv(signedCoefficient, E75)) {
+                    if iszero(sdiv(signedCoefficient, E38)) {
+                        signedCoefficient := mul(signedCoefficient, E38)
+                        maximizedExponent := sub(maximizedExponent, 38)
+                    }
+                    if iszero(sdiv(signedCoefficient, E57)) {
+                        signedCoefficient := mul(signedCoefficient, E19)
+                        maximizedExponent := sub(maximizedExponent, 19)
+                    }
+                    if iszero(sdiv(signedCoefficient, E66)) {
+                        signedCoefficient := mul(signedCoefficient, E10)
+                        maximizedExponent := sub(maximizedExponent, 10)
+                    }
+                    for {} iszero(sdiv(signedCoefficient, E74)) {} {
+                        signedCoefficient := mul(signedCoefficient, 100)
+                        maximizedExponent := sub(maximizedExponent, 2)
+                    }
+                    if iszero(sdiv(signedCoefficient, E75)) {
+                        signedCoefficient := mul(signedCoefficient, 10)
+                        maximizedExponent := sub(maximizedExponent, 1)
+                    }
+                }
+                // Maybe we can fit in one more OOM without overflow, but we
+                // won't know until we try. This pushes us into
+                // [1e76,type(int256).max] and [-type(int256).max,-1e76] ranges,
+                // if that's possible.
+                if lt(add(signedCoefficient, TIMES_TEN_MAX), TIMES_TEN_SPAN) {
+                    signedCoefficient := mul(signedCoefficient, 10)
+                    maximizedExponent := sub(maximizedExponent, 1)
+                }
+            }
+
+            // The shift is at most 76, so the exponent wrapped past the floor
+            // exactly when it went up.
+            if (maximizedExponent > exponent) {
+                return (signedCoefficient, type(int256).min, type(int256).max - maximizedExponent + 1);
+            }
+            return (signedCoefficient, maximizedExponent, 0);
         }
     }
 }

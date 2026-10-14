@@ -3,15 +3,20 @@
 pragma solidity ^0.8.25;
 
 import {ExponentOverflow} from "src/error/ErrDecimalFloat.sol";
-import {Float, LibDecimalFloat} from "src/lib/LibDecimalFloat.sol";
+import {Float} from "src/lib/LibDecimalFloat.sol";
 
 /// `packLossy` verbatim from `src/lib/LibDecimalFloat.sol` at
 /// 4d2d1e8ea388257fb9a5526748f15ea935c82002, which lifts an exponent above
-/// int32.max before any shedding, with the nearest-bound rule of #332 added
-/// after shedding. EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing
+/// int32.max before any shedding, with the nearest-bound rule of #332 from
+/// cb59101068e9adbb5c1fb5d02fcf15d5a3539cb4 added after shedding, and with
+/// `FLOAT_ZERO` copied from 4d2d1e8 as private, so it reads nothing on the
+/// live library. EQUIVALENCE BASELINE ONLY, NEVER A VALUE ORACLE: agreeing
 /// with it says nothing about a result's value. Expected values come from
 /// `LibExactFloat` over exact math.
 library LibDecimalFloatPackLossyLiftFirst {
+    /// A zero valued float.
+    Float private constant FLOAT_ZERO = Float.wrap(0);
+
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {
             int256 initialSignedCoefficient = signedCoefficient;
@@ -85,7 +90,7 @@ library LibDecimalFloatPackLossyLiftFirst {
                 if (signedCoefficient == 0) {
                     // The literal is the bool this function returns, not a condition operand.
                     //forge-lint: disable-next-line(boolean-cst)
-                    return (LibDecimalFloat.FLOAT_ZERO, true);
+                    return (FLOAT_ZERO, true);
                 }
             }
 
@@ -111,7 +116,7 @@ library LibDecimalFloatPackLossyLiftFirst {
                 if (shortfall > 67) {
                     // The literal is the bool this function returns, not a condition operand.
                     //forge-lint: disable-next-line(boolean-cst)
-                    return (LibDecimalFloat.FLOAT_ZERO, false);
+                    return (FLOAT_ZERO, false);
                 }
                 // shortfall is in [1, 67] so 10 ** shortfall fits int256 and the
                 // casts cannot truncate.
@@ -123,7 +128,7 @@ library LibDecimalFloatPackLossyLiftFirst {
                     // zero and it is not a lossless conversion.
                     // The literal is the bool this function returns, not a condition operand.
                     //forge-lint: disable-next-line(boolean-cst)
-                    return (LibDecimalFloat.FLOAT_ZERO, false);
+                    return (FLOAT_ZERO, false);
                 }
                 exponent = type(int32).min;
             }

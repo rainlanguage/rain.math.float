@@ -300,6 +300,19 @@ contract LibDecimalFloatSqrtTest is Test {
         checkMain(uint256(int256(signedCoefficient)), exponent);
     }
 
+    /// At 26a3cf06 sqrt's unguarded `scaleUp` wraps 1 10^int256.min to 1e75
+    /// 10^(int256.max - 74), so the root's exponent is int256.max / 2 - 39
+    /// rather than the library's int256.min / 2 - 40 (#451). The baseline
+    /// must reproduce that, not the live `scaleUp`'s `ScaleUpOutOfRange`.
+    function testImplementationSqrtMainExponentFloorWraps() external pure {
+        (int256 mainCoefficient, int256 mainExponent) = LibDecimalFloatSqrtVariants.sqrtMain(1, type(int256).min);
+        assertEq(mainCoefficient, 1e40, "main coefficient");
+        assertEq(mainExponent, type(int256).max / 2 - 39, "main exponent");
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(1, type(int256).min);
+        assertEq(rootCoefficient, 1e40, "coefficient");
+        assertEq(rootExponent, type(int256).min / 2 - 40, "exponent");
+    }
+
     /// The seed is furthest from the root at the ends of E's decade and at
     /// E = a b: 312e73 for an even exponent, where E is the coefficient, and
     /// 3116e71 for an odd one, where it is the coefficient over 10.
