@@ -70,3 +70,19 @@ Changing it to `<= type(int256).max - adjustExponent - 1` changes the outcome
 only at the same `exponentB`, where the mutant returns `(0, 0)` directly and the
 original returns the same `(0, 0)` through `underflowExponentBy > 76`. The
 comparison is free at its boundary in both directions.
+
+## Equivalent mutants: the fraction exponent guard in `parseDecimalFloatInline`
+
+`src/lib/parse/LibParseDecimalFloat.sol`, `parseDecimalFloatInline`, the
+`if (exponent >= 0) revert ParseDecimalNonNegativeFractionExponent(start)` guard
+in the fraction branch. Relaxing it to `exponent > 0`, dropping it, or changing
+what the branch reverts with changes nothing, because the branch is dead:
+`nonZeroCursor` starts at the end of the fraction digits and the scan back steps
+over `0` bytes only, and the byte before `fracStart` is the `.`, so it stops at
+`fracStart` at the latest and `nonZeroCursor` is in `[fracStart, cursor]`. The
+branch runs only under `nonZeroCursor != fracStart`, so there
+`nonZeroCursor > fracStart` and
+`exponent = int256(fracStart) - int256(nonZeroCursor)` is negative for every
+input (both offsets are memory addresses far below 2^255, so the difference does
+not wrap). Negating the guard to `exponent < 0` is not equivalent: it reverts on
+every fraction with a nonzero digit, and the parse suite kills it.
