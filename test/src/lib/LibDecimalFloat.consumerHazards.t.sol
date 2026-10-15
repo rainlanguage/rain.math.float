@@ -285,31 +285,34 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// the fraction. The Float is an integer, the flag reports lossless, and the
     /// ceiling is the floor.
     function testWeiCeilUndershootAboveBound() external pure {
-        uint256[3] memory t = weiCeilUndershootInputs()[0];
-        assertCeilUndershoot(t[0], t[1], t[2]);
-        assertEq(t[0] * t[1] % t[2], 1);
-        assertEq(t[0] * t[1] / t[2], 141013662702203138346178127999661287557765869225433082393300571767);
+        uint256[3] memory input = weiCeilUndershootInputs()[0];
+        (uint256 a, uint256 b, uint256 c) = (input[0], input[1], input[2]);
+        assertCeilUndershoot(a, b, c);
+        assertEq(a * b % c, 1);
+        assertEq(a * b / c, 141013662702203138346178127999661287557765869225433082393300571767);
     }
 
     /// A failing a*b of about 0.0701 int224.max, inside the 1e33 operand bounds:
     /// a * (b / c) reports an exact integer for a non-integer a*b/c. The assertGt
     /// in assertCeilUndershoot pins WEI_SAFE_SIDE_AB_MAX below it.
     function testWeiCeilUndershootJustAboveBound() external pure {
-        uint256[3] memory t = weiCeilUndershootInputs()[1];
-        assertCeilUndershoot(t[0], t[1], t[2]);
-        assertLe(t[0], 1e33);
-        assertLe(t[1], 1e33);
-        assertEq(t[0] * t[1] % t[2], 1);
-        assertEq(t[0] * t[1] / t[2], 134964930479977501092417587112111680069047645347077958594980454837);
+        uint256[3] memory input = weiCeilUndershootInputs()[1];
+        (uint256 a, uint256 b, uint256 c) = (input[0], input[1], input[2]);
+        assertCeilUndershoot(a, b, c);
+        assertLe(a, 1e33);
+        assertLe(b, 1e33);
+        assertEq(a * b % c, 1);
+        assertEq(a * b / c, 134964930479977501092417587112111680069047645347077958594980454837);
     }
 
     /// a*b about 0.0630 int224.max, inside int224.max / 15: a * (b / c) reports
     /// an exact integer for a non-integer a*b/c.
     function testWeiCeilUndershootInsideFifteenth() external pure {
-        uint256[3] memory t = weiCeilUndershootInputs()[2];
-        assertCeilUndershoot(t[0], t[1], t[2]);
-        assertLe(t[0] * t[1], uint256(int256(type(int224).max)) / 15);
-        assertEq(t[0] * t[1] / t[2], 13491639987311749946720071013608698805283216399205952474008352255);
+        uint256[3] memory input = weiCeilUndershootInputs()[2];
+        (uint256 a, uint256 b, uint256 c) = (input[0], input[1], input[2]);
+        assertCeilUndershoot(a, b, c);
+        assertLe(a * b, uint256(int256(type(int224).max)) / 15);
+        assertEq(a * b / c, 13491639987311749946720071013608698805283216399205952474008352255);
     }
 
     /// The bound is tight: a*b about 0.0510 int224.max, inside int224.max / 19,
@@ -321,11 +324,12 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// a*b/c has fraction 1/51. The same construction with c = 5 * 10^(k-2) + 1
     /// fails at about (1/20 + 10^-k) int224.max.
     function testWeiCeilUndershootNearBound() external pure {
-        uint256[3] memory t = weiCeilUndershootInputs()[3];
-        assertCeilUndershoot(t[0], t[1], t[2]);
-        assertLe(t[0] * t[1], uint256(int256(type(int224).max)) / 19);
-        assertEq(t[0] * t[1] % t[2], 1);
-        assertEq(t[0] * t[1] / t[2], 13479973333575319897333507543509898301485480274629307365406402346);
+        uint256[3] memory input = weiCeilUndershootInputs()[3];
+        (uint256 a, uint256 b, uint256 c) = (input[0], input[1], input[2]);
+        assertCeilUndershoot(a, b, c);
+        assertLe(a * b, uint256(int256(type(int224).max)) / 19);
+        assertEq(a * b % c, 1);
+        assertEq(a * b / c, 13479973333575319897333507543509898301485480274629307365406402346);
     }
 
     /// One mul can drop a sub-ulp fraction: 2e18 * (1 + 1e-67) is
@@ -334,6 +338,9 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     function testSingleMulSubUlpFractionReadsLossless() external pure {
         Float amount = LibDecimalFloat.fromFixedDecimalLosslessPacked(2e18, 0);
         Float rate = LibDecimalFloat.packLossless(1e67 + 1, -67);
+        (int256 rateCoefficient, int256 rateExponent) = rate.unpack();
+        assertEq(rateExponent, -67);
+        assertEq(rateCoefficient % 1e67, 1);
         (uint256 got, bool lossless) = amount.mul(rate).toFixedDecimalLossy(0);
         assertEq(got, 2e18);
         assertTrue(lossless);
