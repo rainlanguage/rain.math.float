@@ -2361,11 +2361,11 @@ mod oracle_checks {
         // a limit past int256.max that mul would truncate below the spread.
         let h = Dec::new(
             "5789604461865809771178549250434395392663499233282028201969066711282"
-                .parse::<BigInt>()
+                .parse::<num_bigint::BigInt>()
                 .unwrap(),
             10,
         );
-        let l = Dec::new(BigInt::from(-38124891136564819967i128), 0);
+        let l = Dec::new(num_bigint::BigInt::from(-38124891136564819967i128), 0);
         let p = Dec::new(pow10(66) + 658505972u32, -66);
         assert_eq!(want(&z, &p, &l, &h), Ok(Some(true)));
         // 6 against -9e-76 is past 6 by 1.5e-76 of the spread, which the
