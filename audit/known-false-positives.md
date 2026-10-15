@@ -31,6 +31,38 @@ most about 1e41, and such a coefficient is past every Float only at an excess of
 27 or more over `int32.max` (1e41 × 10^26 is below 2^223 + 2), so no input can
 tell the gates apart. `+ 1` and `+ 30` have both survived.
 
+## Resolved by removal: `pow` carry path `excess <= 67` guard at any bound from 27 up, or dropped
+
+`src/lib/LibDecimalFloat.sol`, `packRoundedSignificant`. The `excess <= 67`
+guard, the `excess > 0` guard around it and the `revertIfPastLargestFloat` on
+the rounded value that followed were removed, so these mutants have no target:
+the carry path is `isPastEveryFloat(roundedCoefficient, roundedExponent)` alone.
+The record of why their mutants were equivalent stays as the proof that the
+removal changed nothing. The `excess > 0` guard was dead by the same argument as
+the `k` below 27: the rounded coefficient is at most 1e41 in magnitude
+(`roundSignificant` leaves 41 digits, or 1e41 on a carry), so at an exponent up
+to `int32.max` the rounded value is at most `1e41 × 10^int32.max`, below
+`(2^223 + 2) × 10^int32.max`, and `isPastEveryFloat` was already false there.
+The `revertIfPastLargestFloat(roundedCoefficient, roundedExponent, input)` after
+the branch ran only when `isPastEveryFloat` of the same pair was false, so it
+never reverted.
+
+Changing `excess <= 67 && isPastEveryFloat(roundedCoefficient, roundedExponent)`
+to `excess <= k && ...` for any `k` from 27 up, or dropping the `excess <= 67`
+term, changed nothing. `roundSignificant` returns a coefficient under 1e41
+unchanged, so the rounded and unrounded pairs are then equal and both branches
+check the same value: past reverts `ExponentOverflow(input)` either way, and not
+past packs it either way. Otherwise the rounded coefficient is at least 1e40 (41
+digits, or 1e41 on a carry), so at an excess of 28 or more the rounded value is
+at least `1e68 × 10^int32.max`, past every Float, and the unrounded value is
+within half a unit of the rounded one's last digit, at least
+`(1e40 - 1/2) × 10^(int32.max + 28)`, past too: checking either reverts
+`ExponentOverflow(input)`. At an excess of 27 a rounded coefficient from
+`(2^223 + 2) / 1e27` up is past while the unrounded one can be below it, so
+`k = 26` was not equivalent; `testPowCarryShedsTheUnrounded` killed it. `k = 66`
+and the dropped term survived the `Pow` suite at 5096 fuzz runs before the
+removal.
+
 ## Equivalent mutant: signed `isPastEveryFloat` with int256.min as `2^255 - 1`
 
 `src/lib/LibDecimalFloat.sol`, `isPastEveryFloat(int256, int256)`. Mapping

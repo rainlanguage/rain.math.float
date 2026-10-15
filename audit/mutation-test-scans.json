@@ -988,7 +988,7 @@
     "testsAfterCommit": "347bd3a8ca13f063d9c2487955ea9503f36e6b6d",
     "publishedTag": "sol-v0.2.38",
     "commitsAheadOfTag": 0,
-    "scope": "Issue #376: LibFormatDecimalFloat formats every Float. Before = main 369aee0 source and tests. After = 347bd3a, both UnformatableExponent guards deleted, only the \u00b11000 non-scientific cap left. Probe suite: forge test --mc \"LibFormatDecimalFloat|LibDecimalFloatFormatParse|LibDecimalFloatExoticFloat\". Shared mutants in both trees: S1 cap upper > to >=, S2 cap lower side dropped, S3 display exponent 75 to 76, S4 negative exponent magnitude off by one, S5 exponent marker e to E, S6 exponent digits start one byte low. Guard behaviour, mirrored: before, M1-M3 delete the scientific int32 guard, the exponent >= 68 guard and the int224 quotient guard; after, R1-R3 reintroduce each one. Before 8/9 killed: S1 survived because main expected (1, 1000) to revert, and the cap reverts it with the same data. After 9/9 killed: testFormatNonScientificCapBoundaries and testFormatEveryFloatNonScientificInsideCap kill S1. R1-R3 are also killed by the format suite alone (--mc LibFormatDecimalFloatToDecimalStringTest), by testFormatEveryFloatScientific, testFormatExtremeFloats, testFormatScientificExponentPastInt32, testFormatNonScientificIntegerPastInt224 and testFormatNonScientificCapBoundaries.",
+    "scope": "Issue #376: LibFormatDecimalFloat formats every Float. Before = main 369aee0 source and tests. After = 347bd3a, both UnformatableExponent guards deleted, only the ±1000 non-scientific cap left. Probe suite: forge test --mc \"LibFormatDecimalFloat|LibDecimalFloatFormatParse|LibDecimalFloatExoticFloat\". Shared mutants in both trees: S1 cap upper > to >=, S2 cap lower side dropped, S3 display exponent 75 to 76, S4 negative exponent magnitude off by one, S5 exponent marker e to E, S6 exponent digits start one byte low. Guard behaviour, mirrored: before, M1-M3 delete the scientific int32 guard, the exponent >= 68 guard and the int224 quotient guard; after, R1-R3 reintroduce each one. Before 8/9 killed: S1 survived because main expected (1, 1000) to revert, and the cap reverts it with the same data. After 9/9 killed: testFormatNonScientificCapBoundaries and testFormatEveryFloatNonScientificInsideCap kill S1. R1-R3 are also killed by the format suite alone (--mc LibFormatDecimalFloatToDecimalStringTest), by testFormatEveryFloatScientific, testFormatExtremeFloats, testFormatScientificExponentPastInt32, testFormatNonScientificIntegerPastInt224 and testFormatNonScientificCapBoundaries.",
     "tool": "adversarial-mutation-test",
     "skillVersion": "0.35.0",
     "summary": {
@@ -1147,6 +1147,48 @@
       "confirmed": 0,
       "testsBefore": 42,
       "testsAfter": 44,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-14T20:36:25Z",
+    "commit": "3921acaacc2375d904a5684b62b6e413d6826b61",
+    "testsAfterCommit": "3921acaacc2375d904a5684b62b6e413d6826b61",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 8,
+    "scope": "PR #712 (#649, #611): one encoding of the packLossy overflow threshold. NEVER_PAST_EXPONENT, LibDecimalFloat.isPastEveryFloat (uint256 and signed overloads), packLossy's lift path, the div and pow10 NEVER_PAST_EXPONENT gates, pow's carry path (packRoundedSignificant), revertIfPastLargestFloat, both LibParseDecimalFloat call sites and the past-int256 floorExponent branch. Suite per probe: forge test --match-contract 'Pack|Parse|Pow|Div' at 256 fuzz runs, seed 0x712; the Rust differential suite was not in the probe command. Before = main c554370's test tree on the PR source (316 tests), after = the PR's tests (322 tests). 27 mutants: M01/M02 NEVER_PAST_EXPONENT one higher/lower; M03/M04 fast exit strict/true; M05 any-nonzero arm at 66; M06 zero past at high excess; M07/M08 floor arm >= and 2^223+2; M09/M10 product arm > and 2^223+1; M11 excess off by one; M12 signed overload drops abs; M13 packLossy past check off; M14 lift one digit short; M15 div gate +1; M16 pow10 gate at int32.max+17; M16b pow10 gate at int32.max+27; M17 pow carry always falls back; M18/M19 carry excess guard 26/66; M20 revertIfPastLargestFloat negated; M21 parser inline drops abs; M22/M23 parser past checks off; M24 floor branch drops wrap check; M25 floorExponent -78; M26 wrap check <=. Before 24/27 killed (M03 survives: its boundary is only reachable by a direct isPastEveryFloat call, which no caller makes; M16, M19 equivalent). After 25/27 killed: M03 by the PR's testIsPastEveryFloatExactEdges; M02/M24 also by testIsPastEveryFloatExactEdges / testParsePastInt256FloorExponentPastInt256; main's killers include testPackLossyOverflowThresholdEdges, testPackLossyCeilingTruncationBand, testPackLossyLiftFirstEquivalenceExtremes, testParseOverflowThresholdExcesses, testParseOverflowThresholdPointPositions, testParseNearOverflowThreshold, testParseRuleLiteralShapeFuzz, testParseZeroHugeExponent, testDivAtTheOverflowThreshold, testPow10Thresholds, testPow10NearThresholds, testPowCarryShedsTheUnrounded, testPowRoundedAtTheHeadroomBound. Survivors: M16 is inside the pow10 gate band audit/known-false-positives.md already proves equivalent (up to int32.max+26; M16b at int32.max+27 is killed, so the band edge is pinned); M19 is equivalent (any carry guard bound from 27 up, or none: at excess 28+ a 41 digit rounded value and its unrounded source are both past) and is recorded with proof. No tests added. Adversarial pass: SPEC.md's isPastEveryFloat and packLossy claims re-derived (not past implies nothing was shed, so the lift is from the initial pair; floor arm m > floor((t-1)/10^x) is m*10^x >= t; parser floor branch exact because the threshold is a multiple of 10^floorExponent at or below int32.max); test oracles (LibExactFloat.overflows, reference.rs) are independent big-integer compares; no candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 27,
+      "killedBefore": 24,
+      "killedAfter": 25,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 316,
+      "testsAfter": 322,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:05:19Z",
+    "commit": "9d452a159e119f3f01efc0518b3a9ed755e65870",
+    "testsAfterCommit": "93ed35b426df531c355adcd6a3e8c565ce75b18c",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 19,
+    "scope": "pr:710 round 2: packRoundedSignificant's carry block reduced to isPastEveryFloat(rounded) alone (the excess > 0 guard, the excess <= 67 conjunct and the trailing revertIfPastLargestFloat(rounded) removed as dead), and check_pack in crates/tests/src/differential.rs now compares the signed isPastEveryFloat harness overload with the uint256 one. Before = 9d452a15 (the branch merged with main after #712): marvin's M19 (conjunct dropped) and M29 (excess <= 66) both SURVIVED forge test --match-contract Pow (80 tests, 5096 fuzz runs), equivalent by the proof in audit/known-false-positives.md, now marked resolved by removal. Solidity, pre-existing Pow suite on the simplified block, 12 mutants, 12 killed: carry test on the unrounded pair, negated, forced true, forced false (A01-A04); unrounded range check dropped, on the rounded pair, exponent +1 and -1, reporting the rounded value (A05-A09); fallback packing the rounded pair, packing lossless, returning zero (A10-A12). Killers: testPowCarryShedsTheUnrounded (all but A03), testPowEitherSideOfTheOverflowThreshold, testPowHalfPastTheThreshold, testPowHalfPastTheRange, testPowRoundedAtTheTop, testPowInt224MinAtTop, testPowFloor, testPowFractionExact, testPowIntegerLegAtRoundingTie, testPowHugeExponentDirection, testPowMinusOneHugeBaseUnderflows. Rust, cargo test -p rain-math-float-tests differential_pack at 2000 cases, 4 mutants (signed overload without abs, signed overload exponent +1, harness overload casting without abs, harness overload answering false): before 0/4 killed (nothing called the signed overload), after 4/4 killed by differential_pack. The first Rust pass was discarded: a target/ copied from the warm template ran build.rs with the template's CARGO_MANIFEST_DIR, so forge built the template and the clone's out/ was stale (even the answers-false mutant survived); cargo clean -p rain-math-float-tests fixed it. Adversarial: old and new carry blocks agree on every input (rounded value never past at or below int32.max since it is at most 1e41; above excess 67 and at 67 with a coefficient of 2 or more both values are past and the same ExponentOverflow(input) is raised; the trailing rounded check ran only where its predicate was false). No candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 16,
+      "killedBefore": 12,
+      "killedAfter": 16,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 81,
+      "testsAfter": 81,
       "filed": []
     }
   }

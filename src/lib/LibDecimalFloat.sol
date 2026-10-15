@@ -584,7 +584,7 @@ library LibDecimalFloat {
     /// `(2^223 + 2) × 10^int32.max`, where `packLossy` reverts
     /// `ExponentOverflow` for either sign. This is the one encoding of that
     /// threshold; `packLossy`, `div`, `pow`, `pow10` and the parser all check
-    /// it here (#649). Exact for every magnitude and exponent; zero is never
+    /// it here. Exact for every magnitude and exponent; zero is never
     /// past, and no value at an exponent at or below `NEVER_PAST_EXPONENT` is past.
     /// @param magnitude The magnitude of the value.
     /// @param exponent The exponent of the value.
@@ -1378,20 +1378,16 @@ library LibDecimalFloat {
     {
         (int256 roundedCoefficient, int256 roundedExponent) =
             LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
-        // The rounded coefficient is at most 1e41, so it packs without overflow
-        // at an exponent up to int32.max. Above it, only a carry can leave the
-        // unrounded value packable: when the rounded value is past every Float,
-        // the unrounded one is packed. Past an excess of 67 neither can lift,
-        // so only the rounded value is checked there.
-        int256 excess = roundedExponent - type(int32).max;
-        if (excess > 0) {
-            if (excess <= 67 && isPastEveryFloat(roundedCoefficient, roundedExponent)) {
-                // Above int32.max this cannot underflow.
-                revertIfPastLargestFloat(signedCoefficient, exponent, input);
-                (Float unrounded,) = packLossy(signedCoefficient, exponent);
-                return unrounded;
-            }
-            revertIfPastLargestFloat(roundedCoefficient, roundedExponent, input);
+        // Rounding up can carry a value within the largest Float past it: when
+        // the rounded value is past every Float, the unrounded one is checked
+        // and packed instead. The rounded coefficient is at most 1e41 in
+        // magnitude, so at an exponent up to int32.max it is never past.
+        if (isPastEveryFloat(roundedCoefficient, roundedExponent)) {
+            // The unrounded exponent is at most 36 below the rounded one,
+            // which is above int32.max, so this cannot underflow.
+            revertIfPastLargestFloat(signedCoefficient, exponent, input);
+            (Float unrounded,) = packLossy(signedCoefficient, exponent);
+            return unrounded;
         }
         (Float c, bool lossless) = packLossy(roundedCoefficient, roundedExponent);
         if (!lossless && Float.unwrap(c) == bytes32(0)) {

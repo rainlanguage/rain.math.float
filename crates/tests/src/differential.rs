@@ -646,6 +646,20 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
         c,
         e
     );
+    // The signed overload is the same predicate of the coefficient's
+    // magnitude, int256.min as 2^255 included.
+    let is_past_signed = evm::harness(H::isPastEveryFloat_1Call {
+        signedCoefficient: sc,
+        exponent: se,
+    })
+    .unwrap();
+    prop_assert_eq!(
+        is_past_signed,
+        is_past,
+        "signed isPastEveryFloat({}, {})",
+        c,
+        e
+    );
     match (lossy, &want) {
         (Ok(r), Ok((w, l))) => {
             let s = d(&Dec::from_bytes(r._0));
