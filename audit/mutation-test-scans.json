@@ -1170,5 +1170,28 @@
       "testsAfter": 30,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-15T07:45:05Z",
+    "commit": "735f70fa1e659d2dc41c9d2cc897fe5abdd78e09",
+    "testsAfterCommit": "0e586e5abf5c113007ea9ca580bea5ef81b5e730",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 7,
+    "scope": "PR #718 (freeze the sqrt, LiftFirst and Pr321 baselines; guard every live library), round four: the frozen scaleUp's seven comparison gates and its missing domain check (test/lib/LibDecimalFloatSqrtVariants.sol), and the guard's import-path extraction in crates/tests/src/baselines.rs (either quote, open quote matched to the close, quote excluded). Probe suites: forge test --match-test 'testImplementationSqrtPre359(ScaleUpGates|CoefficientOutsideDomain)' at 1 fuzz run, so a gate mutant must fail deterministically, and cargo test --lib baselines. Before = the suite at 735f70fa: the gate mutants were caught only by fuzz (one survived a default-run campaign in rain-marvin's probe) and the quote mutants target new code, so none count as killed before. 11 mutants, all killed by the new tests after one added case (a quote of the other kind stays in the path). rain-marvin's nine round-three survivors are proved equivalent for all inputs in audit/known-false-positives.md, the sqrtPr309 root + 1 Newton divisor by bounding the decremented root to s or s - 1. Follow-up filed: #721 (guard does not follow imports).",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 11,
+      "killedBefore": 0,
+      "killedAfter": 11,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 8,
+      "testsAfter": 10,
+      "filed": [
+        "#721"
+      ]
+    }
   }
 ]
