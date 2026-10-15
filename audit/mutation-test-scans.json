@@ -1170,5 +1170,26 @@
       "testsAfter": 29,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-15T07:07:01Z",
+    "commit": "f29a01b6faf3cca012ed772ecca2cccae66a6ad0",
+    "testsAfterCommit": "f29a01b6faf3cca012ed772ecca2cccae66a6ad0",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 13,
+    "scope": "PR #717, after marvin's review of 5f53b9d: the log10Unrounded test oracle's floorE20 rewritten to `int256 quotient = value / 1e20; if (value % 1e20 < 0) { quotient -= 1; } return quotient;`. Solidity's signed `%` takes the dividend's sign, so the remainder is negative exactly for a negative non-multiple of 1e20, and the separate `value < 0` test is gone. That resolves by removal the previous entry's one equivalent (F04, `value <= 0`), and its entry in audit/known-false-positives.md is deleted. Probed at f29a01b, main merged in, suite = forge test --match-contract LibDecimalFloatImplementationLog10UnroundedTest at FOUNDRY_FUZZ_RUNS=256 FOUNDRY_FUZZ_SEED=0x717 through mutation-probe, 29 tests. R01-R10, the condition: `<= 0`, `> 0`, `!= 0`, `< 1`, `< -1`, never, always, `== 0`, modulus 1e21, modulus 1e19; R11 `-= 2`; R12 `+= 1`; R13, R14 quotient by 1e21, by 1e19; R15 the condition as `value < 0`. All 15 killed by the existing tests, testLog10UnroundedFloorE20 among the killers of each; no tests added. Adversarial: int256.min / 1e20 - 1 cannot overflow, so the rewrite is the floor for every int256. No equivalents, no candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 15,
+      "killedBefore": 15,
+      "killedAfter": 15,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 29,
+      "testsAfter": 29,
+      "filed": []
+    }
   }
 ]
