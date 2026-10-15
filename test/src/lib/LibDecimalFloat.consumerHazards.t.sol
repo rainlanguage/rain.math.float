@@ -378,7 +378,7 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// lossless-flag ceiling 10 short and 2e-66 reaches the exact ceiling.
     function testMarginIsPerOperation() external pure {
         uint256 aCoefficient = 9925887261852452467399719857351126276300750130317078586257692491778;
-        Float a = LibDecimalFloat.packLossless(int256(aCoefficient), 2);
+        Float a = LibDecimalFloat.fromFixedDecimalLosslessPacked(aCoefficient * 100, 0);
         Float res = a.mul(LibDecimalFloat.packLossless(1, 0).div(LibDecimalFloat.packLossless(73, 0)));
         uint256 exactCeil = (aCoefficient * 100 + 72) / 73;
         (uint256 got, bool lossless) = res.add(res.mul(LibDecimalFloat.packLossless(1, -66))).toFixedDecimalLossy(0);
