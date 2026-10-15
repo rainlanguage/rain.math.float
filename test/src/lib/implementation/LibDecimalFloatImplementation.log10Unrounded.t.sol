@@ -60,10 +60,15 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         return digits - 1 + (roundsUp ? int256(1) : int256(0));
     }
 
-    /// `value / 1e20` rounded toward negative infinity.
+    /// `value / 1e20` rounded toward negative infinity. The remainder takes
+    /// the sign of `value`, so it is negative exactly where the quotient was
+    /// truncated up.
     function floorE20(int256 value) internal pure returns (int256) {
         int256 quotient = value / 1e20;
-        return value < 0 && value % 1e20 != 0 ? quotient - 1 : quotient;
+        if (value % 1e20 < 0) {
+            quotient -= 1;
+        }
+        return quotient;
     }
 
     /// Whether `(c, e)` is `log10Unrounded` of the input within its proven
