@@ -183,6 +183,26 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         checkFail(s, ExponentOverflow.selector, bytes(s).length);
     }
 
+    /// More than 77 significant digits at an exponent within reach of
+    /// int256.max: the exponent of the 77 digit floor is past int256, so the
+    /// value is past every Float and parses to `ExponentOverflow` by value,
+    /// never a wrapped exponent's `ParseDecimalPrecisionLoss` (#649).
+    function testParsePastInt256FloorExponentPastInt256() external view {
+        string memory digits = string.concat("1", LibTestDecimalLiteral.zeroString(79), "1");
+        string[4] memory exponents = [
+            INT256_MAX,
+            "57896044618658097711785492504343953926634992332820282019728792003956564819963",
+            "57896044618658097711785492504343953926634992332820282019728792003956564819960",
+            "2147483647"
+        ];
+        for (uint256 i = 0; i < exponents.length; i++) {
+            string memory s = string.concat(digits, "e", exponents[i]);
+            checkFail(s, ExponentOverflow.selector, bytes(s).length);
+            s = string.concat("-", s);
+            checkFail(s, ExponentOverflow.selector, bytes(s).length);
+        }
+    }
+
     /// Issue #375's literals take their errors by value: 2^255 written out is
     /// below every bound but no Float, `1e` 2^255 is past every Float, 78
     /// fraction digits are no Float, and `1e-` (2^255 + 1) is below every
@@ -308,5 +328,29 @@ contract LibParseDecimalFloatPastInt256Test is Test {
             MalformedExponentDigits.selector,
             79
         );
+    }
+
+    /// 77 significant digits written as an integer past int256 with a
+    /// trailing zero, so the past-int256 path reads them at exponent
+    /// int32.max - 9, one above NEVER_PAST_EXPONENT: at the threshold it is
+    /// `ExponentOverflow`, one below it parses exactly.
+    function testParsePastInt256FirstExponentPastNeverPast() external view {
+        uint256 threshold = (2 ** 223 + 2) * 1e9;
+        string memory e = Strings.toString(uint256(int256(type(int32).max)) - 10);
+        string[2] memory past = [
+            string.concat(Strings.toString(threshold), "0e", e), string.concat(Strings.toString(threshold + 1), "0e", e)
+        ];
+        for (uint256 i = 0; i < past.length; i++) {
+            checkFail(past[i], ExponentOverflow.selector, bytes(past[i]).length);
+            string memory negative = string.concat("-", past[i]);
+            checkFail(negative, ExponentOverflow.selector, bytes(negative).length);
+        }
+        string memory below = string.concat(Strings.toString(threshold - 1), "0e", e);
+        (bytes4 err, uint256 cursor, int256 c, int256 x) = this.parseInline(below);
+        assertEq(err, bytes4(0), "below inline error");
+        assertEq(cursor, bytes(below).length, "below cursor");
+        // forge-lint: disable-next-line(unsafe-typecast)
+        assertEq(c, int256(threshold - 1), "below coefficient");
+        assertEq(x, int256(type(int32).max) - 9, "below exponent");
     }
 }
