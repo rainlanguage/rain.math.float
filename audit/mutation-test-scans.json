@@ -1170,5 +1170,26 @@
       "testsAfter": 128,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-15T06:56:19Z",
+    "commit": "125ea386b6e258e31334ca9ff9468620e4d0d7e5",
+    "testsAfterCommit": "125ea386b6e258e31334ca9ff9468620e4d0d7e5",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 14,
+    "scope": "PR #709, third round after rain-marvin's audit of d1284cf0 (16 mutants, 10 killed, 6 survived; two unrecorded: the inline `exponent > NEVER_PAST_EXPONENT` gate changed to `>=` or dropped. LOW: the ParseDecimalPrecisionLoss cause lists in ErrParse.sol and the parseDecimalFloat comment omit a literal whose last significant digit is below 10^int32.min while its value is at or above the smallest nonzero Float, e.g. 1.5e-2147483648. INFO: the parser's ASCII_DECIMAL_POINT and ASCII_ZERO repeat the formatter's CHAR_DOT and CHAR_ZERO under other names). Changes (125ea386): the cause lists in ErrParse.sol, the wrapper comment and SPEC.md name the digit below 10^int32.min; testParseDecimalFloatDigitBelowExponentFloorIsPrecisionLoss pins 1.5e-2147483648 (inline exact 15 x 10^-2147483649, wrapper ParseDecimalPrecisionLoss) against 1e-2147483648 (exact, packLossless(1, int32.min)), and passes on the unmodified parser; the constants are CHAR_DOT and CHAR_ZERO. Suite per probe: forge test --match-contract 'Parse|ToDecimalString' (129 tests) at 256 fuzz runs, seed 0x709, pre-existing tests plus the new pin. Mutants: M16 inline gate `>=`; M17 inline gate dropped; M18 past-int256 gate `>=`; M19 past-int256 gate dropped. All four survived and are equivalent: isPastEveryFloat's first statement returns false at or below NEVER_PAST_EXPONENT, so each gate repeats the callee's own short-circuit and the mutants compute the same value on every input. Proof in audit/known-false-positives.md (\"the parser's NEVER_PAST_EXPONENT gates before isPastEveryFloat\"). No candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 4,
+      "killedBefore": 0,
+      "killedAfter": 0,
+      "equivalent": 4,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 128,
+      "testsAfter": 129,
+      "filed": []
+    }
   }
 ]
