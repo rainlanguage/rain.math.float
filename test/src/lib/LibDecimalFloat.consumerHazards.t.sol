@@ -358,6 +358,35 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertTrue(lossless);
     }
 
+    /// A later mul scales an earlier truncation: one ulp of each intermediate is
+    /// not enough margin. 94e66 * (1 / 7) loses about 4.43, so the ulp margin of
+    /// about 1 falls 4 short of the exact ceiling.
+    function testMarginScalesThroughLaterMul() external pure {
+        Float a = LibDecimalFloat.packLossless(94, 66);
+        Float r = LibDecimalFloat.packLossless(1, 0).div(LibDecimalFloat.packLossless(7, 0));
+        Float res = a.mul(r);
+        uint256 exactCeil = (uint256(94e66) + 6) / 7;
+        (, int256 rExponent) = r.unpack();
+        (, int256 resExponent) = res.unpack();
+        Float ulpMargin = LibDecimalFloat.packLossless(1, rExponent).add(LibDecimalFloat.packLossless(1, resExponent));
+        (uint256 got, bool lossless) = res.add(ulpMargin).toFixedDecimalLossy(0);
+        assertEq(got + (lossless ? 0 : 1), exactCeil - 4);
+    }
+
+    /// The margin is per operation: a * (1 / 73) here loses about 1.45e-66 of
+    /// the result over its two truncations, so 1e-66 of the result leaves the
+    /// lossless-flag ceiling 10 short and 2e-66 reaches the exact ceiling.
+    function testMarginIsPerOperation() external pure {
+        uint256 aCoefficient = 9925887261852452467399719857351126276300750130317078586257692491778;
+        Float a = LibDecimalFloat.packLossless(int256(aCoefficient), 2);
+        Float res = a.mul(LibDecimalFloat.packLossless(1, 0).div(LibDecimalFloat.packLossless(73, 0)));
+        uint256 exactCeil = (aCoefficient * 100 + 72) / 73;
+        (uint256 got, bool lossless) = res.add(res.mul(LibDecimalFloat.packLossless(1, -66))).toFixedDecimalLossy(0);
+        assertEq(got + (lossless ? 0 : 1), exactCeil - 10);
+        (got, lossless) = res.add(res.mul(LibDecimalFloat.packLossless(2, -66))).toFixedDecimalLossy(0);
+        assertEq(got + (lossless ? 0 : 1), exactCeil);
+    }
+
     /// Dividing by a truncated price turns an exact integer into a lossy
     /// result: the lossless-flag ceiling charges 1 more than mulDivUp.
     function testExactIntegerCeilOvercharge() external pure {
@@ -401,33 +430,21 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertTrue(r.pow(LibDecimalFloat.packLossless(7, -1)).eq(LibDecimalFloat.FLOAT_ONE));
     }
 
-    /// The fuzz domain excludes the known counterexamples above the bound.
+    /// The fuzz domain excludes the known counterexamples above the bound, and
+    /// the call site keeps the clamp on b: each triple fed as (a, c, b) lies
+    /// inside the domain, and reaches the counterexample only if b and c trade
+    /// places after bounding.
     function testFuzzWeiFloorCeilSafeSideBoundsCounterexample() external view {
         uint256[3][4] memory inputs = weiCeilUndershootInputs();
         for (uint256 i = 0; i < inputs.length; i++) {
             this.testFuzzWeiFloorCeilSafeSide(inputs[i][0], inputs[i][1], inputs[i][2]);
+            this.testFuzzWeiFloorCeilSafeSide(inputs[i][0], inputs[i][2], inputs[i][1]);
         }
     }
 
-    /// The clamp admits a*b up to WEI_SAFE_SIDE_AB_MAX exactly, wraps the input
-    /// just above it onto b = 1, never b = 0, and leaves b = 1 and b = 2 alone.
-    function testWeiSafeSideClampEdges() external pure {
-        uint256 a = 1e33;
-        uint256 edge = WEI_SAFE_SIDE_AB_MAX / a;
-        (, uint256 b,) = boundWeiSafeSide(a, edge + 1, 7);
-        assertEq(b, 1);
-        (, b,) = boundWeiSafeSide(a, edge, 7);
-        assertEq(b, edge);
-        assertLe(a * b, WEI_SAFE_SIDE_AB_MAX);
-        assertGt(a * (b + 1), WEI_SAFE_SIDE_AB_MAX);
-        (, b,) = boundWeiSafeSide(a, 1, 7);
-        assertEq(b, 1);
-        (, b,) = boundWeiSafeSide(a, 2, 7);
-        assertEq(b, 2);
-    }
-
-    /// Below a = 1e33 the clamp limit is WEI_SAFE_SIDE_AB_MAX / a, and each
-    /// operand wraps at 1e33.
+    /// The clamp limit is WEI_SAFE_SIDE_AB_MAX / a: at a = 8e32 it admits a*b up
+    /// to WEI_SAFE_SIDE_AB_MAX and wraps the input just above it onto b = 1,
+    /// never b = 0. Each operand wraps at 1e33.
     function testWeiSafeSideDomainInteriorEdges() external pure {
         uint256 a = 8e32;
         uint256 edge = WEI_SAFE_SIDE_AB_MAX / a;
