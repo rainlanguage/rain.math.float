@@ -288,7 +288,14 @@ fn live_import(code: &str, imports: &[(&str, &str)]) -> Option<String> {
         if !word || statement.starts_with(is_identifier) {
             continue;
         }
-        let Some(path) = statement.rsplit('"').nth(1) else {
+        // Solidity takes either quote around the path.
+        let path = statement.rfind(['"', '\'']).and_then(|close| {
+            let quote = statement.as_bytes()[close] as char;
+            statement[..close]
+                .rfind(quote)
+                .map(|open| &statement[open + 1..close])
+        });
+        let Some(path) = path else {
             continue;
         };
         let file = path.rsplit('/').next().unwrap_or(path);
@@ -498,6 +505,37 @@ fn live_import_finds_live_files_only() {
     assert_eq!(
         live_use("import \"../../src/lib/LibDecimalFloat.sol\";", none, none),
         Ok(Some("import LibDecimalFloat.sol".into()))
+    );
+    assert_eq!(
+        live_use(
+            "import {MAXIMIZED_ZERO_EXPONENT} from '../../src/lib/implementation/LibDecimalFloatImplementation.sol';",
+            none,
+            none
+        ),
+        Ok(Some(
+            "import MAXIMIZED_ZERO_EXPONENT from LibDecimalFloatImplementation.sol".into()
+        ))
+    );
+    assert_eq!(
+        live_use("import '../../src/lib/LibDecimalFloat.sol';", none, none),
+        Ok(Some("import LibDecimalFloat.sol".into()))
+    );
+    // A quote of the other kind is part of the path, not its end.
+    assert_eq!(
+        live_use("import {X} from \"a'LibDecimalFloat.sol\";", none, none),
+        Ok(None)
+    );
+    assert_eq!(
+        live_use("import {X} from \"LibDecimalFloat.sol\";", none, none),
+        Ok(Some("import X from LibDecimalFloat.sol".into()))
+    );
+    assert_eq!(
+        live_use(
+            "import {Float} from '../../src/lib/LibDecimalFloat.sol';",
+            none,
+            none
+        ),
+        Ok(None)
     );
     assert_eq!(
         live_use(

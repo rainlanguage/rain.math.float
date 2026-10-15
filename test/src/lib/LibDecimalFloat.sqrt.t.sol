@@ -6,7 +6,7 @@ import {console2} from "forge-std-1.17.0/src/Test.sol";
 
 import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../../../src/lib/implementation/LibDecimalFloatImplementation.sol";
-import {PowNegativeBase, ExponentOverflow} from "../../../src/error/ErrDecimalFloat.sol";
+import {PowNegativeBase, ExponentOverflow, SqrtOutOfRange} from "../../../src/error/ErrDecimalFloat.sol";
 import {LibTestErrorBound} from "../../lib/LibTestErrorBound.sol";
 import {LibExactFloat, U512} from "../../lib/LibExactFloat.sol";
 import {LibDecimalFloatSqrtVariants} from "../../lib/LibDecimalFloatSqrtVariants.sol";
@@ -278,6 +278,10 @@ contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
         checkReference(rootCoefficient, rootExponent, coefficient, exponent);
     }
 
+    function liveSqrt(int256 signedCoefficient, int256 exponent) external pure returns (int256, int256) {
+        return LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
+    }
+
     /// The root before #359's seed, and the exact one.
     function checkPre359(uint256 coefficient, int256 exponent) internal pure {
         // coefficient is below 1e76, so it fits int256.
@@ -326,6 +330,28 @@ contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
     /// 10^(int256.max - 74), so the root's exponent is int256.max / 2 - 39
     /// rather than the library's int256.min / 2 - 40 (#451). The baseline
     /// must reproduce that, not the live `scaleUp`'s `ScaleUpOutOfRange`.
+    /// The frozen scaleUp's gates, at each power of ten it compares against,
+    /// for both exponent parities, and one below.
+    function testImplementationSqrtPre359ScaleUpGates() external pure {
+        uint256[7] memory gates = [uint256(1e38), 1e57, 1e66, 1e71, 1e73, 1e74, 1e75];
+        for (uint256 i = 0; i < gates.length; i++) {
+            checkPre359(gates[i], 0);
+            checkPre359(gates[i], 1);
+            checkPre359(gates[i] - 1, 0);
+        }
+    }
+
+    /// At 26a3cf06 sqrt's `scaleUp` has no domain check, so 1e76, past its
+    /// (0, 1e76) domain, returns a root where the live sqrt reverts
+    /// `SqrtOutOfRange`.
+    function testImplementationSqrtPre359CoefficientOutsideDomain() external {
+        (int256 c, int256 e) = LibDecimalFloatSqrtVariants.sqrtPre359(1e76, 0);
+        assertEq(c, 1e41);
+        assertEq(e, -3);
+        vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, int256(1e76), int256(0)));
+        this.liveSqrt(1e76, 0);
+    }
+
     function testImplementationSqrtPre359ExponentFloorWraps() external pure {
         (int256 pre359Coefficient, int256 pre359Exponent) = LibDecimalFloatSqrtVariants.sqrtPre359(1, type(int256).min);
         assertEq(pre359Coefficient, 1e40, "pre-#359 coefficient");
