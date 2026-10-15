@@ -74,16 +74,17 @@ comparison is free at its boundary in both directions.
 ## Equivalent mutants: `WEI_SAFE_SIDE_AB_MAX` divisor raised (21, 40)
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. Raising the divisor from
-20 to any `d` from 21 up to `int224.max / 2e33` (about 6.7e33), of which 21 and
+20 to any `d` from 21 up to `int224.max / 1e33` (about 1.3e34), of which 21 and
 40 are probed, shrinks the constant, and every test reaches the same verdict on
 every input under both values. `testFuzzWeiFloorCeilSafeSide` asserts a property
 its NatSpec proves for every `a * b <= int224.max / 20`, so it holds on the
-subset `a * b <= int224.max / d` the mutant fuzzes. `testWeiSafeSideClampEdges`
-and `testWeiSafeSideDomainInteriorEdges` read the constant they check the clamp
-against, so their edges move with it, and their fixed inputs stay inside the
-domain while `WEI_SAFE_SIDE_AB_MAX / 1e33 >= 2`: that keeps `b = 2` passing
-through at `a = 1e33` and `b = 1e33` passing through at `a = 1`. Past
-`int224.max / 2e33` those assertions fail, so a larger `d` is killed, not
+subset `a * b <= int224.max / d` the mutant fuzzes, and the swapped-order calls
+in `testFuzzWeiFloorCeilSafeSideBoundsCounterexample` wrap into that subset too.
+`testWeiSafeSideDomainInteriorEdges` reads the constant it checks the clamp
+against, so its edges move with it, and its fixed inputs stay inside the domain
+while `WEI_SAFE_SIDE_AB_MAX >= 1e33`: that keeps `b = 1e33` passing through at
+`a = 1` and the clamp limit at least 1 for every `a` up to 1e33. Past
+`int224.max / 1e33` that assertion fails, so a larger `d` is killed, not
 equivalent. Every pinned counterexample has `a * b` of at least 0.0510
 int224.max, above the constant for every `d >= 20`, so each
 `assertGt(a * b, WEI_SAFE_SIDE_AB_MAX)` passes, and their upper bounds are
@@ -96,11 +97,10 @@ inputs.
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The helper's output is
 read by `testFuzzWeiFloorCeilSafeSide`, whose assertions are a function of the
-bounded `(a, b, c)` alone, by `testWeiSafeSideClampEdges`, which asserts the
-bounded `b` for raw `b` in `{edge + 1, edge, 1, 2}` with `a = 1e33`, by
-`testWeiSafeSideDomainInteriorEdges`, which asserts it for raw `b` in
-`{edge, edge + 1}` with `a = 8e32` and in `{1e33, 1e33 + 1}` with `a = 1`, and
-by `testWeiSafeSideZeroFloors` at `(0, 0, 0)`.
+bounded `(a, b, c)` alone, by `testWeiSafeSideDomainInteriorEdges`, which
+asserts the bounded `b` for raw `b` in `{edge, edge + 1}` with `a = 8e32` and in
+`{1e33, 1e33 + 1}` with `a = 1`, and by `testWeiSafeSideZeroFloors` at
+`(0, 0, 0)`.
 
 Moving the clamp before `b = bound(b, 1, 1e33)`: both orders land `b` in
 `[1, min(X, 1e33)]` for `X = WEI_SAFE_SIDE_AB_MAX / a`, because whichever bound
@@ -113,10 +113,11 @@ least 1e33: the clamp is then the identity in both orders, and only
 `X`, where the original wraps into `[1, 1e33]` before clamping and the mutant
 clamps first. Every input then reaches the same verdict: the fuzz property holds
 on the whole interval (the proof in the fuzz test's NatSpec), and no fixed input
-is above both: the raw `b` values of `testWeiSafeSideClampEdges` and
-`testFuzzWeiFloorCeilSafeSideBoundsCounterexample` are at most 1e33, and the one
-raw `b` above 1e33 in `testWeiSafeSideDomainInteriorEdges`, `1e33 + 1`, is
-passed with `a = 1`, where `X = WEI_SAFE_SIDE_AB_MAX`.
+is above both: the raw `b` values
+`testFuzzWeiFloorCeilSafeSideBoundsCounterexample` passes, in either order, are
+at most 1e33, and the one raw `b` above 1e33 in
+`testWeiSafeSideDomainInteriorEdges`, `1e33 + 1`, is passed with `a = 1`, where
+`X = WEI_SAFE_SIDE_AB_MAX`.
 
 Raising the guard from `a > 0` to `a > 1`, or to any `a > k` with `k` at most
 `WEI_SAFE_SIDE_AB_MAX / 1e33` (about 6.7e32): the branch differs only for
@@ -126,16 +127,34 @@ helper's output is the same for every input;
 `testWeiSafeSideDomainInteriorEdges` passes `a = 1` and sees `b = 1e33` and
 `b = 1` under both.
 
-## Equivalent mutants: `testFuzzWeiFloorCeilSafeSideBoundsCounterexample` skips pinned inputs
+## Equivalent mutants: `testFuzzWeiFloorCeilSafeSideBoundsCounterexample` drops calls
 
-`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. Changing the loop to skip
-any pinned input, or any proper subset of them (`i = 1`,
-`i + 1 < inputs.length`, and the like), leaves every verdict unchanged. The test
-takes no input and passes iff every call passes, and each call passes because
-`boundWeiSafeSide` wraps any triple into the domain on which the fuzz property
-is proven, so any number of calls reaches the same verdict. The test exists so
-that a change to the clamp has to survive every pinned input; the clamp mutants
-it kills are killed by any one input alone, since every pinned `a * b` lies
-above `WEI_SAFE_SIDE_AB_MAX`, and each skipped input's undershoot is asserted by
-its own pinned test. A test that told the variants apart would have to count the
-test's own calls, which pins plumbing, not behaviour.
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The loop makes two calls
+per pinned input, `(a, b, c)` and `(a, c, b)`. Any change that only removes
+calls leaves every verdict unchanged: skipping any pinned input or any proper
+subset of them (`i = 1`, `i + 1 < inputs.length`, and the like), or rewriting
+one call into a copy of the other, which removes that call's argument order. The
+test takes no input and passes iff every call passes, and each call passes
+because `boundWeiSafeSide` wraps any triple into the domain on which the fuzz
+property is proven, so any subset of the calls reaches the same verdict. Such a
+change deletes a check, the class no test can kill because the tests are the
+oracle. Each skipped input's undershoot stays asserted by its own pinned test.
+
+## Equivalent mutant: `testSingleDivSubUlpFractionReadsLossless` divisor written as `packLossless(70, -1)`
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. `packLossless(7, 0)` and
+`packLossless(70, -1)` are the same value. SPEC.md defines `div` as the exact
+quotient rounded once toward zero to a Float, a function of the operands' values
+alone, and `toFixedDecimalLossy` reads only the value of its input, so `got` and
+`lossless` are the same under both for every dividend.
+
+## Equivalent mutant: `testMarginScalesThroughLaterMul` ulp margin without the `1 / 7` term
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The test takes no input.
+Its ulp margin is `1e-67` (one ulp of `1 / 7`, exponent -67) plus `1` (one ulp
+of the result, exponent 0). The result's coefficient has 68 digits at exponent
+0, so `res.add(margin)` truncates toward zero at exponent 0 and drops the
+`1e-67` whether or not it is in the margin: `res + 1` and `res + 1 + 1e-67` pack
+to the same Float. The assertion reads only that Float, so it reaches the same
+verdict under both. The term stays because the README wording it refutes names
+it.

@@ -1214,5 +1214,27 @@
       "testsAfter": 27,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-15T07:49:14Z",
+    "commit": "141f2ada29bb542f49e2fdc6d5cd3b9bcee688d8",
+    "testsAfterCommit": "3c784d8d8096d6061ca186960fb5e10ae8e0e990",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 15,
+    "scope": "pr:719 round 7 (rain-marvin review 5529351300): README rule 1's margin, the counterexample loop, the fuzz call site and the tests changed this round in test/src/lib/LibDecimalFloat.consumerHazards.t.sol. No src/ change. Before = 141f2ada (27 tests; origin/main already merged); after = 3c784d8d (28 tests); probe = mutation-probe over .mutation-test/mutants.toml (51 mutants, every round's set re-run), suite FOUNDRY_FUZZ_RUNS=256 forge test --match-path test/src/lib/LibDecimalFloat.consumerHazards.t.sol. Before: M44 call site rebinds (a, c, b), M45 single-div divisor as packLossless(70, -1), M46 testWeiSafeSideClampEdges at a = 9e32 all SURVIVED. Adversarial: marvin's correctness finding holds; the round-6 README margin (one ulp of each intermediate) is too small because a later mul scales an earlier truncation, pinned by marvin's testMarginScalesThroughLaterMul (94e66 * (1 / 7), exactCeil - 4). The rule is now 1e-66 of the result per mul or div, from SPEC's single truncation toward zero (under 10 / int224.max of each result). An exact model (fixed this round: values below 1 now pack with every digit that fits) found a * (1 / 73), a = 9925887261852452467399719857351126276300750130317078586257692491778e2, losing 1.45e-66 of the result: 1e-66 leaves the ceiling 10 short, 2e-66 reaches it exactly; pinned as testMarginIsPerOperation, matching forge. After: 41/51 killed. M44 killed by testFuzzWeiFloorCeilSafeSideBoundsCounterexample's (a, c, b) calls (marvin's change). M49/M50/M52 (per-op margin literals, divisor) killed by testMarginIsPerOperation. M46 has no target: testWeiSafeSideClampEdges was removed as redundant, every mutant it killed (M06, M07, M10-M13, M17, M18) is killed by testWeiSafeSideDomainInteriorEdges. Survivors, each with an all-input proof in audit/known-false-positives.md: M05/M26 divisor raised (range now 21 to int224.max / 1e33), M09 guard a > 1, M14 clamp order, M41/M43/M47/M48 counterexample loop dropping calls (skipped inputs, or one call rewritten into a copy of the other), M45 divisor 70e-1 (same value; div and the conversion read values only), M51 ulp margin without the sub-ulp 1/7 term (absorbed by the add's packing). No library defects; nothing filed.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 51,
+      "newBefore": 3,
+      "killedNewBefore": 0,
+      "killedAfter": 41,
+      "equivalent": 10,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 27,
+      "testsAfter": 28,
+      "filed": []
+    }
   }
 ]
