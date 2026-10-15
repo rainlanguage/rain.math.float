@@ -32,10 +32,3 @@ error ParseDecimalFloatExcessCharacters();
 /// that has none. Unreachable: only a literal with a nonzero digit is read so.
 /// @param start The start of the literal.
 error ParseDecimalNoSignificantDigits(uint256 start);
-
-/// @dev Thrown when a fraction with a nonzero digit gives a zero or positive
-/// exponent. Unreachable: the scan back over trailing zeros stops at the `.`
-/// at the latest, so the exponent is minus the count of fraction digits up to
-/// the last nonzero one.
-/// @param start The start of the literal.
-error ParseDecimalNonNegativeFractionExponent(uint256 start);

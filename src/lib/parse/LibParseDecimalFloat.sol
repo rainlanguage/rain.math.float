@@ -17,11 +17,11 @@ import {
     ParseDecimalPrecisionLoss,
     MalformedDecimalPoint,
     ParseDecimalFloatExcessCharacters,
-    ParseDecimalNoSignificantDigits,
-    ParseDecimalNonNegativeFractionExponent
+    ParseDecimalNoSignificantDigits
 } from "../../error/ErrParse.sol";
 import {ParseEmptyDecimalString} from "rain-string-0.3.9/src/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
+import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
 
 /// @title LibParseDecimalFloat
@@ -122,14 +122,9 @@ library LibParseDecimalFloat {
                     // _technically_ these numbers could be out of range but in
                     // the intended use case that would imply a memory region that
                     // is physically impossible to exist.
+                    // Negative: the scan stops at the point, so nonZeroCursor > fracStart.
                     // forge-lint: disable-next-line(unsafe-typecast)
                     exponent = int256(fracStart) - int256(nonZeroCursor);
-                    // nonZeroCursor > fracStart here, as the scan stops at the
-                    // point, so exponent is negative. Unreachable otherwise, as
-                    // a zero or positive exponent would misread the value.
-                    if (exponent >= 0) {
-                        revert ParseDecimalNonNegativeFractionExponent(start);
-                    }
 
                     if (signedCoefficient == 0) {
                         signedCoefficient = fracValue;
@@ -449,12 +444,8 @@ library LibParseDecimalFloat {
     /// arguments.
     /// @return result The parsed `Float` if no error occurred, otherwise zero.
     function parseDecimalFloat(string memory str) internal pure returns (bytes4, Float) {
-        uint256 start;
-        uint256 end;
-        assembly ("memory-safe") {
-            start := add(str, 0x20)
-            end := add(start, mload(str))
-        }
+        uint256 start = Pointer.unwrap(LibBytes.dataPointer(bytes(str)));
+        uint256 end = Pointer.unwrap(LibBytes.endDataPointer(bytes(str)));
         (bytes4 errorSelector, uint256 cursor, int256 signedCoefficient, int256 exponent) =
             parseDecimalFloatInline(start, end);
         if (cursor != end) {
