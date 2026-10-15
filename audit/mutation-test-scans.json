@@ -1149,5 +1149,26 @@
       "testsAfter": 322,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-15T07:05:19Z",
+    "commit": "9d452a159e119f3f01efc0518b3a9ed755e65870",
+    "testsAfterCommit": "93ed35b426df531c355adcd6a3e8c565ce75b18c",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 19,
+    "scope": "pr:710 round 2: packRoundedSignificant's carry block reduced to isPastEveryFloat(rounded) alone (the excess > 0 guard, the excess <= 67 conjunct and the trailing revertIfPastLargestFloat(rounded) removed as dead), and check_pack in crates/tests/src/differential.rs now compares the signed isPastEveryFloat harness overload with the uint256 one. Before = 9d452a15 (the branch merged with main after #712): marvin's M19 (conjunct dropped) and M29 (excess <= 66) both SURVIVED forge test --match-contract Pow (80 tests, 5096 fuzz runs), equivalent by the proof in audit/known-false-positives.md, now marked resolved by removal. Solidity, pre-existing Pow suite on the simplified block, 12 mutants, 12 killed: carry test on the unrounded pair, negated, forced true, forced false (A01-A04); unrounded range check dropped, on the rounded pair, exponent +1 and -1, reporting the rounded value (A05-A09); fallback packing the rounded pair, packing lossless, returning zero (A10-A12). Killers: testPowCarryShedsTheUnrounded (all but A03), testPowEitherSideOfTheOverflowThreshold, testPowHalfPastTheThreshold, testPowHalfPastTheRange, testPowRoundedAtTheTop, testPowInt224MinAtTop, testPowFloor, testPowFractionExact, testPowIntegerLegAtRoundingTie, testPowHugeExponentDirection, testPowMinusOneHugeBaseUnderflows. Rust, cargo test -p rain-math-float-tests differential_pack at 2000 cases, 4 mutants (signed overload without abs, signed overload exponent +1, harness overload casting without abs, harness overload answering false): before 0/4 killed (nothing called the signed overload), after 4/4 killed by differential_pack. The first Rust pass was discarded: a target/ copied from the warm template ran build.rs with the template's CARGO_MANIFEST_DIR, so forge built the template and the clone's out/ was stale (even the answers-false mutant survived); cargo clean -p rain-math-float-tests fixed it. Adversarial: old and new carry blocks agree on every input (rounded value never past at or below int32.max since it is at most 1e41; above excess 67 and at 67 with a coefficient of 2 or more both values are past and the same ExponentOverflow(input) is raised; the trailing rounded check ran only where its predicate was false). No candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 16,
+      "killedBefore": 12,
+      "killedAfter": 16,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 81,
+      "testsAfter": 81,
+      "filed": []
+    }
   }
 ]
