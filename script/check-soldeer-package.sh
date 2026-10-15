@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: LicenseRef-DCL-1.0
+# SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 # Fails when the soldeer package would ship anything other than the tracked
 # files under src/, README.md, SPEC.md, LICENSE and LICENSES/, or would miss
 # any of them. The dry run is the same zip the publish gate hashes, so a

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: LicenseRef-DCL-1.0
+# SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 # Runs check-gas-snapshot.sh on snapshot pairs: fuzz rows may change their
 # statistics, everything else must match exactly, and a stale snapshot names
 # the regenerate command.

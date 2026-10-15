@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: LicenseRef-DCL-1.0
+# SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 # Fails when the committed gas snapshot is stale against a fresh one.
 #
 # Non-fuzz rows must match exactly. Fuzz μ/~ are not reproducible across
