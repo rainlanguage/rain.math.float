@@ -1191,5 +1191,26 @@
       "testsAfter": 129,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-15T07:42:17Z",
+    "commit": "0d50f5196aaaa67f27768e1ce10861f8aebde0b3",
+    "testsAfterCommit": "0d50f5196aaaa67f27768e1ce10861f8aebde0b3",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 16,
+    "scope": "PR #709, fourth round after rain-marvin's audit of 03f5b8c4 (21 mutants, 17 killed, 4 survived, all documented equivalents: the unreachable fraction guard relaxed, forced false or returning, and the memory-safe annotation removed). The sources are removed instead (0d50f519): the fraction guard, its ParseDecimalNonNegativeFractionExponent error, its SPEC.md Range guards row and the Parsing exception for it are gone, and parseDecimalFloat takes start and end from rain-solmem's LibBytes.dataPointer and endDataPointer (already a package dependency) instead of its own assembly block; the two known-false-positives entries for them are deleted. Scan records 1fc0f0fb (128 tests) and 125ea386 (testsBefore 129) are corrected to the counts their probes ran. Suite per probe: forge test --match-contract 'Parse|ToDecimalString' (129 tests) at 256 fuzz runs, seed 0x709, pre-existing tests only. Mutants: M20 start at the length word; M21 start one byte late; M22 end at the data start; M23/M24 end one byte early/late; M25 fraction exponent operands swapped; M26/M27 fraction exponent one low/high; M28 scan reads two bytes back; M29 scan reads the cursor byte; M30 scan steps two; M31 scan never steps. 12/12 killed, all by pre-existing tests (killers include testParseGasCommon, testParseGas, testParseIntegerPastInt256Boundary, testParseDecimalFloatExcessCharacters, testFormatDecimalRoundTripExamples, testParseIssue375Literals, testParseExponentSumBelowInt256, testParseLiteralDecimalFloatDecimals, testParseZeroFractionPastInt224). cargo test spec_names_every_error passes with the row gone. No equivalents, no candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 12,
+      "killedBefore": 12,
+      "killedAfter": 12,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 129,
+      "testsAfter": 129,
+      "filed": []
+    }
   }
 ]
