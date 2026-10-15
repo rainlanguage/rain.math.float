@@ -1128,5 +1128,26 @@
       "testsAfter": 79,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-15T06:44:37Z",
+    "commit": "afbadce1b6be29aa984f1d10ace375b3c33229f1",
+    "testsAfterCommit": "e83b71cfc8bce1589ff6a3c9eb800636e0fb1dd6",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 5,
+    "scope": "PR #718 (freeze the sqrt, LiftFirst and Pr321 baselines; guard every live library), round three: the private MAXIMIZED_ZERO_SIGNED_COEFFICIENT and MAXIMIZED_ZERO_EXPONENT copies in test/lib/LibFormatDecimalFloatPr321.sol, and the guard's new import rule in crates/tests/src/baselines.rs (live_import: word boundary, live-file match, whole-file and aliased imports, ALLOWED_IMPORTS, live library names, declared imports, comment and string blanking; an eleventh mutant, dropping the explicit alias check, survived because that check was dead code, an aliased symbol never matching an allowed name, so the check was removed and the ten others re-probed on the final text). Probe suites: forge test --match-contract 'Pr321|FormatParse' at the default 5096 fuzz runs (22 tests, 6 of them moved into test/lib/*Pr321.t.sol), and cargo test --lib baselines (8 tests), the only tests that can reach the mutated code. Before = afbadce1's tests on this round's source; after = the same at testsAfterCommit. Also re-probed F23, P13 and P29 from rain-marvin's review at default runs on the full importing suites: all survive and are proved equivalent in audit/known-false-positives.md.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 12,
+      "killedBefore": 6,
+      "killedAfter": 6,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 27,
+      "testsAfter": 30,
+      "filed": []
+    }
   }
 ]
