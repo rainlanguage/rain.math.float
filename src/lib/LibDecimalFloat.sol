@@ -75,6 +75,12 @@ type Float is bytes32;
 library LibDecimalFloat {
     using LibDecimalFloat for Float;
 
+    /// @dev The greatest exponent at which no uint256 magnitude is past every
+    /// Float: 2^256 < 10^10 (2^223 + 2), and one exponent up 2^256 - 1 is
+    /// past. `isPastEveryFloat` returns false at or below it, so a caller may
+    /// check it first to skip the call on the hot path.
+    int256 constant NEVER_PAST_EXPONENT = int256(type(int32).max) - 10;
+
     /// A zero valued float.
     Float constant FLOAT_ZERO = Float.wrap(0);
 
@@ -412,8 +418,9 @@ library LibDecimalFloat {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 if (uint256(signedCoefficient + tenFold) <= uint256(tenFold + tenFold)) {
                     int256 boundExponent = exponent - 1;
-                    // Below the int32 floor the bound is skipped and the floor
-                    // path below keeps shedding.
+                    // Outside the int32 range the bound is skipped: below the
+                    // floor the floor path below keeps shedding, and above the
+                    // ceiling the value is past every Float.
                     // forge-lint: disable-next-line(unsafe-typecast)
                     if (int32(boundExponent) == boundExponent) {
                         int256 bound = type(int224).max;
@@ -447,29 +454,22 @@ library LibDecimalFloat {
                 // started positive and is out of range is past the ceiling,
                 // or wrapped through int256.max by the unchecked shedding.
                 if (initialExponent > 0) {
-                    // Lower the exponent by multiplying the coefficient by ten
-                    // per step, which is exact, while int224 has the headroom.
-                    // A coefficient shed to fit int224 has none, and a non-zero
-                    // int224 has at most 68 digits so an excess of 68 or more
-                    // never has it. Either way the magnitude exceeds every
-                    // representable Float.
-                    int256 excess = exponent - type(int32).max;
-                    if (!fits || excess > 67) {
+                    if (isPastEveryFloat(initialSignedCoefficient, initialExponent)) {
                         revert ExponentOverflow(initialSignedCoefficient, initialExponent);
                     }
-                    // excess is in [1, 67] so 10 ** excess fits int256 and the
-                    // casts cannot truncate.
+                    // Not past, so nothing was shed: a shed coefficient reaching
+                    // here is either above int224.max / 10 at int32.max + 1 or
+                    // beyond, or at most that at int32.max + 2 or beyond, where
+                    // the bound is skipped and the value is at least
+                    // int224.max * 10^(int32.max + 1); both are past, and one
+                    // that took the bound above returned. The excess is in
+                    // [1, 67], as a non-zero coefficient at a higher one is
+                    // past, so the power fits int256. Lifting multiplies by ten
+                    // per step, which is exact, and the product fits int224: it
+                    // is a multiple of ten below 2^223 + 2 in magnitude, so at
+                    // most 2^223 - 8.
                     // forge-lint: disable-next-line(unsafe-typecast)
-                    int256 scale = int256(10 ** uint256(excess));
-                    // Nothing was shed, so the initial coefficient is the one to
-                    // lift.
-                    if (
-                        initialSignedCoefficient > type(int224).max / scale
-                            || initialSignedCoefficient < type(int224).min / scale
-                    ) {
-                        revert ExponentOverflow(initialSignedCoefficient, initialExponent);
-                    }
-                    signedCoefficient = initialSignedCoefficient * scale;
+                    signedCoefficient = initialSignedCoefficient * int256(10 ** uint256(exponent - type(int32).max));
                     exponent = type(int32).max;
                 } else {
                     // The exponent is below the int32 floor. Every division of the
@@ -577,6 +577,52 @@ library LibDecimalFloat {
             revert ExponentUnderflow(signedCoefficient, exponent);
         }
         return c;
+    }
+
+    /// @notice Whether `magnitude × 10^exponent` is past every Float: at least
+    /// `(int224.max / 10 + 1) × 10^(int32.max + 1)`, which is
+    /// `(2^223 + 2) × 10^int32.max`, where `packLossy` reverts
+    /// `ExponentOverflow` for either sign. This is the one encoding of that
+    /// threshold; `packLossy`, `div`, `pow`, `pow10` and the parser all check
+    /// it here (#649). Exact for every magnitude and exponent; zero is never
+    /// past, and no value at an exponent at or below `NEVER_PAST_EXPONENT` is past.
+    /// @param magnitude The magnitude of the value.
+    /// @param exponent The exponent of the value.
+    /// @return Whether the value is past every Float.
+    function isPastEveryFloat(uint256 magnitude, int256 exponent) internal pure returns (bool) {
+        unchecked {
+            if (exponent <= NEVER_PAST_EXPONENT) {
+                return false;
+            }
+            // exponent > int32.max - 10, so this does not wrap.
+            int256 excess = exponent - type(int32).max;
+            // 10^68 is past 2^223 + 2, so any non-zero magnitude is past.
+            if (excess > 67) {
+                return magnitude != 0;
+            }
+            if (excess >= 0) {
+                // m × 10^x >= t iff m > floor((t - 1) / 10^x).
+                // forge-lint: disable-next-line(unsafe-typecast)
+                return magnitude > (2 ** 223 + 1) / 10 ** uint256(excess);
+            }
+            // excess is in [-9, -1], so the product is below 2^256.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return magnitude >= (2 ** 223 + 2) * 10 ** uint256(-excess);
+        }
+    }
+
+    /// @notice `isPastEveryFloat` of the magnitude of `signedCoefficient`.
+    /// int256.min is `2^255` in magnitude.
+    /// @param signedCoefficient The signed coefficient of the value.
+    /// @param exponent The exponent of the value.
+    /// @return Whether the value is past every Float.
+    function isPastEveryFloat(int256 signedCoefficient, int256 exponent) internal pure returns (bool) {
+        unchecked {
+            // int256.min negates to itself, which casts to 2^255, its
+            // magnitude.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            return isPastEveryFloat(uint256(signedCoefficient < 0 ? -signedCoefficient : signedCoefficient), exponent);
+        }
     }
 
     /// Unpack a Float into its coefficient, sign-extended from the low 224
@@ -781,16 +827,14 @@ library LibDecimalFloat {
         (int256 signedCoefficientB, int256 exponentB) = b.unpack();
         (int256 signedCoefficient, int256 exponent) =
             LibDecimalFloatImplementation.div(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
-        // packArithmeticResult with range errors reporting `a`. The quotient
-        // has at most 77 digits and packLossy sheds at most ten, so an
-        // exponent ten below int32.max cannot overflow. A checked subtraction
-        // is computed at run time.
-        int256 ceilingLessTen;
+        // packArithmeticResult with range errors reporting `a`.
+        // NEVER_PAST_EXPONENT is isPastEveryFloat's own fast exit, checked
+        // here first to skip the call on almost every result. unchecked keeps
+        // the constant's subtraction from being a checked one at run time.
         unchecked {
-            ceilingLessTen = int256(type(int32).max) - 10;
-        }
-        if (exponent > ceilingLessTen) {
-            revertIfPastLargestFloat(signedCoefficient, exponent, a);
+            if (exponent > NEVER_PAST_EXPONENT) {
+                revertIfPastLargestFloat(signedCoefficient, exponent, a);
+            }
         }
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless && Float.unwrap(c) == bytes32(0)) {
@@ -988,15 +1032,12 @@ library LibDecimalFloat {
             revertPast(signedCoefficient > 0, float);
         }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.pow10(signedCoefficient, exponent);
-        // packArithmeticResult with range errors reporting `float`. packLossy
-        // sheds at most ten digits, so an exponent ten below int32.max cannot
-        // overflow. A checked subtraction is computed at run time.
-        int256 ceilingLessTen;
+        // packArithmeticResult with range errors reporting `float`.
+        // NEVER_PAST_EXPONENT gates the call as in `div`.
         unchecked {
-            ceilingLessTen = int256(type(int32).max) - 10;
-        }
-        if (exponent > ceilingLessTen) {
-            revertIfPastLargestFloat(signedCoefficient, exponent, float);
+            if (exponent > NEVER_PAST_EXPONENT) {
+                revertIfPastLargestFloat(signedCoefficient, exponent, float);
+            }
         }
         (Float c, bool lossless) = packLossy(signedCoefficient, exponent);
         if (!lossless && Float.unwrap(c) == bytes32(0)) {
@@ -1303,20 +1344,16 @@ library LibDecimalFloat {
             LibDecimalFloatImplementation.roundSignificant(signedCoefficient, exponent);
         // The rounded coefficient is at most 1e41, so it packs without overflow
         // at an exponent up to int32.max. Above it, only a carry can leave the
-        // unrounded value packable: when the rounded value cannot lift, the
-        // unrounded one is packed. Past an excess of 67 neither can lift.
+        // unrounded value packable: when the rounded value is past every Float,
+        // the unrounded one is packed. Past an excess of 67 neither can lift,
+        // so only the rounded value is checked there.
         int256 excess = roundedExponent - type(int32).max;
         if (excess > 0) {
-            if (excess <= 67) {
-                // excess is in [1, 67] so the casts cannot truncate.
-                // forge-lint: disable-next-line(unsafe-typecast)
-                int256 scale = int256(10 ** uint256(excess));
-                if (roundedCoefficient > type(int224).max / scale || roundedCoefficient < type(int224).min / scale) {
-                    // Above int32.max this cannot underflow.
-                    revertIfPastLargestFloat(signedCoefficient, exponent, input);
-                    (Float unrounded,) = packLossy(signedCoefficient, exponent);
-                    return unrounded;
-                }
+            if (excess <= 67 && isPastEveryFloat(roundedCoefficient, roundedExponent)) {
+                // Above int32.max this cannot underflow.
+                revertIfPastLargestFloat(signedCoefficient, exponent, input);
+                (Float unrounded,) = packLossy(signedCoefficient, exponent);
+                return unrounded;
             }
             revertIfPastLargestFloat(roundedCoefficient, roundedExponent, input);
         }
@@ -1337,19 +1374,10 @@ library LibDecimalFloat {
         revert ExponentUnderflow(signedCoefficient, exponent);
     }
 
-    /// `packLossy` reverts `ExponentOverflow` exactly when the value is at
-    /// least (int224.max / 10 + 1) 10^(int32.max + 1), which is
-    /// (2^223 + 2) 10^int32.max, in magnitude: there the closest Float not
-    /// above it is past int224.max 10^int32.max. The comparison is on the
-    /// magnitude, so both signs share it. A pow, pow10 or
-    /// div result is never int256.min, whose checked negation would panic.
+    /// Reverts `ExponentOverflow` reporting `input` where `packLossy` would
+    /// revert it, by `isPastEveryFloat`.
     function revertIfPastLargestFloat(int256 signedCoefficient, int256 exponent, Float input) private pure {
-        if (signedCoefficient < 0) {
-            signedCoefficient = -signedCoefficient;
-        }
-        if (LibDecimalFloatImplementation.gte(
-                signedCoefficient, exponent, type(int224).max / 10 + 1, int256(type(int32).max) + 1
-            )) {
+        if (isPastEveryFloat(signedCoefficient, exponent)) {
             revertPast(true, input);
         }
     }
