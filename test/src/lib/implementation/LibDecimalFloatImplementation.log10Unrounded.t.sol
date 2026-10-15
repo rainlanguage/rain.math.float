@@ -282,7 +282,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
     /// int256.min are under log10(1.001), below every gap here, so that side
     /// checks the unshed sum at the edge. At s = 52, just under 1e25, the
     /// fixed point sum takes over.
-    function testLog10UnroundedOracleCarryEdge(int256 signedCoefficient, uint256 shift, uint256 below, bool negative)
+    function testLog10UnroundedOracleCarryEdge(int256 signedCoefficient, uint256 shift, int256 below, bool negative)
         external
         pure
     {
@@ -291,9 +291,7 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         below = bound(below, 0, 2);
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 scale = int256(10 ** shift);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 characteristic =
-            negative ? type(int256).min / scale + int256(below) : type(int256).max / scale - int256(below);
+        int256 characteristic = negative ? type(int256).min / scale + below : type(int256).max / scale - below;
         checkAbsolute(signedCoefficient, characteristic - characteristicRise(signedCoefficient));
     }
 
