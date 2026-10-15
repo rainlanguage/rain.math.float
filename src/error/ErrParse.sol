@@ -15,9 +15,10 @@ error MalformedExponentDigits(uint256 position);
 
 /// @dev Returned by value from `LibParseDecimalFloat`, never reverted with,
 /// for a well formed literal that is not exactly a Float and is below
-/// `(2^223 + 2) × 10^int32.max` in magnitude: too many significant digits,
-/// nonzero but below every nonzero Float, or past the largest Float of its
-/// sign.
+/// `(2^223 + 2) × 10^int32.max` in magnitude: too many significant digits, a
+/// significant digit below `10^int32.min` (`1.5e-2147483648`, and every
+/// nonzero value below every nonzero Float, such as `1e-2147483649`), or past
+/// the largest Float of its sign.
 /// @param position The cursor after the literal, from
 /// `parseDecimalFloatInline`, which a reverting caller appends.
 /// `parseDecimalFloat` returns no position.

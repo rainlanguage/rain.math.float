@@ -670,6 +670,24 @@ contract LibParseDecimalFloatTest is Test {
         assertEq(parseOutcome(string.concat("1e1", LibTestDecimalLiteral.zeroString(80))), over, "exponent past int256");
     }
 
+    /// A literal with a significant digit below `10^int32.min` is not exactly
+    /// a Float even when its value is at or above the smallest nonzero Float:
+    /// `1.5e-2147483648` is `15 × 10^-2147483649`, which the inline parse
+    /// returns exactly and `packLossy` sheds the `5` of, so the wrapper
+    /// reports `ParseDecimalPrecisionLoss`. `1e-2147483648` is the smallest
+    /// nonzero Float and parses exactly.
+    function testParseDecimalFloatDigitBelowExponentFloorIsPrecisionLoss() external view {
+        checkParseDecimalFloat("1.5e-2147483648", 15, -2147483649, 15);
+        (bytes4 err, Float float) = this.parseDecimalFloatExternal("1.5e-2147483648");
+        assertEq(err, ParseDecimalPrecisionLoss.selector);
+        assertEq(Float.unwrap(float), bytes32(0));
+
+        checkParseDecimalFloat("1e-2147483648", 1, -2147483648, 13);
+        (err, float) = this.parseDecimalFloatExternal("1e-2147483648");
+        assertEq(err, bytes4(0));
+        assertEq(Float.unwrap(float), Float.unwrap(LibDecimalFloat.packLossless(1, int256(type(int32).min))));
+    }
+
     /// A literal below the exponent floor whose coefficient carries the
     /// trailing zeros to reach it is a representable value, and parses as
     /// one: `10e-2147483649` is `1e-2147483648`. Only a literal that genuinely

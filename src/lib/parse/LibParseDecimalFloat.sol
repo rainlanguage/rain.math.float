@@ -31,9 +31,9 @@ import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
 /// implementations by standardizing in Solidity.
 library LibParseDecimalFloat {
     /// @dev The ASCII code of `.`.
-    uint256 private constant ASCII_DECIMAL_POINT = 0x2e;
+    uint256 private constant CHAR_DOT = 0x2e;
     /// @dev The ASCII code of `0`.
-    uint256 private constant ASCII_ZERO = 0x30;
+    uint256 private constant CHAR_ZERO = 0x30;
 
     /// @notice Parses the decimal literal at the start of [start, end): an
     /// optional `-`, digits, optionally `.` and digits, and optionally `e` or
@@ -101,7 +101,7 @@ library LibParseDecimalFloat {
                 // The scan stops at the decimal point at the latest.
                 uint256 nonZeroCursor = cursor;
                 assembly ("memory-safe") {
-                    for {} eq(byte(0, mload(sub(nonZeroCursor, 1))), ASCII_ZERO) {} {
+                    for {} eq(byte(0, mload(sub(nonZeroCursor, 1))), CHAR_ZERO) {} {
                         nonZeroCursor := sub(nonZeroCursor, 1)
                     }
                 }
@@ -376,9 +376,9 @@ library LibParseDecimalFloat {
                 assembly ("memory-safe") {
                     char := byte(0, mload(p))
                 }
-                if (char != ASCII_DECIMAL_POINT) {
+                if (char != CHAR_DOT) {
                     if (digitCount < 77) {
-                        magnitude = magnitude * 10 + (char - ASCII_ZERO);
+                        magnitude = magnitude * 10 + (char - CHAR_ZERO);
                     }
                     digitCount++;
                 }
@@ -474,10 +474,10 @@ library LibParseDecimalFloat {
         }
         // Every literal packLossy would revert ExponentOverflow on returned
         // that selector above. packLossy is lossy for every other literal
-        // that is not exactly a Float: too many digits, past the largest
-        // Float of its sign, or below every nonzero Float (e.g.
-        // 1e-2147483649, which packs to FLOAT_ZERO). Each is reported as
-        // ParseDecimalPrecisionLoss.
+        // that is not exactly a Float: too many digits, a digit below
+        // 10^int32.min (e.g. 1.5e-2147483648, which sheds the 5, or
+        // 1e-2147483649, which packs to FLOAT_ZERO), or past the largest
+        // Float of its sign. Each is reported as ParseDecimalPrecisionLoss.
         (Float result, bool lossless) = LibDecimalFloat.packLossy(signedCoefficient, exponent);
         if (!lossless) {
             return (ParseDecimalPrecisionLoss.selector, Float.wrap(0));
