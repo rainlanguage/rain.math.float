@@ -126,15 +126,16 @@ helper's output is the same for every input;
 `testWeiSafeSideDomainInteriorEdges` passes `a = 1` and sees `b = 1e33` and
 `b = 1` under both.
 
-## Equivalent mutant: `testFuzzWeiFloorCeilSafeSideBoundsCounterexample` runs one input fewer
+## Equivalent mutants: `testFuzzWeiFloorCeilSafeSideBoundsCounterexample` skips pinned inputs
 
-`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. Changing the loop bound
-from `i < inputs.length` to `i + 1 < inputs.length` skips the last pinned input.
-The test takes no input and passes iff every call passes, and each call passes
-because `boundWeiSafeSide` wraps any triple into the domain on which the fuzz
-property is proven, so three calls and four reach the same verdict. The test
-exists so that a change to the clamp has to survive every pinned input; the
-clamp mutants it kills are killed by its first input alone, and the last input's
-undershoot is asserted by `testWeiCeilUndershootNearBound`. A test that told the
-two apart would have to count the test's own calls, which pins plumbing, not
-behaviour.
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. Changing the loop to skip
+any pinned input, or any proper subset of them (`i = 1`,
+`i + 1 < inputs.length`, and the like), leaves every verdict unchanged. The test
+takes no input and passes iff every call passes, and each call passes because
+`boundWeiSafeSide` wraps any triple into the domain on which the fuzz property
+is proven, so any number of calls reaches the same verdict. The test exists so
+that a change to the clamp has to survive every pinned input; the clamp mutants
+it kills are killed by any one input alone, since every pinned `a * b` lies
+above `WEI_SAFE_SIDE_AB_MAX`, and each skipped input's undershoot is asserted by
+its own pinned test. A test that told the variants apart would have to count the
+test's own calls, which pins plumbing, not behaviour.

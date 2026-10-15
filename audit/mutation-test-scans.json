@@ -1193,5 +1193,26 @@
       "testsAfter": 27,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-15T06:55:36Z",
+    "commit": "5dddd43f89f1273a312bc185a7a1094959ce7be5",
+    "testsAfterCommit": "e29f6505ffdfb7841576c9bfc8170495fdc5a3d2",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 13,
+    "scope": "pr:719 round 6 (rain-marvin review 5524855613): the changed lines of test/src/lib/LibDecimalFloat.consumerHazards.t.sol this round, testSingleMulSubUlpFractionReadsLossless's rate premise assertions and the a, b, c destructuring in the four pinned undershoot tests, plus the call site, the undershoot helper, the pinned input array and the counterexample loop they read; README rule 1 now sizes the margin (at least one ulp of each intermediate result per mul or div), checked against SPEC.md's one-truncation rule. No src/ change; assertions and pinned literals are the oracle. Before = 5dddd43f (a58913ca merged with origin/main at 42063068; the test file is byte-identical to 3d7e85d5's, so the round-5 after matrix for M30-M41 holds there), 27 tests; after = e29f6505, 27 tests; probe = mutation-probe over .mutation-test/mutants.toml --only M3 --only M4 (M30-M43), suite FOUNDRY_FUZZ_RUNS=256 forge test --match-path test/src/lib/LibDecimalFloat.consumerHazards.t.sol. M42 single mul rate 1e67 + 1 -> exactly 1 (marvin's MEDIUM: survived before, the test passed because 2e18 * 1 is also exactly 2e18 and lossless; killed after by testSingleMulSubUlpFractionReadsLossless asserting the rate unpacks to exponent -67 with coefficient 1 mod 1e67, failing 0 != 1 under the mutant). M43 counterexample loop starts at i = 1 (survived before and after; equivalent, same class as M41: the test takes no input and every wrapped call passes, each skipped input's undershoot is asserted by its own pinned test; the known-false-positives entry now covers any proper subset of the pinned inputs, marvin's INFO). M30-M40 re-probed after the a, b, c destructuring (marvin's LOW): all killed by the same tests as in round 5, each off-by-one and index swap by exactly its own pinned test. M41 survived as documented. The round-5 record's survivors M05, M09, M14, M26 are unchanged by this round and were not re-probed; their entries stand. Adversarial: the README margin clause was derived from SPEC.md (each mul and div is the exact result truncated once toward zero, so it loses under one ulp of its result); nothing new against the library. No candidates, nothing filed.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 14,
+      "killedBefore": 11,
+      "killedAfter": 12,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 27,
+      "testsAfter": 27,
+      "filed": []
+    }
   }
 ]
