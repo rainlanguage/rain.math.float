@@ -290,9 +290,9 @@ return the same Float on every input.
 ## Equivalent mutant: `testMarginCountsAdds` third `add` dropped
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The first two addends sum
-to `15479e63 + 18`, above int224.max, so their `add` packs at exponent 1 to
-`15479e63 + 10`. Adding `9` gives `15479e63 + 19`, which packs to
-`15479e63 + 10` again: the third `add` returns its input unchanged, the loss the
+to `13481e63 + 18`, above int224.max, so their `add` packs at exponent 1 to
+`13481e63 + 10`. Adding `9` gives `13481e63 + 19`, which packs to
+`13481e63 + 10` again: the third `add` returns its input unchanged, the loss the
 test counts. Dropping it from the Float chain, with `exactSum` still counting
 it, leaves every value the assertions read unchanged.
 
