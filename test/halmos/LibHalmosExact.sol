@@ -11,11 +11,14 @@ Vm constant VM = Vm(0x7109709ECfa91a80626fF3989D68f67F5b1DD12D);
 library LibHalmosExact {
     /// floor(int256.max / 10).
     uint256 internal constant T10 = uint256(type(int256).max) / 10;
+    /// The Float exponent range.
+    int256 internal constant FMIN = type(int32).min;
+    int256 internal constant FMAX = type(int32).max;
 
     /// Whether case `i` of a lemma's case split is in this run's slice
     /// [HALMOS_SLICE_LO, HALMOS_SLICE_HI], every case when unset. A lemma
-    /// returns for a case outside it; the CI slices of each lemma
-    /// (`.github/workflows/halmos.yaml`) tile its whole case range.
+    /// returns for a case outside it; the slices of each lemma in
+    /// `.github/workflows/halmos.yaml` tile its whole case range.
     function inSlice(uint256 i) internal view returns (bool) {
         return i >= VM.envOr("HALMOS_SLICE_LO", uint256(0)) && i <= VM.envOr("HALMOS_SLICE_HI", type(uint256).max);
     }
@@ -42,9 +45,10 @@ library LibHalmosExact {
         return (x / d == 0) == (abs(x) < uint256(d));
     }
 
-    /// For 10^j <= |c| < 10^(j + 1) and s = 0 or s + j < 76, |c| 10^s lies in
-    /// [10^(s + j), 10^(s + j + 1)) inside int256, so c 10^s / 10^t is zero
-    /// iff s + j < t. True for every such c.
+    /// For 10^j <= |c| < 10^(j + 1), s = 0 or s + j < 76, and t <= 76 (so
+    /// 10^t is a positive int256), |c| 10^s lies in [10^(s + j), 10^(s + j + 1))
+    /// inside int256, so c 10^s / 10^t is zero iff s + j < t. True for every
+    /// such c.
     function shiftHint(int256 c, uint256 s, uint256 j, uint256 t) internal pure returns (bool) {
         int256 p = c;
         if (s > 0) {
@@ -60,7 +64,7 @@ library LibHalmosExact {
     /// For 10^j <= |c| < 10^(j + 1) and s = 0 or s + j < 76, c 10^s is in
     /// [-T10, T10] iff |c| <= floor(T10 / 10^s), and adding T10 maps that
     /// range onto [0, 2 T10] without wrapping. True for every such c.
-    function timesTenHint(int256 c, uint256 s, uint256) internal pure returns (bool) {
+    function timesTenHint(int256 c, uint256 s) internal pure returns (bool) {
         int256 p = c;
         if (s > 0) {
             unchecked {
@@ -85,7 +89,7 @@ library LibHalmosExact {
     /// completeness (a loop-bound warning or extra paths), never soundness.
     function maximizeHints(int256 c, uint256 j) internal pure returns (bool) {
         if (!shiftHint(c, 0, j, 75)) return false;
-        if (j >= 75) return timesTenHint(c, 0, j);
+        if (j >= 75) return timesTenHint(c, 0);
         uint256 s = 0;
         if (!shiftHint(c, s, j, 38)) return false;
         if (s + j < 38) s += 38;
@@ -100,7 +104,7 @@ library LibHalmosExact {
         }
         if (!shiftHint(c, s, j, 75)) return false;
         if (s + j < 75) s += 1;
-        return timesTenHint(c, s, j);
+        return timesTenHint(c, s);
     }
 
     /// 10^j <= |c| < 10^(j + 1), or c zero for j = 77. Every int256 has one j
@@ -111,13 +115,14 @@ library LibHalmosExact {
         return c != 0 && x >= 10 ** j && x < 10 ** (j + 1);
     }
 
-    /// For 10^n <= |c| < 10^(n + 1), the digit count of each quotient
+    /// For 10^n <= |c| < 10^(n + 1) (n is c's digit index, one below its
+    /// digit count), the digit index of each quotient
     /// `LibDecimalFloat.packLossy` takes of c while shedding digits to fit
     /// int224: c / 1e72 and c / 1e75 are zero iff n < 72 and n < 75, the cut
-    /// leaves n - 8 digits (n >= 75), n - 5 (n >= 72) or n, and each further
-    /// division by ten one fewer; each is |c| / 10^k in magnitude for the k
-    /// digits shed. A quotient of at most 67 digits ends the shedding once
-    /// it fits int224, and every one of at most 67 digits does.
+    /// leaves a quotient of index n - 8 (n >= 75), n - 5 (n >= 72) or n, and
+    /// each further division by ten one less; each is |c| / 10^k in magnitude
+    /// for the k digits shed. The shedding ends at the first quotient that
+    /// fits int224, which every quotient of index at most 66 (67 digits) does.
     /// True for every such c, so a lemma that returns when it is false
     /// excludes no input; it bounds the shedding loop on every path.
     function packHints(int256 c, uint256 n) internal pure returns (bool) {
@@ -144,7 +149,7 @@ library LibHalmosExact {
         return isQuotient(c, x, n, m);
     }
 
-    /// x has m digits, c's sign and |c| / 10^(n - m) as its magnitude.
+    /// x has digit index m, c's sign and |c| / 10^(n - m) as its magnitude.
     function isQuotient(int256 c, int256 x, uint256 n, uint256 m) private pure returns (bool) {
         return hasDigits(x, m) && (x < 0) == (c < 0) && abs(x) == abs(c) / 10 ** (n - m);
     }

@@ -48,14 +48,11 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// so m 10^f <= 2^223 10^(e - 1) <= |c| 10^e, not above it. So T(S) =
 /// T(c 10^e), unbounded exponents included, and PACK makes that the result.
 ///
-/// MINUS (#513) and NEAR (#512) are not yet proved under CI's 5-minute limit
-/// per run and are out of its matrix, so the composition is open there.
+/// MINUS (#513), NEAR (#512) and PACK's `check_packLow` cases 99-780 (#511) are
+/// not yet proved under the halmos workflow's 5-minute limit per run and are out
+/// of its matrix, so the composition is open there.
 contract AddSubRoundOnceHalmosTest {
-    /// floor(int256.max / 10).
-    uint256 internal constant T10 = uint256(type(int256).max) / 10;
     uint256 internal constant TWO_223 = 2 ** 223;
-    int256 internal constant FMIN = type(int32).min;
-    int256 internal constant FMAX = type(int32).max;
 
     function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure returns (int256, int256) {
         return LibDecimalFloatImplementation.add(ca, ea, cb, eb);
@@ -71,7 +68,7 @@ contract AddSubRoundOnceHalmosTest {
 
     function isMaximized(int256 m) internal pure returns (bool) {
         uint256 x = LibHalmosExact.abs(m);
-        return m != type(int256).min && x > T10 && x <= 10 * T10;
+        return m != type(int256).min && x > LibHalmosExact.T10 && x <= 10 * LibHalmosExact.T10;
     }
 
     /// ZERO.
@@ -90,7 +87,8 @@ contract AddSubRoundOnceHalmosTest {
 
     /// MINUS, split by the digit counts of ca and -cb (j = 77 for zero), one
     /// pair per path. Every int256 has one j in [0, 77].
-    /// Unproven under the 5-minute limit, not in the CI matrix: see #513.
+    /// Unproven under the 5-minute limit, not in the halmos workflow's matrix:
+    /// see #513.
     function check_subIsAddNegated(int224 cb, int256 ca, int256 ea, int256 eb, uint256 jaBits, uint256 jbBits)
         external
         view
@@ -134,7 +132,7 @@ contract AddSubRoundOnceHalmosTest {
             // T10 < |c| 10^k <= 10 T10 <= int256.max, so c 10^k does not
             // wrap: m is c 10^k exactly (so of c's sign, and 10^8 | m as
             // k >= 8) and maximized.
-            assert(x > T10 / scale && x <= (10 * T10) / scale);
+            assert(x > LibHalmosExact.T10 / scale && x <= (10 * LibHalmosExact.T10) / scale);
         } catch {
             assert(false);
         }
@@ -200,16 +198,17 @@ contract AddSubRoundOnceHalmosTest {
     /// for every maximized B, so |yb| <= T10 drops none, and `Impl.add`'s
     /// B mod 10 is zero by construction (solvers time out deducing it from
     /// B mod 10^8 == 0).
-    /// Unproven under the 5-minute limit, not in the CI matrix: see #512.
+    /// Unproven under the 5-minute limit, not in the halmos workflow's matrix:
+    /// see #512.
     function check_addNear(int256 a, int256 yb, int256 eB, uint256 dBits, bool swap) external view {
         uint256 d = LibHalmosExact.concrete(dBits, 7);
         if (d > 76 || !LibHalmosExact.inSlice(d)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
-        if (yb < -int256(T10) || yb > int256(T10)) return;
+        if (yb < -int256(LibHalmosExact.T10) || yb > int256(LibHalmosExact.T10)) return;
         int256 b = yb * 10;
         if (!isMaximized(a) || !isMaximized(b) || a % 1e8 != 0 || b % 1e8 != 0) return;
         if (!LibHalmosExact.divHint(a, 1e75) || !LibHalmosExact.divHint(b, 1e75)) return;
-        if (eB < FMIN - 76 || eB > FMAX - 8) return;
+        if (eB < LibHalmosExact.FMIN - 76 || eB > LibHalmosExact.FMAX - 8) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 eA = eB + int256(d);
         try this.implAdd(swap ? b : a, swap ? eB : eA, swap ? a : b, swap ? eA : eB) returns (int256 c, int256 e) {
@@ -231,10 +230,10 @@ contract AddSubRoundOnceHalmosTest {
         if (d <= 76 || d > 2 ** 40) return;
         if (!isMaximized(a) || !isMaximized(b) || a % 1e8 != 0 || b % 1e8 != 0) return;
         if (!LibHalmosExact.divHint(a, 1e75) || !LibHalmosExact.divHint(b, 1e75)) return;
-        if (eB < FMIN - 76 || eB > FMAX - 8) return;
+        if (eB < LibHalmosExact.FMIN - 76 || eB > LibHalmosExact.FMAX - 8) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 eA = eB + int256(d);
-        if (eA > FMAX - 8) return;
+        if (eA > LibHalmosExact.FMAX - 8) return;
         try this.implAdd(swap ? b : a, swap ? eB : eA, swap ? a : b, swap ? eA : eB) returns (int256 c, int256 e) {
             assert(e == eA);
             uint256 mc = LibHalmosExact.abs(c);

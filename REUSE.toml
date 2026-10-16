@@ -8,6 +8,7 @@ path = [
   ".vscode/**/",
   ".soldeerignore",
   "audit/**/",
+  "script/halmos/fixtures/**/",
   ".gitignore",
   "Cargo.lock",
   "Cargo.toml",

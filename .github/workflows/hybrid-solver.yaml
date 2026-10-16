@@ -1,0 +1,26 @@
+name: hybrid-solver
+on:
+  push:
+    paths:
+      - script/halmos/**
+      - .github/workflows/hybrid-solver.yaml
+  workflow_dispatch:
+env:
+  # The halmos workflow's pin (`.github/workflows/halmos.yaml`): yices 2.7.0,
+  # cvc5 1.4.0, bitwuzla 0.9.1.
+  SOLVER_NIXPKGS: github:NixOS/nixpkgs/8edc0c72e3a38faf5434e40d1f19431125fe4b30
+defaults:
+  run:
+    shell: bash
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: rainlanguage/rainix/.github/actions/nix-cachix-setup@main
+      - name: Install solvers
+        run: |
+          for s in yices cvc5 bitwuzla; do
+            echo "$(nix build --no-link --print-out-paths "$SOLVER_NIXPKGS#$s" | head -1)/bin" >> "$GITHUB_PATH"
+          done
+      - run: script/halmos/test-hybrid-solver.sh

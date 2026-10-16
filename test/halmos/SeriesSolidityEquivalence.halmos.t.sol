@@ -9,8 +9,8 @@ import {LibDecimalFloatImplementationSeriesSolidity} from "../lib/LibDecimalFloa
 /// Halmos: the assembly `log10Ratio` and `exp10Fixed` (#352) return and revert
 /// exactly as their plain-Solidity copies, for every input.
 ///
-/// Neither lemma is proved under CI's 5-minute limit per run, so neither is in
-/// its matrix: #515 (`log10Ratio`) and #516 (`exp10Fixed`).
+/// Neither lemma is proved under the halmos workflow's 5-minute limit per run,
+/// so neither is in its matrix: #515 (`log10Ratio`) and #516 (`exp10Fixed`).
 contract SeriesSolidityEquivalenceHalmosTest is Test {
     function log10RatioAsm(uint256 a, uint256 b, bool relative) external pure returns (int256, int256) {
         return LibDecimalFloatImplementation.log10Ratio(a, b, relative);
@@ -38,14 +38,16 @@ contract SeriesSolidityEquivalenceHalmosTest is Test {
         }
     }
 
-    /// Unproven under the 5-minute limit, not in the CI matrix: see #515.
+    /// Unproven under the 5-minute limit, not in the halmos workflow's matrix:
+    /// see #515.
     function check_log10RatioEquivalence(uint256 a, uint256 b, bool relative) external view {
         assertSameOutcome(
             abi.encodeCall(this.log10RatioAsm, (a, b, relative)), abi.encodeCall(this.log10RatioSol, (a, b, relative))
         );
     }
 
-    /// Unproven under the 5-minute limit, not in the CI matrix: see #516.
+    /// Unproven under the 5-minute limit, not in the halmos workflow's matrix:
+    /// see #516.
     function check_exp10FixedEquivalence(uint256 x) external view {
         assertSameOutcome(abi.encodeCall(this.exp10FixedAsm, (x)), abi.encodeCall(this.exp10FixedSol, (x)));
     }

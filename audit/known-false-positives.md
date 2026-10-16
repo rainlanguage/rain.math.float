@@ -71,40 +71,47 @@ only at the same `exponentB`, where the mutant returns `(0, 0)` directly and the
 original returns the same `(0, 0)` through `underflowExponentBy > 76`. The
 comparison is free at its boundary in both directions.
 
-## Equivalent mutants: `LibHalmosExact` hint filters and `eqValue` gap cutoff
+## Equivalent mutants: `LibHalmosExact` hint filters, `hasDigits`, `abs`, `eqValue` and the slice defaults
 
-`test/halmos/LibHalmosExact.sol`. The hint filters (`maximizeHints`,
-`packHints`) are true for every input in their domain
-(`test/halmos/LibHalmosExact.t.sol` and the `hints`/`pack-hints` halmos lemmas
-prove it), so a change that keeps every call inside that domain leaves the
-boolean unchanged. Such a change only moves which terms the halmos branch solver
-is handed a fact for, which the filters' NatSpec names as costing completeness
-(a loop-bound warning or extra paths), never soundness; the `quick` lemma run
-proving MAX without a warning is what pins the picks, not a forge test.
+`test/halmos/LibHalmosExact.sol`.
 
-- `maximizeHints`: `if (j >= 75)` to `if (j >= 76)`. For j = 75, |c| is in
-  [1e75, 1e76), so each `shiftHint(c, 0, 75, t)` for t in {38, 57, 66, 74, 75}
-  compares a nonzero quotient against a false `s + j < t` and is true, every
-  `s + j < t` guard is false so s stays 0, the loop breaks at once, and the
-  final call is `timesTenHint(c, 0, 75)`, the original's return value.
-- `maximizeHints`: `s += 38` to `s += 37`. Every later shift still keeps s + j
-  below 76 (37 leaves it below 75; 19, 10, the twos and the one each fire only
-  while s + j is below their threshold of at most 75), so every `shiftHint` and
-  the final `timesTenHint` stay in the domain where they are true.
-- `packHints`: `while (m >= 67)` to `while (m > 67)`. Every
-  `isQuotient(c, x,
-  n, m)` the function visits is true by construction (x is c
-  cut by n - m digits with m its digit count), so returning it at m = 67 instead
-  of entering the loop body, which either returns true or steps to m = 66 and
-  returns the same true, gives the same boolean.
+The hint filters (`divHint`, `shiftHint`, `timesTenHint`, `maximizeHints`,
+`packHints`) are true for every input in their domain, and being true is the
+only property forge observes of them (`test/halmos/LibHalmosExact.t.sol` asserts
+it; the `divhint`, `hints` and `hints-pack` halmos lemmas prove it). So any
+mutant of a hint filter that keeps it true on its domain is equivalent under
+forge, `return true` included: a dropped conjunct (`c / 1e72`, the int224 early
+return, an `isQuotient`), a moved threshold (`j >= 76`, `while (m > 67)`,
+`>= 74`), a changed step (`+= 37`, `+= 39`, `+= 20`, `+= 11`, `+= 3`, `+= 2`;
+those reaching s + j = 76 with s > 0 wrap the shifted product, and a wrapped
+product is still outside [-T10, T10] and nonzero divided by 10^t), or `T10` as
+`int256.max / 11` (`timesTenHint` is an identity for any constant at most
+int256.max). Such a change only moves which terms the halmos branch solver is
+handed a fact for, which the filters' NatSpec names as costing completeness (a
+loop-bound warning or extra paths), never soundness; a lemma run proving without
+a warning is what pins the picks, not a forge test.
+
 - `hasDigits`: dropping `c != 0 &&`. For c = 0, `x >= 10 ** j` is false for
-  every j (10^j is at least 1); for c nonzero the term is true. Same result on
-  every input.
-- `eqValue`: `if (d > 77) return false` to `if (d > 76)` in the `re >= se`
-  branch. At d = 77 the original computes `r * 10^77 == s` with r at least 1,
-  and 10^77 exceeds 2^255, so no int256 magnitude s equals it: false either way.
-  The `re < se` branch's `d > 77` is not probed separately; the proof is the
-  same.
+  every j (10^j is at least 1); for c nonzero the term is true.
+- `abs`: `x < 0` to `x <= 0`. Only x = 0 changes branch, and -0 is 0.
+- `inSlice`, `overlapsSlice`: the `envOr` defaults with the env unset.
+  `testSlices` pins the defaults [0, uint256.max] through empty variables, which
+  `envOr` reads as unset; a mutant that survives it keeps them. Every lemma that
+  calls them is sliced in the matrix and runs with both set.
+- `eqValue`: `&&` for the zero test's `||`. With exactly one coefficient zero
+  the sign test passes only for a positive other, where the product test
+  compares zero against a nonzero product under its overflow guard: false, as
+  the original.
+- `eqValue`: `re > se` for `re >= se`. At re = se both branches have d = 0, p =
+  1 and compare r with s.
+- `eqValue`: `d > 76` or `d > 78` for `d > 77`, either branch. At d = 77 the
+  product is at least 10^77 > 2^255, above every magnitude. At d = 78 the
+  wrapped `10 ** 78` exceeds 2^255, so `max / p` is 1 and the product test needs
+  a magnitude of p: false either way.
+- `eqValue`: `<` for the overflow guard's `<=`, either branch. At r = floor(max
+  / p) the product r p is above 2^256 - 1 - p > 2^255 for d <= 76 and is 10^77 >
+  2^255 for d = 77, above every magnitude, so the equality is false with the
+  guard either way.
 
 ## Equivalent mutants: the parser's `NEVER_PAST_EXPONENT` gates before `isPastEveryFloat`
 

@@ -152,7 +152,7 @@ contract LibHalmosExactTest is Test {
     function testTimesTenHint(uint256 seed, bool negative, uint8 jSeed, uint8 sSeed) external pure {
         uint256 j = bound(uint256(jSeed), 0, 76);
         uint256 s = j < 75 ? bound(uint256(sSeed), 0, 75 - j) : 0;
-        assertTrue(LibHalmosExact.timesTenHint(withDigits(seed, j, negative), s, j));
+        assertTrue(LibHalmosExact.timesTenHint(withDigits(seed, j, negative), s));
     }
 
     /// Either side of |c| = floor(T10 / 10^s), where c 10^s last fits
@@ -162,11 +162,11 @@ contract LibHalmosExactTest is Test {
         uint256 x = T10 / 10 ** s;
         uint256 j = digitsOf(x) - 1;
         assertEq(s + j, 75);
-        assertTrue(LibHalmosExact.timesTenHint(signed(x, negative), s, j));
+        assertTrue(LibHalmosExact.timesTenHint(signed(x, negative), s));
         assertEq(digitsOf(x + 1), j + 1);
-        assertTrue(LibHalmosExact.timesTenHint(signed(x + 1, negative), s, j));
+        assertTrue(LibHalmosExact.timesTenHint(signed(x + 1, negative), s));
         assertEq(digitsOf(x - 1), j + 1);
-        assertTrue(LibHalmosExact.timesTenHint(signed(x - 1, negative), s, j));
+        assertTrue(LibHalmosExact.timesTenHint(signed(x - 1, negative), s));
     }
 
     /// True for every nonzero int256 at its digit count.
@@ -334,10 +334,19 @@ contract LibHalmosExactTest is Test {
         assertFalse(LibHalmosExact.eqValue(-(2 ** 254), 1, type(int256).min, 0));
     }
 
-    /// The env slice: inclusive at both ends for `inSlice`, and
-    /// `overlapsSlice` iff the block meets it. Both read the same process
-    /// env, so one test holds every case.
+    /// The env slice: every case when unset (an empty variable reads as
+    /// unset), inclusive at both ends for `inSlice`, and `overlapsSlice` iff
+    /// the block meets it. Both read the same process env, so one test holds
+    /// every case.
     function testSlices() external {
+        vm.setEnv("HALMOS_SLICE_LO", "");
+        vm.setEnv("HALMOS_SLICE_HI", "");
+        assertTrue(LibHalmosExact.inSlice(0));
+        assertTrue(LibHalmosExact.inSlice(857));
+        assertTrue(LibHalmosExact.inSlice(type(uint256).max));
+        assertTrue(LibHalmosExact.overlapsSlice(0, 0));
+        assertTrue(LibHalmosExact.overlapsSlice(type(uint256).max, type(uint256).max));
+
         vm.setEnv("HALMOS_SLICE_LO", "10");
         vm.setEnv("HALMOS_SLICE_HI", "20");
         assertFalse(LibHalmosExact.inSlice(9));

@@ -1,6 +1,11 @@
 name: halmos
 on:
   push:
+    paths:
+      - src/**
+      - test/halmos/**
+      - script/halmos/**
+      - .github/workflows/halmos.yaml
   workflow_dispatch:
     inputs:
       lemma:
@@ -69,7 +74,7 @@ jobs:
             {"name": "quick", "solver": "bitwuzla", "expect": 3, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_(addZeroOperand|maximizeFloat|maximizeIdempotent)"]},
             {"name": "divhint", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_divHintHolds"]},
             {"name": "hints", "solver": "yices", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_maximizeHintsHold"], "range": [0, 76], "starts": [0, 10, 20, 30, 40, 50, 60, 70]},
-            {"name": "pack-hints", "solver": "hybrid", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_packHintsHold", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 76], "starts": [0, 72]},
+            {"name": "hints-pack", "solver": "hybrid", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_packHintsHold", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 76], "starts": [0, 72]},
             {"name": "pack-below", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packBelow", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"]},
             {"name": "pack-low", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packLow", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 98], "starts": [0, 11, 22, 33, 44, 55, 66, 77, 88]},
             {"name": "pack-low-end", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packLow", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [781, 857], "starts": [781, 792, 803, 814, 825, 836, 847]},
@@ -91,9 +96,9 @@ jobs:
       matrix:
         lemma: ${{ fromJSON(needs.matrix.outputs.lemmas) }}
     steps:
+      # No Cachix token: the job only reads the cache, and runs halmos from
+      # PyPI with its dependency tree unpinned.
       - uses: rainlanguage/rainix/.github/actions/nix-cachix-setup@main
-        with:
-          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - name: Install halmos and solvers
         run: |
           pipx install "halmos==$HALMOS_VERSION"
@@ -129,7 +134,7 @@ jobs:
           # Into a file, not a pipe: solver processes outliving a killed
           # halmos would hold a pipe open past the limit.
           timeout -k 10 "$HALMOS_RUN_SECONDS" nix develop -c halmos --panic-error-codes '*' --solver-threads 4 --loop 16 \
-            --solver-command "$solver" "${args[@]}" > "$LOG" 2>&1
+            --solver-command "$solver" --json-output "$LOG.json" "${args[@]}" > "$LOG" 2>&1
           code=$?
           set -e
           cat "$LOG"
@@ -139,9 +144,20 @@ jobs:
             echo "over ${HALMOS_RUN_SECONDS}s: cut this slice smaller"
             exit 1
           fi
-          # halmos exits non-zero on any counterexample, timeout or error. A
-          # warning (a loop bound reached, a path left unexplored) leaves the
-          # proof incomplete.
+          # The JSON report decides: halmos's own exit code, exactly EXPECT
+          # tests each with exit code 0 (not a counterexample, timeout, stuck
+          # path, all-revert or error) and no loop cut short by the bound,
+          # which leaves a proof incomplete. A missing field or file fails.
+          if ! jq -e --argjson expect "$EXPECT" '
+                .exitcode == 0
+                and ([.test_results[][]] | length == $expect
+                     and all(.exitcode == 0 and .num_bounded_loops == 0))' "$LOG.json" > /dev/null; then
+            echo "halmos report: expected $EXPECT complete passing tests"
+            jq '.test_results[][] | {name, exitcode, num_bounded_loops}' "$LOG.json" || true
+            exit 1
+          fi
+          # Backstops on the text log: a warning the report has no field for
+          # (the --width limit), and the pass count as printed.
           if grep -q WARNING "$LOG"; then
             echo "halmos warned: the proof is incomplete"
             exit 1
@@ -156,5 +172,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: halmos-${{ matrix.lemma.name }}
-          path: halmos-${{ matrix.lemma.name }}.log
+          path: |
+            halmos-${{ matrix.lemma.name }}.log
+            halmos-${{ matrix.lemma.name }}.log.json
           if-no-files-found: warn

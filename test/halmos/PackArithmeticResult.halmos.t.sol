@@ -14,11 +14,9 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// `ExponentOverflow(c, e)` when it is no Float. Checked for every int256 c and
 /// every int256 e: Below, Low, Middle, High and Above tile the int256
 /// exponents, and each splits c by size class (`checkPackClass`), one per
-/// path.
+/// path; the halmos workflow proves every band but `check_packLow` cases
+/// 99-780 (#511).
 contract PackArithmeticResultHalmosTest {
-    int256 internal constant FMIN = type(int32).min;
-    int256 internal constant FMAX = type(int32).max;
-
     function pack(int256 c, int256 e) external pure returns (Float) {
         return LibDecimalFloat.packArithmeticResult(c, e);
     }
@@ -34,9 +32,9 @@ contract PackArithmeticResultHalmosTest {
     /// does, so T is the larger of floor(X / 10^f0) 10^f0 and L 10^(f0 - 1),
     /// over those f at least int32.min.
     ///
-    /// n is 0 for |c| <= L, else c's digit count (`LibHalmosExact.hasDigits`).
-    /// Every branch compares x itself against a constant, so none waits on a
-    /// quotient.
+    /// n is 0 for |c| <= L, else the j of `LibHalmosExact.hasDigits`: c has n + 1
+    /// digits. Every branch compares x itself against a constant, so none waits
+    /// on a quotient.
     function truncGrid(int256 c, int256 e, uint256 n) internal pure returns (uint256 m, int256 f, uint256 status) {
         if (c == 0) {
             return (0, 0, 0);
@@ -44,10 +42,10 @@ contract PackArithmeticResultHalmosTest {
         // 0 < |c| < 2^256 < 10^78: at e <= int32.min - 78, |c| 10^e is below
         // 10^int32.min, every nonzero member; at e >= int32.max + 68 it is at
         // least 10^(int32.max + 68) > 2^223 10^int32.max, past every Float.
-        if (e <= FMIN - 78) {
+        if (e <= LibHalmosExact.FMIN - 78) {
             return (0, 0, 1);
         }
-        if (e >= FMAX + 68) {
+        if (e >= LibHalmosExact.FMAX + 68) {
             return (0, 0, 2);
         }
         uint256 x = LibHalmosExact.abs(c);
@@ -66,10 +64,10 @@ contract PackArithmeticResultHalmosTest {
             if (k == 0) {
                 // Lifting keeps the value exactly, so T = |c| 10^e when e is
                 // at least the floor.
-                if (e >= FMIN) {
+                if (e >= LibHalmosExact.FMIN) {
                     (m, f) = (x, e);
                 } else {
-                    (m, f) = (floorAt(x, e), FMIN);
+                    (m, f) = (floorAt(x, e), LibHalmosExact.FMIN);
                 }
             } else {
                 // forge-lint: disable-next-line(unsafe-typecast)
@@ -78,21 +76,21 @@ contract PackArithmeticResultHalmosTest {
                 uint256 q = x / p;
                 // q 10 < l iff q < floor((l - 1) / 10) + 1, iff x is below
                 // that times 10^k.
-                if (f0 - 1 >= FMIN && x < ((l - 1) / 10 + 1) * p) {
+                if (f0 - 1 >= LibHalmosExact.FMIN && x < ((l - 1) / 10 + 1) * p) {
                     (m, f) = (l, f0 - 1);
-                } else if (f0 >= FMIN) {
+                } else if (f0 >= LibHalmosExact.FMIN) {
                     (m, f) = (q, f0);
                 } else {
-                    (m, f) = (floorAt(x, e), FMIN);
+                    (m, f) = (floorAt(x, e), LibHalmosExact.FMIN);
                 }
             }
             if (m == 0) {
                 return (0, 0, 1);
             }
-            if (f > FMAX) {
+            if (f > LibHalmosExact.FMAX) {
                 // Lower f to the ceiling if m 10^(f - FMAX) is still at most l.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                uint256 j = uint256(f - FMAX);
+                uint256 j = uint256(f - LibHalmosExact.FMAX);
                 if (j > 67) {
                     return (0, 0, 2);
                 }
@@ -101,7 +99,7 @@ contract PackArithmeticResultHalmosTest {
                 if (m > l / p) {
                     return (0, 0, 2);
                 }
-                (m, f) = (m * p, FMAX);
+                (m, f) = (m * p, LibHalmosExact.FMAX);
             }
         }
     }
@@ -109,7 +107,7 @@ contract PackArithmeticResultHalmosTest {
     /// floor(x 10^e / 10^FMIN) for e < FMIN.
     function floorAt(uint256 x, int256 e) internal pure returns (uint256) {
         // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 d = uint256(FMIN - e);
+        uint256 d = uint256(LibHalmosExact.FMIN - e);
         // x < 2^256 < 10^78.
         if (d > 77) {
             return 0;
@@ -145,11 +143,11 @@ contract PackArithmeticResultHalmosTest {
     }
 
     /// c's size class i, constant per path: 0 for |c| at most l (c fits
-    /// int224, zero included), else 66 + i digits with |c| above l. Every
-    /// int256 has exactly one, as |c| > l >= 10^67 has at least 68 digits and
-    /// |c| <= 2^255 < 10^77 at most 77. Shedding classes take `packHints`,
-    /// which `LibHalmosExact.halmos.t.sol` proves true for every c of that
-    /// digit count.
+    /// int224, zero included), else 67 + i digits (n = 66 + i) with |c| above
+    /// l. Every int256 has exactly one, as |c| > l >= 10^67 has at least 68
+    /// digits and |c| <= 2^255 < 10^77 at most 77. Shedding classes take
+    /// `packHints`, which `LibHalmosExact.halmos.t.sol` proves true for every
+    /// c of that digit count.
     function checkPackClass(int256 c, int256 e, uint256 i) internal view {
         uint256 x = LibHalmosExact.abs(c);
         uint256 l = c > 0 ? 2 ** 223 - 1 : 2 ** 223;
@@ -166,29 +164,30 @@ contract PackArithmeticResultHalmosTest {
     /// e in [int256.min, int32.min - 78].
     function check_packBelow(int256 c, int256 e, uint256 iBits) external view {
         uint256 i = LibHalmosExact.concrete(iBits, 4);
-        if (i > 10 || e > FMIN - 78) return;
+        if (i > 10 || e > LibHalmosExact.FMIN - 78) return;
         checkPackClass(c, e, i);
     }
 
     /// e in [int32.min - 77, int32.min], one constant e per path: case
     /// 11 j + i for e = int32.min - j.
-    /// CI proves cases 0-98 and 781-857. Cases 99-780 (e in [int32.min - 70,
-    /// int32.min - 9]) cost about 25s each under the 5-minute limit, more
-    /// slices than a matrix carries, so they are out: see #511.
+    /// The halmos workflow proves cases 0-98 and 781-857. Cases 99-780 (e in
+    /// [int32.min - 70, int32.min - 9]) cost about 25s each under the 5-minute
+    /// limit, more slices than a matrix carries, so they are out: see #511.
     function check_packLow(int256 c, uint256 jBits, uint256 iBits) external view {
         uint256 j = LibHalmosExact.concrete(jBits, 7);
         if (j > 77 || !LibHalmosExact.overlapsSlice(j * 11, j * 11 + 10)) return;
         uint256 i = LibHalmosExact.concrete(iBits, 4);
         if (i > 10 || !LibHalmosExact.inSlice(j * 11 + i)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
-        checkPackClass(c, FMIN - int256(j), i);
+        checkPackClass(c, LibHalmosExact.FMIN - int256(j), i);
     }
 
     /// e in [int32.min + 1, int32.max - 11]: shedding at most 10 digits and
     /// the bound one digit back stay inside int32. Case i.
     function check_packMiddle(int256 c, int256 e, uint256 iBits) external view {
         uint256 i = LibHalmosExact.concrete(iBits, 4);
-        if (i > 10 || !LibHalmosExact.inSlice(i) || e < FMIN + 1 || e > FMAX - 11) return;
+        if (i > 10 || !LibHalmosExact.inSlice(i)) return;
+        if (e < LibHalmosExact.FMIN + 1 || e > LibHalmosExact.FMAX - 11) return;
         checkPackClass(c, e, i);
     }
 
@@ -200,13 +199,13 @@ contract PackArithmeticResultHalmosTest {
         uint256 i = LibHalmosExact.concrete(iBits, 4);
         if (i > 10 || !LibHalmosExact.inSlice(j * 11 + i)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
-        checkPackClass(c, FMAX - 10 + int256(j), i);
+        checkPackClass(c, LibHalmosExact.FMAX - 10 + int256(j), i);
     }
 
     /// e in [int32.max + 68, int256.max].
     function check_packAbove(int256 c, int256 e, uint256 iBits) external view {
         uint256 i = LibHalmosExact.concrete(iBits, 4);
-        if (i > 10 || e < FMAX + 68) return;
+        if (i > 10 || e < LibHalmosExact.FMAX + 68) return;
         checkPackClass(c, e, i);
     }
 }
