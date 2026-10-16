@@ -231,3 +231,20 @@ Let `x` be the root fed to the step. `x >= sqrt(N)`: `x = (seed + 2) * k` with
 
 So the mutant's `r` is `s` or, only below the half, `s - 1`, and both give the
 original's result for every input.
+
+## Equivalent mutants: the parser's `NEVER_PAST_EXPONENT` gates before `isPastEveryFloat`
+
+`src/lib/parse/LibParseDecimalFloat.sol`, `parseDecimalFloatInline` and
+`parseDecimalFloatPastInt256`, the
+`exponent > LibDecimalFloat.NEVER_PAST_EXPONENT &&` operand before each
+`LibDecimalFloat.isPastEveryFloat` call. Changing either gate to `>=`, or
+dropping it, changes nothing: the first statement of `isPastEveryFloat` is
+`if (exponent <= NEVER_PAST_EXPONENT) return false;`, so the gate repeats the
+callee's own short-circuit. Wherever the original gate is false the mutant calls
+the function and gets `false`, the same value the original's `&&` produced, and
+wherever the gate is true the two are the same expression. The gate only saves
+the call on the hot path. Moving it the other way, to
+`> NEVER_PAST_EXPONENT + 1`, is not equivalent, and
+`testParseOverflowThresholdExcesses`,
+`testParsePastInt256FirstExponentPastNeverPast` and
+`testParsePastInt256GateAtNeverPastExponentPlusOne` kill it.
