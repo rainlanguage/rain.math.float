@@ -1171,6 +1171,18 @@ contract LibDecimalFloatPowTest is Test {
         assertLt(oneBit - noBits, 2 * (twoBits - oneBit), "pow squares the base past the top bit of N");
     }
 
+    /// The steps above cannot see a square that every whole N pays alike, so
+    /// one whole power is pinned by an absolute ceiling in the same frame:
+    /// `10^3` costs 4190 gas, and 4950 with the base squared past the top bit
+    /// (one square of the coefficient-one base, its two range guards and a
+    /// loop pass).
+    function testPowWholePowerGasCeiling() external view {
+        Float ten = LibDecimalFloat.packLossless(1, 1);
+        assertLt(
+            powGas(ten, LibDecimalFloat.packLossless(3, 0)), 4500, "pow squares the base past the top bit of a whole N"
+        );
+    }
+
     /// `pow` raises to an integer exponent via exponentiation by squaring,
     /// which squares the base in place. The base exponent therefore grows by
     /// roughly a factor of two per bit of the integer exponent, so a large
@@ -1389,26 +1401,26 @@ contract LibDecimalFloatPowTest is Test {
     /// never a result. Only the fraction legs and the final pack see such a
     /// result, and they raise the same error.
     function testPowTopBitSquareRangeError() external {
-        int256[2] memory ns = [int256(1) << 97, (int256(1) << 98) - 1];
+        int256[2] memory integerParts = [int256(1) << 97, (int256(1) << 98) - 1];
         Float big = LibDecimalFloat.packLossless(1, 1e9);
         Float small = LibDecimalFloat.packLossless(1, -1e9);
-        for (uint256 j = 0; j < ns.length; j++) {
-            int256 n = ns[j];
-            Float[4] memory bs = [
-                LibDecimalFloat.packLossless(n, 0),
-                LibDecimalFloat.packLossless(n * 10 + 5, -1),
-                LibDecimalFloat.packLossless(n * 100 + 25, -2),
-                LibDecimalFloat.packLossless(n * 100 + 75, -2)
+        for (uint256 j = 0; j < integerParts.length; j++) {
+            int256 integerPart = integerParts[j];
+            Float[4] memory powers = [
+                LibDecimalFloat.packLossless(integerPart, 0),
+                LibDecimalFloat.packLossless(integerPart * 10 + 5, -1),
+                LibDecimalFloat.packLossless(integerPart * 100 + 25, -2),
+                LibDecimalFloat.packLossless(integerPart * 100 + 75, -2)
             ];
-            for (uint256 i = 0; i < bs.length; i++) {
+            for (uint256 i = 0; i < powers.length; i++) {
                 vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(1e9)));
-                this.powExternal(big, bs[i]);
+                this.powExternal(big, powers[i]);
                 vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(-1e9)));
-                this.powExternal(small, bs[i]);
+                this.powExternal(small, powers[i]);
                 vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(1e9)));
-                this.powExternal(big, bs[i].minus());
+                this.powExternal(big, powers[i].minus());
                 vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(-1e9)));
-                this.powExternal(small, bs[i].minus());
+                this.powExternal(small, powers[i].minus());
             }
         }
     }
