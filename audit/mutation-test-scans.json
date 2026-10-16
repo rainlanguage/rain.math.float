@@ -1365,5 +1365,27 @@
       "testsAfter": 237,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-16T09:20:54Z",
+    "commit": "0ff3f05c880599cf1fa11fd935d2524adb27a668",
+    "testsAfterCommit": "e006de09218135c29476dcadee0241eaf627ecf4",
+    "publishedTag": "sol-v0.3.7",
+    "commitsAheadOfTag": 44,
+    "scope": "testFuzzMarginPerOperationPositiveChain in test/src/lib/LibDecimalFloat.consumerHazards.t.sol (PR #719, round 10): rain-marvin's MEDIUM that the test could not fail for any margin with every operand in [1, 1e9], every result under 1e36. Suite = the consumer-hazards file (33 tests, 5096 fuzz runs) at forge --fuzz-seed 0 and 1 through mutation-probe. Before = the merge 0ff3f05c with the [1, 1e9] domain and the exactCeil + 1 upper check; after = e006de09 with the first operand in [1e66, 1e67], the others in [1, 1e3] and the upper check exactCeil + floor((n + 1)e-66 exact) + 1. Mutants: M01 margin (n + 1, 66) to (0, 66); M02 to (1, 66), the round-8 count; M03 acc.add(margin) to acc; M04 to (n + 1, 60); M05 to (n + 1, 65); M06 exactCeil to the exact floor; M07, after only, the upper bound's (n + 1) to n. Before: M01 to M06 all survive at seed 0. After: all seven killed at seeds 0 and 1; the mutated lines are read by no other test. The domain moved within the proven range (first operand within [1, 1e67], others within [1, 1e3]) is recorded equivalent in audit/known-false-positives.md and not probed. No library change. Adversarial pass: each kill is the margin rule failing, or the overshoot bound attained, as the NatSpec derives; no library finding.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.34.0",
+    "summary": {
+      "behaviours": 7,
+      "behavioursBefore": 6,
+      "killedBefore": 0,
+      "killedAfter": 7,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 33,
+      "testsAfter": 33,
+      "filed": []
+    }
   }
 ]
