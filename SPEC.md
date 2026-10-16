@@ -136,16 +136,18 @@ binary path (#306).
 
 ### integer, frac, floor, ceil
 
-All **UNRULED**.
+All **UNRULED** except the zero rule for `floor` and `ceil` (#687).
 
 - `integer(f)` truncates toward zero at `f`'s exponent; `frac(f)` is
   `f - integer(f)` at the same exponent, carrying `f`'s sign. Exponent `>= 0`:
   `integer` is `f`, `frac` is zero. Exponent `< -76`: `integer` is zero, `frac`
   is `f`.
-- `floor(f)`: `f` when `e >= 0` or the fraction is zero; otherwise `integer(f)`
-  for `f > 0` and `integer(f) - 1` for `f < 0`.
-- `ceil(f)`: `f` when `e >= 0` or the fraction is zero; otherwise
-  `integer(f) + 1` for `f > 0` and `integer(f)` for `f < 0`.
+- `floor(f)`: `FLOAT_ZERO` for a zero `f` at any exponent (#687); otherwise `f`
+  when `e >= 0` or the fraction is zero; otherwise `integer(f)` for `f > 0` and
+  `integer(f) - 1` for `f < 0`.
+- `ceil(f)`: `FLOAT_ZERO` for a zero `f` at any exponent (#687); otherwise `f`
+  when `e >= 0` or the fraction is zero; otherwise `integer(f) + 1` for `f > 0`
+  and `integer(f)` for `f < 0`.
 - None reverts: each result is zero exactly or at least 1 in magnitude, so
   `packArithmeticResult` never underflows, and none lifts the exponent above
   `int32.max`.
@@ -170,7 +172,9 @@ All **UNRULED**.
   set instead of reverting (PR #278).
 - The spread is the implementation `sub`, so on a cancelling spread it truncates
   toward zero like `sub`; a spread accepted at the boundary exceeds the limit by
-  under `1e-76` of its magnitude (PR #278, PR #434).
+  under `1.7273e-76` of its magnitude (PR #278, PR #434, PR #710).
+- The limit is exact: the proportional product is not truncated like `mul` (PR
+  #716).
 - The extremes may come in either order: `agree(a, p, x, y)` equals
   `agree(a, p, y, x)`; a negative spread is negated before the comparison (#481,
   PR #498).
