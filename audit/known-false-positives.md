@@ -175,6 +175,21 @@ FMAX - 85 meets. So the `eB > FMAX - 8` term returns on no input the later test
 lets through, and moving its bound anywhere from FMAX - 85 up, `>=` included,
 changes nothing.
 
+## Equivalent mutant: PACK's `checkPackClass` without its `hasDigits` filter
+
+`test/halmos/PackArithmeticResult.halmos.t.sol`, `checkPackClass`. Dropping
+`!LibHalmosExact.hasDigits(c, n) ||` admits no new input: `packHints(c, n)` ends
+every path in `isQuotient`, whose `hasDigits` on c's scaled quotient rejects any
+c without digit index n, so the lemma checks the same inputs under the same
+assertions.
+
+## Equivalent mutant: PACK's `checkPackClass` with `l` fixed at `2 ** 223 - 1`
+
+`test/halmos/PackArithmeticResult.halmos.t.sol`, `checkPackClass`. Only c =
+-2^223 changes class, from 0 to 1. There `truncGrid` sheds k = 0 digits and
+computes the same (m, f), so every c still reaches `pack` exactly once under the
+same assertions. Same shape as MAX's digit-count `>` entry above.
+
 ## Equivalent mutant: pow oracle `k b` guard boundary
 
 `crates/tests/src/differential.rs`, `check_pow_with`'s `|a| = 10^k` branch.
