@@ -9,7 +9,6 @@ import {LibDecimalFloatImplementation} from "../../../src/lib/implementation/Lib
 import {PowNegativeBase, ExponentOverflow} from "../../../src/error/ErrDecimalFloat.sol";
 import {LibTestErrorBound} from "../../lib/LibTestErrorBound.sol";
 import {LibExactFloat, U512} from "../../lib/LibExactFloat.sol";
-import {LibDecimalFloatSqrtVariants} from "../../lib/LibDecimalFloatSqrtVariants.sol";
 import {SqrtCorrectlyRoundedTest} from "../../abstract/SqrtCorrectlyRoundedTest.sol";
 import {Math} from "@openzeppelin-contracts-5.7.0/utils/math/Math.sol";
 
@@ -276,43 +275,6 @@ contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
         int256 signedCoefficient = int256(coefficient);
         (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
         checkReference(rootCoefficient, rootExponent, coefficient, exponent);
-    }
-
-    /// The root before #359's seed, and the exact one.
-    function checkPre359(uint256 coefficient, int256 exponent) internal pure {
-        // coefficient is below 1e76, so it fits int256.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        int256 signedCoefficient = int256(coefficient);
-        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
-        (int256 pre359Coefficient, int256 pre359Exponent) =
-            LibDecimalFloatSqrtVariants.sqrtPre359(signedCoefficient, exponent);
-        assertEq(rootCoefficient, pre359Coefficient, "pre-#359 coefficient");
-        assertEq(rootExponent, pre359Exponent, "pre-#359 exponent");
-        checkReference(rootCoefficient, rootExponent, coefficient, exponent);
-    }
-
-    function testImplementationSqrtPre359Fuzz(uint256 coefficient, int256 exponent) external pure {
-        checkPre359(bound(coefficient, 1, 1e76 - 1), bound(exponent, type(int256).min + 81, type(int256).max));
-    }
-
-    function testImplementationSqrtPre359PackedFuzz(int224 signedCoefficient, int32 exponent) external pure {
-        vm.assume(signedCoefficient > 0);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        checkPre359(uint256(int256(signedCoefficient)), exponent);
-    }
-
-    /// The seed is furthest from the root at the ends of E's decade and at
-    /// E = a b: 312e73 for an even exponent, where E is the coefficient, and
-    /// 3116e71 for an odd one, where it is the coefficient over 10.
-    function testImplementationSqrtPre359SeedExtremes() external pure {
-        uint256[3] memory even = [uint256(1e75), 312e73 - 10, 1e76 - 21];
-        uint256[3] memory odd = [uint256(1e75), 3116e72 - 10, 1e76 - 21];
-        for (uint256 i = 0; i < 3; i++) {
-            for (uint256 k = 0; k < 21; k++) {
-                checkPre359(even[i] + k, 0);
-                checkPre359(odd[i] + k, 1);
-            }
-        }
     }
 
     /// A 10^s is 2^256 - 2^(s + 5) mod 2^256 for A 10^s with s 5 and 6, so

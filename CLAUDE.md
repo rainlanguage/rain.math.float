@@ -37,8 +37,7 @@ dashu-float (`differential.rs`) and the Python `decimal` oracle
 ### Tests (`test/`)
 
 - **`src/lib/`** — The pure-math suite mirroring `src/lib/`.
-- **`lib/`** — `LibExactFloat.sol` (exact reference), frozen pre-change copies
-  for equivalence tests, error-bound helpers and gas variants.
+- **`lib/`** — `LibExactFloat.sol` (exact reference) and error-bound helpers.
 - **`abstract/`** — Shared test bases: the sqrt correct-rounding oracle and gas
   logging.
 - **`concrete/`**, **`oracle/`** — Run by `crates/tests`, above.
