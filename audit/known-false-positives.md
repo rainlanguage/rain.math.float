@@ -140,7 +140,9 @@ alone, and `toFixedDecimalLossy` reads only the value of its input, so `got` and
 operand literal in this file rewritten to an equal value, such as
 `packLossless(2, 0)` as `packLossless(20, -1)` in
 `testMarginFailsAtExponentFloor`: SPEC.md defines every operation here as a
-function of its operands' values alone.
+function of its operands' values alone. It holds too for an operation rewritten
+to the one SPEC.md defines it as: `.inv()` in `testFuzzMarginInvChain` as
+`packLossless(1, 0).div(...)`, since SPEC.md defines `inv(f)` as `div(1, f)`.
 
 ## Equivalent mutant: `testMarginScalesThroughLaterMul` ulp margin without the `1 / 7` term
 
@@ -190,7 +192,7 @@ single `mul` returns. `add` and `toFixedDecimalLossy` read values alone, so
 by a power of ten is exact away from the exponent limits, so the one inexact
 step rounds the same digits in every order.
 
-## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` domain moved
+## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` and `testFuzzMarginInvChain` domain moved
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The assertions are a
 function of the bounded operands alone, and the property is proven for every
@@ -205,15 +207,34 @@ margin, 1e-66 once, an order or six too large, the floor as oracle) all survive
 such a shrink, which reaches the same verdict as the original and only stops the
 test observing the rule.
 
-## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` oracle weakened or draw narrowed
+`testFuzzMarginInvChain` is the same proof at `n = 2` on `a × inv(d)`, so the
+same holds for its bounds, and `testMarginInvCountsItsOwnAdd`'s call into it
+passes on the moved domain too. `bound(divisor, 2, 1e3)` from 1 adds `d = 1`,
+where `inv(1)` and the `mul` are exact. `bound(numerator, 1e66, 1e67) * 1e4`
+without the `* 1e4` keeps `a` an exact Float (1e67 is below int224.max) and only
+takes `a / d` off the wei grid, as the shrink above does.
+
+## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` and `testFuzzMarginInvChain` oracle weakened or draw narrowed
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The test asserts
 `exactCeil <= ceilGot <= exactCeil + marginFloor + 1` on the chain it ran, where
 `ceilGot` is the ceiling of the Float the margin's `add` returns (`got` when
 `lossless`, else `got + 1`). Its NatSpec proves two facts for every chain the
 bounds admit: that Float is strictly above the exact value, and at most
-`exact (1 + (n + 1)e-66)`. Each variant below passes on every input, so it
-reaches the original's verdict everywhere.
+`exact (1 + (n + 1)e-66)`. `testFuzzMarginInvChain` asserts the same of
+`a × inv(d)` at `n = 2`. Each variant below passes on every input, so it reaches
+the original's verdict everywhere.
+
+`testFuzzMarginInvChain`'s `numerator * 3 / 1e66 / divisor` as `numerator * 4`:
+read only by the upper bound, which it loosens; `numerator` is at most 1e71, so
+nothing reverts.
+
+`testFuzzMarginInvChain`'s `(numerator + divisor - 1) / divisor` as
+`numerator / divisor`, the floor of `a / d`: the margined Float `F` is above
+`a / d`, at least 1e67 and so above int224.max / 10, where every Float is an
+integer, so `ceilGot` is `F`, above the floor; every op truncates toward zero,
+so `F <= floor(a / d + m) <= floor(a / d) + floor(m) + 1` with
+`m = 3e-66 × a / d` and `marginFloor = floor(m)`, the mutant's upper bound.
 
 `% 3` changed to `% 2` in the op draw: `op` is then 0 or 1, so the chain is
 drawn from `mul` and `div` only. Every chain the mutant runs is one the original

@@ -518,11 +518,11 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// margin of the result gives a lossless-flag ceiling at least the exact
     /// ceiling of a / d and at most floor(3e-66 × a / d) + 1 above it, by the
     /// proof of testFuzzMarginPerOperationPositiveChain at n = 2. inv has its
-    /// own path in the library, so a change there that lost more than one ulp
-    /// fails this test with every other test green. a is an integer in
-    /// [1e66, 1e67] times 1e4 and d is in [2, 1e3], so a / d is at least 1e67
-    /// and every loss and the margin are whole wei: no margin, 1e-66 once, or an
-    /// order more each fail.
+    /// own path in the library, so this checks rule 1's margin through that
+    /// path as well as through div. a is an integer in [1e66, 1e67] times 1e4
+    /// and d is in [2, 1e3], so a / d is at least 1e67 and every loss and the
+    /// margin are whole wei: no margin, 1e-66 once, or an order more each fail,
+    /// and 2e-66 fails on the input testMarginInvCountsItsOwnAdd pins.
     function testFuzzMarginInvChain(uint256 numerator, uint256 divisor) external pure {
         numerator = bound(numerator, 1e66, 1e67) * 1e4;
         divisor = bound(divisor, 2, 1e3);
@@ -535,6 +535,28 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         uint256 ceilGot = got + (lossless ? 0 : 1);
         assertGe(ceilGot, exactCeil);
         assertLe(ceilGot, exactCeil + marginFloor + 1);
+    }
+
+    /// The margin's own add on the inv path: a × inv(730) packs to a multiple
+    /// of 10 about 20.55 below a / 730. A 2e-66 margin, about 29.36, puts the
+    /// sum about 8.81 above a / 730, and the add truncates it to
+    /// floor(a / 730), a multiple of 10, so the lossless-flag ceiling is 1
+    /// short. 3e-66, one per op plus one for the add, reaches it. The same
+    /// input fails testFuzzMarginInvChain under a 2e-66 margin.
+    function testMarginInvCountsItsOwnAdd() external view {
+        uint256 numerator = 1071481643597238231781514733015558570712902379074599554133101278361;
+        uint256 divisor = 730;
+        uint256 aFixed = numerator * 1e4;
+        Float res = LibDecimalFloat.fromFixedDecimalLosslessPacked(aFixed, 0)
+            .mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(divisor, 0).inv());
+        uint256 exactCeil = (aFixed + divisor - 1) / divisor;
+        assertEq(aFixed % divisor, 400);
+        assertEq(aFixed / divisor % 10, 0);
+        (uint256 got, bool lossless) = res.add(res.mul(LibDecimalFloat.packLossless(2, -66))).toFixedDecimalLossy(0);
+        assertEq(got + (lossless ? 0 : 1), exactCeil - 1);
+        (got, lossless) = res.add(res.mul(LibDecimalFloat.packLossless(3, -66))).toFixedDecimalLossy(0);
+        assertEq(got + (lossless ? 0 : 1), exactCeil + 19);
+        this.testFuzzMarginInvChain(numerator, divisor);
     }
 
     /// The margin rule's hypothesis fails at the exponent floor: a result below
