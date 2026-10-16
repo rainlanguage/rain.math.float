@@ -1,0 +1,27 @@
+{
+    "exitcode": 1,
+    "test_results": {
+        "test/halmos/AddSubRoundOnce.halmos.t.sol:AddSubRoundOnceHalmosTest": [
+            {
+                "name": "check_addFar(int256,int256,int256,uint256,bool)",
+                "exitcode": 1,
+                "num_models": 1,
+                "models": [
+                    {
+                        "result": "sat",
+                        "model": {
+                            "p_a_int256_00": "0x0ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccd",
+                            "p_b_int256_01": "0x7333333333333333333333333333333333333333333333333333333333333333",
+                            "p_d_uint256_03": "0x000000000000000000000000000000000000000000000000000000000000004d",
+                            "p_eB_int256_02": "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffff80000000",
+                            "p_swap_bool_04": "0x0000000000000000000000000000000000000000000000000000000000000000"
+                        }
+                    }
+                ],
+                "num_paths": [85, 84, 0],
+                "time": [7.6, 3.4, 4.2],
+                "num_bounded_loops": 0
+            }
+        ]
+    }
+}

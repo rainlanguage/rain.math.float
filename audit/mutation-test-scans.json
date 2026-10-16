@@ -1280,6 +1280,27 @@
     }
   },
   {
+    "timestamp": "2026-10-15T06:56:08Z",
+    "commit": "dfc45fe8810d98f6b8ee608085ce1330faf4c9a2",
+    "testsAfterCommit": "13dc4eaaecb854dbb5aeece4c1ea0845eb18cb3a",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 0,
+    "scope": "pr:445 halmos proofs (branch halmos-440 merged with main c5543709): test/halmos/*.sol lemma files with halmos 0.3.3 itself as the oracle, test/halmos/LibHalmosExact.sol with forge as the oracle, and validation only for .github/workflows/halmos.yaml and script/halmos/hybrid-solver.sh (yamlfmt -lint, actionlint, bash -n, shellcheck, the jq matrix program run on the workflow's own JSON: 71 entries whose slices tile their ranges). The PR changes no src/. Forge oracle: no pre-existing forge test imports LibHalmosExact, so before = 0 of 35 killed structurally; after = test/halmos/LibHalmosExact.t.sol (23 tests, independent references: digit counts by repeated division, LibExactFloat.cmpScaled, NatSpec boundaries) kills 30 of 35; the 5 survivors (maximizeHints j >= 76, maximizeHints s += 37, hasDigits without c != 0, packHints while m > 67, eqValue d > 76) are equivalents with proofs in audit/known-false-positives.md. Halmos oracle (each run under timeout -k 10 300 with the workflow's exact command; the build in its own untimed step from H-PACK-1 on, inside the window before): baselines far 12.9s, pack-below 17.8s, pack-above 14.1s, divhint 6.8s, pack-middle-0-10 147.7s, pack-high-836-857 62.6s, hints-0-9 34.8s, hints-pack-72-76 61.1s, quick 123.7s wall, all passing. Probes: H-FAR-1 KILLED (far, 142.5s wall, 7.56s solve); H-FAR-2 KILLED (far, 132.1s wall, 5.78s solve); H-FAR-3 NO-RUN (timeout) (far, 302.7s wall,  solve); H-HINT-1 KILLED (divhint, 118.7s wall, 0.21s solve); H-HINT-2 KILLED (hints-0-9, 44.3s wall, 25.15s solve); H-HINT-3 KILLED (hints-pack-72-76, 63.7s wall, 44.57s solve); H-PACK-1 KILLED (pack-below, 45.7s wall, 18.75s solve); H-PACK-2 KILLED (pack-middle-0-10, 179.8s wall, 162.78s solve); H-PACK-3 KILLED (pack-middle-0-10, 96.5s wall, 85.81s solve); H-PACK-4 KILLED (pack-high-836-857, 36.5s wall, 26.46s solve); H-PACK-5 KILLED (pack-low-737-737, 14.9s wall, 1.84s solve); H-QUICK-1 KILLED (quick, 76.8s wall, 0.16s 64.37s 0.27s solve); H-QUICK-2 NO-RUN (timeout) (quick, 304.5s wall, 0.05s solve); H-QUICK-3 KILLED (log; wall over 300s) (quick, 310.1s wall, 0.31s 270.92s 0.44s solve); H-FAR-3b NO-RUN (timeout) (far, 302.4s wall,  solve); H-FAR-4 KILLED (far, 59.4s wall, 26.14s solve); H-QUICK-2b KILLED (quick-idem, 13.5s wall, 0.60s solve). A NO-RUN is a timeout, inconclusive, never a survival: H-FAR-3/3b (ADD_MAX_EXPONENT_DIFF 77) route symbolic d = 77 through the near path, NEAR-hard; H-QUICK-2 at the full quick entry had MAX still solving at the kill, and the same mutant narrowed to check_maximizeIdempotent (H-QUICK-2b) is killed in 0.60s; H-QUICK-3's log shows [FAIL] check_maximizeFloat with 8 counterexamples at 270.9s solve (halmos finished at 272.2s) while the whole run took 310s wall on this loaded machine, a kill by the log. H-PACK-5 probes the shortfall > 67 underflow boundary at pack-low case 737, which the CI matrix leaves out (#511): the lemma kills it in 1.84s. After merging main 42063068 (PR #712, packLossy decides overflow by isPastEveryFloat) the PACK entries were re-run unmutated on the merged tree: pack-below 28.5s, pack-above 18.7s, pack-high-836-857 71.6s, pack-middle-0-10 249.9s wall (224.6s solve), all passing. Deferred lemmas (NEAR, MINUS, series equivalence) were not probed: not in CI. Adversarial pass: the PACK oracle truncGrid re-derived from the grid rule (bound iff 10q < l, both int224 bounds, floor at int32.min, 67-digit lift cap) agrees with packLossy's NatSpec at (2^223+1) and (2^223+2) times 10^int32.max; MAX/IDEM/FAR domains match maximize's output range (T10, 10 T10] and exponents int32 less a shift in [8, 76]. One candidate, INFO, not filed: LibHalmosExact.shiftHint casts 10 ** t to int256 and is no longer a tautology at t >= 77; no caller passes t above 75 and the NatSpec did not state the bound. Resolved on the branch: the NatSpec states t <= 76.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 52,
+      "killedBefore": 14,
+      "killedAfter": 44,
+      "equivalent": 5,
+      "candidates": 1,
+      "confirmed": 0,
+      "testsBefore": 0,
+      "testsAfter": 23,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-15T06:56:19Z",
     "commit": "125ea386b6e258e31334ca9ff9468620e4d0d7e5",
     "testsAfterCommit": "125ea386b6e258e31334ca9ff9468620e4d0d7e5",

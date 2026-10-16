@@ -1,0 +1,130 @@
+name: halmos
+on:
+  push:
+    paths:
+      - src/**
+      - test/halmos/**
+      - script/halmos/**
+      - .github/workflows/halmos.yaml
+  workflow_dispatch:
+    inputs:
+      lemma:
+        description: Run only this lemma and its slices (all runs every lemma)
+        type: choice
+        default: all
+        options:
+          - all
+          - quick
+          - divhint
+          - hints
+          - pack
+          - far
+concurrency:
+  # A push supersedes the previous push's run on its ref; dispatches never
+  # cancel each other.
+  group: halmos-${{ github.ref }}-${{ github.event_name == 'push' && 'push' || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'push' }}
+env:
+  HALMOS_VERSION: 0.3.3
+  # Solver versions: yices 2.7.0, cvc5 1.4.0, bitwuzla 0.9.1.
+  SOLVER_NIXPKGS: github:NixOS/nixpkgs/8edc0c72e3a38faf5434e40d1f19431125fe4b30
+  # Every halmos run must prove in this many seconds; a slice that reaches it
+  # fails and is cut smaller.
+  HALMOS_RUN_SECONDS: 300
+  # Foundry's nightly banner names FOUNDRY_DISABLE_NIGHTLY_WARNING, which
+  # check-run.sh's WARNING check would read as a halmos warning.
+  FOUNDRY_DISABLE_NIGHTLY_WARNING: 1
+defaults:
+  run:
+    shell: bash
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      lemmas: ${{ steps.select.outputs.lemmas }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: select
+        env:
+          LEMMA: ${{ inputs.lemma || 'all' }}
+        # The entries and their slices are script/halmos/matrix.json, expanded
+        # and checked by script/halmos/matrix.sh (tested in the hybrid-solver
+        # workflow).
+        run: |
+          lemmas=$(script/halmos/matrix.sh "$LEMMA")
+          echo "lemmas=$lemmas" >> "$GITHUB_OUTPUT"
+  halmos:
+    needs: matrix
+    name: halmos (${{ matrix.lemma.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        lemma: ${{ fromJSON(needs.matrix.outputs.lemmas) }}
+    steps:
+      # No Cachix token: the job only reads the cache, and runs halmos from
+      # PyPI with its dependency tree unpinned.
+      - uses: rainlanguage/rainix/.github/actions/nix-cachix-setup@main
+      - name: Install halmos and solvers
+        run: |
+          pipx install "halmos==$HALMOS_VERSION"
+          for s in yices cvc5 bitwuzla; do
+            echo "$(nix build --no-link --print-out-paths "$SOLVER_NIXPKGS#$s" | head -1)/bin" >> "$GITHUB_PATH"
+          done
+      - name: Install soldeer dependencies
+        run: nix develop -c forge soldeer install
+      # halmos's own build (same flags) is then a no-op inside the time limit.
+      - name: Build
+        run: nix develop -c forge build --ast --root . --extra-output storageLayout metadata
+      - name: Run ${{ matrix.lemma.name }}
+        env:
+          SOLVER: ${{ matrix.lemma.solver }}
+          EXPECT: ${{ matrix.lemma.expect }}
+          ARGS_JSON: ${{ toJSON(matrix.lemma.args) }}
+          SLICE_LO: ${{ matrix.lemma.lo }}
+          SLICE_HI: ${{ matrix.lemma.hi }}
+          LOG: halmos-${{ matrix.lemma.name }}.log
+          PYTHONUNBUFFERED: 1
+        run: |
+          case "$SOLVER" in
+            bitwuzla) solver="bitwuzla --produce-models" ;;
+            yices) solver=yices-smt2 ;;
+            hybrid)
+              solver="$GITHUB_WORKSPACE/script/halmos/hybrid-solver.sh"
+              # Which stage decided each query: printed below and uploaded.
+              export HYBRID_STAGE_LOG="$GITHUB_WORKSPACE/$LOG.stages"
+              ;;
+          esac
+          if [ -n "$SLICE_LO" ]; then
+            export HALMOS_SLICE_LO="$SLICE_LO" HALMOS_SLICE_HI="$SLICE_HI"
+          fi
+          mapfile -t args < <(jq -r '.[]' <<<"$ARGS_JSON")
+          start=$(date +%s)
+          set +e
+          # Into a file, not a pipe: solver processes outliving a killed
+          # halmos would hold a pipe open past the limit.
+          timeout -k 10 "$HALMOS_RUN_SECONDS" nix develop -c halmos --panic-error-codes '*' --solver-threads 4 --loop 16 \
+            --solver-command "$solver" --json-output "$LOG.json" "${args[@]}" > "$LOG" 2>&1
+          code=$?
+          set -e
+          cat "$LOG"
+          if [ -f "$LOG.stages" ]; then
+            echo "solver stages (count, stage, answer):"
+            cut -d' ' -f1,2 "$LOG.stages" | sort | uniq -c
+          fi
+          seconds=$(($(date +%s) - start))
+          echo "| ${{ matrix.lemma.name }} | exit $code | ${seconds}s |" >> "$GITHUB_STEP_SUMMARY"
+          # The verdict (tested in the hybrid-solver workflow): the time
+          # limit, then the JSON report, then the text log as a backstop.
+          script/halmos/check-run.sh "$code" "$EXPECT" "$LOG" "$LOG.json"
+      - name: Upload log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: halmos-${{ matrix.lemma.name }}
+          path: |
+            halmos-${{ matrix.lemma.name }}.log
+            halmos-${{ matrix.lemma.name }}.log.json
+            halmos-${{ matrix.lemma.name }}.log.stages
+          if-no-files-found: warn

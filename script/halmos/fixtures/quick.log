@@ -1,0 +1,7 @@
+No files changed, compilation skipped
+
+Running 3 tests for test/halmos/AddSubRoundOnce.halmos.t.sol:AddSubRoundOnceHalmosTest
+[PASS] check_addZeroOperand(int256,int256,int256,bool) (paths: 5, time: 0.02s, bounds: [])
+[PASS] check_maximizeFloat(int256,int32,uint256) (paths: 2562, time: 33.27s, bounds: [])
+[PASS] check_maximizeIdempotent(int256,int256) (paths: 9, time: 0.05s, bounds: [])
+Symbolic test result: 3 passed; 0 failed; time: 33.35s

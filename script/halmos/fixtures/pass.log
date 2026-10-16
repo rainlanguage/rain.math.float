@@ -1,0 +1,5 @@
+No files changed, compilation skipped
+
+Running 1 tests for test/halmos/AddSubRoundOnce.halmos.t.sol:AddSubRoundOnceHalmosTest
+[PASS] check_addFar(int256,int256,int256,uint256,bool) (paths: 85, time: 5.91s, bounds: [])
+Symbolic test result: 1 passed; 0 failed; time: 5.95s
