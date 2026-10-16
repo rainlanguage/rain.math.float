@@ -115,6 +115,28 @@ property is proven, so any subset of the calls reaches the same verdict. Such a
 change deletes a check, the class no test can kill because the tests are the
 oracle. Each skipped input's undershoot stays asserted by its own pinned test.
 
+## Equivalent mutants: `testFuzzWeiFloorCeilSafeSide` check narrowed or dropped
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The fuzz entry passes the
+output of `boundWeiSafeSide` to `checkWeiFloorCeilSafeSide`, which passes on
+every point of the bounded domain (the proof in the fuzz test's NatSpec). Any
+rewrite of the call's arguments that maps every bounded `(a, b, c)` into that
+domain gives the same verdict on every input, and so does dropping the call: the
+entry passes on every input in both programs. The class covers fixing an
+argument to a value of its interval (`c = 1` and `b = 1` have survived; with
+`b = 1`, `a * b` is at most 1e33), passing one bounded value for another while
+`a * b` stays at most `WEI_SAFE_SIDE_AB_MAX`, and skipping the check.
+`testFuzzWeiFloorCeilSafeSideBoundsCounterexample`, the fixed caller that
+reaches the entry, passes iff every call passes, so its verdict is unchanged;
+`testWeiSafeSideDomainReachesBound` calls the check directly, past the call
+site. Such a change narrows or removes a check, which no test can kill because
+the tests are the oracle. With the call dropped a clamp mutant would also
+survive, but that is a second mutant: with the call in place each clamp mutant
+that admits a pinned undershoot fails the counterexample test. A rewrite that
+can leave the domain is outside this entry: `checkWeiFloorCeilSafeSide(a, c, b)`
+runs the counterexample test's `(a, c, b)` call on a pinned undershoot and
+fails.
+
 ## Not observable: a test's own fixed input rewritten
 
 Any test file. A test's fixed input is part of its oracle: it is the point the
@@ -134,6 +156,24 @@ proven domain. A rewrite of a line another test reads is outside this entry. In
 that file `boundWeiSafeSide`, `checkWeiFloorCeilSafeSide`, `invChainProduct`,
 `weiCeilUndershootInputs` and the fuzz bodies that pinned tests call are shared,
 so a change there can reach another test's verdict and needs its own proof.
+
+## Not observable: an assertion that holds deleted from a test or check helper
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. Every assertion in the
+file is a forge-std `assert*` call in a `pure` or `view` function; the two
+non-view tests, `testExtremeOperandReverts` and `testEmptyMarketDivisionByZero`,
+assert nothing besides their `vm.expectRevert`. Such a call reverts or returns,
+writes nothing a later line reads, and its arguments do not revert on the
+unmutated run. Every test passes on the unmutated file, so every assertion on an
+executed path holds, and deleting one removes only a revert that never fires:
+every test keeps its verdict. The class is every such deletion, in a test or in
+a shared helper such as `assertCeilUndershoot` or `checkWeiFloorCeilSafeSide`,
+not only the two that have survived, both in `assertCeilUndershoot`:
+`assertGt(a * b, WEI_SAFE_SIDE_AB_MAX)` and `assertTrue(lossless)`. A deletion
+narrows the oracle itself, which no test can kill. `WEI_SAFE_SIDE_AB_MAX` stays
+pinned from both sides by `testWeiSafeSideDomainReachesBound`. Deleting a line
+that is not an assertion, such as a `vm.expectRevert` or an assignment another
+line reads, is outside this entry.
 
 ## Equivalent mutants: `testFuzzWeiFloorCeilSafeSide` divisor of `a / (c / b)` shrunk by an exact factor
 
