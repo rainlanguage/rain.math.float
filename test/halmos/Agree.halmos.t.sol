@@ -40,8 +40,9 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// [17, 33], [34, 50] and [51, 67] (`negSliceHi`), every nonzero int224's j
 /// in one of them. SYMNEAR is one slice per gap, NEAR_GAPS = 77 slices
 /// covering every d in [0, 76]; SYMFAR starts at NEAR_GAPS (`farGap`).
-/// `Agree.t.sol` checks the slices tile and the filters below accept every
-/// maximized input.
+/// `Agree.t.sol` checks the slices tile, the filters below accept every
+/// maximized input, and each lemma reaches the call it checks at both ends
+/// of its domain.
 ///
 /// The lemmas return early when a hint filter is false. HINTS here proves
 /// `divHints`, `negDivHint` and `overflowHint` true for every input they are

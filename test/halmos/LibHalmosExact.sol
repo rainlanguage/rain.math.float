@@ -17,13 +17,31 @@ library LibHalmosExact {
     /// returns for a case outside it; the CI slices of each lemma
     /// (`.github/workflows/halmos.yaml`) tile its whole case range.
     function inSlice(uint256 i) internal view returns (bool) {
-        return i >= VM.envOr("HALMOS_SLICE_LO", uint256(0)) && i <= VM.envOr("HALMOS_SLICE_HI", type(uint256).max);
+        return inSliceOf(i, sliceLo(), sliceHi());
     }
 
     /// Whether any case in [lo, hi] is in this run's slice, so a lemma can
     /// drop a whole block of cases before splitting the next index.
     function overlapsSlice(uint256 lo, uint256 hi) internal view returns (bool) {
-        return hi >= VM.envOr("HALMOS_SLICE_LO", uint256(0)) && lo <= VM.envOr("HALMOS_SLICE_HI", type(uint256).max);
+        return overlapsSliceOf(lo, hi, sliceLo(), sliceHi());
+    }
+
+    /// `inSlice` against the closed slice [lo, hi].
+    function inSliceOf(uint256 i, uint256 lo, uint256 hi) internal pure returns (bool) {
+        return i >= lo && i <= hi;
+    }
+
+    /// `overlapsSlice` against the closed slice [lo, hi].
+    function overlapsSliceOf(uint256 from, uint256 to, uint256 lo, uint256 hi) internal pure returns (bool) {
+        return to >= lo && from <= hi;
+    }
+
+    function sliceLo() private view returns (uint256) {
+        return VM.envOr("HALMOS_SLICE_LO", uint256(0));
+    }
+
+    function sliceHi() private view returns (uint256) {
+        return VM.envOr("HALMOS_SLICE_HI", type(uint256).max);
     }
 
     function abs(int256 x) internal pure returns (uint256) {

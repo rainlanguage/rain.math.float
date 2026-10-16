@@ -40,6 +40,8 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// a hint filter (`divHint`, `maximizeHints`) is false, and
 /// `LibHalmosExact.halmos.t.sol` proves those filters true for every input
 /// they are given, so the early returns exclude nothing.
+/// `AddSubRoundOnce.t.sol` checks MAX, IDEM, NEAR and FAR reach the call they
+/// check at both ends of their domains.
 ///
 /// Composition: by MAX and IDEM, NEAR/FAR apply to S. They put c 10^e at or
 /// below |S| and S below the next multiple of 10^e. A grid member above
