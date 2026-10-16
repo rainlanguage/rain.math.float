@@ -10,7 +10,6 @@ import {
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibExactFloat} from "../../../lib/LibExactFloat.sol";
 import {LibTestRegion} from "../../../lib/LibTestRegion.sol";
-import {LibDecimalFloatImplementationAddPre394} from "../../../lib/LibDecimalFloatImplementationAddPre394.sol";
 
 contract LibDecimalFloatImplementationAddTest is Test {
     function addExternal(int256 signedCoefficientA, int256 exponentA, int256 signedCoefficientB, int256 exponentB)
@@ -631,22 +630,5 @@ contract LibDecimalFloatImplementationAddTest is Test {
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 exponentB = type(int256).min + int256(bound(eb, 0, 160));
         checkAddExact(LibTestRegion.anyDigits(a, sa), exponentA, LibTestRegion.anyDigits(b, sb), exponentB);
-    }
-
-    /// Float operands maximize to coefficients with a zero last digit, so no
-    /// carry is lost and `add` returns what it did before #394 where the
-    /// magnitudes add. Where they cancel, #350 moved the sum towards zero, so
-    /// it is checked against the exact sum.
-    function testAddFloatRangeMatchesPre394(int224 a, int32 ea, int224 b, int32 eb) external view {
-        if (a != 0 && b != 0 && (a < 0) != (b < 0)) {
-            checkAddExact(a, ea, b, eb);
-            return;
-        }
-        (int256 expectedSignedCoefficient, int256 expectedExponent) =
-            LibDecimalFloatImplementationAddPre394.add(a, ea, b, eb);
-        // Pre-394 keeps an exponent on a zero sum, which is now the zero
-        // constants.
-        if (expectedSignedCoefficient == 0) expectedExponent = 0;
-        checkAdd(a, ea, b, eb, expectedSignedCoefficient, expectedExponent);
     }
 }

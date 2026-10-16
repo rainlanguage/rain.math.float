@@ -35,6 +35,22 @@ contract LibDecimalFloatImplementationExp10FixedExactTest is Test {
         check(bound(x, 0, POW_FIXED_ONE - 1));
     }
 
+    /// x in [0.5, 0.5 + 2^-16) whose final SQRT10 * series multiply borrows,
+    /// and x below 2^-16 whose series * x before adding ln 10 borrows.
+    function testExp10FixedExactBorrows() external pure {
+        uint256[6] memory xs = [
+            uint256(5e49 + 87015477053855611590102368556),
+            5e49 + 129156888290026095774709585062,
+            5e49 + 430189686290292988458280452418,
+            858803594111162378152345370348828441692620967,
+            724330556364502386237515770486668923888293239,
+            432154281105992271870088449799288377367521809
+        ];
+        for (uint256 i = 0; i < xs.length; i++) {
+            check(xs[i]);
+        }
+    }
+
     /// Each binary digit 2^-i, one either side of it, and the sums of the
     /// first i digits, where one more unit of x carries into step i.
     function testExp10FixedExactDigitEdges() external pure {
