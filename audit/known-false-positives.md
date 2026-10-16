@@ -136,7 +136,11 @@ fails, so a smaller `a` is killed, not equivalent.
 `packLossless(70, -1)` are the same value. SPEC.md defines `div` as the exact
 quotient rounded once toward zero to a Float, a function of the operands' values
 alone, and `toFixedDecimalLossy` reads only the value of its input, so `got` and
-`lossless` are the same under both for every dividend.
+`lossless` are the same under both for every dividend. The same holds for any
+operand literal in this file rewritten to an equal value, such as
+`packLossless(2, 0)` as `packLossless(20, -1)` in
+`testMarginFailsAtExponentFloor`: SPEC.md defines every operation here as a
+function of its operands' values alone.
 
 ## Equivalent mutant: `testMarginScalesThroughLaterMul` ulp margin without the `1 / 7` term
 

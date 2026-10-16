@@ -527,13 +527,13 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertEq(quotientExponent, type(int32).min);
         Float res = quotient.mul(LibDecimalFloat.packLossless(1e13, type(int32).max));
         assertTrue(res.eq(LibDecimalFloat.packLossless(1e12, 0)));
+        Float margined = res.add(res.mul(LibDecimalFloat.packLossless(3, -66)));
+        assertTrue(margined.eq(LibDecimalFloat.packLossless(1e66 + 3, -54)));
         uint256 exactCeil = 15e11;
-        (uint256 got, bool lossless) = res.add(res.mul(LibDecimalFloat.packLossless(3, -66))).toFixedDecimalLossy(0);
+        (uint256 got, bool lossless) = margined.toFixedDecimalLossy(0);
         assertEq(got, 1e12);
         assertFalse(lossless);
-        uint256 ceilGot = got + (lossless ? 0 : 1);
-        assertEq(ceilGot, 1e12 + 1);
-        assertEq(exactCeil - ceilGot, 5e11 - 1);
+        assertEq(exactCeil - (got + 1), 5e11 - 1);
     }
 
     /// Dividing by a truncated price turns an exact integer into a lossy
