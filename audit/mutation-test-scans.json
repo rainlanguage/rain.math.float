@@ -1536,5 +1536,28 @@
       "testsAfter": 38,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-16T15:24:59Z",
+    "commit": "32335b12e8571f91da5b66ad6b93ee3527268b81",
+    "testsAfterCommit": "32335b12e8571f91da5b66ad6b93ee3527268b81",
+    "publishedTag": "sol-v0.3.9",
+    "commitsAheadOfTag": 58,
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "scope": "pr:719 (rain-marvin review 5549549409): every changed code line of test/src/lib/LibDecimalFloat.consumerHazards.t.sol against origin/main, enumerated from the catalog in two passes (224 then 16 on re-survey); suite: that file's 38 tests at --fuzz-seed 0, 5096 runs, forge under env -i with FOUNDRY_FFI=false",
+    "summary": {
+      "behaviours": 240,
+      "behavioursBefore": 240,
+      "killedBefore": 200,
+      "killedAfter": 200,
+      "equivalent": 40,
+      "survived": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 38,
+      "testsAfter": 38,
+      "filed": []
+    }
   }
 ]

@@ -93,6 +93,7 @@ helper's output is the same for every input;
 `b = 1` under both. `a > 1` and `a > 1e32` have both survived. From
 `k = 673998666678765994866675377175491` up the guard skips the clamp at that
 test's interior `a`, which leaves `edge + 1` unwrapped, so the test kills it.
+Writing the guard as `a != 0` is the same predicate on a `uint256`.
 
 Permuting the raw inputs at the fuzz entry's call site, for example
 `boundWeiSafeSide(a, c, b)`: the helper's output set is unchanged, so the fuzz
@@ -130,50 +131,90 @@ argument to a value of its interval (`c = 1` and `b = 1` have survived; with
 reaches the entry, passes iff every call passes, so its verdict is unchanged;
 `testWeiSafeSideDomainReachesBound` calls the check directly, past the call
 site. Such a change narrows or removes a check, which no test can kill because
-the tests are the oracle. With the call dropped a clamp mutant would also
-survive, but that is a second mutant: with the call in place each clamp mutant
-that admits a pinned undershoot fails the counterexample test. A rewrite that
-can leave the domain is outside this entry: `checkWeiFloorCeilSafeSide(a, c, b)`
-runs the counterexample test's `(a, c, b)` call on a pinned undershoot and
-fails.
+the tests are the oracle. Fixing `a` to a power of ten up to 1e33 is in the
+class although `a * b` can then reach 1e66: multiplying by a power of ten only
+moves the exponent, so each operand order truncates at most twice, and with
+`e = 10 / int224.max` and `q = a * b / c` at most `1e66 / c`, `a * b` is exact,
+`a * (b / c)` loses under `e q` through `b / c` alone, and `a / (c / b)` lands
+in `(q (1 - e), q / (1 - e))`; each is under `0.75 / c` from `q`, inside the
+`1 / c` the proof needs. `a = 1e33` has survived. With the call dropped a clamp
+mutant would also survive, but that is a second mutant: with the call in place
+each clamp mutant that admits a pinned undershoot fails the counterexample test.
+A rewrite that can leave the domain is outside this entry:
+`checkWeiFloorCeilSafeSide(a, c, b)` runs the counterexample test's `(a, c, b)`
+call on a pinned undershoot and fails.
 
 ## Not observable: a test's own fixed input rewritten
 
 Any test file. A test's fixed input is part of its oracle: it is the point the
 test checks. A mutant that only rewrites such an input, a literal or local
-argument that a test function nothing else calls passes to a check helper or to
-a fuzz body, changes no line any other test reads. The file passes iff every
-test passes, so every other test keeps its verdict and only the edited test can
-observe the rewrite: if it fails there the mutant is killed, and if the called
-check passes on the new input no test can kill it, because the rewrite is to the
-oracle itself. The class is every such rewrite, not only the two that have
-survived, both in `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`:
+argument that a test function nothing else calls passes to a check helper, to a
+fuzz body, or to a library call whose result only its own assertions read,
+changes no line any other test reads. The file passes iff every test passes, so
+every other test keeps its verdict and only the edited test can observe the
+rewrite: if it fails there the mutant is killed, and if its checks pass on the
+new input no test can kill it, because the rewrite is to the oracle itself. The
+class is every such rewrite, not only those that have survived, all in
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`:
 `testWeiSafeSideDomainReachesBound` calling
-`checkWeiFloorCeilSafeSide(a, b - 1, 7)`, a point inside the domain the property
-is proven on, and `testMarginInvChainUpperBoundAttained` calling
-`this.testFuzzMarginInvChain(1e66, 999)`, which the fuzz body bounds into its
-proven domain. A rewrite of a line another test reads is outside this entry. In
-that file `boundWeiSafeSide`, `checkWeiFloorCeilSafeSide`, `invChainProduct`,
-`weiCeilUndershootInputs` and the fuzz bodies that pinned tests call are shared,
-so a change there can reach another test's verdict and needs its own proof.
+`checkWeiFloorCeilSafeSide(a, b - 1, 7)` or `(a, b, 8)`, points inside the
+domain the property is proven on; `testMarginInvChainUpperBoundAttained` calling
+`this.testFuzzMarginInvChain(1e66, 999)` or `(1e67, 1000)`, which the fuzz body
+bounds into its proven domain;
+`testFuzzWeiFloorCeilSafeSideBoundsCounterexample` calling the fuzz entry with a
+pinned triple as `(c, a, b)`, which the clamp keeps in the domain;
+`testWeiCeilUndershootAboveBound` taking its pinned `a` and `b` in swapped
+order, which undershoots too; `testMarginRelativeToResultFailsUnderCancellation`
+margining `res` by `3e-65` instead of `3e-66`, still under one unit of 996; and
+`testMarginExactTermBeforeSub` subtracting `0.4` instead of `0.5`, also below
+one ulp of `13e66`. A rewrite of a line another test reads is outside this
+entry. In that file `boundWeiSafeSide`, `checkWeiFloorCeilSafeSide`,
+`invChainProduct`, `weiCeilUndershootInputs` and the fuzz bodies that pinned
+tests call are shared, so a change there can reach another test's verdict and
+needs its own proof.
 
-## Not observable: an assertion that holds deleted from a test or check helper
+## Not observable: an assertion rewritten into one that still holds
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. Every assertion in the
 file is a forge-std `assert*` call in a `pure` or `view` function; the two
 non-view tests, `testExtremeOperandReverts` and `testEmptyMarketDivisionByZero`,
-assert nothing besides their `vm.expectRevert`. Such a call reverts or returns,
-writes nothing a later line reads, and its arguments do not revert on the
-unmutated run. Every test passes on the unmutated file, so every assertion on an
-executed path holds, and deleting one removes only a revert that never fires:
-every test keeps its verdict. The class is every such deletion, in a test or in
-a shared helper such as `assertCeilUndershoot` or `checkWeiFloorCeilSafeSide`,
-not only the two that have survived, both in `assertCeilUndershoot`:
-`assertGt(a * b, WEI_SAFE_SIDE_AB_MAX)` and `assertTrue(lossless)`. A deletion
-narrows the oracle itself, which no test can kill. `WEI_SAFE_SIDE_AB_MAX` stays
-pinned from both sides by `testWeiSafeSideDomainReachesBound`. Deleting a line
-that is not an assertion, such as a `vm.expectRevert` or an assignment another
-line reads, is outside this entry.
+assert nothing besides their `vm.expectRevert`. Such a call reverts or returns
+and writes nothing a later line reads, so a test's verdict depends on its
+assertions only through whether each holds. A rewrite of an assertion, or of an
+expected value only assertions read, into one that holds on every input reaching
+it, without making its arguments revert, therefore keeps every verdict. The
+class is every such rewrite, not only the variants that have survived:
+
+- Deleting an assertion, or a call whose only effects are assertions: a check
+  helper or a fuzz body called from a pinned test. Every test passes on the
+  unmutated file, so the deleted check never fires. Survived:
+  `assertGt(a * b, WEI_SAFE_SIDE_AB_MAX)` and `assertTrue(lossless)` in
+  `assertCeilUndershoot`, the `assertCeilUndershoot` call in
+  `testWeiCeilUndershootNearBound` and `testWeiCeilUndershootAboveBound`, and
+  the `this.testFuzzMarginInvChain` calls in
+  `testMarginInvChainUpperBoundAttained` and `testMarginInvCountsItsOwnAdd`.
+  `WEI_SAFE_SIDE_AB_MAX` stays pinned from both sides by
+  `testWeiSafeSideDomainReachesBound`.
+- Weakening a comparison: `assertGt` as `assertGe` (survived in
+  `assertCeilUndershoot`), `assertLt` as `assertLe` (survived on `edge` in
+  `testWeiSafeSideDomainInteriorEdges`). The original implies the weaker one.
+- Strengthening a comparison that still holds on its inputs:
+  `assertLe(WEI_SAFE_SIDE_AB_MAX * 20, ...)` as `assertLt` holds because
+  int224.max is 7 mod 20. In `testFuzzMarginInvChain`, `assertGe` as `assertGt`
+  holds on every admitted input: `a / d` is at least 1e67 and the margined Float
+  is at least `(a / d)(1 - e)^3 (1 + 3e-66 (1 - e))`, above
+  `(a / d)(1 + 7.7e-67)`, with `e = 10 / int224.max`, so it exceeds `a / d` by
+  over 7 and its ceiling exceeds the exact ceiling.
+- An expected value rewritten to an expression equal on the test's fixed inputs:
+  a ceiling written `(x + k) / d` with any `k` from `d - r` to `2d - r - 1`,
+  where `r` is the remainder of `x / d`. Survived: `(94e66 + 5) / 7` in
+  `testMarginScalesThroughLaterMul` (`r = 3`) and
+  `(aCoefficient * 100 + 71) / 73` in `testMarginIsPerOperation`.
+
+A fuzz test's assertion needs the proof over its whole admitted domain, as
+above; a run that passes at one seed is not one. Deleting a line that is not an
+assertion, such as a `vm.expectRevert` or an assignment another line reads, is
+outside this entry.
 
 ## Equivalent mutants: `testFuzzWeiFloorCeilSafeSide` divisor of `a / (c / b)` shrunk by an exact factor
 
@@ -217,8 +258,10 @@ of the result, exponent 0). The result's coefficient has 68 digits at exponent
 0, so `res.add(margin)` truncates toward zero at exponent 0 and drops the
 `1e-67` whether or not it is in the margin: `res + 1` and `res + 1 + 1e-67` pack
 to the same Float. The assertion reads only that Float, so it reaches the same
-verdict under both. The term stays because the README wording it refutes names
-it.
+verdict under both. The same holds for the term at any value below one ulp of
+the result, such as `packLossless(1, seventhExponent + 1)`, `1e-66`, which has
+survived: `res + 1 + t` packs to `res + 1` for every `t` in `[0, 1)`. The term
+stays because the README wording it refutes names it.
 
 ## Equivalent mutant: `testMarginRelativeToResultFailsUnderCancellation` `subtrahend` inlined
 
@@ -233,6 +276,26 @@ and sum here is a small integer, so each `sub` and `add` is exact and
 margined product under both programs. `eq` and `toFixedDecimalLossy` read values
 alone.
 
+## Equivalent mutants: `mul` operands swapped
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`, any `x.mul(y)` written
+`y.mul(x)`; `amount.mul(rate)` in `testSingleMulSubUlpFractionReadsLossless` has
+survived. A packed Float's exponent is an int32, so
+`LibDecimalFloatImplementation.mul` never takes its wide-exponent branch, and
+the rest reads its operands only through the zero test on either coefficient,
+`exponentA + exponentB`, `mul512` and `mulmod` of the two absolute coefficients,
+and the sign test `(a ^ b) < 0`, each symmetric in the operands. Both orders
+return the same Float on every input.
+
+## Equivalent mutant: `testMarginCountsAdds` third `add` dropped
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The first two addends sum
+to `15479e63 + 18`, above int224.max, so their `add` packs at exponent 1 to
+`15479e63 + 10`. Adding `9` gives `15479e63 + 19`, which packs to
+`15479e63 + 10` again: the third `add` returns its input unchanged, the loss the
+test counts. Dropping it from the Float chain, with `exactSum` still counting
+it, leaves every value the assertions read unchanged.
+
 ## Equivalent mutant: `testFuzzMarginPerOperationPositiveChain` chain length fixed at 2
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. Replacing
@@ -241,7 +304,11 @@ on the same operands and reads `opCount` consistently in the loop, the margin
 and `marginFloor`; the NatSpec's two bounds hold for every chain length whose
 tracked `numerator * (opCount + 1)` stays under 2^256, so the test passes on
 every input under both programs. The variant only stops the fuzz test exercising
-a third op, leaving `operands[3]` unread. No other test reads the line.
+a third op, leaving `operands[3]` unread. No other test reads the line. Stopping
+only the chain loop one op early, `i < opCount`, is in the class too: the Float
+chain and the tracked `numerator` and `denominator` both skip the third op, so
+every run equals the original's run on the same input with `operands[3] = 1` and
+a `mul` third op, which is exact in the Float and in the tracking.
 
 ## Equivalent mutant: `testFuzzMarginPerOperationPositiveChain` margin scaled in two steps
 
@@ -335,9 +402,12 @@ drawn from `mul` and `div` only. Every chain the mutant runs is one the original
 runs for the `ops` whose two-bit fields are 0 and 1, and the property is proven
 for every chain the bounds admit, so both pass on every input. The variant only
 stops the fuzz test exercising `add`; `testMarginCountsAdds` and
-`testMarginCountsItsOwnAdd` pin it. Reading the draw from the next two bits,
-`ops >> (2 * i)`, is the same class: every chain it runs is one the original
-runs for another `ops`.
+`testMarginCountsItsOwnAdd` pin it. Reading the draw from other bits
+(`ops >> (2 * i)`, `ops >> (i - 1)`), or remapping which `op` value takes which
+arm (`op == 0` as `op == 1`, `op == 1` as `op == 2`), is the same class: each
+arm still pairs its Float op with its own exact update, so every chain the
+mutant runs is one the original runs for another `ops`, since the original's
+three two-bit fields reach every sequence of three ops.
 
 `exactCeil` as `numerator / denominator + 1`: the ceiling unless the exact value
 is an integer, where it is one above it. The Float is strictly above the exact
