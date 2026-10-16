@@ -428,6 +428,22 @@ contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
         this.liveSqrt(unconverged, 1);
     }
 
+    /// Near int256.max the six Newton steps leave the step's input R about
+    /// 6.6e21 above sqrt(c 1e6), so its quotient decides the root. c is
+    /// floor(k r / 1000) for that input's r = R / 1000 and an even k, so
+    /// c 1e6 is k R less a multiple of 1000 below 1e6: the quotient is k - 1,
+    /// and dividing (c + 1) 1e6 would carry it to k and the root up by one.
+    /// Expected values are exact integer arithmetic over 26a3cf06's steps;
+    /// the live sqrt reverts `SqrtOutOfRange`.
+    function testImplementationSqrtPre359NewtonQuotientCarry() external {
+        int256 carry = 57896044618658097711785492504343953926632299959589390167529498535429277256171;
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatSqrtVariants.sqrtPre359(carry, 0);
+        assertEq(rootCoefficient, 240615969168004511545033772477625056927199, "coefficient");
+        assertEq(rootExponent, -3, "exponent");
+        vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, carry, int256(0)));
+        this.liveSqrt(carry, 0);
+    }
+
     /// The exponent wraps below `type(int256).min + 80`: a coefficient of 1
     /// shifts by 75 and an even shifted exponent takes the parity offset of 6,
     /// so `min + 79` wraps and `min + 80` does not. It also wraps with no

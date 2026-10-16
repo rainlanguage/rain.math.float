@@ -329,9 +329,23 @@ wrong only if `N <= s^2 + s`, together `s <= d^2 - 2d + scale`; from `s + 1`,
 the scaled-up coefficient has 76 digits and `scale >= 1e5`, so `s >= 1e40`, and
 the six Newton steps leave the root within `5e10` of `isqrt(estimate)`, so
 `|d| < 5e13 + 1e3` and `d^2 - 2d + scale < 3e27`: neither bound holds. Outside
-the domain the frozen `scaleUp` wraps and the Newton steps need not converge, so
-this argument does not apply; there the copy is pinned by the verbatim check
-against 26a3cf06, not by tests of this line.
+the domain the six Newton steps need not converge and the mutant is not
+equivalent: near `int256.max` they leave `d` near `6.6e21`, so `d^2 > s`, and
+`testImplementationSqrtPre359NewtonQuotientCarry` kills it.
+
+## Killed by the baseline guard: a frozen copy's helper swapped for the live one
+
+A mutant that replaces a frozen copy's call to its private helper with the live
+library's, such as `sqrtPre359`'s `mulDiv` as
+`LibDecimalFloatImplementation.mulDiv` or the parse copy's `packLossy` as
+`LibDecimalFloat.packLossy`, can survive the forge suites: where the two agree,
+no Solidity test sees the swap. `equivalence_baselines_use_no_live_library` in
+`crates/tests/src/baselines.rs` rejects it for every baseline. A library
+function is reached only as `<library>.<member>` or through `using <library>`,
+and `live_use` blanks comments, string literals and the listed variants, then
+reports either form for every `LIVE` library, as well as any import from a live
+library's file beyond `Float`. So a frozen function that calls a live helper
+fails the test whatever the helper returns. Both mutants above fail it.
 
 ## Equivalent mutant: pow oracle `k b` guard boundary
 
