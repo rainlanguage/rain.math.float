@@ -137,6 +137,7 @@ such line, so `normalise` maps both to the same text, and for every fresh
 snapshot the two give the same verdict. Fuzz rows comparing by name only is the
 check's specified behaviour: fuzz gas is not reproducible across machines even
 with a fixed seed.
+
 ## Resolved by removal: `pow` carry path `excess <= 67` guard at any bound from 27 up, or dropped
 
 `src/lib/LibDecimalFloat.sol`, `packRoundedSignificant`. The `excess <= 67`
