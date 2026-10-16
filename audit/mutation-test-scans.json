@@ -79,9 +79,7 @@
       "confirmed": 0,
       "testsBefore": 681,
       "testsAfter": 682,
-      "filed": [
-        325
-      ]
+      "filed": [325]
     }
   },
   {
@@ -102,9 +100,7 @@
       "confirmed": 0,
       "testsBefore": 693,
       "testsAfter": 696,
-      "filed": [
-        326
-      ]
+      "filed": [326]
     }
   },
   {
@@ -251,9 +247,7 @@
       "confirmed": 0,
       "testsBefore": 778,
       "testsAfter": 785,
-      "filed": [
-        332
-      ]
+      "filed": [332]
     }
   },
   {
@@ -295,9 +289,7 @@
       "confirmed": 0,
       "testsBefore": 743,
       "testsAfter": 747,
-      "filed": [
-        335
-      ]
+      "filed": [335]
     }
   },
   {
@@ -704,9 +696,7 @@
       "confirmed": 1,
       "testsBefore": 20,
       "testsAfter": 23,
-      "filed": [
-        394
-      ]
+      "filed": [394]
     }
   },
   {
@@ -1105,6 +1095,154 @@
       "confirmed": 0,
       "testsBefore": 145,
       "testsAfter": 186,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:55:00Z",
+    "commit": "c55437099ac618c91722ca2bc381de43cf769f0f",
+    "testsAfterCommit": "bbb95fca70b7ed08b0f9441d08f054420400403f",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 0,
+    "scope": "The differential pow oracle's |a| = 10^k branch (crates/tests/src/differential.rs check_pow_with): k b computed before the past-every-Float guard, which tests lead(k b) >= 12 instead of lead(b) >= 12, so the whole-k-b exponent conversion to isize can no longer panic OutOfBounds (CI flake at a = 1e92233721, b = 99999999990). Each probe ran the fixed oracle. Before = main c554370's tests and proptest seeds on it, cargo test -p rain-math-float-tests less the two new tests (235 tests). After = bbb95fc's whole crate (237 tests), with M05/M06 scored against the deterministic differential::oracle tests (23) because the whole crate timed out at 1800s under them. Mutants: M01 guard on b alone (the defect); M02 guard removed; M03 threshold at 1e19; M04 threshold > 12 (equivalent, proof in audit/known-false-positives.md); M05 k b at one digit; M06 k b as k k; M07 past direction inverted; M08 past admits any result. Main's tests kill M05/M06 deterministically (pow_of_a_power_of_ten_is_exact) and M02/M07 only through the differential_pow fuzz; they miss M01, M03 and M08. The PR's differential_pow_power_of_ten_past_isize and oracle_checks::pow_of_a_power_of_ten_past_isize_is_past kill M01, M02, M03, M07 and M08 deterministically. Adversarial pass: the Solidity reverts with the range error of k b's direction and data (a.c, a.e) at every pinned input, agreeing with the corrected oracle; no library finding.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 8,
+      "killedBefore": 4,
+      "killedAfter": 7,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 235,
+      "testsAfter": 237,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-14T20:36:25Z",
+    "commit": "3921acaacc2375d904a5684b62b6e413d6826b61",
+    "testsAfterCommit": "3921acaacc2375d904a5684b62b6e413d6826b61",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 8,
+    "scope": "PR #712 (#649, #611): one encoding of the packLossy overflow threshold. NEVER_PAST_EXPONENT, LibDecimalFloat.isPastEveryFloat (uint256 and signed overloads), packLossy's lift path, the div and pow10 NEVER_PAST_EXPONENT gates, pow's carry path (packRoundedSignificant), revertIfPastLargestFloat, both LibParseDecimalFloat call sites and the past-int256 floorExponent branch. Suite per probe: forge test --match-contract 'Pack|Parse|Pow|Div' at 256 fuzz runs, seed 0x712; the Rust differential suite was not in the probe command. Before = main c554370's test tree on the PR source (316 tests), after = the PR's tests (322 tests). 27 mutants: M01/M02 NEVER_PAST_EXPONENT one higher/lower; M03/M04 fast exit strict/true; M05 any-nonzero arm at 66; M06 zero past at high excess; M07/M08 floor arm >= and 2^223+2; M09/M10 product arm > and 2^223+1; M11 excess off by one; M12 signed overload drops abs; M13 packLossy past check off; M14 lift one digit short; M15 div gate +1; M16 pow10 gate at int32.max+17; M16b pow10 gate at int32.max+27; M17 pow carry always falls back; M18/M19 carry excess guard 26/66; M20 revertIfPastLargestFloat negated; M21 parser inline drops abs; M22/M23 parser past checks off; M24 floor branch drops wrap check; M25 floorExponent -78; M26 wrap check <=. Before 24/27 killed (M03 survives: its boundary is only reachable by a direct isPastEveryFloat call, which no caller makes; M16, M19 equivalent). After 25/27 killed: M03 by the PR's testIsPastEveryFloatExactEdges; M02/M24 also by testIsPastEveryFloatExactEdges / testParsePastInt256FloorExponentPastInt256; main's killers include testPackLossyOverflowThresholdEdges, testPackLossyCeilingTruncationBand, testPackLossyLiftFirstEquivalenceExtremes, testParseOverflowThresholdExcesses, testParseOverflowThresholdPointPositions, testParseNearOverflowThreshold, testParseRuleLiteralShapeFuzz, testParseZeroHugeExponent, testDivAtTheOverflowThreshold, testPow10Thresholds, testPow10NearThresholds, testPowCarryShedsTheUnrounded, testPowRoundedAtTheHeadroomBound. Survivors: M16 is inside the pow10 gate band audit/known-false-positives.md already proves equivalent (up to int32.max+26; M16b at int32.max+27 is killed, so the band edge is pinned); M19 is equivalent (any carry guard bound from 27 up, or none: at excess 28+ a 41 digit rounded value and its unrounded source are both past) and is recorded with proof. No tests added. Adversarial pass: SPEC.md's isPastEveryFloat and packLossy claims re-derived (not past implies nothing was shed, so the lift is from the initial pair; floor arm m > floor((t-1)/10^x) is m*10^x >= t; parser floor branch exact because the threshold is a multiple of 10^floorExponent at or below int32.max); test oracles (LibExactFloat.overflows, reference.rs) are independent big-integer compares; no candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 27,
+      "killedBefore": 24,
+      "killedAfter": 25,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 316,
+      "testsAfter": 322,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-14T21:05:00Z",
+    "commit": "3910e264689a16995e2d47af6ad40d146b9f10e6",
+    "testsAfterCommit": "730ff95d855330a05855defe3516cd8305822f21",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 7,
+    "scope": "PR #711 (CI and packaging, no Solidity): the .soldeerignore allow-list, the gas-snapshot workflow's comparison and generation step, the inlined rainix-rs-test wiring, the regenerated .gas-snapshot. Tool-probed 18. S1-S7, one per .soldeerignore rule plus an added `!/test/` re-include: before, no check exists and all survive; after, script/check-soldeer-package.sh dry-runs the publish and demands exactly the tracked files under src/, README.md, SPEC.md, LICENSE and LICENSES/, killing all 7. G1-G7 on the comparison, extracted verbatim from the workflow into script/check-gas-snapshot.sh: before, the CI job green at HEAD kills the always-fail mutants G2 (fuzz rows never recognised), G3 (fresh side not normalised), G5 (verdict inverted) and misses the always-pass G1 (non-fuzz gas also erased), G4 (exit 0 on stale), G6 (no regenerate instruction), G7 (committed compared with itself); after, script/check-gas-snapshot-test.sh's 9 cases kill all 7. D1-D4 on .gas-snapshot: the check kills a changed non-fuzz value, a removed row and a renamed row; D3, a changed fuzz μ, is equivalent because normalise erases the field, proof in audit/known-false-positives.md. Manual 11 on workflow lines, observer the CI run: B1 (--snap dropped) and B6 (soldeer install dropped) are killed by the job going red on a correct commit (forge build fails without dependencies/, demonstrated in a fresh checkout); C4 (cachix setup dropped) and C7a (nix develop dropped) likewise, no nix or forge on the runner. SURVIVED, not equivalent: B7 --fuzz-seed 0 dropped (fuzz fields are normalised away and no test uses vm.random*, so only a seed-dependent fuzz failure distinguishes the programs; no single-run observer exists); C7b the old rainix#rust-shell wiring (that shell provides python3 3.13.12 from the nix store at both 8657b83 and f22d4dc under `nix develop -i`, and rs-test on main was green under it; the PR body's claim that it lacks python3 was false and is corrected; cargo test fails 56 of 229 only when PATH has no python3 at all); C1 C2 C3 C5 C6 (matrix os, fail-fast, runs-on, gc cap, rust-cache: configuration whose only observer would be a required status check). Adversarial: the rust-shell python3 claim; main moved 125 gas-relevant files past the merge base so the PR snapshot was stale on the merge commit (merged and regenerated in the PR after showing the check fail); gas-snapshot, soldeer-package and rs-test are not required status checks (#720). testsBefore 1 is the comparison at HEAD; testsAfter 11 is 9 self-test cases, the comparison and the package check. Tool note: mutation-probe's atomic write drops the executable bit of the target, so a wrapper that execs the target reports false kills; invoke targets via bash.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 29,
+      "killedBefore": 10,
+      "killedAfter": 21,
+      "equivalent": 1,
+      "survived": 7,
+      "candidates": 3,
+      "confirmed": 3,
+      "testsBefore": 1,
+      "testsAfter": 11,
+      "filed": [720]
+    }
+  },
+  {
+    "timestamp": "2026-10-14T21:06:05Z",
+    "commit": "1fc0f0fbec8c1fb6773de5fedc3d6a7faf21fec7",
+    "testsAfterCommit": "1fc0f0fbec8c1fb6773de5fedc3d6a7faf21fec7",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 17,
+    "scope": "PR #709 (#613, #615, #617, #619, #621, #623, #625; on #712): the parse audit's own lines, the diff against #712's head 4ed1ba4a after merging it (f7cf3b8f) and fixing the merge's zeros helper (2e84f4bd). Units: the fraction branch guard `exponent >= 0` that now reverts ParseDecimalNonNegativeFractionExponent(start); the ASCII_DECIMAL_POINT and ASCII_ZERO constants in readSignificantDigits; the SPEC.md Range guards row; and, added mid-run, the inline past check calling the signed isPastEveryFloat(int256, int256) overload instead of negating by hand (1fc0f0fb). The memory-safe annotation on parseDecimalFloat's assembly and the NatSpec/comment edits have no runtime behaviour and were verified by reading against the declared error signatures (ParseEmptyDecimalString(uint256) in rain-string 0.3.9, ExponentOverflow(int256, int256)) and the code paths, not probed. #712's own lines carry the pr:712 record; its two NEVER_PAST_EXPONENT parse gates were probed once more only to attribute #709's new test. Suite per Solidity probe: forge test --match-contract 'Parse|ToDecimalString' (the six contracts that reach the parser, 128 tests) at 256 fuzz runs, seed 0x709; the SPEC row probe ran cargo test spec_names_every_error (1 test). Pass 1 (M01-M10, S01) ran the pre-existing suite at 2e84f4bd; pass 2 (M11-M13) at 1fc0f0fb. Mutants: M01 guard relaxed to > 0; M02 guard dropped; M03 guard negated; M04 guard reverts with cursor; M05 ASCII_DECIMAL_POINT 0x2f; M06 ASCII_ZERO 0x31; M07 point test inverted; M08 digit value operands swapped; M09 past-int256 gate at NEVER_PAST_EXPONENT + 1; M10 inline gate at NEVER_PAST_EXPONENT + 1; S01 SPEC row name broken; M11 inline past check casts the signed coefficient without its magnitude; M12 inline past check at exponent - 1; M13 inline past check forced true past NEVER_PAST_EXPONENT. 11/14 killed, all by pre-existing tests: M03 testParseGasCommon, testParseGas, testParseDecimalFloatExcessCharacters, testParseExponentLeadingZeros, testParseExponentSumBelowInt256; M05 testParseOverflowThresholdPointPositions; M06-M08 testParseGasPastInt256, testParseIntegerPastInt256Boundary, testParseIntegerPastInt256Exponent, testParseIntegerPastInt256Fraction, testParseIntegerPastInt256Int224Bounds; M09 testParsePastInt256FirstExponentPastNeverPast and #709's testParsePastInt256GateAtNeverPastExponentPlusOne; M10 testParseOverflowThresholdExcesses; S01 constants::spec_names_every_error; M11 testFormatExtremeFloats, testParseOverflowThresholdExcesses; M12 testParseDecimalFloatExponentOverflowFromPackLossy, testParseOverflowThresholdExcesses, testParsePastRangeOneChannel; M13 testParseZeroHugeExponent, testFormatExtremeFloats, testFormatScientificExponentPastInt32, testParsePr321EquivalenceExamples, testParseDecimalFloatExponentOverflowFromPackLossy. M01, M02 and M04 survived and are equivalent: the guarded branch is dead, as the trailing-zero scan stops at the `.` at the latest so the fraction exponent is negative on every input; the proof is in audit/known-false-positives.md (\"the fraction exponent guard in parseDecimalFloatInline\"). No tests added. Adversarial pass: each ParseDecimalPrecisionLoss return site is below the overflow threshold as ErrParse.sol now states; the MalformedDecimalPoint and MalformedExponentDigits positions match both parse paths; packLossy reverts ExponentOverflow exactly when isPastEveryFloat holds on its out-of-int32 path, so the wrapper comment holds; the signed overload maps int256.min to 2^255 as the removed hand negation did. No candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 14,
+      "killedBefore": 11,
+      "killedAfter": 11,
+      "equivalent": 3,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 128,
+      "testsAfter": 128,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-14T21:26:08Z",
+    "commit": "0f382e70a66c20fd02781fa3e20608fc216ab541",
+    "testsAfterCommit": "0f382e70a66c20fd02781fa3e20608fc216ab541",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 12,
+    "scope": "PR #709, second round after rain-marvin's audit of 23626d0a (20 mutants, 16 killed, 4 survived: the three dead fraction guard mutants already in audit/known-false-positives.md and one unrecorded, the memory-safe annotation removed from parseDecimalFloat's assembly; INFO: the trailing-zero scan in parseDecimalFloatInline still compared against the 0x30 literal beside the new ASCII_ZERO constant). Changes: the scan reads ASCII_ZERO and its literal comment is gone (0f382e70). Suite per probe: forge test --match-contract 'Parse|ToDecimalString' (128 tests) at 256 fuzz runs, seed 0x709, pre-existing tests only. Mutants: M14 memory-safe annotation removed from the parseDecimalFloat block that reads the string's start and end; M15 the trailing-zero scan compares against 0x31 instead of ASCII_ZERO. M15 killed by testParseGasCommon, testParseGas, testParseNonZeroHugeExponent, testParseOverflowThresholdPointPositions, testParseExponentLeadingZeros. M14 survived and is equivalent: the annotation is a compiler promise about the block's memory use, not an operation; the block only reads the length word and adds offsets, so its EVM semantics are identical with or without it, and only the optimizer's stack-to-memory freedom differs, which no return value or revert can observe. Proof in audit/known-false-positives.md (\"parseDecimalFloat assembly without memory-safe\"). No tests added, no candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 2,
+      "killedBefore": 1,
+      "killedAfter": 1,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 128,
+      "testsAfter": 128,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T06:56:19Z",
+    "commit": "125ea386b6e258e31334ca9ff9468620e4d0d7e5",
+    "testsAfterCommit": "125ea386b6e258e31334ca9ff9468620e4d0d7e5",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 14,
+    "scope": "PR #709, third round after rain-marvin's audit of d1284cf0 (16 mutants, 10 killed, 6 survived; two unrecorded: the inline `exponent > NEVER_PAST_EXPONENT` gate changed to `>=` or dropped. LOW: the ParseDecimalPrecisionLoss cause lists in ErrParse.sol and the parseDecimalFloat comment omit a literal whose last significant digit is below 10^int32.min while its value is at or above the smallest nonzero Float, e.g. 1.5e-2147483648. INFO: the parser's ASCII_DECIMAL_POINT and ASCII_ZERO repeat the formatter's CHAR_DOT and CHAR_ZERO under other names). Changes (125ea386): the cause lists in ErrParse.sol, the wrapper comment and SPEC.md name the digit below 10^int32.min; testParseDecimalFloatDigitBelowExponentFloorIsPrecisionLoss pins 1.5e-2147483648 (inline exact 15 x 10^-2147483649, wrapper ParseDecimalPrecisionLoss) against 1e-2147483648 (exact, packLossless(1, int32.min)), and passes on the unmodified parser; the constants are CHAR_DOT and CHAR_ZERO. Suite per probe: forge test --match-contract 'Parse|ToDecimalString' (129 tests) at 256 fuzz runs, seed 0x709, pre-existing tests plus the new pin. Mutants: M16 inline gate `>=`; M17 inline gate dropped; M18 past-int256 gate `>=`; M19 past-int256 gate dropped. All four survived and are equivalent: isPastEveryFloat's first statement returns false at or below NEVER_PAST_EXPONENT, so each gate repeats the callee's own short-circuit and the mutants compute the same value on every input. Proof in audit/known-false-positives.md (\"the parser's NEVER_PAST_EXPONENT gates before isPastEveryFloat\"). No candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 4,
+      "killedBefore": 0,
+      "killedAfter": 0,
+      "equivalent": 4,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 129,
+      "testsAfter": 129,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:42:17Z",
+    "commit": "0d50f5196aaaa67f27768e1ce10861f8aebde0b3",
+    "testsAfterCommit": "0d50f5196aaaa67f27768e1ce10861f8aebde0b3",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 16,
+    "scope": "PR #709, fourth round after rain-marvin's audit of 03f5b8c4 (21 mutants, 17 killed, 4 survived, all documented equivalents: the unreachable fraction guard relaxed, forced false or returning, and the memory-safe annotation removed). The sources are removed instead (0d50f519): the fraction guard, its ParseDecimalNonNegativeFractionExponent error, its SPEC.md Range guards row and the Parsing exception for it are gone, and parseDecimalFloat takes start and end from rain-solmem's LibBytes.dataPointer and endDataPointer (already a package dependency) instead of its own assembly block; the two known-false-positives entries for them are deleted. Scan records 1fc0f0fb (128 tests) and 125ea386 (testsBefore 129) are corrected to the counts their probes ran. Suite per probe: forge test --match-contract 'Parse|ToDecimalString' (129 tests) at 256 fuzz runs, seed 0x709, pre-existing tests only. Mutants: M20 start at the length word; M21 start one byte late; M22 end at the data start; M23/M24 end one byte early/late; M25 fraction exponent operands swapped; M26/M27 fraction exponent one low/high; M28 scan reads two bytes back; M29 scan reads the cursor byte; M30 scan steps two; M31 scan never steps. 12/12 killed, all by pre-existing tests (killers include testParseGasCommon, testParseGas, testParseIntegerPastInt256Boundary, testParseDecimalFloatExcessCharacters, testFormatDecimalRoundTripExamples, testParseIssue375Literals, testParseExponentSumBelowInt256, testParseLiteralDecimalFloatDecimals, testParseZeroFractionPastInt224). cargo test spec_names_every_error passes with the row gone. No equivalents, no candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 12,
+      "killedBefore": 12,
+      "killedAfter": 12,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 129,
+      "testsAfter": 129,
       "filed": []
     }
   }

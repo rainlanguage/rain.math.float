@@ -5,11 +5,12 @@
 //! shared with `exact.rs`, every value the Solidity is checked against is
 //! computed by dashu.
 
+use crate::common::{self, PARSE_EMPTY_DECIMAL_STRING, selector};
 use crate::evm::{self, TestDecimalFloat as T, TestDecimalFloatHarness as H};
-use crate::exact::{self, Fail, Sol, config, error_matches, pair, show};
-use crate::reference::{Dec, RefError};
+use crate::exact::{self, Fail, Sol, config, error_matches, pair, show, sol_bool, sol_float};
+use crate::reference::{self as r, Dec, RefError, pow10};
 use crate::transcendental::{self, revert_data};
-use alloy::primitives::{B256, I256, U256, keccak256};
+use alloy::primitives::{B256, I256, U256};
 use core::cmp::Ordering;
 use dashu_base::Abs;
 use dashu_float::round::mode::{Away, HalfAway, Zero};
@@ -131,16 +132,6 @@ pub(crate) fn toward_zero(v: &D) -> Result<D, Range> {
 
 // ------------------------------------------------------------------ checking
 
-/// The concrete's Float result, unpacked, or its revert.
-fn sol_float<C: alloy::sol_types::SolCall<Return = B256>>(c: C) -> Sol<Dec> {
-    exact::sol_float(c)
-}
-
-/// The concrete's bool result; the comparisons never revert.
-fn sol_bool<C: alloy::sol_types::SolCall<Return = bool>>(c: C) -> bool {
-    evm::concrete(c).unwrap()
-}
-
 /// The Solidity result against dashu's: the same value, or the same error.
 /// With `reporting`, a revert must also carry exactly that Float, unpacked.
 fn check(
@@ -176,11 +167,6 @@ fn word(x: &IBig) -> [u8; 32] {
     I256::from_dec_str(&x.to_string())
         .unwrap()
         .to_be_bytes::<32>()
-}
-
-/// The ABI word of an int256 num-bigint integer.
-fn word_of(x: &num_bigint::BigInt) -> [u8; 32] {
-    word(&ibig(x))
 }
 
 /// The ABI word as an int256.
@@ -525,7 +511,7 @@ fn check_to_fixed(a: &Dec, decimals: u8) -> Result<(), TestCaseError> {
     // Every error reports the Float unpacked, and `FixedDecimalOverflow`
     // `decimals` too.
     let data = |e: RefError| {
-        let mut words = vec![word_of(&a.c), word(&IBig::from(a.e))];
+        let mut words = vec![common::word(&a.c), word(&IBig::from(a.e))];
         if e == RefError::FixedDecimalOverflow {
             words.push(U256::from(decimals).to_be_bytes::<32>());
         }
@@ -646,6 +632,20 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
         signedCoefficient: sc,
         exponent: se,
     });
+    // `isPastEveryFloat` of the magnitude is exactly where `packLossy`
+    // reverts `ExponentOverflow` (#649).
+    let is_past = evm::harness(H::isPastEveryFloat_0Call {
+        magnitude: sc.unsigned_abs(),
+        exponent: se,
+    })
+    .unwrap();
+    prop_assert_eq!(
+        is_past,
+        matches!(want, Err(RefError::ExponentOverflow)),
+        "isPastEveryFloat({}, {})",
+        c,
+        e
+    );
     match (lossy, &want) {
         (Ok(r), Ok((w, l))) => {
             let s = d(&Dec::from_bytes(r._0));
@@ -799,14 +799,8 @@ enum Shape {
     Malformed(&'static str),
 }
 
-const EMPTY: &str = "ParseEmptyDecimalString(uint256)";
 const DECIMAL_POINT: &str = "MalformedDecimalPoint(uint256)";
 const EXPONENT_DIGITS: &str = "MalformedExponentDigits(uint256)";
-
-/// The four-byte selector of an error signature.
-fn selector(signature: &str) -> [u8; 4] {
-    keccak256(signature.as_bytes())[..4].try_into().unwrap()
-}
 
 /// Up to five characters after a first one drawn from `first`.
 fn tail(first: &'static [u8]) -> BoxedStrategy<String> {
@@ -855,10 +849,18 @@ fn parse_input() -> BoxedStrategy<(String, Shape)> {
     fn end(first: &'static [u8]) -> impl Strategy<Value = String> {
         proptest::option::of(tail(first)).prop_map(Option::unwrap_or_default)
     }
-    let empty = (sign(), end(b" x.eE+_a\t,"))
-        .prop_map(|(s, t)| (format!("{s}{t}"), Shape::Malformed(EMPTY)));
-    let empty_after_minus =
-        end(b" x.eE+-_a\t,").prop_map(|t| (format!("-{t}"), Shape::Malformed(EMPTY)));
+    let empty = (sign(), end(b" x.eE+_a\t,")).prop_map(|(s, t)| {
+        (
+            format!("{s}{t}"),
+            Shape::Malformed(PARSE_EMPTY_DECIMAL_STRING),
+        )
+    });
+    let empty_after_minus = end(b" x.eE+-_a\t,").prop_map(|t| {
+        (
+            format!("-{t}"),
+            Shape::Malformed(PARSE_EMPTY_DECIMAL_STRING),
+        )
+    });
     let point = (sign(), digits(20), end(b" x.eE+-_a\t,"))
         .prop_map(|(s, i, t)| (format!("{s}{i}.{t}"), Shape::Malformed(DECIMAL_POINT)));
     let exponent = (
@@ -1581,13 +1583,14 @@ fn check_pow_with(a: &Dec, b: &Dec, sol: Sol<Dec>) -> Result<(), TestCaseError> 
     };
     if ax.repr().significand() == &IBig::ONE {
         // |a| = 10^k: k b whole is 10^(k b) exactly. Past 1e12, |k b| is
-        // past every Float whatever its fraction.
+        // past every Float whatever its fraction; under it, a whole k b is
+        // an exponent dashu holds.
         let k = D::from_parts(IBig::from(ax.repr().exponent()), 0);
         let rising = (k > D::ZERO) == (y > D::ZERO);
-        if lead(&y) >= 12 {
+        let kb = rounded(Context::<Zero>::new(0).mul(k.repr(), y.repr()).unwrap());
+        if lead(&kb) >= 12 {
             return check_band(&case, sol, range(rising, Truth::Past));
         }
-        let kb = rounded(Context::<Zero>::new(0).mul(k.repr(), y.repr()).unwrap());
         if same(&kb.trunc(), &kb) {
             let n = isize::try_from(kb.to_int().value()).unwrap();
             let e = D::from_parts(IBig::ONE, n);
@@ -1819,7 +1822,7 @@ fn tolerance() -> BoxedStrategy<Dec> {
     let non_negative = exact::float().prop_map(|f| {
         if f.c < num_bigint::BigInt::from(0) {
             let c = -f.c;
-            let max: num_bigint::BigInt = int224_max().to_string().parse().unwrap();
+            let max = r::int224_max();
             Dec::new(if c > max { max } else { c }, f.e)
         } else {
             f
@@ -1842,7 +1845,7 @@ fn agree_input() -> BoxedStrategy<(Dec, Dec, Dec, Dec)> {
     let nudge = |v: &D, k: i64| {
         let f = to_dec(v);
         let c = f.c + k;
-        let max: num_bigint::BigInt = int224_max().to_string().parse().unwrap();
+        let max = r::int224_max();
         (c >= num_bigint::BigInt::from(0) && c <= max).then(|| Dec::new(c, f.e))
     };
     let on_absolute =
@@ -1937,6 +1940,24 @@ proptest! {
     }
 }
 
+/// pow of 10^k at a b under 1e12 whose k b is whole and past isize, the
+/// inputs the fuzz reaches rarely: the Solidity against the oracle at each.
+#[test]
+fn differential_pow_power_of_ten_past_isize() {
+    let cases = [
+        (Dec::new(1, 92233721), Dec::new(9999999999i64, 1)),
+        (Dec::new(1, 92233721), Dec::new(pow10(57), -46)),
+        (Dec::new(1, 153722868), Dec::new(6, 10)),
+        (Dec::new(1, -92233721), Dec::new(9999999999i64, 1)),
+        (Dec::new(-1, 92233721), Dec::new(99999999991i64, 0)),
+    ];
+    for (a, b) in cases {
+        if let Err(err) = check_pow(&a, &b) {
+            panic!("{err}");
+        }
+    }
+}
+
 /// The oracle on fixed examples whose values are the README's and #333's,
 /// so a misconfigured dashu context fails here and not only under fuzz.
 mod oracle {
@@ -1964,7 +1985,7 @@ mod oracle {
         assert!(same(&w, &D::from_parts(nines(67), -67)));
         // 1e100 - (1e33 + 1) is 1e100 - 2e33, and so is 1e100 - 1.7e33.
         let want = D::from_parts(IBig::from(10).pow(67) - IBig::from(2), 33);
-        let b = Dec::new(num_bigint::BigInt::from(10).pow(33) + 1, 0);
+        let b = Dec::new(pow10(33) + 1, 0);
         assert!(same(&want_sub(&Dec::new(1, 100), &b).unwrap(), &want));
         assert!(same(
             &want_sub(&Dec::new(1, 100), &Dec::new(17, 32)).unwrap(),
@@ -1986,7 +2007,7 @@ mod oracle {
     /// the oracle must answer without materialising the gap.
     #[test]
     fn extreme_gaps_are_cheap() {
-        let big: num_bigint::BigInt = num_bigint::BigInt::from(10).pow(66) * 13 + 7;
+        let big: num_bigint::BigInt = pow10(66) * 13 + 7;
         for (ea, eb) in [(I32_MAX, I32_MIN), (I32_MIN, I32_MAX)] {
             for sb in [1i32, -1] {
                 let a = Dec::new(big.clone(), ea as i64);
@@ -2200,19 +2221,14 @@ mod oracle_checks {
     use super::*;
     use dashu_base::SquareRoot;
     use dashu_int::UBig;
-    use num_bigint::BigInt;
-
-    fn p10(n: u32) -> BigInt {
-        BigInt::from(10).pow(n)
-    }
 
     /// x = 5 + 1e-50: 10^x = 1e5 (1 + 2.3e-50). 1e5 - 4e-36 is 4 units of
     /// its own 41st digit off, inside half a unit of 1e5's.
     #[test]
     fn pow10_unit_is_the_smaller_values() {
-        let x = Dec::new(p10(50) * 5 + 1, -50);
+        let x = Dec::new(pow10(50) * 5 + 1, -50);
         assert!(check_pow10_with(&x, Ok(Dec::new(1, 5))).is_ok());
-        let wrong = Dec::new(p10(41) - 4, 5 - 41);
+        let wrong = Dec::new(pow10(41) - 4, 5 - 41);
         assert!(check_pow10_with(&x, Ok(wrong)).is_err());
     }
 
@@ -2220,9 +2236,9 @@ mod oracle_checks {
     /// own 41st digit off, inside half a unit of 1's.
     #[test]
     fn log10_unit_is_the_results() {
-        let a = Dec::new(p10(67) + 1, -66);
+        let a = Dec::new(pow10(67) + 1, -66);
         assert!(check_log10_with(&a, Ok(Dec::new(1, 0))).is_ok());
-        let wrong = Dec::new(p10(41) - 4, -41);
+        let wrong = Dec::new(pow10(41) - 4, -41);
         assert!(check_log10_with(&a, Ok(wrong)).is_err());
     }
 
@@ -2231,11 +2247,37 @@ mod oracle_checks {
     fn pow_of_a_power_of_ten_is_exact() {
         let (a, b) = (Dec::new(1, -1), Dec::new(5000, 0));
         assert!(check_pow_with(&a, &b, Ok(Dec::new(1, -5000))).is_ok());
-        let wrong = Dec::new(p10(41) - 4, -5041);
+        let wrong = Dec::new(pow10(41) - 4, -5041);
         assert!(check_pow_with(&a, &b, Ok(wrong)).is_err());
         let (a, b) = (Dec::new(-1, 2), Dec::new(3001, 0));
         assert!(check_pow_with(&a, &b, Ok(Dec::new(-1, 6002))).is_ok());
         assert!(check_pow_with(&a, &b, Ok(Dec::new(1, 6002))).is_err());
+    }
+
+    /// |a| = 10^k with k b whole, under 1e12 in b alone but past isize in
+    /// k b: 10^(k b) is past every Float, so only the range error of its
+    /// direction passes.
+    #[test]
+    fn pow_of_a_power_of_ten_past_isize_is_past() {
+        let revert = |e: RefError, a: &Dec| Fail::Revert(revert_data(e, a, None).into());
+        let cases = [
+            (Dec::new(1, 92233721), Dec::new(9999999999i64, 1)),
+            (Dec::new(1, 92233721), Dec::new(pow10(57), -46)),
+            (Dec::new(1, 153722868), Dec::new(6, 10)),
+        ];
+        for (a, b) in cases {
+            let over = revert(RefError::ExponentOverflow, &a);
+            let under = revert(RefError::ExponentUnderflow, &a);
+            assert!(check_pow_with(&a, &b, Err(over)).is_ok());
+            assert!(check_pow_with(&a, &b, Err(under)).is_err());
+            assert!(check_pow_with(&a, &b, Ok(Dec::new(1, 5))).is_err());
+            let (a, b) = (a.neg(), b.neg());
+            let over = revert(RefError::ExponentOverflow, &a);
+            let under = revert(RefError::ExponentUnderflow, &a);
+            assert!(check_pow_with(&a, &b, Err(under)).is_ok());
+            assert!(check_pow_with(&a, &b, Err(over)).is_err());
+            assert!(check_pow_with(&a, &b, Ok(Dec::new(1, -5))).is_err());
+        }
     }
 
     /// pow(2, 1e76) is past every Float, but its band at rel >= 1 reaches
@@ -2246,7 +2288,7 @@ mod oracle_checks {
         assert!(check_pow_with(&a, &b, Ok(Dec::new(7, 5))).is_ok());
         assert!(check_pow_with(&a, &b, Ok(Dec::zero())).is_err());
         assert!(check_pow_with(&a, &b, Ok(Dec::new(-7, 5))).is_err());
-        assert!(check_pow_with(&a, &b, Ok(Dec::new(p10(41) + 1, 5))).is_err());
+        assert!(check_pow_with(&a, &b, Ok(Dec::new(pow10(41) + 1, 5))).is_err());
     }
 
     /// The carry threshold rounds past the largest Float at 41 digits, half
@@ -2343,9 +2385,9 @@ mod oracle_checks {
             Ok(Some(true))
         );
         // a spread past the limit by under 1.7273e-76 of itself may go either way.
-        let close = Dec::new(p10(78) - 1, -78);
+        let close = Dec::new(pow10(78) - 1, -78);
         assert_eq!(want(&close, &z, &z, &n(1, 0)), Ok(None));
-        let far = Dec::new(p10(70) - 1, -70);
+        let far = Dec::new(pow10(70) - 1, -70);
         assert_eq!(want(&far, &z, &z, &n(1, 0)), Ok(Some(false)));
         // 6 against -9e-76 is past 6 by 1.5e-76 of the spread, which the
         // truncated spread holds as 6: the library accepts it.

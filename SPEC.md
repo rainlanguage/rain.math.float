@@ -48,6 +48,12 @@ does and has no ruling yet.
   int224 has no headroom, which is exactly past every Float (#304, #333).
 - Zero packs as `FLOAT_ZERO` (all bits zero), lossless true, for any `e`
   (**UNRULED**).
+- `isPastEveryFloat(m, e)`: true iff `m × 10^e` is at least
+  `(2^223 + 2) × 10^int32.max`, for any uint256 `m` and int256 `e`; for `m` up
+  to 2^255 that is exactly where `packLossy` reverts `ExponentOverflow`. Zero is
+  never past, and no value at an exponent at or below `NEVER_PAST_EXPONENT`
+  (`int32.max - 10`) is past. `packLossy`, `div`, `pow`, `pow10` and the parser
+  check the threshold through it, so it has one encoding (#649).
 - `packLossless(c, e)`: as `packLossy`; reverts `ExponentOverflow(c, e)` for any
   value past `FLOAT_MAX_POSITIVE_VALUE` or `FLOAT_MIN_NEGATIVE_VALUE`, the band
   `packLossy` truncates into them included, and `LossyConversionToFloat(c, e)`
@@ -290,8 +296,8 @@ digits (#306).
   int256 included (PR #433, #510).
 - `ParseDecimalPrecisionLoss` for any other literal not exactly a Float: the
   band below that threshold past the largest Float of its sign, a coefficient
-  past int256, and underflow to zero (PR #433, #510). `ParseDecimalOverflow` is
-  gone (#375).
+  past int256, a significant digit below `10^int32.min` (`1.5e-2147483648`), and
+  underflow to zero (PR #433, #510). `ParseDecimalOverflow` is gone (#375).
 - `ParseDecimalFloatExcessCharacters` for a well-formed literal followed by more
   input (PR #433).
 - Malformed literals keep their own selector: `ParseEmptyDecimalString` (no
@@ -315,19 +321,19 @@ digits (#306).
 
 Named errors at the internal guards (#429, closes #422; #336):
 
-| Function                        | Error                                    | Fires when                                                                                                             |
-| ------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
-| `mulDivFixed`, `mulDiv`         | `MulDivOverflow(x, y, d)`                | the 512-bit quotient is past uint256, or `d` is zero (#486)                                                            |
-| `log10Ratio`                    | `Log10RatioOutOfRange(a, b)`             | `a + b` past uint256, `b` zero, or z past the proven series range                                                      |
-| `log10Ratio` (relative)         | `Log10RatioRelativeSumTooSmall(a, b)`    | `a + b < 1e50` (#336)                                                                                                  |
-| `log10Unrounded`                | `ExponentOverflow(input)`                | characteristic past int256                                                                                             |
-| `sqrt` (implementation)         | `SqrtOutOfRange(c, e)`                   | `c` outside `(0, 1e76)`; every exponent has a root (#451, PR #497)                                                     |
-| `exp10Fixed`                    | `Exp10FixedOutOfRange(x)`                | `x` outside `[0, 1)` at the 1e50 scale                                                                                 |
-| `log10Reduce`                   | `Log10ReduceOutOfRange(x)`               | `x` outside `[1e75, 1e76)`                                                                                             |
-| `absCoefficient`                | `AbsCoefficientOverflow(c)`              | `c` is `int256.min`                                                                                                    |
-| `scaleUp`                       | `ScaleUpOutOfRange(c, e)`                | `c` outside `(0, 1e76)` or the shift passes `int256.min`                                                               |
-| `unabsUnsignedMulOrDivLossy`    | `UnabsExponentOverflow(a, b, abs, e)`    | a magnitude past int256 at the result's sign must shed a digit at `e = int256.max` (#502, PR #518)                     |
-| `readSignificantDigits` (parse) | `ParseDecimalNoSignificantDigits(start)` | a mantissa with no nonzero digit is read; unreachable from the parse entry points, which pass only a mantissa with one |
+| Function                        | Error                                    | Fires when                                                                                                                                                                  |
+| ------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mulDivFixed`, `mulDiv`         | `MulDivOverflow(x, y, d)`                | the 512-bit quotient is past uint256, or `d` is zero (#486)                                                                                                                 |
+| `log10Ratio`                    | `Log10RatioOutOfRange(a, b)`             | `a + b` past uint256, `b` zero, or z past the proven series range                                                                                                           |
+| `log10Ratio` (relative)         | `Log10RatioRelativeSumTooSmall(a, b)`    | `a + b < 1e50` (#336)                                                                                                                                                       |
+| `log10Unrounded`                | `ExponentOverflow(input)`                | characteristic past int256                                                                                                                                                  |
+| `sqrt` (implementation)         | `SqrtOutOfRange(c, e)`                   | `c` outside `(0, 1e76)`; every exponent has a root (#451, PR #497)                                                                                                          |
+| `exp10Fixed`                    | `Exp10FixedOutOfRange(x)`                | `x` outside `[0, 1)` at the 1e50 scale                                                                                                                                      |
+| `log10Reduce`                   | `Log10ReduceOutOfRange(x)`               | `x` outside `[1e75, 1e76)`                                                                                                                                                  |
+| `absCoefficient`                | `AbsCoefficientOverflow(c)`              | `c` is `int256.min`                                                                                                                                                         |
+| `scaleUp`                       | `ScaleUpOutOfRange(c, e)`                | `c` outside `(0, 1e76)` or the shift passes `int256.min`                                                                                                                    |
+| `unabsUnsignedMulOrDivLossy`    | `UnabsExponentOverflow(a, b, abs, e)`    | a magnitude past int256 at the result's sign must shed a digit at `e = int256.max`; unreachable from `mul` and `div`, which revert `ExponentOverflow` first (#502, PR #518) |
+| `readSignificantDigits` (parse) | `ParseDecimalNoSignificantDigits(start)` | a mantissa with no nonzero digit is read; unreachable from the parse entry points, which pass only a mantissa with one                                                      |
 
 - `withTargetExponent(c, e, t)` truncates toward zero when shrinking; growing by
   `d` digits returns `c × 10^d`, zero for zero at any `d`, and reverts

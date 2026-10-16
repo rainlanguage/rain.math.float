@@ -2,4 +2,15 @@ name: rainix-rs-test
 on: [push]
 jobs:
   rs-test:
-    uses: rainlanguage/rainix/.github/workflows/rainix-rs-test.yaml@main
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+      fail-fast: false
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: rainlanguage/rainix/.github/actions/nix-cachix-setup@main
+        with:
+          cachix-auth-token: ${{ secrets.CACHIX_AUTH_TOKEN }}
+          gc-max-store-size-macos: 1G
+      - uses: rainlanguage/rainix/.github/actions/rust-cache@main
+      - run: nix develop -c cargo test

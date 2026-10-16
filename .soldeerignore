@@ -1,28 +1,9 @@
-.DS_Store
-.coderabbit.yaml
-.envrc
-.gas-snapshot
-.git
-.github
-.gitignore
-.pre-commit-config.yaml
-.soldeerignore
-.vscode
-CLAUDE.md
-/audit
-/cache
-/dependencies
-/flake.lock
-/flake.nix
-/foundry.toml
-/out
-/remappings.txt
-/slither.config.json
-/soldeer.lock
-/target
-/test
-/REUSE.toml
-/crates
-/.cargo
-Cargo.toml
-Cargo.lock
+# Allow-list: every root path is excluded unless re-included here, so a new
+# root file or directory (.audit/, tool config) never ships, and never mints a
+# release whose Solidity is unchanged, until it is named below.
+/*
+!/src/
+!/README.md
+!/SPEC.md
+!/LICENSE
+!/LICENSES/
