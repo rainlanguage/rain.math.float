@@ -298,8 +298,8 @@ digits (#306).
   int256 included (PR #433, #510).
 - `ParseDecimalPrecisionLoss` for any other literal not exactly a Float: the
   band below that threshold past the largest Float of its sign, a coefficient
-  past int256, and underflow to zero (PR #433, #510). `ParseDecimalOverflow` is
-  gone (#375).
+  past int256, a significant digit below `10^int32.min` (`1.5e-2147483648`), and
+  underflow to zero (PR #433, #510). `ParseDecimalOverflow` is gone (#375).
 - `ParseDecimalFloatExcessCharacters` for a well-formed literal followed by more
   input (PR #433).
 - Malformed literals keep their own selector: `ParseEmptyDecimalString` (no
