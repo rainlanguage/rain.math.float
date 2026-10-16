@@ -310,16 +310,24 @@ Rules for protocols built on the library. Each example is a test in
 
 1. **Round up at the fixed-decimal boundary yourself.** `toFixedDecimalLossy`
    only truncates. For an amount a user owes, add 1 when `lossless` is false.
-   With integer inputs and `a × b` below about 1e66 of the floored unit, the
-   floor never exceeds the exact floor and that ceiling never falls below the
-   exact ceiling, in any of the orders `a × b / c`, `a / (c / b)` and
-   `a × (b / c)`; on an exact integer either can miss by 1 toward the safe side.
-   Past about 1e66 a rounded divisor lifts the floor: `(7e66 + 2) / (7 / 3)`
-   floors to `3e66 + 1` where the exact result is `3e66 + 6/7`. Keep amounts as
-   Floats through a calculation: converting to wei on every step of a loop
-   reintroduces Balancer/Bunni-style amplification. Eight round trips of 8 wei
-   through a rate of `1.112500000000000001`, converted to wei each step, empty
-   it; as a Float it stays exactly 8.
+   `lossless` reports only that final conversion: every `mul`, `div`, `inv`,
+   `add` and `sub` can drop a fraction smaller than one ulp with no signal, and
+   so can the `add` that applies a margin. For an amount owed computed from
+   positive values by `mul`, `div`, `inv` and `add` only, add a margin of at
+   least 1e-66 of the result per truncation that reaches the result, plus 1e-66
+   for that `add`. The last operation counts once and any other counts the sum
+   of the counts of the operations that use its result: one per operation when
+   each intermediate is used once, but 1 + 2 + 4 + 8 = 15 for x^16 by four
+   squarings. This holds while every intermediate is at least 1e-2147483581, so
+   that a result which does not fit still keeps a coefficient above int224.max /
+   10 and loses under 1e-66 of itself; nearer the exponent floor the coefficient
+   is cut short and one operation can lose most of its result
+   (`3e-2147483648 / 2` is `1e-2147483648`). A `sub`, or an `add` of opposite
+   signs, can cancel and amplify earlier losses relative to the result: margin
+   each term on its safe side, an exact term included (at least 1e-66 of it),
+   before combining them: the `sub` or `add` that combines them truncates too.
+   Keep amounts as Floats through a calculation: converting to wei on every step
+   reintroduces Balancer/Bunni-style amplification.
 2. **Toward zero applies per operation, not per expression.** A rounded divisor
    biases the quotient upward: `inv(inv(6))` is `6.` then 65 zeros and a `2`. A
    negative result rounds toward +∞: `-1 / 3` is `-0.` then 67 threes. Get
