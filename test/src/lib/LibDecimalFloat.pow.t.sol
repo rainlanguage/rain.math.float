@@ -844,8 +844,9 @@ contract LibDecimalFloatPowTest is Test {
         );
     }
 
-    /// A rounded power without the headroom to lift reverts with a, whether
-    /// the unrounded value is packed, up to an excess of 67, or not, past it.
+    /// A rounded power without the headroom to lift reverts with a, at an
+    /// excess of 67, where a rounded coefficient of two or more is past, and
+    /// at 68, where any non-zero one is.
     function testPowRoundedPastTheTopRevertValue() external {
         // (3000000000000000000001e1073741856)^2 is
         // 9000000000000000000006000000000000000000001e2147483712, rounded to
@@ -1144,6 +1145,18 @@ contract LibDecimalFloatPowTest is Test {
         return a.pow(b);
     }
 
+    /// The squaring loop stops after the top bit of N, so `1.5^3` squares the
+    /// base once, not twice. The ceiling sits between the two costs: 4955
+    /// with the early break, 5624 without it.
+    function testPowSkipsUnusedFinalSquareGas() external view {
+        Float a = LibDecimalFloat.packLossless(15, -1);
+        Float b = LibDecimalFloat.packLossless(3, 0);
+        uint256 before = gasleft();
+        this.powExternal(a, b);
+        uint256 used = before - gasleft();
+        assertLt(used, 5300, "pow squares the base past the top bit of N");
+    }
+
     /// `pow` raises to an integer exponent via exponentiation by squaring,
     /// which squares the base in place. The base exponent therefore grows by
     /// roughly a factor of two per bit of the integer exponent, so a large
@@ -1349,6 +1362,41 @@ contract LibDecimalFloatPowTest is Test {
         // The squared base passes int128 before the loop ends.
         vm.expectRevert(overflow);
         this.powExternal(a, LibDecimalFloat.packLossless(-1, 30));
+    }
+
+    /// With `a` at 1e1e9 and N = 2^97, a^(2^97) is about 1e1.58e38, under
+    /// int128.max in exponent, and a^(2^98) would be past it. The result
+    /// holds a^(2^97), past every Float on the same side of 1 as the base, so
+    /// the range error is the one the final pack raises, reporting `a`,
+    /// unchanged whatever the fraction of `b` and its sign.
+    ///
+    /// With every bit of N set, N = 2^98 - 1, the result a^N is about
+    /// 1e3.17e38: past int128.max in exponent, where the loop stops a base but
+    /// never a result. Only the fraction legs and the final pack see such a
+    /// result, and they raise the same error.
+    function testPowTopBitSquareRangeError() external {
+        int256[2] memory ns = [int256(1) << 97, (int256(1) << 98) - 1];
+        Float big = LibDecimalFloat.packLossless(1, 1e9);
+        Float small = LibDecimalFloat.packLossless(1, -1e9);
+        for (uint256 j = 0; j < ns.length; j++) {
+            int256 n = ns[j];
+            Float[4] memory bs = [
+                LibDecimalFloat.packLossless(n, 0),
+                LibDecimalFloat.packLossless(n * 10 + 5, -1),
+                LibDecimalFloat.packLossless(n * 100 + 25, -2),
+                LibDecimalFloat.packLossless(n * 100 + 75, -2)
+            ];
+            for (uint256 i = 0; i < bs.length; i++) {
+                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(1e9)));
+                this.powExternal(big, bs[i]);
+                vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(-1e9)));
+                this.powExternal(small, bs[i]);
+                vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(1e9)));
+                this.powExternal(big, bs[i].minus());
+                vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(-1e9)));
+                this.powExternal(small, bs[i].minus());
+            }
+        }
     }
 
     /// Issue #276's counterexample, bit for bit: a full-width coefficient base
