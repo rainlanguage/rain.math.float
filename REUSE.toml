@@ -9,6 +9,7 @@ path = [
   ".soldeerignore",
   "audit/**/",
   "script/halmos/fixtures/**/",
+  "script/halmos/matrix.json",
   ".gitignore",
   "Cargo.lock",
   "Cargo.toml",
