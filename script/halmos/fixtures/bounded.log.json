@@ -1,0 +1,16 @@
+{
+    "exitcode": 0,
+    "test_results": {
+        "test/halmos/PackArithmeticResult.halmos.t.sol:PackArithmeticResultHalmosTest": [
+            {
+                "name": "check_packMiddle(int256,int256,uint256)",
+                "exitcode": 0,
+                "num_models": 0,
+                "models": [],
+                "num_paths": [2100, 2048, 0],
+                "time": [91.86, 40.12, 51.74],
+                "num_bounded_loops": 1
+            }
+        ]
+    }
+}

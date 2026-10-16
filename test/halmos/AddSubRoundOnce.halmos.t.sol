@@ -50,7 +50,9 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 ///
 /// MINUS (#513), NEAR (#512) and PACK's `check_packLow` cases 99-780 (#511) are
 /// not yet proved under the halmos workflow's 5-minute limit per run and are out
-/// of its matrix, so the composition is open there.
+/// of its matrix, so the composition is open there. The matrix runs on manual
+/// dispatch: the workflow is disabled on the repository, so a `src/` change
+/// re-proves nothing until someone dispatches it.
 contract AddSubRoundOnceHalmosTest {
     uint256 internal constant TWO_223 = 2 ** 223;
 

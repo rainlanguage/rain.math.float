@@ -1,0 +1,16 @@
+{
+    "exitcode": 0,
+    "test_results": {
+        "test/halmos/AddSubRoundOnce.halmos.t.sol:AddSubRoundOnceHalmosTest": [
+            {
+                "name": "check_addFar(int256,int256,int256,uint256,bool)",
+                "exitcode": 0,
+                "num_models": 0,
+                "models": [],
+                "num_paths": [85, 84, 0],
+                "time": [5.95, 3.21, 2.74],
+                "num_bounded_loops": 0
+            }
+        ]
+    }
+}

@@ -14,8 +14,8 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// `ExponentOverflow(c, e)` when it is no Float. Checked for every int256 c and
 /// every int256 e: Below, Low, Middle, High and Above tile the int256
 /// exponents, and each splits c by size class (`checkPackClass`), one per
-/// path; the halmos workflow proves every band but `check_packLow` cases
-/// 99-780 (#511).
+/// path; the halmos workflow, dispatched by hand (it is disabled on the
+/// repository), proves every band but `check_packLow` cases 99-780 (#511).
 contract PackArithmeticResultHalmosTest {
     function pack(int256 c, int256 e) external pure returns (Float) {
         return LibDecimalFloat.packArithmeticResult(c, e);
@@ -102,6 +102,7 @@ contract PackArithmeticResultHalmosTest {
                 (m, f) = (m * p, LibHalmosExact.FMAX);
             }
         }
+        return (m, f, 0);
     }
 
     /// floor(x 10^e / 10^FMIN) for e < FMIN.
@@ -170,9 +171,10 @@ contract PackArithmeticResultHalmosTest {
 
     /// e in [int32.min - 77, int32.min], one constant e per path: case
     /// 11 j + i for e = int32.min - j.
-    /// The halmos workflow proves cases 0-98 and 781-857. Cases 99-780 (e in
-    /// [int32.min - 70, int32.min - 9]) cost about 25s each under the 5-minute
-    /// limit, more slices than a matrix carries, so they are out: see #511.
+    /// The halmos workflow, dispatched by hand, proves cases 0-98 and 781-857.
+    /// Cases 99-780 (e in [int32.min - 70, int32.min - 9]) cost about 25s each
+    /// under the 5-minute limit, more slices than a matrix carries, so they are
+    /// out: see #511.
     function check_packLow(int256 c, uint256 jBits, uint256 iBits) external view {
         uint256 j = LibHalmosExact.concrete(jBits, 7);
         if (j > 77 || !LibHalmosExact.overlapsSlice(j * 11, j * 11 + 10)) return;

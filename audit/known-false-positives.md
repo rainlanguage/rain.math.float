@@ -89,7 +89,8 @@ product is still outside [-T10, T10] and nonzero divided by 10^t), or `T10` as
 int256.max). Such a change only moves which terms the halmos branch solver is
 handed a fact for, which the filters' NatSpec names as costing completeness (a
 loop-bound warning or extra paths), never soundness; a lemma run proving without
-a warning is what pins the picks, not a forge test.
+a warning is what pins the picks, not a forge test. That run is a manual
+dispatch of the halmos workflow, which is disabled on the repository.
 
 - `hasDigits`: dropping `c != 0 &&`. For c = 0, `x >= 10 ** j` is false for
   every j (10^j is at least 1); for c nonzero the term is true.
@@ -112,6 +113,22 @@ a warning is what pins the picks, not a forge test.
   / p) the product r p is above 2^256 - 1 - p > 2^255 for d <= 76 and is 10^77 >
   2^255 for d = 77, above every magnitude, so the equality is false with the
   guard either way.
+
+## Equivalent mutant: `isMaximized`'s upper bound
+
+`test/halmos/AddSubRoundOnce.halmos.t.sol`, `isMaximized`. Changing
+`x <= 10 * LibHalmosExact.T10` to `<` drops |m| = 10 T10 from the inputs IDEM,
+NEAR and FAR check, the lemmas that return when it is false. Halmos cannot kill
+a change that only narrows a lemma's precondition, so the mutant survives the
+halmos oracle; it is equivalent for the composition because that magnitude is
+never a maximized coefficient. 10 T10 = 10 floor((2^255 - 1) / 10) = 2^255 - 8 =
+8 (2^252 - 1) with 2^252 - 1 odd, so 2^4 does not divide it and 10^8 does not
+either. `maximize` returns c 10^k with k >= 8 (MAX asserts `k >= 8`), a multiple
+of 10^8, so ±(2^255 - 8) never reaches IDEM through `maximize`, which is the
+only way IDEM is used: `Impl.add`'s first step is `maximize`, and IDEM is needed
+for its outputs. NEAR and FAR check the same inputs under either comparison:
+they also return on `a % 1e8 != 0` and `b % 1e8 != 0`, which exclude
+±(2^255 - 8) whichever test rejects it first.
 
 ## Equivalent mutant: pow oracle `k b` guard boundary
 

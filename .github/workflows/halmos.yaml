@@ -31,8 +31,8 @@ env:
   # Every halmos run must prove in this many seconds; a slice that reaches it
   # fails and is cut smaller.
   HALMOS_RUN_SECONDS: 300
-  # Foundry's nightly banner names FOUNDRY_DISABLE_NIGHTLY_WARNING, which the
-  # WARNING check below would read as a halmos warning.
+  # Foundry's nightly banner names FOUNDRY_DISABLE_NIGHTLY_WARNING, which
+  # check-run.sh's WARNING check would read as a halmos warning.
   FOUNDRY_DISABLE_NIGHTLY_WARNING: 1
 defaults:
   run:
@@ -43,48 +43,15 @@ jobs:
     outputs:
       lemmas: ${{ steps.select.outputs.lemmas }}
     steps:
+      - uses: actions/checkout@v4
       - id: select
         env:
           LEMMA: ${{ inputs.lemma || 'all' }}
-        # expect: tests the contract/function filter must match; a filter
-        # that silently matches fewer fails the job.
-        # A sliced lemma has `range`, its case indices, and `starts`: slice i
-        # is [starts[i], starts[i + 1] - 1], the last one ending at range[1],
-        # so the slices tile the range. Each slice runs with
-        # HALMOS_SLICE_LO/HI (`LibHalmosExact.inSlice`), so its --function
-        # filter must match that one lemma.
-        # pack-low's cases 99-780 (e in [int32.min - 70, int32.min - 9]) are
-        # out: at about 25s each they need more slices than a matrix carries
-        # (#511).
+        # The entries and their slices are script/halmos/matrix.json, expanded
+        # and checked by script/halmos/matrix.sh (tested in the hybrid-solver
+        # workflow).
         run: |
-          lemmas=$(jq -c --arg lemma "$LEMMA" '
-            [.[]
-             | select($lemma == "all" or .name == $lemma or (.name | startswith($lemma + "-")))
-             | if has("starts") then
-                 . as $l
-                 | if ($l.starts[0] != $l.range[0]) or ($l.starts[-1] > $l.range[1])
-                      or ([$l.starts | range(1; length) as $i | $l.starts[$i] > $l.starts[$i - 1]] | all | not)
-                   then error("\($l.name): starts do not tile \($l.range)") else . end
-                 | ($l.starts + [$l.range[1] + 1]) as $b
-                 | range(0; $l.starts | length) as $i
-                 | $l + {name: "\($l.name)-\($b[$i])-\($b[$i + 1] - 1)", lo: $b[$i], hi: ($b[$i + 1] - 1)}
-                 | del(.starts, .range)
-               else . end]' <<'JSON'
-          [
-            {"name": "quick", "solver": "bitwuzla", "expect": 3, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_(addZeroOperand|maximizeFloat|maximizeIdempotent)"]},
-            {"name": "divhint", "solver": "bitwuzla", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_divHintHolds"]},
-            {"name": "hints", "solver": "yices", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_maximizeHintsHold"], "range": [0, 76], "starts": [0, 10, 20, 30, 40, 50, 60, 70]},
-            {"name": "hints-pack", "solver": "hybrid", "expect": 1, "args": ["--contract", "LibHalmosExactHalmosTest", "--function", "check_packHintsHold", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 76], "starts": [0, 72]},
-            {"name": "pack-below", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packBelow", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"]},
-            {"name": "pack-low", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packLow", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 98], "starts": [0, 11, 22, 33, 44, 55, 66, 77, 88]},
-            {"name": "pack-low-end", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packLow", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [781, 857], "starts": [781, 792, 803, 814, 825, 836, 847]},
-            {"name": "pack-middle", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packMiddle", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 10], "starts": [0]},
-            {"name": "pack-high", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packHigh", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"], "range": [0, 857], "starts": [0, 22, 44, 66, 88, 110, 132, 154, 176, 198, 220, 242, 264, 286, 308, 330, 352, 374, 396, 418, 440, 462, 484, 506, 528, 550, 572, 594, 616, 638, 660, 682, 704, 726, 748, 770, 792, 814, 836]},
-            {"name": "pack-above", "solver": "hybrid", "expect": 1, "args": ["--contract", "PackArithmeticResultHalmosTest", "--function", "check_packAbove", "--solver-timeout-assertion", "0", "--solver-timeout-branching", "1s"]},
-            {"name": "far", "solver": "hybrid", "expect": 1, "args": ["--contract", "AddSubRoundOnceHalmosTest", "--function", "check_addFar", "--solver-timeout-branching", "2s", "--solver-timeout-assertion", "0"]}
-          ]
-          JSON
-          )
+          lemmas=$(script/halmos/matrix.sh "$LEMMA")
           echo "lemmas=$lemmas" >> "$GITHUB_OUTPUT"
   halmos:
     needs: matrix
@@ -123,7 +90,11 @@ jobs:
           case "$SOLVER" in
             bitwuzla) solver="bitwuzla --produce-models" ;;
             yices) solver=yices-smt2 ;;
-            hybrid) solver="$GITHUB_WORKSPACE/script/halmos/hybrid-solver.sh" ;;
+            hybrid)
+              solver="$GITHUB_WORKSPACE/script/halmos/hybrid-solver.sh"
+              # Which stage decided each query: printed below and uploaded.
+              export HYBRID_STAGE_LOG="$GITHUB_WORKSPACE/$LOG.stages"
+              ;;
           esac
           if [ -n "$SLICE_LO" ]; then
             export HALMOS_SLICE_LO="$SLICE_LO" HALMOS_SLICE_HI="$SLICE_HI"
@@ -138,35 +109,15 @@ jobs:
           code=$?
           set -e
           cat "$LOG"
+          if [ -f "$LOG.stages" ]; then
+            echo "solver stages (count, stage, answer):"
+            cut -d' ' -f1,2 "$LOG.stages" | sort | uniq -c
+          fi
           seconds=$(($(date +%s) - start))
           echo "| ${{ matrix.lemma.name }} | exit $code | ${seconds}s |" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$code" = 124 ] || [ "$code" = 137 ]; then
-            echo "over ${HALMOS_RUN_SECONDS}s: cut this slice smaller"
-            exit 1
-          fi
-          # The JSON report decides: halmos's own exit code, exactly EXPECT
-          # tests each with exit code 0 (not a counterexample, timeout, stuck
-          # path, all-revert or error) and no loop cut short by the bound,
-          # which leaves a proof incomplete. A missing field or file fails.
-          if ! jq -e --argjson expect "$EXPECT" '
-                .exitcode == 0
-                and ([.test_results[][]] | length == $expect
-                     and all(.exitcode == 0 and .num_bounded_loops == 0))' "$LOG.json" > /dev/null; then
-            echo "halmos report: expected $EXPECT complete passing tests"
-            jq '.test_results[][] | {name, exitcode, num_bounded_loops}' "$LOG.json" || true
-            exit 1
-          fi
-          # Backstops on the text log: a warning the report has no field for
-          # (the --width limit), and the pass count as printed.
-          if grep -q WARNING "$LOG"; then
-            echo "halmos warned: the proof is incomplete"
-            exit 1
-          fi
-          passed=$(awk '/^Symbolic test result: [0-9]+ passed; 0 failed;/ { n += $4 } END { print n + 0 }' "$LOG")
-          if [ "$code" != 0 ] || [ "$passed" != "$EXPECT" ]; then
-            echo "exit $code; expected $EXPECT passing tests, got $passed"
-            exit 1
-          fi
+          # The verdict (tested in the hybrid-solver workflow): the time
+          # limit, then the JSON report, then the text log as a backstop.
+          script/halmos/check-run.sh "$code" "$EXPECT" "$LOG" "$LOG.json"
       - name: Upload log
         if: always()
         uses: actions/upload-artifact@v4
@@ -175,4 +126,5 @@ jobs:
           path: |
             halmos-${{ matrix.lemma.name }}.log
             halmos-${{ matrix.lemma.name }}.log.json
+            halmos-${{ matrix.lemma.name }}.log.stages
           if-no-files-found: warn

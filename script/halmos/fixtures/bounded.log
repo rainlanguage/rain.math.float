@@ -1,0 +1,7 @@
+No files changed, compilation skipped
+
+Running 1 tests for test/halmos/PackArithmeticResult.halmos.t.sol:PackArithmeticResultHalmosTest
+WARNING  check_packMiddle(int256,int256,uint256): paths have not been fully explored due to the loop unrolling bound: 16
+         (see https://github.com/a16z/halmos/wiki/warnings#loop-bound)
+[PASS] check_packMiddle(int256,int256,uint256) (paths: 2100, time: 91.80s, bounds: [])
+Symbolic test result: 1 passed; 0 failed; time: 91.86s

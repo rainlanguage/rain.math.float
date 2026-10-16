@@ -42,6 +42,16 @@ dashu-float (`differential.rs`) and the Python `decimal` oracle
 - **`abstract/`** — Shared test bases: the sqrt correct-rounding oracle and gas
   logging.
 - **`concrete/`**, **`oracle/`** — Run by `crates/tests`, above.
+- **`halmos/`** — Halmos lemmas (`check_*`, never run by forge) that add/sub
+  round once and `packArithmeticResult` truncates onto the grid, with
+  `LibHalmosExact.sol` (exact helpers and hint filters) and its forge tests.
+  `.github/workflows/halmos.yaml` runs them on manual dispatch (the workflow is
+  disabled on the repository): one job per lemma or slice from
+  `script/halmos/matrix.json`, 300s per halmos run, the verdict from
+  `script/halmos/check-run.sh`. A change to `packArithmeticResult`, `maximize`
+  or `Impl.add` is re-proved there. `script/halmos/` also holds the cascading
+  solver `hybrid-solver.sh`; `.github/workflows/hybrid-solver.yaml` runs the
+  `test-*.sh` fixture tests of all three scripts.
 
 Dependencies come from Soldeer (`foundry.toml`), never git submodules.
 
