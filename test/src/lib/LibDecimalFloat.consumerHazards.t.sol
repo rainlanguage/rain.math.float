@@ -463,7 +463,8 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     }
 
     /// README rule 1's margin on a positive chain: n operations drawn from mul,
-    /// div and add on a 67-digit integer and integer operands in [1, 1e3], then
+    /// div and add on an integer in [1e66, 1e67] and integer operands in
+    /// [1, 1e3], then
     /// a margin of (n + 1)e-66 of the result, give a lossless-flag ceiling at
     /// least the exact ceiling and at most floor((n + 1)e-66 × exact) + 1 above
     /// it. Every operand is exact and each op truncates by under
@@ -507,6 +508,29 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         uint256 exactCeil = (numerator + denominator - 1) / denominator;
         uint256 marginFloor = numerator * (opCount + 1) / 1e66 / denominator;
         Float margin = acc.mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(opCount + 1, 66));
+        (uint256 got, bool lossless) = acc.add(margin).toFixedDecimalLossy(0);
+        uint256 ceilGot = got + (lossless ? 0 : 1);
+        assertGe(ceilGot, exactCeil);
+        assertLe(ceilGot, exactCeil + marginFloor + 1);
+    }
+
+    /// README rule 1 with inv in the chain: a × inv(d), two ops, with a 3e-66
+    /// margin of the result gives a lossless-flag ceiling at least the exact
+    /// ceiling of a / d and at most floor(3e-66 × a / d) + 1 above it, by the
+    /// proof of testFuzzMarginPerOperationPositiveChain at n = 2. inv has its
+    /// own path in the library, so a change there that lost more than one ulp
+    /// fails this test with every other test green. a is an integer in
+    /// [1e66, 1e67] times 1e4 and d is in [2, 1e3], so a / d is at least 1e67
+    /// and every loss and the margin are whole wei: no margin, 1e-66 once, or an
+    /// order more each fail.
+    function testFuzzMarginInvChain(uint256 numerator, uint256 divisor) external pure {
+        numerator = bound(numerator, 1e66, 1e67) * 1e4;
+        divisor = bound(divisor, 2, 1e3);
+        Float acc = LibDecimalFloat.fromFixedDecimalLosslessPacked(numerator, 0)
+            .mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(divisor, 0).inv());
+        uint256 exactCeil = (numerator + divisor - 1) / divisor;
+        uint256 marginFloor = numerator * 3 / 1e66 / divisor;
+        Float margin = acc.mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(3, 66));
         (uint256 got, bool lossless) = acc.add(margin).toFixedDecimalLossy(0);
         uint256 ceilGot = got + (lossless ? 0 : 1);
         assertGe(ceilGot, exactCeil);

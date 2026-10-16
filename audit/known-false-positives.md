@@ -199,8 +199,8 @@ most int224.max), a tracked `numerator * (opCount + 1)` under 2^256, and each
 op's loss under 10 / int224.max of its result. Moving the first operand's bounds
 anywhere within `[1, 1e67]`, or the others' within `[1, 1e3]`, keeps every
 hypothesis, so the test passes on every input under both programs. The first
-operand is kept at 67 digits because below the wei grid of a 68-digit Float no
-loss or margin reaches a wei: the margin variants of the round-10 scan (no
+operand is kept in `[1e66, 1e67]` because below the wei grid of a 68-digit Float
+no loss or margin reaches a wei: the margin variants of the round-10 scan (no
 margin, 1e-66 once, an order or six too large, the floor as oracle) all survive
 such a shrink, which reaches the same verdict as the original and only stops the
 test observing the rule.
@@ -220,7 +220,9 @@ drawn from `mul` and `div` only. Every chain the mutant runs is one the original
 runs for the `ops` whose two-bit fields are 0 and 1, and the property is proven
 for every chain the bounds admit, so both pass on every input. The variant only
 stops the fuzz test exercising `add`; `testMarginCountsAdds` and
-`testMarginCountsItsOwnAdd` pin it.
+`testMarginCountsItsOwnAdd` pin it. Reading the draw from the next two bits,
+`ops >> (2 * i)`, is the same class: every chain it runs is one the original
+runs for another `ops`.
 
 `exactCeil` as `numerator / denominator + 1`: the ceiling unless the exact value
 is an integer, where it is one above it. The Float is strictly above the exact
