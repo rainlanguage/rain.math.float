@@ -187,3 +187,18 @@ returns `FLOAT_ZERO` through `packLossy`'s zero arm, byte for byte the constant.
 zero coefficient at exponent one (`Float.wrap(bytes32(uint256(1) << 224))`)
 changes nothing: `lt` and `gt` unpack both operands and compare numerically, and
 a zero coefficient is zero at every exponent, as the function's NatSpec states.
+
+## Equivalent mutant: `.gas-snapshot` fuzz statistics
+
+`.gas-snapshot`, observed through
+`script/check-gas-snapshot.sh <committed> <fresh>`. Changing a committed fuzz
+row's statistics,
+`LibDecimalFloatAbsTest:testAbsNegative(int256,int32) (runs: 5096, μ: 2577, ~: 2838)`
+to `(runs: 5096, μ: 9999, ~: 2838)`, cannot change the verdict. The verdict is a
+function of `normalise(committed)` and `normalise(fresh)` alone, where
+`normalise` rewrites every line ending in `(runs: N, μ: X, ~: Y)` to end in
+`(fuzz)`. The original and the mutated file differ only in the `μ` field of one
+such line, so `normalise` maps both to the same text, and for every fresh
+snapshot the two give the same verdict. Fuzz rows comparing by name only is the
+check's specified behaviour: fuzz gas is not reproducible across machines even
+with a fixed seed.
