@@ -1145,16 +1145,42 @@ contract LibDecimalFloatPowTest is Test {
         return a.pow(b);
     }
 
-    /// The squaring loop stops after the top bit of N, so `1.5^3` squares the
-    /// base once, not twice. The ceiling sits between the two costs: 4955
-    /// with the early break, 5624 without it.
-    function testPowSkipsUnusedFinalSquareGas() external view {
-        Float a = LibDecimalFloat.packLossless(15, -1);
-        Float b = LibDecimalFloat.packLossless(3, 0);
+    /// The gas of one `pow`, measured in this frame: no call overhead. The
+    /// result is asserted so the call cannot be optimised away.
+    function powGas(Float a, Float b) internal view returns (uint256) {
         uint256 before = gasleft();
-        this.powExternal(a, b);
+        Float result = a.pow(b);
         uint256 used = before - gasleft();
-        assertLt(used, 5300, "pow squares the base past the top bit of N");
+        assertTrue(!result.isZero(), "pow result");
+        return used;
+    }
+
+    /// The squaring loop stops after the top bit of N (#637), pinned by the
+    /// loop's own gas steps. Each bit of N above the first costs one square
+    /// of the coefficient-one base, its two range guards and a loop pass:
+    /// `10^2.75` against `10^1.75`. The first bit costs the result's multiply
+    /// by the base and the leg's multiply of the full-width `10^0.75` by the
+    /// result: `10^1.75` against `10^0.75`, together under two further bits.
+    /// Squaring the base after the top bit adds one more square to the first
+    /// bit, which takes it past two further bits.
+    function testPowSkipsUnusedFinalSquareGas() external view {
+        Float ten = LibDecimalFloat.packLossless(1, 1);
+        uint256 noBits = powGas(ten, LibDecimalFloat.packLossless(75, -2));
+        uint256 oneBit = powGas(ten, LibDecimalFloat.packLossless(175, -2));
+        uint256 twoBits = powGas(ten, LibDecimalFloat.packLossless(275, -2));
+        assertLt(oneBit - noBits, 2 * (twoBits - oneBit), "pow squares the base past the top bit of N");
+    }
+
+    /// The steps above cannot see a square that every whole N pays alike, so
+    /// one whole power is pinned by an absolute ceiling in the same frame:
+    /// `10^3` costs 4190 gas, and 4950 with the base squared past the top bit
+    /// (one square of the coefficient-one base, its two range guards and a
+    /// loop pass).
+    function testPowWholePowerGasCeiling() external view {
+        Float ten = LibDecimalFloat.packLossless(1, 1);
+        assertLt(
+            powGas(ten, LibDecimalFloat.packLossless(3, 0)), 4500, "pow squares the base past the top bit of a whole N"
+        );
     }
 
     /// `pow` raises to an integer exponent via exponentiation by squaring,
@@ -1375,26 +1401,26 @@ contract LibDecimalFloatPowTest is Test {
     /// never a result. Only the fraction legs and the final pack see such a
     /// result, and they raise the same error.
     function testPowTopBitSquareRangeError() external {
-        int256[2] memory ns = [int256(1) << 97, (int256(1) << 98) - 1];
+        int256[2] memory integerParts = [int256(1) << 97, (int256(1) << 98) - 1];
         Float big = LibDecimalFloat.packLossless(1, 1e9);
         Float small = LibDecimalFloat.packLossless(1, -1e9);
-        for (uint256 j = 0; j < ns.length; j++) {
-            int256 n = ns[j];
-            Float[4] memory bs = [
-                LibDecimalFloat.packLossless(n, 0),
-                LibDecimalFloat.packLossless(n * 10 + 5, -1),
-                LibDecimalFloat.packLossless(n * 100 + 25, -2),
-                LibDecimalFloat.packLossless(n * 100 + 75, -2)
+        for (uint256 j = 0; j < integerParts.length; j++) {
+            int256 integerPart = integerParts[j];
+            Float[4] memory powers = [
+                LibDecimalFloat.packLossless(integerPart, 0),
+                LibDecimalFloat.packLossless(integerPart * 10 + 5, -1),
+                LibDecimalFloat.packLossless(integerPart * 100 + 25, -2),
+                LibDecimalFloat.packLossless(integerPart * 100 + 75, -2)
             ];
-            for (uint256 i = 0; i < bs.length; i++) {
+            for (uint256 i = 0; i < powers.length; i++) {
                 vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(1e9)));
-                this.powExternal(big, bs[i]);
+                this.powExternal(big, powers[i]);
                 vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(-1e9)));
-                this.powExternal(small, bs[i]);
+                this.powExternal(small, powers[i]);
                 vm.expectRevert(abi.encodeWithSelector(ExponentUnderflow.selector, int256(1), int256(1e9)));
-                this.powExternal(big, bs[i].minus());
+                this.powExternal(big, powers[i].minus());
                 vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, int256(1), int256(-1e9)));
-                this.powExternal(small, bs[i].minus());
+                this.powExternal(small, powers[i].minus());
             }
         }
     }
