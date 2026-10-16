@@ -479,9 +479,11 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// exceeds 1. The margin only adds, so the result is at most
     /// exact (1 + (n + 1)e-66), whose ceiling is at most
     /// ceil(exact) + floor((n + 1)e-66 × exact) + 1. The first operand sits on
-    /// the wei grid of a 68-digit Float, so each loss and the margin reach whole
-    /// wei: no margin, 1e-66 once, or an order more each fail. The numerator
-    /// stays under 1e67 × 1e9 = 1e76.
+    /// the wei grid of a 68-digit Float, so on chains whose result stays near
+    /// 1e67 or above (mul and add) each loss and the margin reach whole wei:
+    /// there no margin, 1e-66 once, or an order more each fail. Chains through
+    /// div shrink the result and only check that the margin suffices. The
+    /// numerator stays under 1e67 × 1e9 = 1e76.
     function testFuzzMarginPerOperationPositiveChain(uint256[4] memory operands, uint8 ops) external pure {
         uint256 opCount = operands.length - 1;
         operands[0] = bound(operands[0], 1e66, 1e67);
@@ -516,8 +518,10 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
 
     /// README rule 1 with inv in the chain: a × inv(d), two ops, with a 3e-66
     /// margin of the result gives a lossless-flag ceiling at least the exact
-    /// ceiling of a / d and at most floor(3e-66 × a / d) + 1 above it, by the
-    /// proof of testFuzzMarginPerOperationPositiveChain at n = 2. inv has its
+    /// ceiling of a / d and at most floor(3e-66 × a / d) above it: by the proof
+    /// of testFuzzMarginPerOperationPositiveChain at n = 2 it is above a / d and
+    /// at most a / d + 3e-66 × a / d, and as a Float of at least 1e67 it is an
+    /// integer (testMarginInvChainUpperBoundAttained reaches it). inv has its
     /// own path in the library, so this checks rule 1's margin through that
     /// path as well as through div. a is an integer in [1e66, 1e67] times 1e4
     /// and d is in [2, 1e3], so a / d is at least 1e67 and every loss and the
@@ -534,7 +538,21 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         (uint256 got, bool lossless) = acc.add(margin).toFixedDecimalLossy(0);
         uint256 ceilGot = got + (lossless ? 0 : 1);
         assertGe(ceilGot, exactCeil);
-        assertLe(ceilGot, exactCeil + marginFloor + 1);
+        assertLe(ceilGot, exactCeil + marginFloor);
+    }
+
+    /// testFuzzMarginInvChain's upper bound is attained: 1e70 × inv(1000) is
+    /// exactly 1e67, its 3e-66 margin is exactly 30, and the sum fits a
+    /// coefficient at exponent 0, so the lossless-flag ceiling is exactly
+    /// floor(3e-66 × a / d) above the exact ceiling.
+    function testMarginInvChainUpperBoundAttained() external view {
+        Float acc = LibDecimalFloat.fromFixedDecimalLosslessPacked(1e70, 0)
+            .mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(1000, 0).inv());
+        assertTrue(acc.eq(LibDecimalFloat.packLossless(1e67, 0)));
+        assertTrue(
+            acc.add(acc.mul(LibDecimalFloat.packLossless(3, -66))).eq(LibDecimalFloat.packLossless(1e67 + 30, 0))
+        );
+        this.testFuzzMarginInvChain(1e66, 1000);
     }
 
     /// The margin's own add on the inv path: a × inv(730) packs to a multiple

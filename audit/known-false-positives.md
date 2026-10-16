@@ -120,6 +120,47 @@ property is proven, so any subset of the calls reaches the same verdict. Such a
 change deletes a check, the class no test can kill because the tests are the
 oracle. Each skipped input's undershoot stays asserted by its own pinned test.
 
+## Equivalent mutants: `WEI_SAFE_SIDE_AB_MAX` lowered, down to its attained bound
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The constant is
+`int224.max / 20`,
+673998666678765994866675377175490766840928610563514312027590256230. Any value
+`X` from `673998666678765994866675377175490 × 1e33` up to it is equivalent, so
+the class is every such value, not only `WEI_SAFE_SIDE_AB_MAX - 1`, which has
+survived: `- k` for any `k` up to 766840928610563514312027590256230, and any
+expression with a value in that range. Under such an `X`:
+`testFuzzWeiFloorCeilSafeSide`'s domain shrinks to `a * b <= X`, inside the
+proven one; `assertCeilUndershoot`'s `a * b > X` holds a fortiori;
+`testWeiSafeSideDomainReachesBound`'s `a = 1e33`,
+`b = 673998666678765994866675377175490` still has `a * b <= X < a * (b + 1)` and
+the clamp still admits `b`; `testWeiSafeSideDomainInteriorEdges`'s
+`a = 673998666678765994866675377175491` still has `X / a < 1e33 <= X / (a - 1)`,
+and its wraps land where they did; the guard entry above holds with `X / 1e33`
+in place of `WEI_SAFE_SIDE_AB_MAX / 1e33`. Every test passes on every input.
+Below `1e33 × (a - 1)`, the attained `a * b`, both `X / (a - 1) >= 1e33` and
+`a * b <= X` fail, so lower values are outside this entry, and so is any raise:
+above `int224.max / 20` the two-truncation proof no longer holds.
+
+## Equivalent mutants: `testFuzzWeiFloorCeilSafeSide` divisor of `a / (c / b)` shrunk by an exact factor
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. With `q = a * b / c` and
+`e = 10 / int224.max`, `fa.div(fc.div(fb))` truncates the divisor `c / b` by
+under `e` of it, which raises the quotient, then truncates the quotient by under
+`e` of it. The property holds when the result is strictly between `q - 1 / c`
+and `q + 1 / c`: a non-integer `q` is at least `1 / c` from both neighbouring
+integers, and an integer `q` only needs the result within 1 of it. An exact
+extra factor `1 - d` on the divisor, `d` at least 0, only raises the result
+further, to under `q / ((1 - e)(1 - d))`, which stays under `q + 1 / c` while
+`a * b × (e + d) <= (1 - e)(1 - d)`, since each truncation is strictly under
+`e`. With `a * b` at most `int224.max / 20`, `a * b × e` is at most 1/2, so
+every `d` up to `(1/2 - e) / (int224.max / 20 + 1)`, about 7.4e-67, is in the
+class, not only `1 - 1e-67`, which has survived and raises the result by under
+0.07 / c. The lower side is unchanged: the final truncation leaves the result
+above `q (1 - e)`, which is at least `q - 1 / (2c)`. A factor applied through a
+`mul` or `div` that itself rounds truncates the divisor a second time by up to
+`e`, which with the first already spends the whole `1 / c` at
+`a * b = int224.max / 20`, so it is outside this entry.
+
 ## Equivalent mutant: `testSingleDivSubUlpFractionReadsLossless` divisor written as `packLossless(70, -1)`
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. `packLossless(7, 0)` and
@@ -184,50 +225,77 @@ step rounds the same digits in every order.
 
 ## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` and `testFuzzMarginInvChain` domain moved
 
-`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The assertions are a
-function of the bounded operands alone, and the property is proven for every
-chain the bounds admit: operands that are exact Floats (positive integers at
-most int224.max), a tracked `numerator * (opCount + 1)` under 2^256, and each
-op's loss under 10 / int224.max of its result. Moving the first operand's bounds
-anywhere within `[1, 1e67]`, or the others' within `[1, 1e3]`, keeps every
-hypothesis, so the test passes on every input under both programs. The first
-operand is kept in `[1e66, 1e67]` because below the wei grid of a 68-digit Float
-no loss or margin reaches a wei: the margin variants of the round-10 scan (no
-margin, 1e-66 once, an order or six too large, the floor as oracle) all survive
-such a shrink, which reaches the same verdict as the original and only stops the
-test observing the rule.
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The class is every move of
+a bound that keeps the proof's hypotheses, not only the variants named here.
+`testFuzzMarginPerOperationPositiveChain`'s assertions are a function of the
+bounded operands alone, and the property is proven for every chain the bounds
+admit: operands that are exact Floats (positive integers at most int224.max), a
+tracked `numerator * (opCount + 1)` under 2^256, and each op's loss under 10 /
+int224.max of its result. Moving the first operand's bounds anywhere within
+`[1, 1e67]`, or the others' within `[1, 1e3]`, keeps every hypothesis, so the
+test passes on every input under both programs; the first operand moved to
+`[1e60, 1e61]` has survived. The first operand is kept in `[1e66, 1e67]` because
+below the wei grid of a 68-digit Float no loss or margin reaches a wei: the
+margin variants of the round-10 scan (no margin, 1e-66 once, an order or six too
+large, the floor as oracle) all survive such a shrink, which reaches the same
+verdict as the original and only stops the test observing the rule.
 
-`testFuzzMarginInvChain` is the same proof at `n = 2` on `a × inv(d)`, so the
-same holds for its bounds, and `testMarginInvCountsItsOwnAdd`'s call into it
-passes on the moved domain too. `bound(divisor, 2, 1e3)` from 1 adds `d = 1`,
-where `inv(1)` and the `mul` are exact. `bound(numerator, 1e66, 1e67) * 1e4`
-without the `* 1e4` keeps `a` an exact Float (1e67 is below int224.max) and only
-takes `a / d` off the wei grid, as the shrink above does. Scaling by `1e5` up to
-`1e9` instead keeps `a` an exact Float and `numerator * 3` at most 3e76, under
-2^256; from `1e10` it overflows for every numerator above about 3.9e76, and the
-test reverts there.
+`testFuzzMarginInvChain` is the same proof at `n = 2` on `a × inv(d)`, and its
+tight upper bound needs one more hypothesis: every admitted `a / d` is at least
+int224.max / 10 (about 1.35e66), so the margined Float, which is above `a / d`,
+is an integer (a Float above int224.max / 10 has a non-negative exponent). Any
+move of its bounds that keeps `a` an exact Float, `numerator * 3` under 2^256
+and the smallest `a` over the largest `d` at least int224.max / 10 (today 1e70 /
+1e3 = 1e67) passes on every input, and `testMarginInvCountsItsOwnAdd`'s and
+`testMarginInvChainUpperBoundAttained`'s calls into it pass on the moved domain
+too. So `bound(divisor, 2, 1e3)` from 1, which adds `d = 1` where `inv(1)` and
+the `mul` are exact, a lower divisor ceiling, a higher numerator floor, and a
+scale of `1e5` up to `1e9` instead of `1e4` are all in the class: the last keeps
+`numerator * 3` at most 3e76, under 2^256, and from `1e10` it overflows for
+every numerator above about 3.9e76, and the test reverts there. A move that
+admits an `a / d` below int224.max / 10 is outside this entry: without the
+`* 1e4`, or with the numerator moved to `[1e60, 1e61]`, the call at
+`(1e66, 1000)` in `testMarginInvChainUpperBoundAttained` has an integer `a / d`
+under 3.3e65, where `marginFloor` is 0 and the margined Float is above `a / d`
+with a fraction, so `ceilGot` is `a / d + 1` against a bound of `a / d`.
 
 ## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` and `testFuzzMarginInvChain` oracle weakened or draw narrowed
 
-`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The test asserts
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`.
+`testFuzzMarginPerOperationPositiveChain` asserts
 `exactCeil <= ceilGot <= exactCeil + marginFloor + 1` on the chain it ran, where
 `ceilGot` is the ceiling of the Float the margin's `add` returns (`got` when
 `lossless`, else `got + 1`). Its NatSpec proves two facts for every chain the
 bounds admit: that Float is strictly above the exact value, and at most
-`exact (1 + (n + 1)e-66)`. `testFuzzMarginInvChain` asserts the same of
-`a × inv(d)` at `n = 2`. Each variant below passes on every input, so it reaches
-the original's verdict everywhere.
+`exact (1 + (n + 1)e-66)`. `testFuzzMarginInvChain` proves the same of
+`a × inv(d)` at `n = 2` and asserts the tight form
+`exactCeil <= ceilGot <= exactCeil + marginFloor`: `a / d` is at least 1e67, so
+the product `acc` and the margined Float `F` are above int224.max / 10 and so
+integers; `acc` is at most `a / d`, so at most `floor(a / d)`, and the margin is
+at most `m = 3e-66 × a / d`, so `ceilGot = F <= floor(a / d) + floor(m)`, with
+`marginFloor = floor(m)`. Each variant below passes on every input, so it
+reaches the original's verdict everywhere.
 
-`testFuzzMarginInvChain`'s `numerator * 3 / 1e66 / divisor` as `numerator * 4`:
-read only by the upper bound, which it loosens; `numerator` is at most 1e71, so
-nothing reverts.
+Any raise of an `assertLe` bound, or lowering of an `assertGe` bound, in this
+file's fuzz tests is in this class, not only the variants named here: the
+original inequality holds on every admitted input (the proofs in the tests'
+NatSpec), so a weaker one does too, and the verdict can change only if computing
+the moved bound reverts. It does not revert while every intermediate stays under
+2^256 and at least 0. `numerator` is at most 1e76 in the positive chain (three
+muls of 1e3 on 1e67) and 1e71 in the inv chain, so a raise added after the
+divisions (`+ 1`, `marginFloor * 10`, the whole bound times 10) never reverts,
+nor does a factor up to 3e5 on the inv chain's `numerator * 3`; a further factor
+`k` above 2 on the positive chain's `numerator * (opCount + 1)` overflows at a
+numerator above 2^256 / 4k (about 2.9e75 at `k = 10`), which a three-mul chain
+reaches, and is outside this entry. Variants that have survived:
+`testFuzzMarginInvChain`'s `numerator * 3 / 1e66 / divisor` as `numerator * 4`
+or `numerator * 30` (at most 3e72), and its tight bound with a `+ 1` (its form
+before round 16).
 
 `testFuzzMarginInvChain`'s `(numerator + divisor - 1) / divisor` as
-`numerator / divisor`, the floor of `a / d`: the margined Float `F` is above
-`a / d`, at least 1e67 and so above int224.max / 10, where every Float is an
-integer, so `ceilGot` is `F`, above the floor; every op truncates toward zero,
-so `F <= floor(a / d + m) <= floor(a / d) + floor(m) + 1` with
-`m = 3e-66 × a / d` and `marginFloor = floor(m)`, the mutant's upper bound.
+`numerator / divisor`, the floor of `a / d`: `ceilGot` is `F`, an integer above
+`a / d` and so above the floor, and `F <= floor(a / d) + floor(m)` (above) is
+the mutant's upper bound.
 
 `% 3` changed to `% 2` in the op draw: `op` is then 0 or 1, so the chain is
 drawn from `mul` and `div` only. Every chain the mutant runs is one the original
@@ -248,13 +316,16 @@ value, so when that is the integer `exact` the Float is an integer of at least
 upper bound, which it loosens; `numerator × 5` is under 2^256 (the numerator is
 at most 1e76), so nothing reverts.
 
-`ceilGot` as `got + 1` whether or not `lossless`: differs only when the Float is
-an integer `F`, where the original reads `F` and the mutant `F + 1`. The lower
-bound holds a fortiori. For the upper bound, `F <= exact + m` with
-`m = (n + 1)e-66 × exact` and `marginFloor = floor(m)`: if `exact` is an
-integer, `F - exact` is an integer at most `m`, so at most `floor(m)`; otherwise
+`testFuzzMarginPerOperationPositiveChain`'s `ceilGot` as `got + 1` whether or
+not `lossless`: differs only when the Float is an integer `F`, where the
+original reads `F` and the mutant `F + 1`. The lower bound holds a fortiori. For
+the upper bound, `F <= exact + m` with `m = (n + 1)e-66 × exact` and
+`marginFloor = floor(m)`: if `exact` is an integer, `F - exact` is an integer at
+most `m`, so at most `floor(m)`; otherwise
 `F <= floor(exact + m) <= floor(exact) + floor(m) + 1 = ceil(exact) + floor(m)`.
-So `F + 1 <= exactCeil + marginFloor + 1`.
+So `F + 1 <= exactCeil + marginFloor + 1`. The same variant in
+`testFuzzMarginInvChain` is outside this entry: its bound has no `+ 1`, and
+`testMarginInvChainUpperBoundAttained` reaches it with an integer `F`.
 
 Margin of `n e-66` instead of `(n + 1)e-66`: the chain length `opCount` is 3, so
 the margin is `3e-66` of the result against a loss under `4 × 10 / int224.max`,
@@ -267,6 +338,35 @@ too. `n e-66` falls short of `(n + 1) × 7.42e-67` only at `n <= 2`;
 lossless-flag ceiling one short. Fuzzing the chain length over 1..3 does not
 observe it: a shortfall needs every truncation near its maximum at once, and
 5096 runs at seeds 0 and 1 pass under the variant.
+
+## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` and `testFuzzMarginInvChain` margin lowered or an exact factor added, within the proven loss
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. With `e = 10 / int224.max`
+(about 7.4184e-67), each truncating op leaves its result above `1 - e` of the
+exact result of that op on its computed operands. The chain has `t` truncations
+that reach the result: its ops and the margin's `add`, 4 in the positive chain
+and 3 in the inv chain (the margin's own `mul` truncates only the margin, by the
+factor `1 - e`). A margin `m` of the result and exact extra factors `1 - d_i`,
+each `d_i` at least 0, anywhere in the chain leave the margined Float above
+`exact × (1 - e)^t × (1 - d_1) × ... × (1 - d_k) × (1 + m (1 - e))`. While that
+product is at least 1 the Float stays strictly above the exact value and the
+lower bound holds; a margin at most the test's own and factors at most 1 only
+lower the Float, so the upper bound holds too. Every such variant passes on
+every input, so the class is all of them, not only the variants named here:
+
+- The margin lowered to any `m` from the proven loss up to the test's own: from
+  2.968e-66 in the positive chain (whose margin is 4e-66) and from 2.226e-66 in
+  the inv chain (3e-66). The positive chain at 3.6e-66 and the inv chain at
+  2.7e-66 have survived. A margin below the proven loss is outside this entry:
+  2e-66 in the inv chain fails on the input `testMarginInvCountsItsOwnAdd` pins,
+  and no margin or 1e-66 once fail on the wei grid. A margin above the test's
+  own is outside it too: in the inv chain, 3.1e-66 or more fails
+  `testMarginInvChainUpperBoundAttained`.
+- An exact extra factor `1 - d` on chain ops while the product stays at least 1:
+  `1 - 1e-67` on each of the positive chain's three ops leaves it about 1 +
+  7.3e-67 at the 4e-66 margin, and has survived. A factor applied through a
+  `mul` or `div` that itself rounds adds that op's truncation to `t`; three such
+  factors take the product to about 1 - 1.5e-66, so they are outside this entry.
 
 ## Equivalent mutant: pow oracle `k b` guard boundary
 
