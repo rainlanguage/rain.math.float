@@ -4,6 +4,7 @@ pragma solidity =0.8.25;
 
 import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
 import {LibExactFloat} from "../../lib/LibExactFloat.sol";
+import {LibTestFloatZero} from "../../lib/LibTestFloatZero.sol";
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
 
@@ -147,5 +148,26 @@ contract LibDecimalFloatCeilTest is Test {
         (int256 rc, int256 re) = LibDecimalFloat.packLossless(c, e).ceil().unpack();
         (int256 xc, int256 xe) = LibExactFloat.ceilParts(c, e);
         assertEq(LibExactFloat.cmpParts(rc, re, xc, xe), 0, "exact ceil");
+    }
+
+    /// A zero input of any exponent gives `FLOAT_ZERO`, byte for byte.
+    function testFloatCeilZeroBytesExamples() external pure {
+        int32[5] memory exponents = [int32(5), type(int32).max, -2, -77, type(int32).min];
+        for (uint256 i = 0; i < exponents.length; i++) {
+            assertEq(
+                Float.unwrap(LibDecimalFloat.ceil(LibTestFloatZero.zeroAt(exponents[i]))),
+                Float.unwrap(LibDecimalFloat.FLOAT_ZERO),
+                "ceil of zero is not FLOAT_ZERO"
+            );
+        }
+    }
+
+    /// A zero input of any exponent gives `FLOAT_ZERO`, byte for byte.
+    function testFloatCeilZeroBytes(int32 e) external pure {
+        assertEq(
+            Float.unwrap(LibDecimalFloat.ceil(LibTestFloatZero.zeroAt(e))),
+            Float.unwrap(LibDecimalFloat.FLOAT_ZERO),
+            "ceil of zero is not FLOAT_ZERO"
+        );
     }
 }
