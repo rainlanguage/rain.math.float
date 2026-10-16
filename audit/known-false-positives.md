@@ -1,8 +1,9 @@
 # Known false positives
 
 Mutants that survive because the mutated program agrees with the original on
-every input, and mutants a later change removed ("Resolved by removal"). Each
-entry carries the proof; a sampled or "no known input" argument is not one.
+every input, mutants that only widen a Halmos lemma's domain, and mutants a
+later change removed ("Resolved by removal"). Each entry carries the proof; a
+sampled or "no known input" argument is not one.
 
 ## Equivalent mutant: `isPastEveryFloat` `excess > 67` arm at `> 68`
 
@@ -161,6 +162,70 @@ FMAX - 85 meets. So the `eB > FMAX - 8` term returns on no input the later test
 lets through, and moving its bound anywhere from FMAX - 85 up, `>=` included,
 changes nothing.
 
+## Equivalent mutant: `isMaximized` without its int256.min term
+
+`test/halmos/AddSubRoundOnce.halmos.t.sol`, `isMaximized`. Dropping
+`m != type(int256).min &&`, or replacing it with any term true for every other
+m, changes no result: `LibHalmosExact.abs(type(int256).min)` is 2^255 (the
+unchecked negation wraps to itself), above 10 T10 = 2^255 - 8, so
+`x <= 10 * T10` is already false there.
+
+## Equivalent mutants: a lemma's `divHint` term dropped
+
+`test/halmos/AddSubRoundOnce.halmos.t.sol`, the `!divHint(x, 1e75)` terms of
+IDEM, NEAR and FAR. `LibHalmosExact.divHint(x, d)` is true for every int256 x
+and positive d: int256 division truncates toward zero, so x / d is zero iff |x|
+< d, and `abs` returns |x| for every int256, 2^255 at int256.min. So each term
+is false on every input, and dropping it from its `||` leaves the lemma
+returning on exactly the inputs it returned on before, checking the rest under
+the same assertions. The term only hands the halmos branch solver the fact for x
+/ 10^75 (the hint-filter entry above).
+
+## Equivalent mutants: NEAR's `yb` bound at `>=` or `<=`
+
+`test/halmos/AddSubRoundOnce.halmos.t.sol`, `check_addNear`. `yb > int256(T10)`
+at `>=`, or `yb < -int256(T10)` at `<=`, also returns at yb = T10 or -T10. There
+the original goes on to b = ±10 T10 = ±(2^255 - 8), without overflow, and
+returns on `b % 1e8 != 0`: 2^255 - 8 = 8 (2^252 - 1) with 2^252 - 1 odd, so 16,
+and so 10^8, does not divide it. Both return before any call or assertion.
+
+## Equivalent mutants: `checkSum`'s `ma >= mb` at `>` and its exactness terms
+
+`test/halmos/AddSubRoundOnce.halmos.t.sol`, `checkSum`, reached only from NEAR.
+F = floor(|S| / 10^D) and u is 1 or 10 as in its comments.
+
+- `ma >= mb` at `ma > mb`. The two differ only at D = 0 with opposing signs and
+  ma = mb, where both set f = 0 and only `negative` differs. At D = 0, p is 1
+  and r is 0, so `exact` holds, and `f == 0 && exact` asserts c == 0 and returns
+  before `negative` is read.
+- `f == 0 && exact` at `f == 0`, and the last assertion's `exact && f == lower`
+  at `f == lower` or at `exact`. NEAR's operands are maximized multiples of
+  10^8, so 10^D divides B for D <= 8 and `exact` is false only at D >= 9. There
+  |Q| <= 10 T10 / 10^9, so F >= |A| - |Q| - 1 > 10 (2^223 + 1) whatever the
+  signs: F is nonzero, so the zero test is false in the original and the mutant,
+  and |c| u <= F < (|c| + 1) u (asserted before the last assertion) gives |c| >
+  2^223, so its second disjunct `mc >= TWO_223 / 10 + 1` is true in both. Where
+  that disjunct is false, F < (|c| + 1) u <= 2^223 + 10, which needs opposing
+  signs and D <= 1: agreeing signs give F > T10, and opposing signs at D >= 2
+  give F >= |A| - T10 / 10 - 1 >= 0.9 T10. At D <= 1 the sum is exact, and F =
+  ||A| - |Q|| is a multiple of 10^7 (10^8 divides A and B), so |c| u <= F <
+  (|c| + 1) u with u in {1, 10} gives F = |c| u: `exact` and `f == lower` both
+  hold. So none of the three changes a result, for any (c, t) `Impl.add` or a
+  harness override returns.
+
+## Domain-widening mutants: NEAR and FAR without a `% 1e8 != 0` term
+
+`test/halmos/AddSubRoundOnce.halmos.t.sol`, `check_addNear` and `check_addFar`.
+Dropping `a % 1e8 != 0 ||` or `b % 1e8 != 0 ||` only adds inputs: maximized
+operands that 10^8 does not divide. On every input the original checks, the
+mutant makes the same call under the same assertions, so every counterexample to
+the original is one to the mutant: halmos proving the mutant proves the
+original, and the mutant never proves where the original fails. The composition
+needs NEAR and FAR only for maximized operands, which MAX makes multiples of
+10^8, so each term only narrows what the solver searches. A forge test can
+separate them only by expecting a lemma to skip an input outside its domain,
+which pins the solver's search space, not a property of `add`.
+
 ## Equivalent mutant: PACK's `checkPackClass` without its `hasDigits` filter
 
 `test/halmos/PackArithmeticResult.halmos.t.sol`, `checkPackClass`. Dropping
@@ -175,6 +240,41 @@ assertions.
 -2^223 changes class, from 0 to 1. There `truncGrid` sheds k = 0 digits and
 computes the same (m, f), so every c still reaches `pack` exactly once under the
 same assertions. Same shape as MAX's digit-count `>` entry above.
+
+## Equivalent mutants: PACK's `truncGrid` shortcuts, its `FMIN` tests and `floorAt`'s `d > 77`
+
+`test/halmos/PackArithmeticResult.halmos.t.sol`, `truncGrid` and `floorAt`. Each
+change below returns the same `(m, f, status)` for every `(c, e, n)` that
+`checkPackClass` passes, so every lemma checks the same assertions against the
+same oracle. Past the zero return c is nonzero, x = |c| <= 2^255 < 10^77, and n
+is 0 or in [67, 76], so the shed count k is at most 10.
+
+- `e <= FMIN - 78` dropped, or its bound moved anywhere at or below `FMIN - 77`,
+  `<` included. For every e at most FMIN - 77 the general path also returns (0,
+  0, 1). With k = 0, e is below FMIN and takes `floorAt(x, e)`. With k positive,
+  f0 = e + k is at most FMIN - 67, fails both `f0 - 1 >= FMIN` and `f0 >= FMIN`,
+  and takes `floorAt(x, e)` too. Its d = FMIN - e is at least 77 and gives 0
+  (`d > 77`, or x / 10^77 = 0 at d = 77), so m = 0. Nothing wraps on the way:
+  f0 - 1 is at least int256.min for k at least 1, and FMIN - int256.min fits
+  int256.
+- `e >= FMAX + 68` with its bound moved anywhere up to `int256.max - 9`, `>`
+  included. For every e in [FMAX + 68, int256.max - 10] the general path also
+  returns (0, 0, 2), and e + k does not wrap. With k = 0 it takes (x, e). With k
+  positive, f0 - 1 is at least e and so at least FMIN, and it takes (l, f0 - 1)
+  or (q, f0), with q at least 10^(n - k), at least 10^66. Either way m is
+  nonzero and f is at least e, so j = f - FMAX is at least 68, past 67. The
+  bound is not free below FMAX + 68 (at FMAX + 67, c = 1 packs as 10^67 at
+  int32.max), and dropping it is not equivalent (at e = int256.max with k at
+  least 2, e + k wraps below FMIN and `floorAt`'s FMIN - e overflows).
+- `e >= FMIN` at `e > FMIN` (the k = 0 branch). They differ only at e = FMIN,
+  where `floorAt(x, FMIN)` has d = 0 and returns x: (x, FMIN) either way.
+- `f0 >= FMIN` at `f0 > FMIN`. They differ only at f0 = FMIN, which has already
+  failed `f0 - 1 >= FMIN`. There e = FMIN - k, so `floorAt(x, e)` is x / 10^k =
+  q: (q, FMIN) either way.
+- `floorAt`'s `d > 77` dropped, or moved to any bound from `d > 76` up.
+  `floorAt` is called only with e < FMIN (e itself at k = 0, f0 - k < FMIN
+  otherwise) and e > FMIN - 78 (the shortcut returns first), so d is in [1, 77],
+  where 10^d fits uint256, and at d = 77 x / 10^77 is the guard's 0.
 
 ## Equivalent mutant: pow oracle `k b` guard boundary
 

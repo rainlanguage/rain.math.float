@@ -24,6 +24,10 @@ contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
     uint256 internal constant FIRST_FAR_GAP = 77;
     /// The 7 bits MAX and NEAR split their case index from.
     uint256 internal constant CASE_BITS = 7;
+    /// The ends of NEAR's and FAR's exponent domain, from int32 itself: the
+    /// lemmas bound it with their own FMIN and FMAX, which are under test.
+    int256 internal constant LOWEST_EB = int256(type(int32).min) - 76;
+    int256 internal constant HIGHEST_EB = int256(type(int32).max) - 8;
 
     /// Both maximized magnitudes in both signs: the operands at the edges of
     /// NEAR's and FAR's domain, closed under negation.
@@ -101,7 +105,7 @@ contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
     /// exponent past either end. NEAR is not in the CI matrix (#512).
     function testNearTakesTheWholeDomain() external {
         int256[4] memory xs = edges();
-        int256[2] memory ebs = [FMIN - 76, FMAX - 8];
+        int256[2] memory ebs = [LOWEST_EB, HIGHEST_EB];
         uint256[2] memory ds = [uint256(0), FIRST_FAR_GAP - 1];
         for (uint256 g = 0; g < ds.length; g++) {
             for (uint256 k = 0; k < ebs.length; k++) {
@@ -116,10 +120,10 @@ contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
                     }
                 }
             }
-            expectNearAdds(HIGH_IN, HIGH_IN, FMIN - 77, ds[g], 0);
-            callNear(HIGH_IN, HIGH_IN, FMIN - 77, ds[g]);
-            expectNearAdds(HIGH_IN, HIGH_IN, FMAX - 7, ds[g], 0);
-            callNear(HIGH_IN, HIGH_IN, FMAX - 7, ds[g]);
+            expectNearAdds(HIGH_IN, HIGH_IN, LOWEST_EB - 1, ds[g], 0);
+            callNear(HIGH_IN, HIGH_IN, LOWEST_EB - 1, ds[g]);
+            expectNearAdds(HIGH_IN, HIGH_IN, HIGHEST_EB + 1, ds[g], 0);
+            callNear(HIGH_IN, HIGH_IN, HIGHEST_EB + 1, ds[g]);
         }
     }
 
@@ -174,7 +178,7 @@ contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
     function testFarTakesTheWholeDomain() external {
         int256[4] memory xs = edges();
         // forge-lint: disable-next-line(unsafe-typecast)
-        int256[2] memory ebs = [FMIN - 76, FMAX - 8 - int256(FIRST_FAR_GAP)];
+        int256[2] memory ebs = [LOWEST_EB, HIGHEST_EB - int256(FIRST_FAR_GAP)];
         for (uint256 k = 0; k < ebs.length; k++) {
             for (uint256 i = 0; i < xs.length; i++) {
                 for (uint256 j = 0; j < xs.length; j++) {
@@ -183,12 +187,12 @@ contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
             }
         }
         expectFarAdds(HIGH_IN, HIGH_IN, 0, FIRST_FAR_GAP - 1, 0);
-        expectFarAdds(HIGH_IN, HIGH_IN, FMIN - 77, FIRST_FAR_GAP, 0);
+        expectFarAdds(HIGH_IN, HIGH_IN, LOWEST_EB - 1, FIRST_FAR_GAP, 0);
         expectFarAdds(HIGH_IN, HIGH_IN, ebs[1] + 1, FIRST_FAR_GAP, 0);
         // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 widest = uint256((FMAX - 8) - (FMIN - 76));
-        expectFarAdds(HIGH_IN, HIGH_IN, FMIN - 76, widest, 1);
-        expectFarAdds(HIGH_IN, HIGH_IN, FMIN - 76, widest + 1, 0);
+        uint256 widest = uint256(HIGHEST_EB - LOWEST_EB);
+        expectFarAdds(HIGH_IN, HIGH_IN, LOWEST_EB, widest, 1);
+        expectFarAdds(HIGH_IN, HIGH_IN, LOWEST_EB, widest + 1, 0);
     }
 
     /// `check_addFar(a, b, eB, d, swap)` for both values of swap makes each
