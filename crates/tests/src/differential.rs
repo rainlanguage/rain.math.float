@@ -1583,13 +1583,14 @@ fn check_pow_with(a: &Dec, b: &Dec, sol: Sol<Dec>) -> Result<(), TestCaseError> 
     };
     if ax.repr().significand() == &IBig::ONE {
         // |a| = 10^k: k b whole is 10^(k b) exactly. Past 1e12, |k b| is
-        // past every Float whatever its fraction.
+        // past every Float whatever its fraction; under it, a whole k b is
+        // an exponent dashu holds.
         let k = D::from_parts(IBig::from(ax.repr().exponent()), 0);
         let rising = (k > D::ZERO) == (y > D::ZERO);
-        if lead(&y) >= 12 {
+        let kb = rounded(Context::<Zero>::new(0).mul(k.repr(), y.repr()).unwrap());
+        if lead(&kb) >= 12 {
             return check_band(&case, sol, range(rising, Truth::Past));
         }
-        let kb = rounded(Context::<Zero>::new(0).mul(k.repr(), y.repr()).unwrap());
         if same(&kb.trunc(), &kb) {
             let n = isize::try_from(kb.to_int().value()).unwrap();
             let e = D::from_parts(IBig::ONE, n);
@@ -1939,6 +1940,24 @@ proptest! {
     }
 }
 
+/// pow of 10^k at a b under 1e12 whose k b is whole and past isize, the
+/// inputs the fuzz reaches rarely: the Solidity against the oracle at each.
+#[test]
+fn differential_pow_power_of_ten_past_isize() {
+    let cases = [
+        (Dec::new(1, 92233721), Dec::new(9999999999i64, 1)),
+        (Dec::new(1, 92233721), Dec::new(pow10(57), -46)),
+        (Dec::new(1, 153722868), Dec::new(6, 10)),
+        (Dec::new(1, -92233721), Dec::new(9999999999i64, 1)),
+        (Dec::new(-1, 92233721), Dec::new(99999999991i64, 0)),
+    ];
+    for (a, b) in cases {
+        if let Err(err) = check_pow(&a, &b) {
+            panic!("{err}");
+        }
+    }
+}
+
 /// The oracle on fixed examples whose values are the README's and #333's,
 /// so a misconfigured dashu context fails here and not only under fuzz.
 mod oracle {
@@ -2233,6 +2252,32 @@ mod oracle_checks {
         let (a, b) = (Dec::new(-1, 2), Dec::new(3001, 0));
         assert!(check_pow_with(&a, &b, Ok(Dec::new(-1, 6002))).is_ok());
         assert!(check_pow_with(&a, &b, Ok(Dec::new(1, 6002))).is_err());
+    }
+
+    /// |a| = 10^k with k b whole, under 1e12 in b alone but past isize in
+    /// k b: 10^(k b) is past every Float, so only the range error of its
+    /// direction passes.
+    #[test]
+    fn pow_of_a_power_of_ten_past_isize_is_past() {
+        let revert = |e: RefError, a: &Dec| Fail::Revert(revert_data(e, a, None).into());
+        let cases = [
+            (Dec::new(1, 92233721), Dec::new(9999999999i64, 1)),
+            (Dec::new(1, 92233721), Dec::new(pow10(57), -46)),
+            (Dec::new(1, 153722868), Dec::new(6, 10)),
+        ];
+        for (a, b) in cases {
+            let over = revert(RefError::ExponentOverflow, &a);
+            let under = revert(RefError::ExponentUnderflow, &a);
+            assert!(check_pow_with(&a, &b, Err(over)).is_ok());
+            assert!(check_pow_with(&a, &b, Err(under)).is_err());
+            assert!(check_pow_with(&a, &b, Ok(Dec::new(1, 5))).is_err());
+            let (a, b) = (a.neg(), b.neg());
+            let over = revert(RefError::ExponentOverflow, &a);
+            let under = revert(RefError::ExponentUnderflow, &a);
+            assert!(check_pow_with(&a, &b, Err(under)).is_ok());
+            assert!(check_pow_with(&a, &b, Err(over)).is_err());
+            assert!(check_pow_with(&a, &b, Ok(Dec::new(1, -5))).is_err());
+        }
     }
 
     /// pow(2, 1e76) is past every Float, but its band at rel >= 1 reaches
