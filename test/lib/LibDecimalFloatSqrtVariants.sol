@@ -92,10 +92,11 @@ library LibDecimalFloatSqrtVariants {
     /// `src/lib/implementation/LibDecimalFloatImplementation.sol` at
     /// 26a3cf068ebf6c5bb418744f62abfe4be95b1fc7, calling the private
     /// `scaleUp`, `mulDiv` and `mul512` copied from that commit.
-    /// Like the copied `scaleUp`, it does not check its domain: outside a
-    /// coefficient in (0, 1e76) and an exponent of at least
-    /// `type(int256).min + 75`, it returns what 26a3cf06 returned, where the
-    /// live sqrt reverts.
+    /// Like the copied `scaleUp`, it does not check its domain, so it returns
+    /// what 26a3cf06 returned outside it: for a coefficient outside (0, 1e76),
+    /// where the live sqrt reverts `SqrtOutOfRange`, and for an exponent below
+    /// `type(int256).min + 75`, where the shift can wrap it, which the live
+    /// sqrt takes as the floor and rounds correctly (#451).
     function sqrtPre359(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (signedCoefficient, exponent) = scaleUp(signedCoefficient, exponent);
         unchecked {

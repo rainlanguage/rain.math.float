@@ -71,20 +71,22 @@ only at the same `exponentB`, where the mutant returns `(0, 0)` directly and the
 original returns the same `(0, 0)` through `underflowExponentBy > 76`. The
 comparison is free at its boundary in both directions.
 
-## Equivalent mutants: frozen `mulDiv` copy, fast path and overflow check
+## Equivalent mutant: frozen `mulDiv` copy, overflow check
 
 `test/lib/LibDecimalFloatSqrtVariants.sol`, the private `mulDiv` copied from
 26a3cf06 for `sqrtPre359` and `sqrtPr309`. Both call it as
-`mulDiv(coefficient, scale, root)` with `coefficient >= 1e75` after scale-up and
-`scale >= 1e4`, so the product is at least `1e79 > 2^256` and `prod1` is never
-zero: the `prod1 == 0` fast path is unreachable, and any change to its
-`return prod0 / denominator` is equivalent (inverting the condition is not, and
-is killed). The denominator is the Newton seed times `1e3` (`sqrtPre359`) or at
-least `1e2` (`sqrtPr309`), at least `2^124 * 1e2 > 2e39`, so
-`prod1 >= denominator` would need `coefficient * scale >= 2e39 * 2^256 > 2e116`,
-while `coefficient * scale < 2^255 * 1e6 < 6e82`. The `MulDivOverflow` check
-never fires on any input a baseline can pass it, and relaxing it to `>` is
-equivalent.
+`mulDiv(coefficient, scale, root)` with `scale` at most `1e6`, so
+`prod1 = floor(coefficient * scale / 2^256) < 1e6`. The denominator is the
+Newton root times `1e3` (`sqrtPre359`) or at least `1e2` (`sqrtPr309`); each
+Newton step `(r + e / r) >> 1` is at least `r >> 1`, so from the `2^124` seed
+the root is at least `2^118` after six steps, or `2^117 - 1` after seven and the
+decrement, and the denominator at least `(2^117 + 1) * 1e2 > 1e37`.
+`prod1 >= denominator` never holds, so `MulDivOverflow` never fires and relaxing
+the check to `>` is equivalent. The `prod1 == 0` fast path is reachable, as the
+frozen `scaleUp` has no domain check:
+`testImplementationSqrtPre359MulDivFastPath` takes it with a zero coefficient
+and with a wrapped negative one whose quotient is odd, so a change to
+`return prod0 / denominator` is not equivalent.
 
 ## Equivalent mutants: frozen `maximize` copy, step gates
 
@@ -181,6 +183,13 @@ first) and is nonzero (zero returned earlier), and `10 ** 68` fits int256;
 headroom check rejects every nonzero coefficient with the same
 `ExponentOverflow(initialSignedCoefficient, initialExponent)`.
 
+## Equivalent mutant: frozen `packLossy` copy, floor cap
+
+`test/lib/LibParseDecimalFloatPr321.sol`, `shortfall > 67` relaxed to `> 68`. At
+a shortfall of 68 the coefficient fits int224, shed until it did or fitting from
+the start, so `|c| <= 2^223 < 1e68` and `c / 10 ** 68` is zero: the mutant
+returns the same `(FLOAT_ZERO, false)` one line later.
+
 ## Equivalent mutant: frozen `packLossy` copy, ceiling branch
 
 `test/lib/LibParseDecimalFloatPr321.sol`, `initialExponent > 0` raised to
@@ -203,7 +212,7 @@ exponent is an int32, so neither input reaches the int256 floor and the
 shortfall is zero for both, leaving `MaximizeOverflow`'s differing arguments
 unreachable.
 
-## Equivalent mutant: frozen `sqrtPr309`, last Newton step divided by `root + 1`
+## Equivalent mutant: frozen `sqrtPr309`, Newton quotient over `root + 1`
 
 `test/lib/LibDecimalFloatSqrtVariants.sol`, `sqrtPr309`'s
 `root = (root + mulDiv(coefficient, scale, root)) >> 1` with the divisor

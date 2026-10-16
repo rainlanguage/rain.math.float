@@ -326,10 +326,6 @@ contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
         checkPre359(2460466104203731836555459860449609353974133904160196345274434202584146091719, 0);
     }
 
-    /// At 26a3cf06 sqrt's unguarded `scaleUp` wraps 1 10^int256.min to 1e75
-    /// 10^(int256.max - 74), so the root's exponent is int256.max / 2 - 39
-    /// rather than the library's int256.min / 2 - 40 (#451). The baseline
-    /// must reproduce that, not the live `scaleUp`'s `ScaleUpOutOfRange`.
     /// The frozen scaleUp's gates, at each power of ten it compares against,
     /// for both exponent parities, and one below.
     function testImplementationSqrtPre359ScaleUpGates() external pure {
@@ -352,6 +348,10 @@ contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
         this.liveSqrt(1e76, 0);
     }
 
+    /// At 26a3cf06 sqrt's unguarded `scaleUp` wraps 1 10^int256.min to 1e75
+    /// 10^(int256.max - 74), so the root's exponent is int256.max / 2 - 39
+    /// rather than the library's int256.min / 2 - 40 (#451). The baseline
+    /// must reproduce that, not the live `scaleUp`'s `ScaleUpOutOfRange`.
     function testImplementationSqrtPre359ExponentFloorWraps() external pure {
         (int256 pre359Coefficient, int256 pre359Exponent) = LibDecimalFloatSqrtVariants.sqrtPre359(1, type(int256).min);
         assertEq(pre359Coefficient, 1e40, "pre-#359 coefficient");
@@ -359,6 +359,29 @@ contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
         (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatImplementation.sqrt(1, type(int256).min);
         assertEq(rootCoefficient, 1e40, "coefficient");
         assertEq(rootExponent, type(int256).min / 2 - 40, "exponent");
+    }
+
+    /// The copied mulDiv's fast path, a product under 2^256, needs a
+    /// coefficient outside (0, 1e76): inside, the scaled coefficient times 1e5
+    /// is at least 1e80. Zero reaches it with quotient 0. c = 2 (5^38)^-1 mod
+    /// 2^218, less 2^218 so `scaleUp` takes its first step, has c 1e38 = 2^39
+    /// mod 2^256, and the six steps after scale that to 2^39 1e40, so the
+    /// product is 2^39 1e46 and the quotient 16543612251060553497 is odd: the
+    /// Newton step's `>> 1` sees it exactly. Expected values are what
+    /// 26a3cf06's `sqrt` returns, run at that commit; the live sqrt reverts
+    /// `SqrtOutOfRange` on both.
+    function testImplementationSqrtPre359MulDivFastPath() external {
+        int256 wrapped = -401255958304095716366485929147444023534941234139409265179255399566;
+        (int256 c, int256 e) = LibDecimalFloatSqrtVariants.sqrtPre359(0, 0);
+        assertEq(c, 166153499473114484112975882535043072000, "zero coefficient");
+        assertEq(e, -42, "zero exponent");
+        (c, e) = LibDecimalFloatSqrtVariants.sqrtPre359(wrapped, 0);
+        assertEq(c, 166153499473114484124004789078756993248, "wrapped coefficient");
+        assertEq(e, -42, "wrapped exponent");
+        vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, int256(0), int256(0)));
+        this.liveSqrt(0, 0);
+        vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, wrapped, int256(0)));
+        this.liveSqrt(wrapped, 0);
     }
 
     /// The seed is furthest from the root at the ends of E's decade and at
