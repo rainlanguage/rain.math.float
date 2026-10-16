@@ -1704,11 +1704,11 @@ library LibDecimalFloatImplementation {
     /// 1e75 10^(2^-16)).
     /// @param x A value in [1e75, 1e76), reverting `Log10ReduceOutOfRange` outside
     /// it.
-    /// @return The reduced x.
+    /// @return reduced The reduced x.
     /// @return seed The summed powers at the `POW_FIXED_ONE` scale.
     // slither-disable-start too-many-digits
     //slither-disable-next-line cyclomatic-complexity
-    function log10Reduce(uint256 x) internal pure returns (uint256, uint256 seed) {
+    function log10Reduce(uint256 x) internal pure returns (uint256 reduced, uint256 seed) {
         unchecked {
             // x below 1e75 wraps to at least 2^256 - 1e75.
             if (x - 1e75 >= 9e75) {
@@ -1838,7 +1838,7 @@ library LibDecimalFloatImplementation {
                 seed := add(seed, 1525878906250000000000000000000000000000000000)
             }
         }
-        return (x, seed);
+        reduced = x;
     }
 
     // slither-disable-end too-many-digits
