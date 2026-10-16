@@ -164,6 +164,53 @@ margin, 1e-66 once, an order or six too large, the floor as oracle) all survive
 such a shrink, which reaches the same verdict as the original and only stops the
 test observing the rule.
 
+## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` oracle weakened or draw narrowed
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The test asserts
+`exactCeil <= ceilGot <= exactCeil + marginFloor + 1` on the chain it ran, where
+`ceilGot` is the ceiling of the Float the margin's `add` returns (`got` when
+`lossless`, else `got + 1`). Its NatSpec proves two facts for every chain the
+bounds admit: that Float is strictly above the exact value, and at most
+`exact (1 + (n + 1)e-66)`. Each variant below passes on every input, so it
+reaches the original's verdict everywhere.
+
+`% 3` changed to `% 2` in the op draw: `op` is then 0 or 1, so the chain is
+drawn from `mul` and `div` only. Every chain the mutant runs is one the original
+runs for the `ops` whose two-bit fields are 0 and 1, and the property is proven
+for every chain the bounds admit, so both pass on every input. The variant only
+stops the fuzz test exercising `add`; `testMarginCountsAdds` and
+`testMarginCountsItsOwnAdd` pin it.
+
+`exactCeil` as `numerator / denominator + 1`: the ceiling unless the exact value
+is an integer, where it is one above it. The Float is strictly above the exact
+value, so when that is the integer `exact` the Float is an integer of at least
+`exact + 1` or a non-integer above `exact`, and `ceilGot` is at least
+`exact + 1` either way. The upper bound only loosens.
+
+`marginFloor` from `n + 2` instead of `n + 1`: read only by the upper bound,
+which it loosens; `numerator × 5` is under 2^256 (the numerator is at most
+1e76), so nothing reverts.
+
+`ceilGot` as `got + 1` whether or not `lossless`: differs only when the Float is
+an integer `F`, where the original reads `F` and the mutant `F + 1`. The lower
+bound holds a fortiori. For the upper bound, `F <= exact + m` with
+`m = (n + 1)e-66 × exact` and `marginFloor = floor(m)`: if `exact` is an
+integer, `F - exact` is an integer at most `m`, so at most `floor(m)`; otherwise
+`F <= floor(exact + m) <= floor(exact) + floor(m) + 1 = ceil(exact) + floor(m)`.
+So `F + 1 <= exactCeil + marginFloor + 1`.
+
+Margin of `n e-66` instead of `(n + 1)e-66`: `n` is fixed at 3, so the margin is
+`3e-66` of the result against a loss under `4 × 10 / int224.max`, about
+2.968e-66, of it (three ops and the margin's `add`; the margin's `mul` truncates
+only the margin), and `(1 - 7.42e-67)^4 (1 + 3e-66 (1 - 7.42e-67))` still
+exceeds 1, so the Float stays strictly above the exact value and the lower bound
+holds. A smaller margin can only lower the Float, so the upper bound holds too.
+`n e-66` falls short of `(n + 1) × 7.42e-67` only at `n <= 2`;
+`testMarginCountsItsOwnAdd` pins that at `n = 2`, where `2e-66` leaves the
+lossless-flag ceiling one short. Fuzzing the chain length over 1..3 does not
+observe it: a shortfall needs every truncation near its maximum at once, and
+5096 runs at seeds 0 and 1 pass under the variant.
+
 ## Equivalent mutant: pow oracle `k b` guard boundary
 
 `crates/tests/src/differential.rs`, `check_pow_with`'s `|a| = 10^k` branch.
