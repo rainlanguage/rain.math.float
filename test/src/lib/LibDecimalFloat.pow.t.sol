@@ -1378,13 +1378,11 @@ contract LibDecimalFloatPowTest is Test {
         this.powExternal(a, LibDecimalFloat.packLossless(-1, 30));
     }
 
-    /// The squaring loop stops after the top bit of N: the base is never
-    /// squared once more than the result uses (#637). With `a` at 1e1e9 and
-    /// N = 2^97, a^(2^97) is about 1e1.58e38, under int128.max in exponent,
-    /// and a^(2^98) would be past it. The result already holds a^(2^97), past
-    /// every Float on the same side of 1 as the base, so the range error is
-    /// the one the final pack raises, reporting `a`, whatever the fraction of
-    /// `b` and its sign.
+    /// With `a` at 1e1e9 and N = 2^97, a^(2^97) is about 1e1.58e38, under
+    /// int128.max in exponent, and a^(2^98) would be past it. The result
+    /// holds a^(2^97), past every Float on the same side of 1 as the base, so
+    /// the range error is the one the final pack raises, reporting `a`,
+    /// unchanged whatever the fraction of `b` and its sign.
     ///
     /// With every bit of N set, N = 2^98 - 1, the result a^N is about
     /// 1e3.17e38: past int128.max in exponent, where the loop stops a base but

@@ -202,3 +202,24 @@ such line, so `normalise` maps both to the same text, and for every fresh
 snapshot the two give the same verdict. Fuzz rows comparing by name only is the
 check's specified behaviour: fuzz gas is not reproducible across machines even
 with a fixed seed.
+
+## Equivalent mutant: `agreeWithinProportional` raised-exponent test as `!=`
+
+`src/lib/LibDecimalFloat.sol`, `agreeWithinProportional`'s fallback. Testing
+`scaledExponent != proportionalExponent + anchorExponent` in place of `>`
+changes nothing: `mul` returns the exponent sum plus the count of digits it
+shed, never less, for operands whose exponents are int32 (the paths that move an
+exponent down are for sums below `type(int256).min`), and the one product whose
+exponent is not that sum, the zero product's `(0, 0)`, is already refused by
+`scaledCoefficient != 0` ahead of this test.
+
+## Equivalent mutant: `agreeWithinProportional` spread exponent test as `<=`
+
+`src/lib/LibDecimalFloat.sol`, `agreeWithinProportional`'s fallback. Accepting
+`spreadExponent <= scaledExponent - 1` in place of `==` changes nothing: the
+clause runs only after `lte(spread, scaled)` was false with a non-zero
+`scaledCoefficient` at a raised exponent, which puts `scaledCoefficient` at or
+above `type(int256).max / 10`. A spread two or more exponents below the limit
+rescales the limit by at least `100`, past int256 (or past `compareRescale`'s
+`10^76` reach), and the overflow branch ranks the limit above the spread, so
+`lte` is true there and the fallback never sees such a spread.

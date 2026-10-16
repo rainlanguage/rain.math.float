@@ -1151,6 +1151,27 @@
     }
   },
   {
+    "timestamp": "2026-10-14T20:24:38Z",
+    "commit": "3e9cacedfdd116b7e63bec3cc757ed29da5ed813",
+    "testsAfterCommit": "f438b0dac7293724ba6b0e1038cac2b84e00f8b4",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 30,
+    "scope": "pr:716 (agree compares the spread with the exact proportional limit instead of mul's truncation of it) diff against PR #710's head eb49d9d3, probed on the branch merged with #710's head and main: agree's absolute-or-proportional form (M01-M05), agreeWithinProportional's anchor, truncated-limit lte and fallback (M06-M19), re-survey of the limit's coefficient and two expected equivalents (M20-M22); the PR's tests, Rust additions and SPEC line reviewed, not mutated. Suite forge test --mc Agree at 256 fuzz runs (42 tests). Before = the suite as the PR stands, with none of this run's tests. Killed 19: the agree form and anchor by the boundary and cliff tests (testAgreeAbsoluteBoundary, testAgreeBoundaryCliffLocated, testAgreeBoundaryExactOnlyToRepresentablePrecision, testAgreeEitherOrder, testAgreeBoundaryMirroredAboutZero), the fallback's zero guard by the PR's testAgreeZeroProportionalRefusesPastAbsolute, the fallback's shape and its removal by the PR's testAgreeLimitPastInt256 and testAgreeLimitPastInt256Shifted. Survived 1, M13, the raised-exponent test as >=: the fallback then fires on an untruncated limit whose exponent is one above the spread's, reachable because sub aligns the spread to the anchor's int256 unit, at a proportional exponent one above that unit's shift (agree(0, 5e-9, 1e-20, 1e66 as a coefficient) accepted). The unmutated refusal is correct, so testAgreeUntruncatedLimitOneExponentAboveSpread and its fuzz over any anchor (within, a unit past, far past) were added, pinned to the exact oracle. Equivalent 2, recorded in audit/known-false-positives.md: the raised-exponent test as != (mul never lowers the exponent; the zero product is guarded first) and the spread exponent test as <= (a spread two or more exponents below the limit is lte-true). Adversarial: the fallback's argument re-derived from mul's single floor of the 512-bit product (a shed digit leaves sc >= floor(int256.max / 10); lte false at se - 1 forces sc to that floor and the value shed from to 2^255 or 2^255 + 1, above every int256 spread) holds; the test comments' numbers (exact limit 2^255 + 1.3703, mul's 2^255 - 8, j = 0..7 within) verified exactly; the Python, Rust reference and dashu oracles all take the limit exactly over add's truncated spread, so the PR aligns the library with them. After = the same match at f438b0d (44 tests). No candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 22,
+      "killedBefore": 19,
+      "killedAfter": 20,
+      "equivalent": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 42,
+      "testsAfter": 44,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-14T20:36:25Z",
     "commit": "3921acaacc2375d904a5684b62b6e413d6826b61",
     "testsAfterCommit": "3921acaacc2375d904a5684b62b6e413d6826b61",
@@ -1190,7 +1211,9 @@
       "confirmed": 3,
       "testsBefore": 1,
       "testsAfter": 11,
-      "filed": [720]
+      "filed": [
+        720
+      ]
     }
   },
   {
