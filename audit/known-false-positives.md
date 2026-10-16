@@ -638,4 +638,7 @@ a word, past `LOG10_RATIO_Z_MAX` (about 7.5e46), and a + b past a word wraps, so
 both revert `Log10RatioOutOfRange` before the cascade.
 `testLog10RatioLastScalingBoundsUnreachable` in
 `LibDecimalFloatImplementation.log10RatioFloors.t.sol` pins both differences at
-the largest a + b.
+the largest a + b. The same proof covers that test file's reference,
+`expectedRatio`, with its `difference <= int256.max / 10` loop bound at `<`: the
+reference only runs on inputs `log10Ratio` accepts, and no accepted difference
+lands on a bound.
