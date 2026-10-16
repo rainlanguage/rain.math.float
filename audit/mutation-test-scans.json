@@ -1513,5 +1513,28 @@
       "testsAfter": 33,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-16T14:42:02Z",
+    "commit": "b25a45ff87cbfd8ff173871e8aadd763f2d63c2e",
+    "testsAfterCommit": "5984b8987eea0a6e3b927bc97a5430e12ccc9cf8",
+    "publishedTag": "sol-v0.3.9",
+    "commitsAheadOfTag": 54,
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "scope": "pr:719 (rain-marvin review 5548910817): the changed lines of test/src/lib/LibDecimalFloat.consumerHazards.t.sol this round, WEI_SAFE_SIDE_AB_MAX now pinned exactly to the largest x with 20x <= int224.max in testWeiSafeSideDomainReachesBound, and invChainProduct, the a x inv(d) product testFuzzMarginInvChain, testMarginInvChainUpperBoundAttained and testMarginInvCountsItsOwnAdd now share; README rule 1 now margins an exact term before a cancelling sub, pinned by testMarginExactTermBeforeSub. No src/ change; assertions and pinned literals are the oracle. Before = b25a45ff (37 tests); after = testsAfterCommit (38 tests); probe = mutation-probe over .mutation-test/round.toml, suite forge clean && forge test --match-contract LibDecimalFloatConsumerHazardsTest --fuzz-seed 0. M1 constant / 20 + 1 and M1L / 20 - 1 (marvin MEDIUM; survived before, killed after by testWeiSafeSideDomainReachesBound), M3 divisor 21 (killed after by testWeiSafeSideDomainReachesBound and testWeiSafeSideDomainInteriorEdges; the lowered-constant equivalence entry is removed), M2 inv replaced by a single div (marvin MEDIUM; survived before, killed after by testMarginInvCountsItsOwnAdd), M4 the product divides by inv(d), M5/M6 numerator or divisor at one decimal, M7 the fuzz call site swaps the helper arguments (new code, no before; killed by testFuzzMarginInvChain, testMarginInvChainUpperBoundAttained, testMarginInvCountsItsOwnAdd). Survived: N1 testWeiSafeSideDomainReachesBound checking (a, b - 1, 7) and N2 testMarginInvChainUpperBoundAttained calling the fuzz body at (1e66, 999), both also survivors in marvin review at b25a45ff; each only rewrites a test own fixed input that no other test reads, recorded in audit/known-false-positives.md as the Not observable class with its proof. Adversarial: README rule 1 exact-term clause re-derived from SPEC.md packing (a term whose coefficient is above int224.max / 10 has an ulp under 7.5e-67 of it, so a 1e-66 margin lands it at least one ulp above its exact value, which covers the truncation of the sub or add that combines the terms); forge confirms 13e66 - 0.5 reads 13e66 - 1 with lossless true and the margined term gives 13e66 + 12. Spec-conformant truncation toward zero, not a library defect. No candidates, nothing filed.",
+    "summary": {
+      "behaviours": 10,
+      "behavioursBefore": 5,
+      "killedBefore": 0,
+      "killedAfter": 8,
+      "equivalent": 0,
+      "survived": 2,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 37,
+      "testsAfter": 38,
+      "filed": []
+    }
   }
 ]
