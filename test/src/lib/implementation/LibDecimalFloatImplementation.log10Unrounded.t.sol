@@ -464,6 +464,23 @@ contract LibDecimalFloatImplementationLog10UnroundedTest is Test {
         assertFalse(absoluteOk(18, 0, truncated + 2, -50), "1.9729 above");
     }
 
+    /// A value between two 1e-50 grid points is not a result, within the
+    /// bound or not: ...350.5 at 1e-50 is 0.4729 units from log10 18, and
+    /// ...350.1 is 0.0729. From 1e25 `add` sums the characteristic at its
+    /// int256 unit, 1e-51 for 2e1e25, and the grid stays 1e-50: log10 2 is
+    /// 0.30102999566398119521373889472449302676818988146210854 from `bc -l`
+    /// at scale 130, so ...210 is on the grid, 0.854 under the log, and
+    /// ...210.5 is not.
+    function testLog10UnroundedAbsoluteRejectsOffGrid() external pure {
+        int256 truncated = 125527250510330606980379470123472364516844760984350;
+        assertTrue(absoluteOk(18, 0, truncated * 10, -51), "on the grid");
+        assertFalse(absoluteOk(18, 0, truncated * 10 + 5, -51), "between grid points");
+        assertFalse(absoluteOk(18, 0, truncated * 10 + 1, -51), "a tenth above the grid");
+        int256 summed = 10000000000000000000000000301029995663981195213738894724493026768189881462100;
+        assertTrue(absoluteOk(2, 1e25, summed, -51), "on the add grid");
+        assertFalse(absoluteOk(2, 1e25, summed + 5, -51), "between add grid points");
+    }
+
     /// The oracle is within 1e-67, so a correction up to that past the bound
     /// of the log is still taken, and one further is not. Each log is from
     /// `bc -l` at scale 130. 1.9952...e76 at -75 has log 1.3 less 1.0037e-50
