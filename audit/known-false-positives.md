@@ -1,5 +1,9 @@
 # Known false positives
 
+Mutants that survive because the mutated program agrees with the original on
+every input, and mutants a later change removed ("Resolved by removal"). Each
+entry carries the proof; a sampled or "no known input" argument is not one.
+
 ## Equivalent mutant: `isPastEveryFloat` `excess > 67` arm at `> 68`
 
 `src/lib/LibDecimalFloat.sol`, `isPastEveryFloat`. Moving the any-non-zero arm
@@ -30,24 +34,6 @@ and the two pairs are equal.
 most about 1e41, and such a coefficient is past every Float only at an excess of
 27 or more over `int32.max` (1e41 × 10^26 is below 2^223 + 2), so no input can
 tell the gates apart. `+ 1` and `+ 30` have both survived.
-
-## Equivalent mutant: `pow` carry path `excess <= 67` guard at any bound from 27 up, or dropped
-
-`src/lib/LibDecimalFloat.sol`, `packRoundedSignificant`. Changing
-`excess <= 67 && isPastEveryFloat(roundedCoefficient, roundedExponent)` to
-`excess <= k && ...` for any `k` from 27 up, or dropping the `excess <= 67`
-term, changes nothing. `roundSignificant` returns a coefficient under 1e41
-unchanged, so the rounded and unrounded pairs are then equal and both branches
-check the same value: past reverts `ExponentOverflow(input)` either way, and not
-past packs it either way. Otherwise the rounded coefficient is at least 1e40 (41
-digits, or 1e41 on a carry), so at an excess of 28 or more the rounded value is
-at least `1e68 × 10^int32.max`, past every Float, and the unrounded value is
-within half a unit of the rounded one's last digit, at least
-`(1e40 - 1/2) × 10^(int32.max + 28)`, past too: checking either reverts
-`ExponentOverflow(input)`. At an excess of 27 a rounded coefficient from
-`(2^223 + 2) / 1e27` up is past while the unrounded one can be below it, so
-`k = 26` is not equivalent; `testPowCarryShedsTheUnrounded` kills it. `k = 66`
-has survived.
 
 ## Equivalent mutant: signed `isPastEveryFloat` with int256.min as `2^255 - 1`
 
