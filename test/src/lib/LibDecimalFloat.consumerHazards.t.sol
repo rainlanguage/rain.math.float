@@ -300,7 +300,7 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// A failing a*b of about 0.0701 int224.max, inside the 1e33 operand bounds:
     /// a * (b / c) reports an exact integer for a non-integer a*b/c. The assertGt
     /// in assertCeilUndershoot pins WEI_SAFE_SIDE_AB_MAX below it.
-    function testWeiCeilUndershootJustAboveBound() external pure {
+    function testWeiCeilUndershootInsideOperandBounds() external pure {
         uint256[3] memory input = weiCeilUndershootInputs()[1];
         (uint256 a, uint256 b, uint256 c) = (input[0], input[1], input[2]);
         assertCeilUndershoot(a, b, c);
@@ -467,6 +467,20 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertEq(got + (lossless ? 0 : 1), exactCeil + 21);
     }
 
+    /// README rule 1 margins an exact term too: 13e66 - 0.5 truncates to the
+    /// Float 13e66 - 1 with the flag lossless, one under the exact ceiling
+    /// 13e66. 1e-66 of the exact term lifts it to 13e66 + 13, and the sub then
+    /// truncates to 13e66 + 12, on the safe side.
+    function testMarginExactTermBeforeSub() external pure {
+        Float a = LibDecimalFloat.packLossless(13e66, 0);
+        Float b = LibDecimalFloat.packLossless(5, -1);
+        (uint256 got, bool lossless) = a.sub(b).toFixedDecimalLossy(0);
+        assertEq(got, 13e66 - 1);
+        assertTrue(lossless);
+        (got, lossless) = a.add(a.mul(LibDecimalFloat.packLossless(1, -66))).sub(b).toFixedDecimalLossy(0);
+        assertEq(got + (lossless ? 0 : 1), 13e66 + 12);
+    }
+
     /// README rule 1's margin on a positive chain: n operations drawn from mul,
     /// div and add on an integer in [1e66, 1e67] and integer operands in
     /// [1, 1e3], then
@@ -521,6 +535,12 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertLe(ceilGot, exactCeil + marginFloor + 1);
     }
 
+    /// a × inv(d), the product testFuzzMarginInvChain margins.
+    function invChainProduct(uint256 numerator, uint256 divisor) internal pure returns (Float) {
+        return LibDecimalFloat.fromFixedDecimalLosslessPacked(numerator, 0)
+            .mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(divisor, 0).inv());
+    }
+
     /// README rule 1 with inv in the chain: a × inv(d), two ops, with a 3e-66
     /// margin of the result gives a lossless-flag ceiling at least the exact
     /// ceiling of a / d and at most floor(3e-66 × a / d) above it: by the proof
@@ -535,8 +555,7 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     function testFuzzMarginInvChain(uint256 numerator, uint256 divisor) external pure {
         numerator = bound(numerator, 1e66, 1e67) * 1e4;
         divisor = bound(divisor, 2, 1e3);
-        Float acc = LibDecimalFloat.fromFixedDecimalLosslessPacked(numerator, 0)
-            .mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(divisor, 0).inv());
+        Float acc = invChainProduct(numerator, divisor);
         uint256 exactCeil = (numerator + divisor - 1) / divisor;
         uint256 marginFloor = numerator * 3 / 1e66 / divisor;
         Float margin = acc.mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(3, 66));
@@ -551,8 +570,7 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// coefficient at exponent 0, so the lossless-flag ceiling is exactly
     /// floor(3e-66 × a / d) above the exact ceiling.
     function testMarginInvChainUpperBoundAttained() external view {
-        Float acc = LibDecimalFloat.fromFixedDecimalLosslessPacked(1e70, 0)
-            .mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(1000, 0).inv());
+        Float acc = invChainProduct(1e70, 1000);
         assertTrue(acc.eq(LibDecimalFloat.packLossless(1e67, 0)));
         assertTrue(
             acc.add(acc.mul(LibDecimalFloat.packLossless(3, -66))).eq(LibDecimalFloat.packLossless(1e67 + 30, 0))
@@ -570,8 +588,7 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         uint256 numerator = 1071481643597238231781514733015558570712902379074599554133101278361;
         uint256 divisor = 730;
         uint256 aFixed = numerator * 1e4;
-        Float res = LibDecimalFloat.fromFixedDecimalLosslessPacked(aFixed, 0)
-            .mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(divisor, 0).inv());
+        Float res = invChainProduct(aFixed, divisor);
         uint256 exactCeil = (aFixed + divisor - 1) / divisor;
         assertEq(aFixed % divisor, 400);
         assertEq(aFixed / divisor % 10, 0);
@@ -687,14 +704,16 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
 
     /// The domain reaches the bound: at a = 1e33 the clamp admits
     /// b = 673998666678765994866675377175490, the largest b with
-    /// a * b <= WEI_SAFE_SIDE_AB_MAX, and the property holds there. The literal
-    /// pins the constant from below as the pinned counterexamples pin it from
-    /// above: a divisor other than 20 fails one of the first two assertions.
+    /// a * b <= WEI_SAFE_SIDE_AB_MAX, and the property holds there.
+    /// WEI_SAFE_SIDE_AB_MAX is exactly the largest x with 20x <= int224.max,
+    /// the proof's hypothesis.
     function testWeiSafeSideDomainReachesBound() external pure {
         uint256 a = 1e33;
         uint256 b = 673998666678765994866675377175490;
         assertLe(a * b, WEI_SAFE_SIDE_AB_MAX);
         assertGt(a * (b + 1), WEI_SAFE_SIDE_AB_MAX);
+        assertLe(WEI_SAFE_SIDE_AB_MAX * 20, uint256(int256(type(int224).max)));
+        assertGt((WEI_SAFE_SIDE_AB_MAX + 1) * 20, uint256(int256(type(int224).max)));
         (, uint256 bOut,) = boundWeiSafeSide(a, b, 7);
         assertEq(bOut, b);
         assertEq(a * b % 7, 5);

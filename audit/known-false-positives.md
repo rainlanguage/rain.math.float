@@ -1,8 +1,9 @@
 # Known false positives
 
 Mutants that survive because the mutated program agrees with the original on
-every input, and mutants a later change removed ("Resolved by removal"). Each
-entry carries the proof; a sampled or "no known input" argument is not one.
+every input, mutants that edit an oracle no other test reads ("Not observable"),
+and mutants a later change removed ("Resolved by removal"). Each entry carries
+the proof; a sampled or "no known input" argument is not one.
 
 ## Equivalent mutant: `isPastEveryFloat` `excess > 67` arm at `> 68`
 
@@ -114,26 +115,25 @@ property is proven, so any subset of the calls reaches the same verdict. Such a
 change deletes a check, the class no test can kill because the tests are the
 oracle. Each skipped input's undershoot stays asserted by its own pinned test.
 
-## Equivalent mutants: `WEI_SAFE_SIDE_AB_MAX` lowered, down to its attained bound
+## Not observable: a test's own fixed input rewritten
 
-`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The constant is
-`int224.max / 20`,
-673998666678765994866675377175490766840928610563514312027590256230. Any value
-`X` from `673998666678765994866675377175490 × 1e33` up to it is equivalent, so
-the class is every such value, not only `WEI_SAFE_SIDE_AB_MAX - 1`, which has
-survived: `- k` for any `k` up to 766840928610563514312027590256230, and any
-expression with a value in that range. Under such an `X`:
-`testFuzzWeiFloorCeilSafeSide`'s domain shrinks to `a * b <= X`, inside the
-proven one; `assertCeilUndershoot`'s `a * b > X` holds a fortiori;
-`testWeiSafeSideDomainReachesBound`'s `a = 1e33`,
-`b = 673998666678765994866675377175490` still has `a * b <= X < a * (b + 1)` and
-the clamp still admits `b`; `testWeiSafeSideDomainInteriorEdges`'s
-`a = 673998666678765994866675377175491` still has `X / a < 1e33 <= X / (a - 1)`,
-and its wraps land where they did; the guard entry above holds with `X / 1e33`
-in place of `WEI_SAFE_SIDE_AB_MAX / 1e33`. Every test passes on every input.
-Below `1e33 × (a - 1)`, the attained `a * b`, both `X / (a - 1) >= 1e33` and
-`a * b <= X` fail, so lower values are outside this entry, and so is any raise:
-above `int224.max / 20` the two-truncation proof no longer holds.
+Any test file. A test's fixed input is part of its oracle: it is the point the
+test checks. A mutant that only rewrites such an input, a literal or local
+argument that a test function nothing else calls passes to a check helper or to
+a fuzz body, changes no line any other test reads. The file passes iff every
+test passes, so every other test keeps its verdict and only the edited test can
+observe the rewrite: if it fails there the mutant is killed, and if the called
+check passes on the new input no test can kill it, because the rewrite is to the
+oracle itself. The class is every such rewrite, not only the two that have
+survived, both in `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`:
+`testWeiSafeSideDomainReachesBound` calling
+`checkWeiFloorCeilSafeSide(a, b - 1, 7)`, a point inside the domain the property
+is proven on, and `testMarginInvChainUpperBoundAttained` calling
+`this.testFuzzMarginInvChain(1e66, 999)`, which the fuzz body bounds into its
+proven domain. A rewrite of a line another test reads is outside this entry. In
+that file `boundWeiSafeSide`, `checkWeiFloorCeilSafeSide`, `invChainProduct`,
+`weiCeilUndershootInputs` and the fuzz bodies that pinned tests call are shared,
+so a change there can reach another test's verdict and needs its own proof.
 
 ## Equivalent mutants: `testFuzzWeiFloorCeilSafeSide` divisor of `a / (c / b)` shrunk by an exact factor
 
@@ -166,7 +166,7 @@ operand literal in this file rewritten to an equal value, such as
 `packLossless(2, 0)` as `packLossless(20, -1)` in
 `testMarginFailsAtExponentFloor`: SPEC.md defines every operation here as a
 function of its operands' values alone. It holds too for an operation rewritten
-to the one SPEC.md defines it as: `.inv()` in `testFuzzMarginInvChain` as
+to the one SPEC.md defines it as: `.inv()` in `invChainProduct` as
 `packLossless(1, 0).div(...)`, since SPEC.md defines `inv(f)` as `div(1, f)`.
 
 ## Equivalent mutant: `testMarginScalesThroughLaterMul` ulp margin without the `1 / 7` term
@@ -230,9 +230,9 @@ int224.max of its result. Moving the first operand's bounds anywhere within
 test passes on every input under both programs; the first operand moved to
 `[1e60, 1e61]` has survived. The first operand is kept in `[1e66, 1e67]` because
 below the wei grid of a 68-digit Float no loss or margin reaches a wei: the
-margin variants of the round-10 scan (no margin, 1e-66 once, an order or six too
-large, the floor as oracle) all survive such a shrink, which reaches the same
-verdict as the original and only stops the test observing the rule.
+margin variants (no margin, 1e-66 once, an order or six too large, the floor as
+oracle) all survive such a shrink, which reaches the same verdict as the
+original and only stops the test observing the rule.
 
 `testFuzzMarginInvChain` is the same proof at `n = 2` on `a × inv(d)`, and its
 tight upper bound needs one more hypothesis: every admitted `a / d` is at least
@@ -283,8 +283,7 @@ nor does a factor up to 3e5 on the inv chain's `numerator * 3`; a further factor
 numerator above 2^256 / 4k (about 2.9e75 at `k = 10`), which a three-mul chain
 reaches, and is outside this entry. Variants that have survived:
 `testFuzzMarginInvChain`'s `numerator * 3 / 1e66 / divisor` as `numerator * 4`
-or `numerator * 30` (at most 3e72), and its tight bound with a `+ 1` (its form
-before round 16).
+or `numerator * 30` (at most 3e72), and its tight bound with a `+ 1`.
 
 `testFuzzMarginInvChain`'s `(numerator + divisor - 1) / divisor` as
 `numerator / divisor`, the floor of `a / d`: `ceilGot` is `F`, an integer above

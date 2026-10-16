@@ -321,9 +321,10 @@ Rules for protocols built on the library. Each example is a test in
    operation can lose most of its result (`3e-2147483648 / 2` is
    `1e-2147483648`). A `sub`, or an `add` of opposite signs, can cancel and
    amplify earlier losses relative to the result: margin each term on its safe
-   side before combining them. Keep amounts as Floats through a calculation:
-   converting to wei on every step reintroduces Balancer/Bunni-style
-   amplification.
+   side, an exact term included (at least 1e-66 of it), before combining them:
+   the `sub` or `add` that combines them truncates too. Keep amounts as Floats
+   through a calculation: converting to wei on every step reintroduces
+   Balancer/Bunni-style amplification.
 2. **Toward zero applies per operation, not per expression.** A rounded divisor
    biases the quotient upward: `inv(inv(6))` is `6.` then 65 zeros and a `2`. A
    negative result rounds toward +∞: `-1 / 3` is `-0.` then 67 threes. Get
