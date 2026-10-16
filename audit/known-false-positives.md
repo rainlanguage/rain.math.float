@@ -93,6 +93,14 @@ helper's output is the same for every input;
 `k = 673998666678765994866675377175491` up the guard skips the clamp at that
 test's interior `a`, which leaves `edge + 1` unwrapped, so the test kills it.
 
+Permuting the raw inputs at the fuzz entry's call site, for example
+`boundWeiSafeSide(a, c, b)`: the helper's output set is unchanged, so the fuzz
+body only runs at another point of the domain the property is proven on. The
+fixed callers that reach the property through the fuzz entry are
+`testFuzzWeiFloorCeilSafeSideBoundsCounterexample`, which passes both orders;
+`testWeiSafeSideDomainReachesBound` checks its edge through
+`checkWeiFloorCeilSafeSide` directly, past the call site.
+
 ## Equivalent mutants: `testFuzzWeiFloorCeilSafeSideBoundsCounterexample` drops calls
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The loop makes two calls

@@ -228,6 +228,11 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// exact and the lossless flag stays false.
     function testFuzzWeiFloorCeilSafeSide(uint256 a, uint256 b, uint256 c) external pure {
         (a, b, c) = boundWeiSafeSide(a, b, c);
+        checkWeiFloorCeilSafeSide(a, b, c);
+    }
+
+    /// The property above, for inputs already in the domain.
+    function checkWeiFloorCeilSafeSide(uint256 a, uint256 b, uint256 c) internal pure {
         Float fa = LibDecimalFloat.fromFixedDecimalLosslessPacked(a, 0);
         Float fb = LibDecimalFloat.fromFixedDecimalLosslessPacked(b, 0);
         Float fc = LibDecimalFloat.fromFixedDecimalLosslessPacked(c, 0);
@@ -685,7 +690,7 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// a * b <= WEI_SAFE_SIDE_AB_MAX, and the property holds there. The literal
     /// pins the constant from below as the pinned counterexamples pin it from
     /// above: a divisor other than 20 fails one of the first two assertions.
-    function testWeiSafeSideDomainReachesBound() external view {
+    function testWeiSafeSideDomainReachesBound() external pure {
         uint256 a = 1e33;
         uint256 b = 673998666678765994866675377175490;
         assertLe(a * b, WEI_SAFE_SIDE_AB_MAX);
@@ -693,7 +698,7 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         (, uint256 bOut,) = boundWeiSafeSide(a, b, 7);
         assertEq(bOut, b);
         assertEq(a * b % 7, 5);
-        this.testFuzzWeiFloorCeilSafeSide(a, b, 7);
+        checkWeiFloorCeilSafeSide(a, b, 7);
     }
 
     /// a = 0 is in the domain and skips the clamp; b and c floor at 1, so no
