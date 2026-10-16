@@ -95,8 +95,9 @@ library LibDecimalFloatSqrtVariants {
     /// Like the copied `scaleUp`, it does not check its domain, so it returns
     /// what 26a3cf06 returned outside it: for a coefficient outside (0, 1e76),
     /// where the live sqrt reverts `SqrtOutOfRange`, and for an exponent below
-    /// `type(int256).min + 75`, where the shift can wrap it, which the live
-    /// sqrt takes as the floor and rounds correctly (#451).
+    /// `type(int256).min + 80`, where the scale-up shift and the parity offset
+    /// can wrap it, which the live sqrt takes as the floor and rounds
+    /// correctly (#451).
     function sqrtPre359(int256 signedCoefficient, int256 exponent) internal pure returns (int256, int256) {
         (signedCoefficient, exponent) = scaleUp(signedCoefficient, exponent);
         unchecked {

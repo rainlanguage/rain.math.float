@@ -94,9 +94,9 @@ contract LibDecimalFloatPackLossyLiftFirstEquivalenceTest is Test {
     }
 
     /// Exponents below the floor, where shedding leaves some digits or none.
-    function testPackLossyLiftFirstEquivalenceFloorBand(int256 c, int256 offset) external view {
+    function testPackLossyLiftFirstEquivalenceFloorBand(int256 signedCoefficient, int256 offset) external view {
         offset = bound(offset, 1, 80);
-        check(c, int256(type(int32).min) - offset);
+        check(signedCoefficient, int256(type(int32).min) - offset);
     }
 
     /// Every shortfall up to the 68 digits of int224, either side of the power
@@ -104,14 +104,14 @@ contract LibDecimalFloatPackLossyLiftFirstEquivalenceTest is Test {
     function testPackLossyLiftFirstEquivalenceFloorShedsAll() external view {
         for (uint256 shortfall = 1; shortfall <= 68; shortfall++) {
             // forge-lint: disable-next-line(unsafe-typecast)
-            int256 e = int256(type(int32).min) - int256(shortfall);
+            int256 exponent = int256(type(int32).min) - int256(shortfall);
             // forge-lint: disable-next-line(unsafe-typecast)
             int256 power = int256(10 ** shortfall);
-            check(1, e);
-            check(-1, e);
-            check(power - 1, e);
-            check(power, e);
-            check(-power, e);
+            check(1, exponent);
+            check(-1, exponent);
+            check(power - 1, exponent);
+            check(power, exponent);
+            check(-power, exponent);
         }
     }
 }

@@ -83,10 +83,15 @@ the root is at least `2^118` after six steps, or `2^117 - 1` after seven and the
 decrement, and the denominator at least `(2^117 + 1) * 1e2 > 1e37`.
 `prod1 >= denominator` never holds, so `MulDivOverflow` never fires and relaxing
 the check to `>` is equivalent. The `prod1 == 0` fast path is reachable, as the
-frozen `scaleUp` has no domain check:
-`testImplementationSqrtPre359MulDivFastPath` takes it with a zero coefficient
-and with a wrapped negative one whose quotient is odd, so a change to
-`return prod0 / denominator` is not equivalent.
+frozen `scaleUp` has no domain check, so its mutants are not equivalent and are
+pinned on wrapped negative coefficients, which the live sqrt rejects:
+`testImplementationSqrtPre359MulDivFastPath` pins the quotient, with a zero
+coefficient and with one whose quotient is odd;
+`testImplementationSqrtPre359MulDivRemainderAndHighWord` pins the divisor, with
+a remainder below the quotient so that `denominator + 1` lowers the quotient and
+the Newton step's `>> 1` sees it, and pins the `prod1 == 0` gate, with a product
+whose high word is exactly one, which a gate of `prod1 == 1` would divide as its
+low word alone.
 
 ## Equivalent mutants: frozen `maximize` copy, step gates
 
@@ -240,6 +245,14 @@ Let `x` be the root fed to the step. `x >= sqrt(N)`: `x = (seed + 2) * k` with
 
 So the mutant's `r` is `s` or, only below the half, `s - 1`, and both give the
 original's result for every input.
+
+The same line in `sqrtPre359` is not equivalent and is not covered by this
+proof: its six Newton steps from `2^124`, with no decrement, need not reach
+`isqrt(estimate)`. Inside the domain they leave the root within `5e10` of it and
+the final step still converges, but the frozen `scaleUp` wraps a negative
+coefficient to an estimate below `1e74`, where the step's input is `9e27` above
+`sqrt(N)` and its quotient decides the root.
+`testImplementationSqrtPre359UnconvergedNewtonStep` pins it.
 
 ## Equivalent mutant: pow oracle `k b` guard boundary
 

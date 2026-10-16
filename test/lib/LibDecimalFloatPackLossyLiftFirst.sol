@@ -17,6 +17,18 @@ library LibDecimalFloatPackLossyLiftFirst {
     /// A zero valued float.
     Float private constant FLOAT_ZERO = Float.wrap(0);
 
+    /// `LibDecimalFloat.packLossy` verbatim at 4d2d1e8 plus the #332 block
+    /// from cb59101 (the library NatSpec above): an exponent above int32.max is
+    /// lifted before any shedding, then digits are shed to fit int224 and to
+    /// reach the int32 floor, taking the nearer int224 bound one exponent down
+    /// when the shed result fits ten times over.
+    /// @param signedCoefficient The signed coefficient of the floating point
+    /// representation.
+    /// @param exponent The exponent of the floating point representation.
+    /// @return float The packed representation of the signed coefficient and
+    /// exponent.
+    /// @return lossless True iff every digit shed was zero, so the packed value
+    /// equals the input.
     function packLossy(int256 signedCoefficient, int256 exponent) internal pure returns (Float float, bool lossless) {
         unchecked {
             int256 initialSignedCoefficient = signedCoefficient;

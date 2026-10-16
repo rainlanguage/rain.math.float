@@ -341,9 +341,9 @@ contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
     /// (0, 1e76) domain, returns a root where the live sqrt reverts
     /// `SqrtOutOfRange`.
     function testImplementationSqrtPre359CoefficientOutsideDomain() external {
-        (int256 c, int256 e) = LibDecimalFloatSqrtVariants.sqrtPre359(1e76, 0);
-        assertEq(c, 1e41);
-        assertEq(e, -3);
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatSqrtVariants.sqrtPre359(1e76, 0);
+        assertEq(rootCoefficient, 1e41);
+        assertEq(rootExponent, -3);
         vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, int256(1e76), int256(0)));
         this.liveSqrt(1e76, 0);
     }
@@ -372,16 +372,75 @@ contract LibDecimalFloatSqrtTest is SqrtCorrectlyRoundedTest {
     /// `SqrtOutOfRange` on both.
     function testImplementationSqrtPre359MulDivFastPath() external {
         int256 wrapped = -401255958304095716366485929147444023534941234139409265179255399566;
-        (int256 c, int256 e) = LibDecimalFloatSqrtVariants.sqrtPre359(0, 0);
-        assertEq(c, 166153499473114484112975882535043072000, "zero coefficient");
-        assertEq(e, -42, "zero exponent");
-        (c, e) = LibDecimalFloatSqrtVariants.sqrtPre359(wrapped, 0);
-        assertEq(c, 166153499473114484124004789078756993248, "wrapped coefficient");
-        assertEq(e, -42, "wrapped exponent");
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatSqrtVariants.sqrtPre359(0, 0);
+        assertEq(rootCoefficient, 166153499473114484112975882535043072000, "zero coefficient");
+        assertEq(rootExponent, -42, "zero exponent");
+        (rootCoefficient, rootExponent) = LibDecimalFloatSqrtVariants.sqrtPre359(wrapped, 0);
+        assertEq(rootCoefficient, 166153499473114484124004789078756993248, "wrapped coefficient");
+        assertEq(rootExponent, -42, "wrapped exponent");
         vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, int256(0), int256(0)));
         this.liveSqrt(0, 0);
         vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, wrapped, int256(0)));
         this.liveSqrt(wrapped, 0);
+    }
+
+    /// Two more inputs built like `wrapped`, c = w (5^38)^-1 mod 2^218 less
+    /// 2^218, so c 1e38 is 2^38 w mod 2^256 and the product is 2^38 w 1e46.
+    /// w = 1000000000000000014 keeps it under 2^256, on the fast path, with
+    /// the remainder below the quotient, so dividing by one more than the root
+    /// lowers the quotient and the Newton step's `>> 1` sees it.
+    /// w = 42124916667422874680 puts it in [2^256, 2^257), a high word of
+    /// exactly one, which the fast path must not take. Expected values are
+    /// what 26a3cf06's `sqrt` returns, run at that commit, and exact integer
+    /// arithmetic over its steps agrees; the live sqrt reverts
+    /// `SqrtOutOfRange` on both.
+    function testImplementationSqrtPre359MulDivRemainderAndHighWord() external {
+        int256 remainderBelowQuotient = -294876719587633358793292096981555943606982552460317047590137806818;
+        int256 highWordOne = -303690371813728008651360238244695277361141937041586500121514656648;
+        (int256 rootCoefficient, int256 rootExponent) =
+            LibDecimalFloatSqrtVariants.sqrtPre359(remainderBelowQuotient, 0);
+        assertEq(rootCoefficient, 171631694319707997873605728640185500188, "fast path coefficient");
+        assertEq(rootExponent, -42, "fast path exponent");
+        (rootCoefficient, rootExponent) = LibDecimalFloatSqrtVariants.sqrtPre359(highWordOne, 0);
+        assertEq(rootCoefficient, 351796936631849396371336358550782194832, "high word one coefficient");
+        assertEq(rootExponent, -42, "high word one exponent");
+        vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, remainderBelowQuotient, int256(0)));
+        this.liveSqrt(remainderBelowQuotient, 0);
+        vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, highWordOne, int256(0)));
+        this.liveSqrt(highWordOne, 0);
+    }
+
+    /// Inside the domain the six Newton steps from 2^124 leave the root within
+    /// 5e10 of sqrt(E), so the final step converges. Outside it they need not:
+    /// c = w (5^38)^-1 mod 2^218 less 2^218 for w = 76291375899727204793905 at
+    /// an odd exponent wraps to E = 2^38 w 1e39, under 1e74, and the step's
+    /// input is 9e27 above sqrt(c 1e5), so its quotient decides the root and
+    /// the frozen copy must divide by the root itself, as 26a3cf06 does.
+    /// Expected values are what 26a3cf06's `sqrt` returns, run at that commit,
+    /// and exact integer arithmetic over its steps agrees; the live sqrt
+    /// reverts `SqrtOutOfRange`.
+    function testImplementationSqrtPre359UnconvergedNewtonStep() external {
+        int256 unconverged = -129272975863732616963347882092827422965814937763200052572712718743;
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatSqrtVariants.sqrtPre359(unconverged, 1);
+        assertEq(rootCoefficient, 4579390104063524622832644762413018217486, "coefficient");
+        assertEq(rootExponent, -41, "exponent");
+        vm.expectRevert(abi.encodeWithSelector(SqrtOutOfRange.selector, unconverged, int256(1)));
+        this.liveSqrt(unconverged, 1);
+    }
+
+    /// The exponent wraps below `type(int256).min + 80`: a coefficient of 1
+    /// shifts by 75 and an even shifted exponent takes the parity offset of 6,
+    /// so `min + 79` wraps and `min + 80` does not. It also wraps with no
+    /// shift, on the offset alone, for 1e75 at `min + 3`. Expected values are
+    /// what 26a3cf06's `sqrt` returns, run at that commit.
+    function testImplementationSqrtPre359ExponentWrapBound() external pure {
+        (int256 rootCoefficient, int256 rootExponent) = LibDecimalFloatSqrtVariants.sqrtPre359(1, type(int256).min + 79);
+        assertEq(rootCoefficient, 31622776601683793319988935444327185337196, "below the bound coefficient");
+        assertEq(rootExponent, type(int256).max / 2, "below the bound exponent");
+        (rootCoefficient, rootExponent) = LibDecimalFloatSqrtVariants.sqrtPre359(1e75, type(int256).min + 3);
+        assertEq(rootCoefficient, 1e40, "no shift coefficient");
+        assertEq(rootExponent, type(int256).max / 2, "no shift exponent");
+        checkPre359(1, type(int256).min + 80);
     }
 
     /// The seed is furthest from the root at the ends of E's decade and at
