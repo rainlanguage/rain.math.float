@@ -3,20 +3,19 @@
 pragma solidity =0.8.25;
 
 import {Test, console2} from "forge-std-1.17.0/src/Test.sol";
-import {FormatParseGas} from "../../concrete/FormatParseGas.sol";
+import {FormatGas} from "../../concrete/FormatGas.sol";
 import {LibDecimalFloat, Float} from "../../../src/lib/LibDecimalFloat.sol";
 import {LibFormatDecimalFloat} from "../../../src/lib/format/LibFormatDecimalFloat.sol";
 
-/// Gas of `toDecimalString` and `parseDecimalFloat` against their copies from
-/// before #310's format and parse changes, measured the same way: the library
-/// call alone between two `gasleft()` reads. Every row asserts the same result
-/// bytes and no more gas. Run with `forge test --mc
-/// LibDecimalFloatFormatParseGasTest -vv`; each line is
-/// `GAS|op|case|before|after|delta`.
-contract LibDecimalFloatFormatParseGasTest is Test {
-    FormatParseGas internal immutable B = new FormatParseGas();
+/// Gas of `toDecimalString` against its plain-Solidity copy, measured the same
+/// way: the library call alone between two `gasleft()` reads. Every row
+/// asserts the same result bytes and no more gas. Run with `forge test --mc
+/// LibDecimalFloatFormatGasTest -vv`; each line is
+/// `GAS|op|case|solidity|assembly|delta`.
+contract LibDecimalFloatFormatGasTest is Test {
+    FormatGas internal immutable B = new FormatGas();
 
-    function row(string memory op, string memory label, uint256 baseGas, uint256 prGas) internal pure {
+    function row(string memory op, string memory label, uint256 solGas, uint256 asmGas) internal pure {
         console2.log(
             string.concat(
                 "GAS|",
@@ -24,24 +23,21 @@ contract LibDecimalFloatFormatParseGasTest is Test {
                 "|",
                 label,
                 "|",
-                vm.toString(baseGas),
+                vm.toString(solGas),
                 "|",
-                vm.toString(prGas),
+                vm.toString(asmGas),
                 "|",
                 // Gas amounts are far below int256.max.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                vm.toString(int256(prGas) - int256(baseGas))
+                vm.toString(int256(asmGas) - int256(solGas))
             )
         );
-        assertLe(prGas, baseGas, label);
+        assertLe(asmGas, solGas, label);
     }
 
     function fmt(string memory label, int256 c, int256 e, bool scientific) internal view {
         Float f = LibDecimalFloat.packLossless(c, e);
-        (uint256 g0, bytes32 h0) = B.formatPr321(f, scientific);
         (uint256 g1, bytes32 h1) = B.formatLive(f, scientific);
-        assertEq(h1, h0, label);
-        row(scientific ? "formatSci" : "format", label, g0, g1);
         // The same digit-buffer algorithm in plain Solidity, so the
         // assembly's own saving is measured apart from the algorithm's.
         (uint256 g2, bytes32 h2) = B.formatSol(f, scientific);
@@ -73,13 +69,6 @@ contract LibDecimalFloatFormatParseGasTest is Test {
         }
     }
 
-    function parse(string memory str) internal view {
-        (uint256 g0, bytes32 h0) = B.parsePr321(str);
-        (uint256 g1, bytes32 h1) = B.parseLive(str);
-        assertEq(h1, h0, str);
-        row("parse", str, g0, g1);
-    }
-
     function testFormatGas() external view {
         int256 amt18 = 1234567890123456789;
         int256 third = 3333333333333333333333333333333333333333333333333333333333333333333;
@@ -106,21 +95,5 @@ contract LibDecimalFloatFormatParseGasTest is Test {
         }
         fmt("1e2147483647", 1, type(int32).max - 76, true);
         fmt("int224.min e(int32.min)", type(int224).min, type(int32).min, true);
-    }
-
-    function testParseGas() external view {
-        parse("1");
-        parse("-1");
-        parse("1.5");
-        parse("1.50000");
-        parse("1.234567890123456789");
-        parse("0.000000000000000001");
-        parse("1234567890123456789012345");
-        parse("123.456000000000000000");
-        parse("1.5e10");
-        parse("-1.5e-10");
-        parse("1.000000000000000000000000000000");
-        parse("0.0");
-        parse("1.");
     }
 }
