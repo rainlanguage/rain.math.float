@@ -310,10 +310,13 @@ Rules for protocols built on the library. Each example is a test in
 
 1. **Round up at the fixed-decimal boundary yourself.** `toFixedDecimalLossy`
    only truncates. For an amount a user owes, add 1 when `lossless` is false.
-   `lossless` reports only that final conversion: any `mul`, `div` or `inv` can
-   drop a fraction smaller than one ulp with no signal, and so can the `add`
-   that applies a margin, so for an amount owed add a margin of at least 1e-66
-   of the result per `mul`, `div` or `inv`, plus 1e-66 for that `add`. Keep
+   `lossless` reports only that final conversion: every `mul`, `div`, `inv`,
+   `add` and `sub` can drop a fraction smaller than one ulp with no signal, and
+   so can the `add` that applies a margin. For an amount owed computed from
+   positive values by `mul`, `div`, `inv` and `add` only, add a margin of at
+   least 1e-66 of the result per operation, plus 1e-66 for that `add`. A `sub`,
+   or an `add` of opposite signs, can cancel and amplify earlier losses relative
+   to the result: margin each term on its safe side before combining them. Keep
    amounts as Floats through a calculation: converting to wei on every step
    reintroduces Balancer/Bunni-style amplification.
 2. **Toward zero applies per operation, not per expression.** A rounded divisor
