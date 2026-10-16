@@ -3,13 +3,102 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {stdError} from "forge-std-1.17.0/src/StdError.sol";
+import {LibDecimalFloat, Float} from "../../src/lib/LibDecimalFloat.sol";
+import {ExponentOverflow, ExponentUnderflow} from "../../src/error/ErrDecimalFloat.sol";
 import {PackArithmeticResultHalmosTest} from "./PackArithmeticResult.halmos.t.sol";
+
+/// Subjects for the sensitivity tests below: each breaks one component of
+/// what `checkPack` asserts and keeps the rest as the library has it, so the
+/// lemmas fail on it only through that component.
+///
+/// `pack` as the library has it, except at the definite range errors: a
+/// nonzero c at an exponent at most int32.min - 78 underflows and at least
+/// int32.max + 68 overflows, where `rangeError` answers instead.
+abstract contract PackWrongRangeError is PackArithmeticResultHalmosTest {
+    function pack(int256 c, int256 e) external pure override returns (Float) {
+        if (c != 0 && e <= FMIN - 78) return rangeError(true, c, e);
+        if (c != 0 && e >= FMAX + 68) return rangeError(false, c, e);
+        return LibDecimalFloat.packArithmeticResult(c, e);
+    }
+
+    function rangeError(bool underflow, int256 c, int256 e) internal pure virtual returns (Float);
+}
+
+/// A range error returns zero.
+contract PackNeverReverts is PackWrongRangeError {
+    function rangeError(bool, int256, int256) internal pure override returns (Float) {
+        return Float.wrap(0);
+    }
+}
+
+/// A range error reverts with a word past the error's two arguments.
+contract PackLongError is PackWrongRangeError {
+    function rangeError(bool underflow, int256 c, int256 e) internal pure override returns (Float) {
+        bytes memory data = abi.encodeWithSelector(
+            underflow ? ExponentUnderflow.selector : ExponentOverflow.selector, c, e, uint256(0)
+        );
+        assembly ("memory-safe") {
+            revert(add(data, 0x20), mload(data))
+        }
+    }
+}
+
+/// A range error reverts with the other error.
+contract PackSwappedSelector is PackWrongRangeError {
+    function rangeError(bool underflow, int256 c, int256 e) internal pure override returns (Float) {
+        if (underflow) revert ExponentOverflow(c, e);
+        revert ExponentUnderflow(c, e);
+    }
+}
+
+/// A range error reports the coefficient one too high.
+contract PackWrongErrorCoefficient is PackWrongRangeError {
+    function rangeError(bool underflow, int256 c, int256 e) internal pure override returns (Float) {
+        if (underflow) revert ExponentUnderflow(c + 1, e);
+        revert ExponentOverflow(c + 1, e);
+    }
+}
+
+/// A range error reports the exponent one too high.
+contract PackWrongErrorExponent is PackWrongRangeError {
+    function rangeError(bool underflow, int256 c, int256 e) internal pure override returns (Float) {
+        if (underflow) revert ExponentUnderflow(c, e + 1);
+        revert ExponentOverflow(c, e + 1);
+    }
+}
+
+/// `pack` reverts underflow for every input.
+contract PackAlwaysReverts is PackArithmeticResultHalmosTest {
+    function pack(int256 c, int256 e) external pure override returns (Float) {
+        revert ExponentUnderflow(c, e);
+    }
+}
+
+/// `pack` flips the low bit of the packed coefficient.
+contract PackFlippedBit is PackArithmeticResultHalmosTest {
+    function pack(int256 c, int256 e) external pure override returns (Float) {
+        return Float.wrap(bytes32(uint256(Float.unwrap(LibDecimalFloat.packArithmeticResult(c, e))) ^ 1));
+    }
+}
+
+/// `pack` returns a zero coefficient at exponent 1 for a zero c.
+contract PackZeroWithExponent is PackArithmeticResultHalmosTest {
+    function pack(int256 c, int256 e) external pure override returns (Float) {
+        if (c == 0) return Float.wrap(bytes32(uint256(1) << 224));
+        return LibDecimalFloat.packArithmeticResult(c, e);
+    }
+}
 
 /// Forge checks on the scaffolding of `PackArithmeticResult.halmos.t.sol`. A
 /// range or class split with a gap passes halmos with every job green, so
 /// this holds the splits to the header's tiling claim: Below, Low, Middle,
 /// High and Above tile the int256 exponents and the size classes tile the
-/// int256 coefficients (`vm.expectCall` counts the nested `pack`).
+/// int256 coefficients (`vm.expectCall` counts the nested `pack`). A
+/// `checkPack` that asserts less than the header says passes too, the library
+/// being correct, so the sensitivity tests run the lemmas on the subjects
+/// above and expect the assertion panic: a `checkPack` that drops a conjunct
+/// passes its subject and fails here.
 contract PackArithmeticResultCoverTest is Test, PackArithmeticResultHalmosTest {
     /// The bits Low and High split their exponent index from, and every
     /// lemma its class index.
@@ -91,5 +180,44 @@ contract PackArithmeticResultCoverTest is Test, PackArithmeticResultHalmosTest {
                 }
             }
         }
+    }
+
+    /// The revert branch of `checkPack` fails on each conjunct alone: a range
+    /// error that returns, a longer revert, the other error's selector, and
+    /// each reported argument off by one; through Below for an int224 and
+    /// for a 68 digit coefficient, and through Above.
+    function testPackLemmasFailOnEachBrokenRevertConjunct() external {
+        expectPackRevertFails(new PackNeverReverts());
+        expectPackRevertFails(new PackLongError());
+        expectPackRevertFails(new PackSwappedSelector());
+        expectPackRevertFails(new PackWrongErrorCoefficient());
+        expectPackRevertFails(new PackWrongErrorExponent());
+    }
+
+    function expectPackRevertFails(PackArithmeticResultHalmosTest subject) internal {
+        vm.expectRevert(stdError.assertionError);
+        subject.check_packBelow(1, FMIN - 78, 0);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_packBelow(1e68, FMIN - 78, 2);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_packAbove(-1, FMAX + 68, 0);
+    }
+
+    /// Its success branch fails on a revert alone, on the packed coefficient
+    /// off by one alone and on a zero at a nonzero exponent alone; through
+    /// Middle at exponent 0, Low at int32.min and High at int32.max.
+    function testPackLemmasFailOnEachBrokenResultConjunct() external {
+        expectPackResultFails(new PackAlwaysReverts(), 1);
+        expectPackResultFails(new PackFlippedBit(), 1);
+        expectPackResultFails(new PackZeroWithExponent(), 0);
+    }
+
+    function expectPackResultFails(PackArithmeticResultHalmosTest subject, int256 c) internal {
+        vm.expectRevert(stdError.assertionError);
+        subject.check_packMiddle(c, 0, 0);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_packLow(c, 0, 0);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_packHigh(c, 10, 0);
     }
 }

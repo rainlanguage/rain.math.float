@@ -3,10 +3,113 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {stdError} from "forge-std-1.17.0/src/StdError.sol";
 import {Float} from "../../src/lib/LibDecimalFloat.sol";
 import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {AgreeToleranceNegative, AgreeNoPositiveTolerance} from "../../src/error/ErrDecimalFloat.sol";
 import {LibHalmosExact} from "./LibHalmosExact.sol";
 import {AgreeHalmosTest} from "./Agree.halmos.t.sol";
+
+/// Subjects for the sensitivity tests below: each breaks one component of
+/// what a lemma asserts and keeps the rest as the library has it, so the
+/// lemma fails on it only through that component.
+///
+/// `agree` returns the revert data's shape instead of reverting.
+contract AgreeReturns is AgreeHalmosTest {
+    function agree(Float absolute, Float proportional, Float, Float) external pure override returns (bool) {
+        bytes memory data = abi.encodeWithSelector(AgreeToleranceNegative.selector, absolute, proportional);
+        assembly ("memory-safe") {
+            return(add(data, 0x20), mload(data))
+        }
+    }
+}
+
+/// `agree` reverts with a word past the error's two arguments.
+contract AgreeLongRevert is AgreeHalmosTest {
+    function agree(Float absolute, Float proportional, Float, Float) external pure override returns (bool) {
+        bytes memory data = abi.encodeWithSelector(AgreeToleranceNegative.selector, absolute, proportional, uint256(0));
+        assembly ("memory-safe") {
+            revert(add(data, 0x20), mload(data))
+        }
+    }
+}
+
+/// `agree` reverts with the other class's error.
+contract AgreeSwappedSelector is AgreeHalmosTest {
+    function agree(Float absolute, Float proportional, Float, Float) external pure override returns (bool) {
+        if (coefficient(Float.unwrap(absolute)) < 0 || coefficient(Float.unwrap(proportional)) < 0) {
+            revert AgreeNoPositiveTolerance(absolute, proportional);
+        }
+        revert AgreeToleranceNegative(absolute, proportional);
+    }
+}
+
+/// `agree` reports the proportional tolerance in the absolute's place.
+contract AgreeWrongAbsolute is AgreeHalmosTest {
+    function agree(Float, Float proportional, Float, Float) external pure override returns (bool) {
+        revert AgreeToleranceNegative(proportional, proportional);
+    }
+}
+
+/// `agree` reports the absolute tolerance in the proportional's place.
+contract AgreeWrongProportional is AgreeHalmosTest {
+    function agree(Float absolute, Float, Float, Float) external pure override returns (bool) {
+        revert AgreeToleranceNegative(absolute, absolute);
+    }
+}
+
+/// `Impl.sub` of a zero subtrahend, `Impl.add` on a positive first operand and
+/// `maximize` of a negative return the exponent one too high.
+contract AgreeSkewedExponent is AgreeHalmosTest {
+    function implSub(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.sub(ca, ea, cb, eb);
+        return (c, cb == 0 ? e + 1 : e);
+    }
+
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
+        return (c, ca > 0 ? e + 1 : e);
+    }
+
+    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
+        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
+        return (m, c < 0 ? me + 1 : me, s);
+    }
+}
+
+/// The same three return the coefficient one too high.
+contract AgreeSkewedCoefficient is AgreeHalmosTest {
+    function implSub(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.sub(ca, ea, cb, eb);
+        return (cb == 0 ? c + 1 : c, e);
+    }
+
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
+        return (ca > 0 ? c + 1 : c, e);
+    }
+
+    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
+        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
+        return (c < 0 ? m + 1 : m, me, s);
+    }
+}
+
+/// `maximize` of a negative returns the shortfall one too high.
+contract AgreeSkewedShortfall is AgreeHalmosTest {
+    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
+        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
+        return (m, me, c < 0 ? s + 1 : s);
+    }
+}
+
+/// `Impl.add` reverts on a positive first operand.
+contract AgreeAddReverts is AgreeHalmosTest {
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        if (ca > 0) revert();
+        return LibDecimalFloatImplementation.add(ca, ea, cb, eb);
+    }
+}
 
 /// Forge checks on the scaffolding of `Agree.halmos.t.sol`. A lemma that
 /// returns early on every input, or a case split with a gap, passes halmos
@@ -15,8 +118,17 @@ import {AgreeHalmosTest} from "./Agree.halmos.t.sol";
 /// slice and each SYMNEAR lemma proves exactly the cases its name says,
 /// SYMFAR starts where SYMNEAR stops, and every lemma reaches the call it
 /// checks at both ends of its domain and not past them (`vm.expectCall`
-/// counts the nested call).
+/// counts the nested call). A lemma that asserts less than the header says
+/// passes too, the library being correct, so the sensitivity tests run each
+/// lemma on the subjects above and expect the assertion panic: a lemma that
+/// drops a conjunct passes its subject and fails here.
 contract AgreeHalmosCoverTest is Test, AgreeHalmosTest {
+    /// Tolerances for TOLERANCE's sensitivity: -1 and 5 as Floats at
+    /// exponent 0, and the extremes 1 and 2 the lemma is given.
+    bytes32 internal constant MINUS_ONE = bytes32(uint256(type(uint224).max));
+    bytes32 internal constant FIVE = bytes32(uint256(5));
+    bytes32 internal constant LOWEST = bytes32(uint256(1));
+    bytes32 internal constant HIGHEST = bytes32(uint256(2));
     /// `maximize` of 1 at 0: 10^76, maximized by MAX.
     int256 internal constant A = 1e76;
     /// `symNear`'s yb for B = 10 yb = A.
@@ -289,6 +401,109 @@ contract AgreeHalmosCoverTest is Test, AgreeHalmosTest {
     function callNear(uint256 d, int256 a, int256 b, int256 eB) internal {
         (bool ok,) = address(this).call(abi.encodeWithSelector(nearSelector(d), a, b / 10, eB));
         assertTrue(ok, vm.toString(d));
+    }
+
+    /// TOLERANCE fails on each of its five conjuncts alone: `agree`
+    /// returning, a longer revert, the other class's selector in both
+    /// classes, and each argument reported wrong.
+    function testToleranceLemmaFailsOnEachBrokenConjunct() external {
+        expectToleranceFails(new AgreeReturns(), MINUS_ONE, FIVE);
+        expectToleranceFails(new AgreeLongRevert(), MINUS_ONE, FIVE);
+        expectToleranceFails(new AgreeSwappedSelector(), MINUS_ONE, FIVE);
+        expectToleranceFails(new AgreeSwappedSelector(), bytes32(0), bytes32(0));
+        expectToleranceFails(new AgreeWrongAbsolute(), FIVE, MINUS_ONE);
+        expectToleranceFails(new AgreeWrongProportional(), MINUS_ONE, FIVE);
+    }
+
+    function expectToleranceFails(AgreeHalmosTest subject, bytes32 a, bytes32 p) internal {
+        vm.expectRevert(stdError.assertionError);
+        subject.check_agreeToleranceErrors(a, p, LOWEST, HIGHEST);
+    }
+
+    /// ZERO fails on a coefficient off by one alone and on an exponent off by
+    /// one alone, for a positive and a negative extreme.
+    function testZeroLemmaFailsOnEachBrokenConjunct() external {
+        expectZeroFails(new AgreeSkewedCoefficient());
+        expectZeroFails(new AgreeSkewedExponent());
+    }
+
+    function expectZeroFails(AgreeHalmosTest subject) internal {
+        vm.expectRevert(stdError.assertionError);
+        subject.check_spreadZeroEitherOrder(1, 3, -7);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_spreadZeroEitherOrder(type(int224).min, 3, -7);
+    }
+
+    /// NEG fails on the negation's coefficient, exponent or shortfall off by
+    /// one alone, in the first slice at the first digit count and in the
+    /// last slice at the last.
+    function testNegLemmaFailsOnEachBrokenConjunct() external {
+        expectNegFails(new AgreeSkewedCoefficient());
+        expectNegFails(new AgreeSkewedExponent());
+        expectNegFails(new AgreeSkewedShortfall());
+    }
+
+    function expectNegFails(AgreeHalmosTest subject) internal {
+        vm.expectRevert(stdError.assertionError);
+        subject.check_maximizeNegates0(1, 0, 0);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_maximizeNegates51(2 ** 223, 0, NEG_DIGITS - 1);
+    }
+
+    /// SYMNEAR at its first and last gap and SYMFAR fail on the first add's
+    /// coefficient off by one alone, on its exponent off by one alone, and on
+    /// either add reverting: on positive operands the first add has the
+    /// positive first operand, on negative ones the second does.
+    function testSymLemmasFailOnEachBrokenConjunct() external {
+        expectSymFails(new AgreeSkewedCoefficient(), HIGH_IN);
+        expectSymFails(new AgreeSkewedExponent(), HIGH_IN);
+        expectSymFails(new AgreeAddReverts(), HIGH_IN);
+        expectSymFails(new AgreeAddReverts(), -HIGH_IN);
+    }
+
+    function expectSymFails(AgreeHalmosTest subject, int256 x) internal {
+        vm.expectRevert(stdError.assertionError);
+        subject.check_spreadSymNear00(x, x / 10, 0);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_spreadSymNear76(x, x / 10, 0);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_spreadSymFar(x, x, 0, NEAR_GAPS);
+    }
+
+    /// Every b `symNear` hands `sumHints`, at every gap, is in HINTS' domain
+    /// for `negDivHint`, and the lemma runs at the domain's ends. int256.min
+    /// alone is out: there the predicate fails from gap 1, so the lemma must
+    /// return before it.
+    function testNegDivHintDomainCoversSymNear() external view {
+        int256[4] memory xs = edges();
+        int256 t10 = int256(LibHalmosExact.T10);
+        for (uint256 d = 0; d < NEAR_GAPS; d++) {
+            for (uint256 i = 0; i < xs.length; i++) {
+                assertTrue(negDivHintDomain(xs[i], d));
+            }
+            assertTrue(negDivHintDomain(10 * t10, d));
+            assertTrue(negDivHintDomain(-10 * t10, d));
+            assertTrue(negDivHintDomain(type(int256).min + 1, d));
+            assertTrue(negDivHintDomain(0, d));
+        }
+        assertFalse(negDivHintDomain(1, NEAR_GAPS));
+        assertFalse(negDivHintDomain(type(int256).min, 0));
+        assertFalse(negDivHint(type(int256).min, 10));
+        this.check_negDivHintHolds(HIGH_IN, 0);
+        this.check_negDivHintHolds(-HIGH_IN, NEAR_GAPS - 1);
+        this.check_negDivHintHolds(type(int256).min + 1, NEAR_GAPS - 1);
+        this.check_negDivHintHolds(type(int256).min, 1);
+        this.check_negDivHintHolds(type(int256).min, NEAR_GAPS - 1);
+    }
+
+    /// The two unfiltered HINTS lemmas run at the int256 extremes, zero and
+    /// both units.
+    function testUnfilteredHintLemmasRunAtTheExtremes() external view {
+        int256[5] memory ms = [type(int256).min, int256(-1), int256(0), int256(1), type(int256).max];
+        for (uint256 i = 0; i < ms.length; i++) {
+            this.check_divHintsHold(ms[i]);
+            this.check_overflowHintHolds(ms[i]);
+        }
     }
 
     function nearSelector(uint256 d) internal pure returns (bytes4) {

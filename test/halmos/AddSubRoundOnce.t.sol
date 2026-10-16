@@ -3,13 +3,114 @@
 pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
+import {stdError} from "forge-std-1.17.0/src/StdError.sol";
+import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {AddSubRoundOnceHalmosTest} from "./AddSubRoundOnce.halmos.t.sol";
+
+/// Subjects for the sensitivity tests below: each breaks one component of
+/// what a lemma asserts and keeps the rest as the library has it, so the
+/// lemma fails on it only through that component.
+///
+/// `Impl.add` returns the exponent one too high. At gap 0 a carried sum's
+/// exponent then misses NEAR's first assertion alone; at gap 76 no sum
+/// carries, and NEAR's `mc * u` overflows before any assertion.
+contract AddSubSkewedExponentUp is AddSubRoundOnceHalmosTest {
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
+        return (c, e + 1);
+    }
+}
+
+/// `Impl.add` and `maximize` return the exponent one too low.
+contract AddSubSkewedExponent is AddSubRoundOnceHalmosTest {
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
+        return (c, e - 1);
+    }
+
+    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
+        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
+        return (m, me - 1, s);
+    }
+}
+
+/// `Impl.add` and `maximize` return the magnitude one too high.
+contract AddSubSkewedUp is AddSubRoundOnceHalmosTest {
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
+        return (c < 0 ? c - 1 : c + 1, e);
+    }
+
+    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
+        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
+        return (m < 0 ? m - 1 : m + 1, me, s);
+    }
+}
+
+/// `Impl.add` returns the magnitude one too low.
+contract AddSubSkewedDown is AddSubRoundOnceHalmosTest {
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
+        return (c < 0 ? c + 1 : c - 1, e);
+    }
+}
+
+/// `Impl.add` returns the opposite sign.
+contract AddSubFlippedSign is AddSubRoundOnceHalmosTest {
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
+        return (-c, e);
+    }
+}
+
+/// `maximize` returns the shortfall one too high.
+contract AddSubSkewedShortfall is AddSubRoundOnceHalmosTest {
+    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
+        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
+        return (m, me, s + 1);
+    }
+}
+
+/// `maximize` stops one shift short: the product still exact and the
+/// exponent still in range, the magnitude at most T10.
+contract AddSubUnderShifted is AddSubRoundOnceHalmosTest {
+    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
+        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
+        return (m / 10, me + 1, s);
+    }
+}
+
+/// `Impl.add` and `maximize` revert.
+contract AddSubReverts is AddSubRoundOnceHalmosTest {
+    function implAdd(int256, int256, int256, int256) external pure override returns (int256, int256) {
+        revert();
+    }
+
+    function maximize(int256, int256) external pure override returns (int256, int256, int256) {
+        revert();
+    }
+}
+
+/// `Impl.add` returns a third word.
+contract AddSubLongReturn is AddSubRoundOnceHalmosTest {
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
+        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
+        bytes memory data = abi.encode(c, e, uint256(0));
+        assembly ("memory-safe") {
+            return(add(data, 0x20), mload(data))
+        }
+    }
+}
 
 /// Forge checks on the scaffolding of `AddSubRoundOnce.halmos.t.sol`. A lemma
 /// that returns early on more inputs than its header says passes halmos with
 /// every job green, so these hold MAX, IDEM, NEAR and FAR to their domains:
 /// each reaches the call it checks at both ends of every range it is stated
-/// over and not one past them (`vm.expectCall` counts the nested call).
+/// over and not one past them (`vm.expectCall` counts the nested call). A
+/// lemma that asserts less than the header says passes too, the library being
+/// correct, so the sensitivity tests run each lemma on the subjects above and
+/// expect the assertion panic: a lemma that drops a conjunct passes its
+/// subject and fails here.
 contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
     /// The largest maximized magnitude, the last multiple of 10^8 at most
     /// 10 T10, and the smallest, the first above T10.
@@ -177,5 +278,163 @@ contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
         vm.expectCall(address(this), abi.encodeCall(this.implAdd, (b, eB, a, eA)), count);
         this.check_addFar(a, b, eB, d, false);
         this.check_addFar(a, b, eB, d, true);
+    }
+
+    /// ZERO fails on the returned magnitude off by one alone, on its sign
+    /// alone, on its exponent off by one alone and on `Impl.add` reverting,
+    /// with the zero in either place.
+    function testZeroOperandLemmaFailsOnEachBrokenConjunct() external {
+        expectZeroFails(new AddSubSkewedUp());
+        expectZeroFails(new AddSubFlippedSign());
+        expectZeroFails(new AddSubSkewedExponent());
+        expectZeroFails(new AddSubReverts());
+    }
+
+    function expectZeroFails(AddSubRoundOnceHalmosTest subject) internal {
+        vm.expectRevert(stdError.assertionError);
+        subject.check_addZeroOperand(5, 3, -7, true);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_addZeroOperand(-5, 3, -7, false);
+    }
+
+    /// MINUS fails on `Impl.add` reverting alone, on it returning a third
+    /// word alone and on its magnitude off by one alone.
+    function testMinusLemmaFailsOnEachBrokenConjunct() external {
+        expectMinusFails(new AddSubReverts());
+        expectMinusFails(new AddSubLongReturn());
+        expectMinusFails(new AddSubSkewedUp());
+    }
+
+    function expectMinusFails(AddSubRoundOnceHalmosTest subject) internal {
+        vm.expectRevert(stdError.assertionError);
+        subject.check_subIsAddNegated(-3, 5, 0, 0, 0, 0);
+    }
+
+    /// MAX fails on the shortfall off by one alone, on `maximize` reverting,
+    /// on the magnitude off by one alone, on the exponent off by one alone
+    /// and on a shift one digit short, at the first and the last digit
+    /// count.
+    function testMaximizeFloatLemmaFailsOnEachBrokenConjunct() external {
+        expectMaxFails(new AddSubSkewedShortfall());
+        expectMaxFails(new AddSubReverts());
+        expectMaxFails(new AddSubSkewedUp());
+        expectMaxFails(new AddSubSkewedExponent());
+        expectMaxFails(new AddSubUnderShifted());
+    }
+
+    function expectMaxFails(AddSubRoundOnceHalmosTest subject) internal {
+        vm.expectRevert(stdError.assertionError);
+        subject.check_maximizeFloat(1, 0, 0);
+        vm.expectRevert(stdError.assertionError);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        subject.check_maximizeFloat(-int256(TWO_223), 0, 67);
+    }
+
+    /// IDEM fails on each returned part off by one alone and on `maximize`
+    /// reverting, at both ends of the magnitude range.
+    function testIdempotentLemmaFailsOnEachBrokenConjunct() external {
+        expectIdemFails(new AddSubSkewedUp());
+        expectIdemFails(new AddSubSkewedExponent());
+        expectIdemFails(new AddSubSkewedShortfall());
+        expectIdemFails(new AddSubReverts());
+    }
+
+    function expectIdemFails(AddSubRoundOnceHalmosTest subject) internal {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        int256 t10 = int256(T10);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_maximizeIdempotent(t10 + 1, 0);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_maximizeIdempotent(-10 * t10, 0);
+    }
+
+    /// NEAR at its first and last gap fails on the result's magnitude one
+    /// too high alone, one too low alone, on its sign alone, on its exponent
+    /// off by one alone and on `Impl.add` reverting, in both argument orders.
+    /// The last conjunct, exact or at least 2^223 / 10 in magnitude, has no
+    /// subject: a result small enough to fail it fails the bounds first.
+    function testNearLemmaFailsOnEachBrokenConjunct() external {
+        expectNearFails(new AddSubSkewedUp());
+        expectNearFails(new AddSubSkewedDown());
+        expectNearFails(new AddSubFlippedSign());
+        expectNearFails(new AddSubSkewedExponent());
+        expectNearFails(new AddSubReverts());
+    }
+
+    function expectNearFails(AddSubRoundOnceHalmosTest subject) internal {
+        uint256[2] memory ds = [uint256(0), FIRST_FAR_GAP - 1];
+        for (uint256 g = 0; g < ds.length; g++) {
+            vm.expectRevert(stdError.assertionError);
+            subject.check_addNear(HIGH_IN, HIGH_IN / 10, 0, ds[g], false);
+            vm.expectRevert(stdError.assertionError);
+            subject.check_addNear(HIGH_IN, HIGH_IN / 10, 0, ds[g], true);
+        }
+    }
+
+    /// NEAR's exponent assertion alone: HIGH_IN + HIGH_IN carries, so its
+    /// exponent one too high is two past the gap with the bounds intact.
+    function testNearLemmaFailsOnACarriedExponentOneTooHigh() external {
+        AddSubRoundOnceHalmosTest subject = new AddSubSkewedExponentUp();
+        vm.expectRevert(stdError.assertionError);
+        subject.check_addNear(HIGH_IN, HIGH_IN / 10, 0, 0, false);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_addNear(HIGH_IN, HIGH_IN / 10, 0, 0, true);
+    }
+
+    /// NEAR's zero assertion alone: a cancelling sum's result one off zero in
+    /// either direction.
+    function testNearLemmaFailsOnANonzeroCancellingSum() external {
+        expectCancelFails(new AddSubSkewedUp());
+        expectCancelFails(new AddSubSkewedDown());
+    }
+
+    function expectCancelFails(AddSubRoundOnceHalmosTest subject) internal {
+        vm.expectRevert(stdError.assertionError);
+        subject.check_addNear(HIGH_IN, -HIGH_IN / 10, 0, 0, false);
+        vm.expectRevert(stdError.assertionError);
+        subject.check_addNear(HIGH_IN, -HIGH_IN / 10, 0, 0, true);
+    }
+
+    /// MINUS takes exactly one digit count pair of the 7 bits each: with the
+    /// other index right, every ja in [0, 127] and every jb in [0, 127] runs
+    /// `Impl.sub` and `Impl.add` on the pair once in all; at a unit, zero and
+    /// the largest magnitudes of each operand, both signs.
+    function testMinusTakesEveryDigitCountPairOnce() external {
+        expectMinusOnce(1, -1, 0, 0);
+        expectMinusOnce(-1, 1, 0, 0);
+        expectMinusOnce(0, 0, 77, 77);
+        expectMinusOnce(type(int256).max, type(int224).min, 76, 67);
+        expectMinusOnce(type(int256).min, type(int224).max, 76, 67);
+        expectMinusOnce(0, type(int224).min, 77, 67);
+        expectMinusOnce(type(int256).max, 0, 76, 77);
+    }
+
+    function expectMinusOnce(int256 ca, int224 cb, uint256 ja, uint256 jb) internal {
+        vm.expectCall(address(this), abi.encodeCall(this.implSub, (ca, int256(3), int256(cb), int256(-7))), 2);
+        vm.expectCall(address(this), abi.encodeCall(this.implAdd, (ca, int256(3), -int256(cb), int256(-7))), 2);
+        for (uint256 j = 0; j < 2 ** CASE_BITS; j++) {
+            this.check_subIsAddNegated(cb, ca, 3, -7, j, jb);
+            this.check_subIsAddNegated(cb, ca, 3, -7, ja, j);
+        }
+    }
+
+    /// FAR fails on the result's exponent off by one alone, on its sign
+    /// alone, on its magnitude off by one alone and on `Impl.add` reverting,
+    /// in both argument orders, for operands of equal and of opposite sign.
+    function testFarLemmaFailsOnEachBrokenConjunct() external {
+        expectFarFails(new AddSubSkewedExponent());
+        expectFarFails(new AddSubFlippedSign());
+        expectFarFails(new AddSubSkewedUp());
+        expectFarFails(new AddSubReverts());
+    }
+
+    function expectFarFails(AddSubRoundOnceHalmosTest subject) internal {
+        int256[2] memory bs = [HIGH_IN, -HIGH_IN];
+        for (uint256 i = 0; i < bs.length; i++) {
+            vm.expectRevert(stdError.assertionError);
+            subject.check_addFar(HIGH_IN, bs[i], 0, FIRST_FAR_GAP, false);
+            vm.expectRevert(stdError.assertionError);
+            subject.check_addFar(HIGH_IN, bs[i], 0, FIRST_FAR_GAP, true);
+        }
     }
 }

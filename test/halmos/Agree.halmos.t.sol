@@ -41,8 +41,9 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// in one of them. SYMNEAR is one slice per gap, NEAR_GAPS = 77 slices
 /// covering every d in [0, 76]; SYMFAR starts at NEAR_GAPS (`farGap`).
 /// `Agree.t.sol` checks the slices tile, the filters below accept every
-/// maximized input, and each lemma reaches the call it checks at both ends
-/// of its domain.
+/// maximized input, each lemma reaches the call it checks at both ends of
+/// its domain, and each conjunct a lemma asserts fails on a subject that
+/// breaks it alone.
 ///
 /// The lemmas return early when a hint filter is false. HINTS here proves
 /// `divHints`, `negDivHint` and `overflowHint` true for every input they are
@@ -64,23 +65,28 @@ contract AgreeHalmosTest {
     uint256 internal constant NEG_DIGITS = 68;
     uint256 internal constant NEG_SLICE = 17;
 
-    function agree(Float absolute, Float proportional, Float lowest, Float highest) external pure returns (bool) {
+    function agree(Float absolute, Float proportional, Float lowest, Float highest)
+        external
+        pure
+        virtual
+        returns (bool)
+    {
         return LibDecimalFloat.agree(absolute, proportional, lowest, highest);
     }
 
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure returns (int256, int256) {
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure virtual returns (int256, int256) {
         return LibDecimalFloatImplementation.add(ca, ea, cb, eb);
     }
 
-    function implSub(int256 ca, int256 ea, int256 cb, int256 eb) external pure returns (int256, int256) {
+    function implSub(int256 ca, int256 ea, int256 cb, int256 eb) external pure virtual returns (int256, int256) {
         return LibDecimalFloatImplementation.sub(ca, ea, cb, eb);
     }
 
-    function implMinus(int256 c, int256 e) external pure returns (int256, int256) {
+    function implMinus(int256 c, int256 e) external pure virtual returns (int256, int256) {
         return LibDecimalFloatImplementation.minus(c, e);
     }
 
-    function maximize(int256 c, int256 e) external pure returns (int256, int256, int256) {
+    function maximize(int256 c, int256 e) external pure virtual returns (int256, int256, int256) {
         return LibDecimalFloatImplementation.maximize(c, e);
     }
 
@@ -171,11 +177,17 @@ contract AgreeHalmosTest {
         assert(divHints(m));
     }
 
-    /// y is any int256 but int256.min and s = 10^d for d in [0, NEAR_GAPS),
-    /// one d per path; `symNear` gives it B = 10 yb with |yb| <= T10.
+    /// The (y, d) `check_negDivHintHolds` proves `negDivHint(y, 10^d)` for: y
+    /// any int256 but int256.min and d in [0, NEAR_GAPS). `symNear` gives it
+    /// B = 10 yb with |yb| <= T10 at every such d.
+    function negDivHintDomain(int256 y, uint256 d) internal pure returns (bool) {
+        return d < NEAR_GAPS && y != type(int256).min;
+    }
+
+    /// One d per path.
     function check_negDivHintHolds(int256 y, uint256 dBits) external pure {
         uint256 d = LibHalmosExact.concrete(dBits, 7);
-        if (d >= NEAR_GAPS || y == type(int256).min) return;
+        if (!negDivHintDomain(y, d)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         assert(negDivHint(y, int256(10 ** d)));
     }

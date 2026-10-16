@@ -41,7 +41,8 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// `LibHalmosExact.halmos.t.sol` proves those filters true for every input
 /// they are given, so the early returns exclude nothing.
 /// `AddSubRoundOnce.t.sol` checks MAX, IDEM, NEAR and FAR reach the call they
-/// check at both ends of their domains.
+/// check at both ends of their domains, and that each conjunct a lemma
+/// asserts fails on a subject that breaks it alone.
 ///
 /// Composition: by MAX and IDEM, NEAR/FAR apply to S. They put c 10^e at or
 /// below |S| and S below the next multiple of 10^e. A grid member above
@@ -60,15 +61,15 @@ contract AddSubRoundOnceHalmosTest {
     int256 internal constant FMIN = type(int32).min;
     int256 internal constant FMAX = type(int32).max;
 
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure returns (int256, int256) {
+    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure virtual returns (int256, int256) {
         return LibDecimalFloatImplementation.add(ca, ea, cb, eb);
     }
 
-    function implSub(int256 ca, int256 ea, int256 cb, int256 eb) external pure returns (int256, int256) {
+    function implSub(int256 ca, int256 ea, int256 cb, int256 eb) external pure virtual returns (int256, int256) {
         return LibDecimalFloatImplementation.sub(ca, ea, cb, eb);
     }
 
-    function maximize(int256 c, int256 e) external pure returns (int256, int256, int256) {
+    function maximize(int256 c, int256 e) external pure virtual returns (int256, int256, int256) {
         return LibDecimalFloatImplementation.maximize(c, e);
     }
 

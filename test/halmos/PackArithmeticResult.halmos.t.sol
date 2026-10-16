@@ -14,13 +14,14 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// `ExponentOverflow(c, e)` when it is no Float. Stated for every int256 c and
 /// every int256 e: Below, Low, Middle, High and Above tile the int256
 /// exponents, and each splits c by size class (`checkPackClass`), one per
-/// path; `PackArithmeticResult.t.sol` checks both tilings at their ends. CI
-/// proves every case but `check_packLow`'s 99-780 (#511).
+/// path; `PackArithmeticResult.t.sol` checks both tilings at their ends and
+/// that each conjunct `checkPack` asserts fails on a subject that breaks it
+/// alone. CI proves every case but `check_packLow`'s 99-780 (#511).
 contract PackArithmeticResultHalmosTest {
     int256 internal constant FMIN = type(int32).min;
     int256 internal constant FMAX = type(int32).max;
 
-    function pack(int256 c, int256 e) external pure returns (Float) {
+    function pack(int256 c, int256 e) external pure virtual returns (Float) {
         return LibDecimalFloat.packArithmeticResult(c, e);
     }
 
