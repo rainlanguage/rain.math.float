@@ -623,3 +623,22 @@ above `type(int256).max / 10`. A spread two or more exponents below the limit
 rescales the limit by at least `100`, past int256 (or past `compareRescale`'s
 `10^76` reach), and the overflow branch ranks the limit above the spread, so
 `lte` is true there and the fallback never sees such a spread.
+
+## Equivalent mutants: `log10Ratio` relative scaling `1e2` and `10` steps at `<`
+
+`src/lib/implementation/LibDecimalFloatImplementation.sol`, `log10Ratio`. Moving
+the `1e2` step's `difference <= int256.max / 1e2`, or the `10` step's
+`difference <= int256.max / 10`, to `<` changes the result only for a difference
+reaching that step at exactly its bound. The earlier steps scale |a - b| by
+10^k, k a sum of 64, 32, 16, 8, 4 (and 2 before the `10` step), so any k above 0
+gives a multiple of 10. floor(int256.max / 1e2) ends in 9 and floor(int256.max
+/ 10) in 6, so k is 0 and |a - b| is the bound itself, about 5.79e74 or 5.79e75.
+z = floor(|a - b| 1e50 / (a + b)) is then at least 4.9e47 for every a + b within
+a word, past `LOG10_RATIO_Z_MAX` (about 7.5e46), and a + b past a word wraps, so
+both revert `Log10RatioOutOfRange` before the cascade.
+`testLog10RatioLastScalingBoundsUnreachable` in
+`LibDecimalFloatImplementation.log10RatioFloors.t.sol` pins both differences at
+the largest a + b. The same proof covers that test file's reference,
+`expectedRatio`, with its `difference <= int256.max / 10` loop bound at `<`: the
+reference only runs on inputs `log10Ratio` accepts, and no accepted difference
+lands on a bound.

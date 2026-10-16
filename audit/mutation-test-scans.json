@@ -1559,5 +1559,28 @@
       "testsAfter": 38,
       "filed": []
     }
+  },
+  {
+    "timestamp": "2026-10-16T17:19:37Z",
+    "commit": "635aa0ac904f5d2756bb6924be31007b75d622aa",
+    "testsAfterCommit": "a3f758a77b40b6e61e0abdd4c67d560b9dc47fd6",
+    "publishedTag": "sol-v0.3.10",
+    "commitsAheadOfTag": 2,
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "scope": "log10Ratio (rain-marvin review 5550797763 on #725): every comparison, guard, cascade step, 1e25/2^50 split term, series divisor and final multiply of LibDecimalFloatImplementation.log10Ratio, 40 mutants then 4 on re-survey; suite: the log10/pow10 implementation suites and LibDecimalFloat log10/pow/pow10/consumerHazards/precision at --fuzz-seed 0. R01-R04 were probed only with the new tests.",
+    "summary": {
+      "behaviours": 44,
+      "behavioursBefore": 40,
+      "killedBefore": 31,
+      "killedAfter": 42,
+      "equivalent": 2,
+      "survived": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 239,
+      "testsAfter": 244,
+      "filed": []
+    }
   }
 ]
