@@ -646,6 +646,20 @@ fn check_pack(c: &IBig, e: &IBig) -> Result<(), TestCaseError> {
         c,
         e
     );
+    // The signed overload is the same predicate of the coefficient's
+    // magnitude, int256.min as 2^255 included.
+    let is_past_signed = evm::harness(H::isPastEveryFloat_1Call {
+        signedCoefficient: sc,
+        exponent: se,
+    })
+    .unwrap();
+    prop_assert_eq!(
+        is_past_signed,
+        is_past,
+        "signed isPastEveryFloat({}, {})",
+        c,
+        e
+    );
     match (lossy, &want) {
         (Ok(r), Ok((w, l))) => {
             let s = d(&Dec::from_bytes(r._0));
@@ -2389,6 +2403,16 @@ mod oracle_checks {
         assert_eq!(want(&close, &z, &z, &n(1, 0)), Ok(None));
         let far = Dec::new(pow10(70) - 1, -70);
         assert_eq!(want(&far, &z, &z, &n(1, 0)), Ok(Some(false)));
+        // a limit past int256.max that mul would truncate below the spread.
+        let h = Dec::new(
+            "5789604461865809771178549250434395392663499233282028201969066711282"
+                .parse::<num_bigint::BigInt>()
+                .unwrap(),
+            10,
+        );
+        let l = Dec::new(num_bigint::BigInt::from(-38124891136564819967i128), 0);
+        let p = Dec::new(pow10(66) + 658505972u32, -66);
+        assert_eq!(want(&z, &p, &l, &h), Ok(Some(true)));
         // 6 against -9e-76 is past 6 by 1.5e-76 of the spread, which the
         // truncated spread holds as 6: the library accepts it.
         let past = (n(6, 0), z.clone(), n(-9, -76), n(6, 0));
