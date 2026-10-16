@@ -223,7 +223,7 @@ LibDecimalFloatFormatParsePr321EquivalenceTest:testFormatPr321Equivalence(uint25
 LibDecimalFloatFormatParsePr321EquivalenceTest:testFormatPr321EquivalenceDigitCounts() (gas: 320562124)
 LibDecimalFloatFormatParsePr321EquivalenceTest:testFormatPr321EquivalenceRaw(bytes32) (runs: 5096, μ: 45223, ~: 42717)
 LibDecimalFloatFormatParsePr321EquivalenceTest:testParsePr321Equivalence(bytes) (runs: 5096, μ: 62820, ~: 57380)
-LibDecimalFloatFormatParsePr321EquivalenceTest:testParsePr321EquivalenceExamples() (gas: 1310735)
+LibDecimalFloatFormatParsePr321EquivalenceTest:testParsePr321EquivalenceExamples() (gas: 1963835)
 LibDecimalFloatFormatParsePr321EquivalenceTest:testParsePr321EquivalenceExponentBounds() (gas: 1075151)
 LibDecimalFloatFormatParsePr321EquivalenceTest:testParsePr321EquivalenceFormatted(uint256,uint256,uint256,bool,int32,bool) (runs: 5096, μ: 136388, ~: 73829)
 LibDecimalFloatFormatParsePr321EquivalenceTest:testParsePr321EquivalenceFormattedInsideCap(uint256,uint256,uint256,bool,int256) (runs: 5096, μ: 924432, ~: 880738)
