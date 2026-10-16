@@ -1131,6 +1131,27 @@
     }
   },
   {
+    "timestamp": "2026-10-14T20:20:14Z",
+    "commit": "1fa73f612ce4319adeeb675840d16c61de088cb0",
+    "testsAfterCommit": "5fd733967a334a369eba8580a4fa356cdd338b68",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 5,
+    "scope": "PR #717 (issues #699, #526): log10Reduce names both returns; the log10Unrounded test oracle absoluteOk models add's carry shed at the int256 edge. Probed at 1fa73f6, the PR head f38ab3c merged with main c554370. Suite = forge test --match-contract Log10 at FOUNDRY_FUZZ_RUNS=256 FOUNDRY_FUZZ_SEED=0x717: 98 tests before, 99 after. Mutants of src/lib/implementation/LibDecimalFloatImplementation.sol: S01-S04 log10Reduce's `reduced = x` one above, zero, one below, outputs swapped. Mutants of the oracle in test/src/lib/implementation/LibDecimalFloatImplementation.log10Unrounded.t.sol: O01-O03 the k guard narrowed to k > 0, k < 0, never; O04, O05, O24 the characteristic offset dropped, sign flipped, scaled 1e69; O06-O09 slack without its 1e-67 oracle term, with it ten times, scaled a tenth, ten times; O10-O14, O26 the candidate window top one lower, one higher, exclusive, bottom floored instead of ceiled, one higher, stepped by two; O15, O16, O25 addPartsWideUp, correction at 1e-51, k at exponent 1; O17-O19 match <= 0, >= 0, no match accepted; O20-O23, O27 floorE20 truncating, adjusting positives, rounding negatives up, dividing by 1e21, adjusting exact multiples. The untouched suite kills 29 of 31, the Log10Reduce tests the four S mutants (S04 as a signature swap did not compile, the @return order, so it is the assignment `(reduced, seed) = (seed, x)`). O06, marvin's blocking finding on the PR, and O07 survived: nothing pinned the oracle's own 1e-67 allowance from either side. testLog10UnroundedAbsoluteOracleError kills both: 1.9952...e76 at -75 has log 1.3 less 1.0037e-50 and 5e-68, from bc -l at scale 130, so the correction 3e49 is taken only with the term; 3.9810...e76 at -75 has log 1.6 less 1.0037e-50 and 1.5e-67, so 6e49 is rejected only with the term at 1e-67. Adversarial pass at 160 digits: the three AddCarry coefficients, its above = [2, 1, 2] window counts, log10 18's .0271 fraction and the carry edge gaps (smallest 0.003956 over s = 1..52 either sign, above log10(1.001) = 0.000434) all match; the AddCarry NatSpec gave the 1e49 edge's gap as 0.0434, which is 0.434, fixed. No equivalents, no candidates. Correction after marvin's review of ad18d00: O27 was recorded as killed, but the exact mutant `return value < 0 ? quotient - 1 : quotient;` at floorE20's line 66, the `value % 1e20 != 0` guard dropped, survives the whole log10Unrounded suite at ad18d00 (26 tests, FOUNDRY_FUZZ_RUNS=256 here, 5096 in the review). The 99 tests after contain the 98 before, so it survived both probes: 28 killed before and 30 after of 31, not 29 and 31. The next entry kills it.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 31,
+      "killedBefore": 28,
+      "killedAfter": 30,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 98,
+      "testsAfter": 99,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-14T20:36:25Z",
     "commit": "3921acaacc2375d904a5684b62b6e413d6826b61",
     "testsAfterCommit": "3921acaacc2375d904a5684b62b6e413d6826b61",
@@ -1191,9 +1212,7 @@
       "confirmed": 3,
       "testsBefore": 1,
       "testsAfter": 11,
-      "filed": [
-        720
-      ]
+      "filed": [720]
     }
   },
   {
@@ -1261,6 +1280,27 @@
     }
   },
   {
+    "timestamp": "2026-10-14T21:28:18Z",
+    "commit": "ad18d003e1b6758cec1570d582ad149e8001b249",
+    "testsAfterCommit": "562f47d9052e4a865002f6b7d86422aea91b36e4",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 7,
+    "scope": "PR #717 follow-up, after marvin's review of ad18d00: the log10Unrounded test oracle's floorE20 and absoluteOk in test/src/lib/implementation/LibDecimalFloatImplementation.log10Unrounded.t.sol, re-probed in full because the previous entry's O27 claim did not hold, plus this follow-up's own lines; the new tests' bodies and the renamed locals are assertions and were not mutated. Probed at ad18d00: the before suite is that file's 26 tests, the after suite 562f47d's 29. Suite = forge test --match-contract LibDecimalFloatImplementationLog10UnroundedTest at FOUNDRY_FUZZ_RUNS=256 FOUNDRY_FUZZ_SEED=0x717, through mutation-probe. floorE20 F01-F14: divides by 1e21, by 1e19; adjusts positives instead; sign test `<= 0`; adjusts every non-multiple; `return value < 0 ? quotient - 1 : quotient;` (the `value % 1e20 != 0` guard dropped: marvin's survivor and the previous entry's O27); adjusts only exact multiples; `% 1e21`; `% 1e19`; rounds negatives up; truncates; adjusts by two; branches swapped; `&&` to `||`. absoluteOk A01-A24, the nonzero k branch: k guard k > 0, k < 0, never; offset without the characteristic difference, sign flipped, scaled 1e69; slack without its 1e3 oracle term, with 1e4, bound a tenth, ten times; window top one lower, one higher, exclusive; bottom floored, one higher; stepped by two; addPartsWideUp; correction at 1e-51; k at exponent 1; match <= 0, >= 0, never; every nonzero k result accepted; k without characteristicRise. A25-A28, the zero k branch: bound at 1e-53, at 1e-55, oracle term dropped, at 1e-66. Before: 35 of 42 killed; F04, F06, F08, F09, A25, A27 and A28 survived. F04 is equivalent: `<= 0` differs from `< 0` only at zero, where `0 % 1e20` is 0, so neither adjusts; proof in audit/known-false-positives.md. After: testLog10UnroundedAbsoluteWindowInclusive, marvin's test, kills F06 with 2.000...0006887905026949290612024572e1 at -74, whose oracle fraction puts the window bottom exactly on ...146210e20; testLog10UnroundedFloorE20 kills F06, F08 and F09 directly at -1e20, -3e20, -1e19 and either side of a unit; testLog10UnroundedAbsoluteOracleErrorZeroCharacteristic kills A25, A27 and A28 by repeating the oracle error pins at -76, where the same coefficients have characteristic zero and the same bound and 1e-67 term apply. 41 of 42 killed, 1 equivalent. Adversarial: the boundary input's log from bc -l at scale 130 is 1.3010299956639811952137388947244930267681898814621100370000000000001001626..., so the oracle's fraction ...1000 is one unit of 1e-70 under its truncation, within the oracle's 1e-67; floor(log10 2 x 1e50) is ...146210 from Python's Decimal at 120 digits, so the bound correction ...146211 is right; the zero k bound (LOG10_RAW_ERROR_E54 at 1e-54 plus 1e-67) equals the nonzero k slack. No candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 42,
+      "killedBefore": 35,
+      "killedAfter": 41,
+      "equivalent": 1,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 26,
+      "testsAfter": 29,
+      "filed": []
+    }
+  },
+  {
     "timestamp": "2026-10-15T06:55:36Z",
     "commit": "5dddd43f89f1273a312bc185a7a1094959ce7be5",
     "testsAfterCommit": "e29f6505ffdfb7841576c9bfc8170495fdc5a3d2",
@@ -1299,6 +1339,27 @@
       "confirmed": 0,
       "testsBefore": 129,
       "testsAfter": 129,
+      "filed": []
+    }
+  },
+  {
+    "timestamp": "2026-10-15T07:07:01Z",
+    "commit": "f29a01b6faf3cca012ed772ecca2cccae66a6ad0",
+    "testsAfterCommit": "f29a01b6faf3cca012ed772ecca2cccae66a6ad0",
+    "publishedTag": "sol-v0.3.6",
+    "commitsAheadOfTag": 13,
+    "scope": "PR #717, after marvin's review of 5f53b9d: the log10Unrounded test oracle's floorE20 rewritten to `int256 quotient = value / 1e20; if (value % 1e20 < 0) { quotient -= 1; } return quotient;`. Solidity's signed `%` takes the dividend's sign, so the remainder is negative exactly for a negative non-multiple of 1e20, and the separate `value < 0` test is gone. That resolves by removal the previous entry's one equivalent (F04, `value <= 0`), and its entry in audit/known-false-positives.md is deleted. Probed at f29a01b, main merged in, suite = forge test --match-contract LibDecimalFloatImplementationLog10UnroundedTest at FOUNDRY_FUZZ_RUNS=256 FOUNDRY_FUZZ_SEED=0x717 through mutation-probe, 29 tests. R01-R10, the condition: `<= 0`, `> 0`, `!= 0`, `< 1`, `< -1`, never, always, `== 0`, modulus 1e21, modulus 1e19; R11 `-= 2`; R12 `+= 1`; R13, R14 quotient by 1e21, by 1e19; R15 the condition as `value < 0`. All 15 killed by the existing tests, testLog10UnroundedFloorE20 among the killers of each; no tests added. Adversarial: int256.min / 1e20 - 1 cannot overflow, so the rewrite is the floor for every int256. No equivalents, no candidates.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 15,
+      "killedBefore": 15,
+      "killedAfter": 15,
+      "equivalent": 0,
+      "candidates": 0,
+      "confirmed": 0,
+      "testsBefore": 29,
+      "testsAfter": 29,
       "filed": []
     }
   },
