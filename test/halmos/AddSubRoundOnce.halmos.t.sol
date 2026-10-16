@@ -48,8 +48,9 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// so m 10^f <= 2^223 10^(e - 1) <= |c| 10^e, not above it. So T(S) =
 /// T(c 10^e), unbounded exponents included, and PACK makes that the result.
 ///
-/// MINUS (#513) and NEAR (#512) are not yet proved under CI's 5-minute limit
-/// per run and are out of its matrix, so the composition is open there.
+/// MINUS (#513), NEAR (#512) and PACK's low cases 99-780 (#511) are not yet
+/// proved under CI's 5-minute limit per run and are out of its matrix, so the
+/// composition is open there.
 contract AddSubRoundOnceHalmosTest {
     /// floor(int256.max / 10).
     uint256 internal constant T10 = uint256(type(int256).max) / 10;

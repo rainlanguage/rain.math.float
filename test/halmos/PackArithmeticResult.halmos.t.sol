@@ -11,10 +11,10 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// `packArithmeticResult(c, e)` is the Float closest to c 10^e that does not
 /// exceed it in magnitude, all bits zero for zero, reverting
 /// `ExponentUnderflow(c, e)` when that is zero for a nonzero c and
-/// `ExponentOverflow(c, e)` when it is no Float. Checked for every int256 c and
+/// `ExponentOverflow(c, e)` when it is no Float. Stated for every int256 c and
 /// every int256 e: Below, Low, Middle, High and Above tile the int256
 /// exponents, and each splits c by size class (`checkPackClass`), one per
-/// path.
+/// path. CI proves every case but `check_packLow`'s 99-780 (#511).
 contract PackArithmeticResultHalmosTest {
     int256 internal constant FMIN = type(int32).min;
     int256 internal constant FMAX = type(int32).max;

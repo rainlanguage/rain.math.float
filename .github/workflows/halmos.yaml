@@ -1,6 +1,15 @@
 name: halmos
+# A run is the whole matrix, so pushes run it only on main and only for the
+# files a proof depends on.
 on:
   push:
+    branches: [main]
+    paths:
+      - src/**
+      - test/halmos/**
+      - script/halmos/**
+      - foundry.toml
+      - .github/workflows/halmos.yaml
   workflow_dispatch:
     inputs:
       lemma:
@@ -64,7 +73,8 @@ jobs:
         # group: a lemma's slices, selected together by the group's name.
         # agree-near is one slice per exponent gap d in [0, 76], the lemma
         # check_spreadSymNear<d> with d two digits wide, so the filter matches
-        # it alone without an anchor.
+        # it alone without an anchor; 77 is AgreeHalmosTest.NEAR_GAPS, and
+        # test/halmos/Agree.t.sol checks a lemma exists for every d under it.
         # pack-low's cases 99-780 (e in [int32.min - 70, int32.min - 9]) are
         # out: at about 25s each they need more slices than a matrix carries
         # (#511).

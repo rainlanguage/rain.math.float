@@ -36,9 +36,12 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// smaller, the equality is SYMNEAR or SYMFAR on (-Y, -X), which are
 /// maximized too, with its two sides exchanged.
 ///
-/// NEG is sliced by |c|'s digit count j into [0, 16], [17, 33], [34, 50] and
-/// [51, 67], every nonzero int224's j in one of them. SYMNEAR is one slice
-/// per gap, 77 slices covering every d in [0, 76].
+/// NEG is sliced by |c|'s digit count j into NEG_SLICE-wide slices [0, 16],
+/// [17, 33], [34, 50] and [51, 67] (`negSliceHi`), every nonzero int224's j
+/// in one of them. SYMNEAR is one slice per gap, NEAR_GAPS = 77 slices
+/// covering every d in [0, 76]; SYMFAR starts at NEAR_GAPS (`farGap`).
+/// `Agree.t.sol` checks the slices tile and the filters below accept every
+/// maximized input.
 ///
 /// The lemmas return early when a hint filter is false. HINTS here proves
 /// `divHints`, `negDivHint` and `overflowHint` true for every input they are
@@ -49,11 +52,16 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// Impl.mul(proportional, anchor))`; halmos leaves `Impl.mul`'s 512-bit
 /// product uninterpreted.
 contract AgreeHalmosTest {
-    /// floor(int256.max / 10).
-    uint256 internal constant T10 = uint256(type(int256).max) / 10;
     int256 internal constant FMIN = type(int32).min;
     int256 internal constant FMAX = type(int32).max;
     int256 internal constant E75 = 1e75;
+    /// SYMNEAR has one lemma per gap d in [0, NEAR_GAPS); SYMFAR takes the
+    /// gaps from NEAR_GAPS up.
+    uint256 internal constant NEAR_GAPS = 77;
+    /// 10^67 < 2^223 < 10^68, so every nonzero int224's digit count j is in
+    /// [0, NEG_DIGITS). NEG's slices are NEG_SLICE wide from j = 0.
+    uint256 internal constant NEG_DIGITS = 68;
+    uint256 internal constant NEG_SLICE = 17;
 
     function agree(Float absolute, Float proportional, Float lowest, Float highest) external pure returns (bool) {
         return LibDecimalFloat.agree(absolute, proportional, lowest, highest);
@@ -120,20 +128,21 @@ contract AgreeHalmosTest {
         assert(c1 == c2 && e1 == e2);
     }
 
-    /// 10^j <= |c| < 10^(j + 1).
-    function hasDigits(int256 c, uint256 j) internal pure returns (bool) {
-        uint256 x = LibHalmosExact.abs(c);
-        return x >= 10 ** j && x < 10 ** (j + 1);
+    /// The last digit count of NEG's slice from lo: NEG_SLICE - 1 past lo,
+    /// cut at the last digit count.
+    function negSliceHi(uint256 lo) internal pure returns (uint256) {
+        uint256 hi = lo + NEG_SLICE - 1;
+        return hi < NEG_DIGITS ? hi : NEG_DIGITS - 1;
     }
 
     /// NEG, split by |c|'s digit count, one j per path. Every nonzero
-    /// |c| <= 2^223 < 10^68 has one j in [0, 67], and -c has the same. The
-    /// slices take j in [0, 16], [17, 33], [34, 50] and [51, 67].
-    function maximizeNegates(int256 c, int32 e, uint256 jBits, uint256 lo, uint256 hi) internal view {
+    /// |c| <= 2^223 has one j in [0, NEG_DIGITS), and -c has the same. The
+    /// slice from lo takes j in [lo, negSliceHi(lo)].
+    function maximizeNegates(int256 c, int32 e, uint256 jBits, uint256 lo) internal view {
         uint256 j = LibHalmosExact.concrete(jBits, 7);
-        if (j < lo || j > hi) return;
+        if (j < lo || j > negSliceHi(lo)) return;
         if (c == 0 || c > 2 ** 223 || c < -(2 ** 223)) return;
-        if (!hasDigits(c, j)) return;
+        if (!LibHalmosExact.hasDigits(c, j)) return;
         if (!LibHalmosExact.maximizeHints(c, j) || !LibHalmosExact.maximizeHints(-c, j)) return;
         (int256 m, int256 me, int256 ms) = this.maximize(c, e);
         (int256 n, int256 ne, int256 ns) = this.maximize(-c, e);
@@ -141,19 +150,19 @@ contract AgreeHalmosTest {
     }
 
     function check_maximizeNegates0(int256 c, int32 e, uint256 jBits) external view {
-        maximizeNegates(c, e, jBits, 0, 16);
+        maximizeNegates(c, e, jBits, 0);
     }
 
     function check_maximizeNegates17(int256 c, int32 e, uint256 jBits) external view {
-        maximizeNegates(c, e, jBits, 17, 33);
+        maximizeNegates(c, e, jBits, 17);
     }
 
     function check_maximizeNegates34(int256 c, int32 e, uint256 jBits) external view {
-        maximizeNegates(c, e, jBits, 34, 50);
+        maximizeNegates(c, e, jBits, 34);
     }
 
     function check_maximizeNegates51(int256 c, int32 e, uint256 jBits) external view {
-        maximizeNegates(c, e, jBits, 51, 67);
+        maximizeNegates(c, e, jBits, 51);
     }
 
     /// HINTS: the hint predicates hold for every input they are given.
@@ -161,11 +170,11 @@ contract AgreeHalmosTest {
         assert(divHints(m));
     }
 
-    /// y is any int256 but int256.min and s = 10^d for d in [0, 76], one d per
-    /// path; `symNear` gives it B = 10 yb with |yb| <= T10.
+    /// y is any int256 but int256.min and s = 10^d for d in [0, NEAR_GAPS),
+    /// one d per path; `symNear` gives it B = 10 yb with |yb| <= T10.
     function check_negDivHintHolds(int256 y, uint256 dBits) external pure {
         uint256 d = LibHalmosExact.concrete(dBits, 7);
-        if (d > 76 || y == type(int256).min) return;
+        if (d >= NEAR_GAPS || y == type(int256).min) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         assert(negDivHint(y, int256(10 ** d)));
     }
@@ -177,7 +186,7 @@ contract AgreeHalmosTest {
     /// Every predicate below is branchless, so a filter adds no paths.
     /// Maximized per MAX: T10 < |m| <= 10 T10 and 10^8 | m.
     function maximized(int256 m) internal pure returns (bool r) {
-        uint256 t10 = T10;
+        uint256 t10 = LibHalmosExact.T10;
         assembly ("memory-safe") {
             let s := sar(255, m)
             let x := sub(xor(m, s), s)
@@ -263,11 +272,11 @@ contract AgreeHalmosTest {
         }
     }
 
-    /// SYMNEAR at gap d, one slice per d in [0, 76]. B = 10 yb as in NEAR: by
-    /// MAX 10^8 | B for every maximized B, so |yb| <= T10 drops none.
+    /// SYMNEAR at gap d, one slice per d in [0, NEAR_GAPS). B = 10 yb as in
+    /// NEAR: by MAX 10^8 | B for every maximized B, so |yb| <= T10 drops none.
     function symNear(int256 a, int256 yb, int256 eB, uint256 d) internal view {
         // forge-lint: disable-next-line(unsafe-typecast)
-        if (yb < -int256(T10) || yb > int256(T10)) return;
+        if (yb < -int256(LibHalmosExact.T10) || yb > int256(LibHalmosExact.T10)) return;
         int256 b = yb * 10;
         if (!admissible(a) || !admissible(b)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -585,10 +594,15 @@ contract AgreeHalmosTest {
         symNear(a, yb, eB, 76);
     }
 
-    /// SYMFAR: gap d in (76, 2^40], past every gap two maximized exponents
-    /// can make.
+    /// Whether SYMFAR takes gap d: from NEAR_GAPS, where SYMNEAR stops, to
+    /// 2^40, past every gap two maximized exponents can make.
+    function farGap(uint256 d) internal pure returns (bool) {
+        return d >= NEAR_GAPS && d <= 2 ** 40;
+    }
+
+    /// SYMFAR: gap d in [NEAR_GAPS, 2^40].
     function check_spreadSymFar(int256 a, int256 b, int256 eB, uint256 d) external view {
-        if (d <= 76 || d > 2 ** 40) return;
+        if (!farGap(d)) return;
         if (!admissible(a) || !admissible(b)) return;
         if (eB < FMIN - 76 || eB > FMAX - 8) return;
         // forge-lint: disable-next-line(unsafe-typecast)
