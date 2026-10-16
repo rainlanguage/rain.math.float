@@ -57,7 +57,7 @@ only at the same `exponentB`, where the mutant returns `(0, 0)` directly and the
 original returns the same `(0, 0)` through `underflowExponentBy > 76`. The
 comparison is free at its boundary in both directions.
 
-## Equivalent mutant: frozen `mulDiv` copy, overflow check
+## Equivalent mutants: frozen `mulDiv` copy, overflow check and its revert
 
 `test/lib/LibDecimalFloatSqrtVariants.sol`, the private `mulDiv` copied from
 26a3cf06 for `sqrtPre359` and `sqrtPr309`. Both call it as
@@ -66,18 +66,29 @@ comparison is free at its boundary in both directions.
 Newton root times `1e3` (`sqrtPre359`) or at least `1e2` (`sqrtPr309`); each
 Newton step `(r + e / r) >> 1` is at least `r >> 1`, so from the `2^124` seed
 the root is at least `2^118` after six steps, or `2^117 - 1` after seven and the
-decrement, and the denominator at least `(2^117 + 1) * 1e2 > 1e37`.
-`prod1 >= denominator` never holds, so `MulDivOverflow` never fires and relaxing
-the check to `>` is equivalent. The `prod1 == 0` fast path is reachable, as the
-frozen `scaleUp` has no domain check, so its mutants are not equivalent and are
-pinned on wrapped negative coefficients, which the live sqrt rejects:
-`testImplementationSqrtPre359MulDivFastPath` pins the quotient, with a zero
-coefficient and with one whose quotient is odd;
+decrement, and the denominator at least `(2^117 + 1) * 1e2 > 1e37`. This holds
+for every coefficient, in the domain or not. `prod1 >= denominator` never holds,
+so the revert never runs: relaxing the check to `>`, dropping it, or changing
+the revert's error or arguments is equivalent. The `prod1 == 0` fast path is
+reachable, as the frozen `scaleUp` has no domain check, so its mutants are not
+equivalent and are pinned on wrapped negative coefficients, which the live sqrt
+rejects: `testImplementationSqrtPre359MulDivFastPath` pins the quotient, with a
+zero coefficient and with one whose quotient is odd;
 `testImplementationSqrtPre359MulDivRemainderAndHighWord` pins the divisor, with
 a remainder below the quotient so that `denominator + 1` lowers the quotient and
 the Newton step's `>> 1` sees it, and pins the `prod1 == 0` gate, with a product
 whose high word is exactly one, which a gate of `prod1 == 1` would divide as its
 low word alone.
+
+## Equivalent mutant: frozen `mulDiv` copy, lowest power of two from `~denominator + 2`
+
+`test/lib/LibDecimalFloatSqrtVariants.sol`, the private `mulDiv`'s
+`lpotdod = denominator & (~denominator + 1)`. Any change to the mask in its bit
+0 alone, such as `~denominator + 2`, is equivalent, as every denominator is
+even: `sqrtPre359` passes `root * 1e3` and `sqrtPr309` passes
+`(root + 2) * estimateScale` with `estimateScale` `1e2` or `1e3`, multiples of 4
+even where the product wraps mod `2^256`. For an even `d`, `~d + 1 = -d` is
+even, so `~d + 2 = -d | 1` and `d & (-d | 1) = (d & -d) | (d & 1) = d & -d`.
 
 ## Equivalent mutants: frozen `maximize` copy, step gates
 
@@ -92,13 +103,22 @@ distribution, not results; the exact `LibExactFloat.maximize` oracle in
 `testFrozenMaximizeOracle` agrees with both. Lowering `E74` or `E75` by a decade
 is not equivalent (the loop or the last step stop short) and is killed.
 
-## Equivalent mutant: frozen `maximizeFull` copy, shortfall check
+## Equivalent mutants: frozen `maximizeFull` copy, shortfall check
 
 `test/lib/LibFormatDecimalFloatPr321.sol`, `maximizeFull` is private and reached
 only from `_toScientific` with the exponent `unpack` read from a Float, so the
 exponent is an int32 and `maximize` shifts it by at most 76: it cannot wrap
-below `type(int256).min`, so the shortfall is always zero and any test of it
-that still passes zero (`!= 0` to `> 1`) is equivalent.
+below `type(int256).min`, so the shortfall is always zero and the revert never
+runs. Dropping the check, changing the revert's error or arguments, or any test
+of the shortfall that still passes zero (`!= 0` to `> 1`) is equivalent.
+
+## Equivalent mutant: frozen `unpack` copy, mask before `signextend`
+
+`test/lib/LibFormatDecimalFloatPr321.sol`, `unpack`'s
+`signextend(27, and(float, mask))` as `signextend(27, float)`, or with any mask
+that keeps its low 224 bits set. `signextend(27, x)` keeps bits 0 to 223 of `x`
+and overwrites every bit above them with bit 223, so the bits the mask clears
+are never read.
 
 ## Equivalent mutants: frozen `packLossy` copy in the parse baseline
 
@@ -124,13 +144,16 @@ so the packed float of a lossy result is never observed.
   `1e68 > int224.max` after `4` (or `7`) sheds, so `k >= 5` (or `k >= 8`) in
   every case. With or without the shortcut the result is `c / 10^k` at
   `exponent + k`.
-- `initialExponent > 0` relaxed to `>= 0`: the branch is entered only when the
-  exponent left int32 after shedding, which raises it by at most ten, so an
-  initial exponent of zero ends in `[0, 10]` and never reaches it.
 - `!fits ||` dropped from the lift guard: when the coefficient did not fit
   int224, the headroom check that follows compares the initial coefficient with
   `int224.max / scale` for `scale >= 10`, which it exceeds, and reverts with the
   same `ExponentOverflow(initialSignedCoefficient, initialExponent)`.
+- The lift from the current pair: past the `!fits || excess > 67` guard `fits`
+  holds, so the shedding block never ran and `signedCoefficient` and `exponent`
+  still hold their initial values. Using either in place of
+  `initialSignedCoefficient` or `initialExponent` in the headroom check, its
+  `ExponentOverflow` arguments or the lifted product is equivalent. The guard's
+  own revert is not covered: a shed coefficient reaches it.
 - `exponent <= initialExponent` relaxed to `<`: at equality the general case
   takes the coefficient modulo `10 ** 0 == 1`, which is zero, the same `true`.
 
@@ -181,13 +204,22 @@ a shortfall of 68 the coefficient fits int224, shed until it did or fitting from
 the start, so `|c| <= 2^223 < 1e68` and `c / 10 ** 68` is zero: the mutant
 returns the same `(FLOAT_ZERO, false)` one line later.
 
-## Equivalent mutant: frozen `packLossy` copy, ceiling branch
+## Equivalent mutants: frozen `packLossy` copy, ceiling branch threshold
 
-`test/lib/LibParseDecimalFloatPr321.sol`, `initialExponent > 0` raised to
-`> 10`. The branch is entered only when shedding pushed the exponent past
-`int32.max`, and shedding raises it by at most ten (a coefficient has at most 77
-digits and int224 keeps 67), so an initial exponent in `[1, 10]` ends in
-`[1, 20]`, inside int32, and the branch never sees it.
+`test/lib/LibParseDecimalFloatPr321.sol`, `initialExponent > 0` as
+`initialExponent > k` for any `k` in `[int32.min - 1, int32.max - 10]`, such as
+`>= 0` or `> 10`. The ceiling-or-floor choice runs only when the exponent left
+int32 after shedding, and shedding raises it by at most ten, as
+`2^255 / 1e10 < 2^223`, wrapping only from above `int256.max - 10`. An initial
+exponent in `[int32.min, int32.max - 10]` ends inside int32 and never reaches
+the choice. One at most `int32.min - 1` is at most `k` and not above 0, so both
+take the floor. One at least `int32.max - 9` is above `k` and above 0, so both
+take the ceiling, wrapped through `int256.max` or not. `k = int32.max - 9` is
+not equivalent: 2e76 at `int32.max - 9` sheds ten digits to `int32.max + 1`,
+which `testFrozenShedPastCeilingReverts` pins. Testing the shed `exponent` in
+place of `initialExponent` is not equivalent either: one wrapped through
+`int256.max` is negative, which `testFrozenShedWrapsThroughInt256MaxReverts`
+pins.
 
 ## Equivalent mutant: frozen `_toScientific` copy, `maximizeFull(10c, e - 1)`
 
@@ -250,13 +282,34 @@ is below 1, as `x^2 - N = (x - sqrt(N)) (x + sqrt(N)) > k x > x`; and
 `x1 <= x1'' < sqrt(N) + 1/2 + 1/2`, which puts `x1''` in `[s, s + 1]` like `x1`,
 and the decrement leaves `r = s`: the original's result for every input.
 
-## Equivalent mutant: frozen `sqrtPr309`, stale square after the decrement
+## Equivalent mutants: frozen `sqrtPr309`, square recomputed after the decrement
 
-`(rootHigh, rootLow) = mul512(root + 1, root + 1)` after `root -= 1`, in the
-notation above: the decrement fires only for `x1 = s + 1`, and then
-`x1 < sqrt(N) + 1/2` gives `N - s^2 > s`, so the original returns `s + 1`; the
-mutant's `N - (s + 1)^2` is negative, its 512-bit high word nonzero, so it
-returns `s + 1` too.
+`(rootHigh, rootLow) = mul512(root, root)` after `root -= 1`, replaced by any
+square `Q` with `N < Q <= N + 2^256` or `Q < N - s`, in the notation above. The
+decrement fires only for `x1 = s + 1`, and then `x1 < sqrt(N) + 1/2` gives
+`N - s^2 > s`, so the original returns `s + 1`. The rounding line adds one to
+`root = s` when the 512-bit `N - Q` has a nonzero high word or a low word above
+`s`: a `Q` above `N` by at most `2^256` wraps it to a high word of `2^256 - 1`,
+and a `Q` below `N - s` leaves it above `s`. So each such mutant returns `s + 1`
+too. Dropping the recompute leaves the stale `Q = (s + 1)^2 <= N + 2s + 1`, the
+same `Q` as `mul512(root + 1, root + 1)`, and `mul512(root - 1, root - 1)` gives
+`(s - 1)^2 <= N - 2s + 1 < N - s`.
+
+## Equivalent in the domain: frozen `sqrtPr309`, Newton quotient from `coefficient + 1`
+
+`sqrtPr309`'s `root = (root + mulDiv(coefficient, scale, root)) >> 1` with the
+numerator `coefficient + 1`, in the notation above. A coefficient in the domain
+`(0, 1e76)` scales up into `[1e75, 1e76)`, where `scale` is `1e5` or `1e6`, so
+`N >= 1e80`. With `M = N + scale`, the mutant's step is
+`x1' = floor((x + M / x) / 2) >= x1 >= s`, and
+`(x + M / x) / 2 = sqrt(M) + (x - sqrt(M))^2 / 2x`, where
+`sqrt(M) - sqrt(N) < scale / 2 sqrt(N) < 1/4` and
+`|x - sqrt(M)| <= 2k + 1 < sqrt(x) / 2` for `x > 1e39`. So
+`x1' < sqrt(N) + 1/2 < s + 3/2`, which puts `x1'` in `[s, s + 1]` like `x1`, and
+the decrement leaves `r = s`: the original's result. Every call of `sqrtPr309`
+in the suite passes a coefficient in `(0, 1e76)`, the live sqrt's domain, where
+it is compared with the library. Outside the domain the mutant is not
+equivalent: -1 is `2^256 - 1` as a uint256, and `coefficient + 1` wraps it to 0.
 
 ## Equivalent in the domain: frozen `sqrtPre359`, Newton quotient from `coefficient + 1`
 

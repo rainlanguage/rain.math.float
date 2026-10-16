@@ -83,17 +83,34 @@ contract LibParseDecimalFloatPr321Test is Test {
     /// Coefficients past int224 that start at or below the ceiling and shed
     /// past it, so the ceiling branch is reached by shedding alone: 2^223 + 20
     /// at int32.max sheds one digit to int224.max / 10 + 2, past the
-    /// nearest-bound window, at int32.max + 1, and 1e76 at int32.max - 7 sheds
-    /// nine to 1e67 at int32.max + 2 (shed counts from bc). A shed coefficient
-    /// has no headroom to lift, so each reverts with its original inputs.
+    /// nearest-bound window, at int32.max + 1, 1e76 at int32.max - 7 sheds
+    /// nine to 1e67 at int32.max + 2, and 2e76 at int32.max - 9 sheds ten, the
+    /// most any int256 sheds, to 2e66 at int32.max + 1 (shed counts from bc).
+    /// A shed coefficient has no headroom to lift, so each reverts with its
+    /// original inputs.
     function testFrozenShedPastCeilingReverts() external {
         int256 pastWindow = (int256(1) << 223) + 20;
-        int256[3] memory coefficients = [pastWindow, -pastWindow, int256(1e76)];
-        int256[3] memory exponents = [int256(type(int32).max), type(int32).max, int256(type(int32).max) - 7];
+        int256[4] memory coefficients = [pastWindow, -pastWindow, int256(1e76), int256(2e76)];
+        int256[4] memory exponents =
+            [int256(type(int32).max), type(int32).max, int256(type(int32).max) - 7, int256(type(int32).max) - 9];
         for (uint256 i = 0; i < coefficients.length; i++) {
             string memory text =
                 string.concat(Strings.toStringSigned(coefficients[i]), "e", Strings.toStringSigned(exponents[i]));
             vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, coefficients[i], exponents[i]));
+            this.parseFrozen(text);
+        }
+    }
+
+    /// 1e76 at int256.max sheds nine digits, which wraps the exponent through
+    /// int256.max to int256.min + 8. The ceiling branch still owns it: a shed
+    /// coefficient has no headroom, so either sign reverts with its original
+    /// inputs and never reaches the floor path as precision loss.
+    function testFrozenShedWrapsThroughInt256MaxReverts() external {
+        int256[2] memory coefficients = [int256(1e76), -int256(1e76)];
+        for (uint256 i = 0; i < coefficients.length; i++) {
+            string memory text =
+                string.concat(Strings.toStringSigned(coefficients[i]), "e", Strings.toStringSigned(type(int256).max));
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, coefficients[i], type(int256).max));
             this.parseFrozen(text);
         }
     }
