@@ -1,5 +1,9 @@
 # Known false positives
 
+Mutants that survive because the mutated program agrees with the original on
+every input, and mutants a later change removed ("Resolved by removal"). Each
+entry carries the proof; a sampled or "no known input" argument is not one.
+
 ## Equivalent mutant: `isPastEveryFloat` `excess > 67` arm at `> 68`
 
 `src/lib/LibDecimalFloat.sol`, `isPastEveryFloat`. Moving the any-non-zero arm
@@ -30,24 +34,6 @@ and the two pairs are equal.
 most about 1e41, and such a coefficient is past every Float only at an excess of
 27 or more over `int32.max` (1e41 × 10^26 is below 2^223 + 2), so no input can
 tell the gates apart. `+ 1` and `+ 30` have both survived.
-
-## Equivalent mutant: `pow` carry path `excess <= 67` guard at any bound from 27 up, or dropped
-
-`src/lib/LibDecimalFloat.sol`, `packRoundedSignificant`. Changing
-`excess <= 67 && isPastEveryFloat(roundedCoefficient, roundedExponent)` to
-`excess <= k && ...` for any `k` from 27 up, or dropping the `excess <= 67`
-term, changes nothing. `roundSignificant` returns a coefficient under 1e41
-unchanged, so the rounded and unrounded pairs are then equal and both branches
-check the same value: past reverts `ExponentOverflow(input)` either way, and not
-past packs it either way. Otherwise the rounded coefficient is at least 1e40 (41
-digits, or 1e41 on a carry), so at an excess of 28 or more the rounded value is
-at least `1e68 × 10^int32.max`, past every Float, and the unrounded value is
-within half a unit of the rounded one's last digit, at least
-`(1e40 - 1/2) × 10^(int32.max + 28)`, past too: checking either reverts
-`ExponentOverflow(input)`. At an excess of 27 a rounded coefficient from
-`(2^223 + 2) / 1e27` up is past while the unrounded one can be below it, so
-`k = 26` is not equivalent; `testPowCarryShedsTheUnrounded` kills it. `k = 66`
-has survived.
 
 ## Equivalent mutant: signed `isPastEveryFloat` with int256.min as `2^255 - 1`
 
@@ -242,21 +228,6 @@ the call on the hot path. Moving it the other way, to
 `testParsePastInt256FirstExponentPastNeverPast` and
 `testParsePastInt256GateAtNeverPastExponentPlusOne` kill it.
 
-## Equivalent mutant: `.gas-snapshot` fuzz statistics
-
-`.gas-snapshot`, observed through
-`script/check-gas-snapshot.sh <committed> <fresh>`. Changing a committed fuzz
-row's statistics,
-`LibDecimalFloatAbsTest:testAbsNegative(int256,int32) (runs: 5096, μ: 2577, ~: 2838)`
-to `(runs: 5096, μ: 9999, ~: 2838)`, cannot change the verdict. The verdict is a
-function of `normalise(committed)` and `normalise(fresh)` alone, where
-`normalise` rewrites every line ending in `(runs: N, μ: X, ~: Y)` to end in
-`(fuzz)`. The original and the mutated file differ only in the `μ` field of one
-such line, so `normalise` maps both to the same text, and for every fresh
-snapshot the two give the same verdict. Fuzz rows comparing by name only is the
-check's specified behaviour: fuzz gas is not reproducible across machines even
-with a fixed seed.
-
 ## Resolved by removal: `pow` carry path `excess <= 67` guard at any bound from 27 up, or dropped
 
 `src/lib/LibDecimalFloat.sol`, `packRoundedSignificant`. The `excess <= 67`
@@ -299,6 +270,11 @@ on one side, `0 % unit` on the other), the sign test fails, and
 the exponent. `ceil` differs: its `fraction == 0` arm returns the input bytes,
 so the same narrowing there is killed.
 
+## Equivalent mutant: `ceil` fraction sign test `fraction > 0` as `fraction >= 0`
+
+`src/lib/LibDecimalFloat.sol`, `ceil`. The `fraction == 0` arm returns on the
+line before, so at the sign test the fraction is non-zero and `>= 0` is `> 0`.
+
 ## Equivalent mutant: `powUnrounded` top-bit `break` as `continue`
 
 `src/lib/LibDecimalFloat.sol`, `powUnrounded`'s squaring loop. `continue` jumps
@@ -316,6 +292,21 @@ returns `FLOAT_ZERO` through `packLossy`'s zero arm, byte for byte the constant.
 zero coefficient at exponent one (`Float.wrap(bytes32(uint256(1) << 224))`)
 changes nothing: `lt` and `gt` unpack both operands and compare numerically, and
 a zero coefficient is zero at every exponent, as the function's NatSpec states.
+
+## Equivalent mutant: `.gas-snapshot` fuzz statistics
+
+`.gas-snapshot`, observed through
+`script/check-gas-snapshot.sh <committed> <fresh>`. Changing a committed fuzz
+row's statistics,
+`LibDecimalFloatAbsTest:testAbsNegative(int256,int32) (runs: 5096, μ: 2577, ~: 2838)`
+to `(runs: 5096, μ: 9999, ~: 2838)`, cannot change the verdict. The verdict is a
+function of `normalise(committed)` and `normalise(fresh)` alone, where
+`normalise` rewrites every line ending in `(runs: N, μ: X, ~: Y)` to end in
+`(fuzz)`. The original and the mutated file differ only in the `μ` field of one
+such line, so `normalise` maps both to the same text, and for every fresh
+snapshot the two give the same verdict. Fuzz rows comparing by name only is the
+check's specified behaviour: fuzz gas is not reproducible across machines even
+with a fixed seed.
 
 ## Equivalent mutant: `agreeWithinProportional` raised-exponent test as `!=`
 
