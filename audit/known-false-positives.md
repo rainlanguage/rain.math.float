@@ -105,3 +105,20 @@ proving MAX without a warning is what pins the picks, not a forge test.
   and 10^77 exceeds 2^255, so no int256 magnitude s equals it: false either way.
   The `re < se` branch's `d > 77` is not probed separately; the proof is the
   same.
+
+## Equivalent mutants: the parser's `NEVER_PAST_EXPONENT` gates before `isPastEveryFloat`
+
+`src/lib/parse/LibParseDecimalFloat.sol`, `parseDecimalFloatInline` and
+`parseDecimalFloatPastInt256`, the
+`exponent > LibDecimalFloat.NEVER_PAST_EXPONENT &&` operand before each
+`LibDecimalFloat.isPastEveryFloat` call. Changing either gate to `>=`, or
+dropping it, changes nothing: the first statement of `isPastEveryFloat` is
+`if (exponent <= NEVER_PAST_EXPONENT) return false;`, so the gate repeats the
+callee's own short-circuit. Wherever the original gate is false the mutant calls
+the function and gets `false`, the same value the original's `&&` produced, and
+wherever the gate is true the two are the same expression. The gate only saves
+the call on the hot path. Moving it the other way, to
+`> NEVER_PAST_EXPONENT + 1`, is not equivalent, and
+`testParseOverflowThresholdExcesses`,
+`testParsePastInt256FirstExponentPastNeverPast` and
+`testParsePastInt256GateAtNeverPastExponentPlusOne` kill it.
