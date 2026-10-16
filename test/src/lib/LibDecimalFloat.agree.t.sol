@@ -708,6 +708,19 @@ contract LibDecimalFloatAgreeTest is Test {
         this.agreeExternal(f(0, 0), f(0, 0), f(100, 0), f(101, 0));
     }
 
+    /// A spread accepted at the boundary can exceed the limit by more than
+    /// `1e-76` of its magnitude, within SPEC.md's `1.7273e-76` bound
+    /// (`testAgreeBoundaryExcessBound`). A spread that keeps 76 digits:
+    /// `5.8` maximizes to `58e74 × 10^-75`, so `9.999e-76` is under one
+    /// unit and dropped. The exact spread is `5.8 + 9.999e-76` against a limit
+    /// of `5.8`, an excess of `9.999e-76`, over `1.72e-76` of the spread: in
+    /// thousandths, the excess times 1e76 is 9999 and the spread is under
+    /// 5801, and 9999 / 5801 > 1.72.
+    function testAgreeBoundaryExcessPastOneE76() external pure {
+        assertTrue(LibDecimalFloat.agree(f(58, -1), f(0, 0), f(-9999, -79), f(58, -1)), "sorted");
+        assertTrue(LibDecimalFloat.agree(f(58, -1), f(0, 0), f(58, -1), f(-9999, -79)), "reversed");
+    }
+
     /// Whether `agree` accepts by SPEC's rule, the proportional term included:
     /// `add`'s documented spread against
     /// `max(absolute, proportional × max(|lowest|, |highest|))`, the product
