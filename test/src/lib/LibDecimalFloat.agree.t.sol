@@ -366,27 +366,119 @@ contract LibDecimalFloatAgreeTest is Test {
         assertTrue(LibDecimalFloat.agree(f(0, 0), f(1, 0), f(1, -60), f(1, 0)));
     }
 
+    /// The exact spread of `-lowestMagnitude × 10^(limitExponent - gap)` and
+    /// `limitCoefficient × 10^limitExponent`, as the magnitude
+    /// `limitCoefficient × 10^gap + lowestMagnitude` at `limitExponent - gap`.
+    /// `limitCoefficient`, `lowestMagnitude` and `gap` are positive.
+    function exactBoundarySpread(int256 limitCoefficient, int256 lowestMagnitude, int256 gap)
+        internal
+        pure
+        returns (U512 memory)
+    {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory scaled = LibExactFloat.mulPow10(LibExactFloat.u512(uint256(limitCoefficient)), uint256(gap));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return LibExactFloat.add(scaled, LibExactFloat.u512(uint256(lowestMagnitude)));
+    }
+
+    /// The excess `lowestMagnitude × 10^(limitExponent - gap)` of the exact
+    /// boundary spread over the limit `limitCoefficient × 10^limitExponent` is
+    /// under `1.7273e-76` of the exact spread, the NatSpec bound:
+    /// `lowestMagnitude × 10^(limitExponent - gap)
+    /// < 17273 × (limitCoefficient × 10^gap + lowestMagnitude) × 10^(limitExponent - gap - 80)`.
+    function assertBoundaryExcessUnderBound(
+        int256 limitCoefficient,
+        int256 limitExponent,
+        int256 lowestMagnitude,
+        int256 gap
+    ) internal pure {
+        int256 spreadExponent = limitExponent - gap;
+        // forge-lint: disable-next-line(unsafe-typecast)
+        U512 memory excess = LibExactFloat.u512(uint256(lowestMagnitude));
+        U512 memory bound = LibExactFloat.mulSmall(exactBoundarySpread(limitCoefficient, lowestMagnitude, gap), 17273);
+        assertLt(
+            LibExactFloat.cmpScaled(excess, spreadExponent, bound, spreadExponent - 80),
+            0,
+            "excess not under 1.7273e-76 of the spread"
+        );
+    }
+
+    /// `agree` at the boundary: `lowest = -lowestMagnitude × 10^(limitExponent - gap)`
+    /// against `highest = limitCoefficient × 10^limitExponent` with a limit of
+    /// `limitCoefficient × 10^limitExponent`, as the absolute tolerance, as the
+    /// proportional tolerance of one of the anchor `highest` (`lowestMagnitude`
+    /// is under `10^gap`), and in either order. The exact spread exceeds the
+    /// limit by `lowestMagnitude × 10^(limitExponent - gap)`; where `agree`
+    /// accepts, that excess is under the NatSpec bound.
+    /// @return Whether `agree` accepted.
+    function checkBoundaryExcess(int256 limitCoefficient, int256 limitExponent, int256 lowestMagnitude, int256 gap)
+        internal
+        pure
+        returns (bool)
+    {
+        Float lowest = f(-lowestMagnitude, limitExponent - gap);
+        Float highest = f(limitCoefficient, limitExponent);
+        Float limit = f(limitCoefficient, limitExponent);
+        bool accepted = LibDecimalFloat.agree(limit, f(0, 0), lowest, highest);
+        assertEq(LibDecimalFloat.agree(limit, f(0, 0), highest, lowest), accepted, "reversed differs");
+        assertEq(LibDecimalFloat.agree(f(0, 0), f(1, 0), lowest, highest), accepted, "proportional limit differs");
+        if (accepted) {
+            assertBoundaryExcessUnderBound(limitCoefficient, limitExponent, lowestMagnitude, gap);
+        }
+        return accepted;
+    }
+
     /// The excess a boundary spread admits is under one unit in the last
     /// place of the truncated spread, whose coefficient `add` holds above
-    /// `type(int256).max / 10`. So the excess reaches past `1e-76` of the
-    /// spread for a leading digit from 6, and stays under
-    /// `1 / (type(int256).max / 10)`, which is under `1.7273e-76`.
+    /// `type(int256).max / 10`: under `1 / (type(int256).max / 10)`, which is
+    /// under `1.7273e-76` of the spread, and past `1e-76` of it for a leading
+    /// digit from 6. 6 is held as 6e75 at -75, so 9e-76 is under a unit and
+    /// dropped: the excess 9e-76 is 1.5e-76 of the spread. 5.8 is held as
+    /// 58e74 at -75: the excess 1e-75 - 1e-142 is 1.724e-76 of it.
     function testAgreeBoundaryExcessBound() external pure {
-        // 6 is held as 6e75 at -75, so 9e-76 is under a unit and dropped.
-        assertTrue(LibDecimalFloat.agree(f(6, 0), f(0, 0), f(-9, -76), f(6, 0)), "6 + 9e-76 not accepted");
-        // In units of 1e-76 the exact spread is 6e76 + 9 and the excess 9.
-        assertGt(uint256(9) * 1e76, uint256(6e76) + 9, "excess not past 1e-76 of the spread");
-        // excess / spread < 1.7273e-76 if (spread / 1e4) * 17273 > excess * 1e76.
-        assertGt((uint256(6e76) + 9) / 1e4 * 17273, uint256(9) * 1e76, "excess not under 1.7273e-76 of the spread");
-        // 5.8 is held as 58e74 at -75: the excess 1e-75 - 1e-142 is about
-        // 1.724e-76 of it.
-        assertTrue(
-            LibDecimalFloat.agree(f(58, -1), f(0, 0), f(-(1e67 - 1), -142), f(58, -1)), "5.8 + 1e-75 not accepted"
-        );
-        // 1 / (int256.max / 10) is under 1.7273e-76: (int256.max / 10 / 1e4) * 17273 > 1e76.
+        assertTrue(checkBoundaryExcess(6, 0, 9, 76), "6 + 9e-76 not accepted");
+        // The accepted excess 9e-76 against 1e-76 of the spread 6 + 9e-76:
+        // 9 × 10^76 against 6 × 10^76 + 9.
         assertGt(
-            uint256(type(int256).max / 10) / 1e4 * 17273, uint256(1e76), "1 / (int256.max / 10) not under 1.7273e-76"
+            LibExactFloat.cmpScaled(LibExactFloat.u512(9), -76, exactBoundarySpread(6, 9, 76), -152),
+            0,
+            "excess not past 1e-76 of the spread"
         );
+        assertTrue(checkBoundaryExcess(58, -1, 1e67 - 1, 141), "5.8 + 1e-75 not accepted");
+    }
+
+    /// The excess bound holds across the boundary family: a spread
+    /// `limitCoefficient × 10^limitExponent + lowestMagnitude × 10^(limitExponent - gap)`
+    /// accepted against a limit of `limitCoefficient × 10^limitExponent`
+    /// exceeds it by under `1.7273e-76` of itself, for every coefficient,
+    /// exponent, gap and `lowestMagnitude` under `10^gap`, with the limit as
+    /// either tolerance and the extremes in either order.
+    function testAgreeBoundaryExcessBoundFuzz(
+        int256 limitCoefficient,
+        int256 limitExponent,
+        int256 gap,
+        int256 lowestMagnitudeDigits,
+        int256 lowestMagnitude
+    ) external pure {
+        gap = bound(gap, 1, 120);
+        // 17273 × (limitCoefficient × 10^gap + lowestMagnitude) stays below
+        // the 2^512 `cmpScaled` takes: int224.max is under 10^67.2, so past a
+        // gap of 81 limitCoefficient is at most 10^(149 - gap).
+        // forge-lint: disable-next-line(unsafe-typecast)
+        limitCoefficient = bound(limitCoefficient, 1, gap > 81 ? int256(10 ** uint256(149 - gap)) : type(int224).max);
+        limitExponent = bound(limitExponent, -40, 40);
+        // lowestMagnitude under 10^gap keeps lowest under one unit of highest,
+        // and under 10^67 keeps it a Float coefficient. Its digit count is
+        // fuzzed so the accepted side of the boundary is reached at every gap.
+        lowestMagnitudeDigits = bound(lowestMagnitudeDigits, 1, gap < 67 ? gap : int256(67));
+        lowestMagnitude = bound(
+            lowestMagnitude,
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256(10 ** uint256(lowestMagnitudeDigits - 1)),
+            // forge-lint: disable-next-line(unsafe-typecast)
+            int256(10 ** uint256(lowestMagnitudeDigits)) - 1
+        );
+        checkBoundaryExcess(limitCoefficient, limitExponent, lowestMagnitude, gap);
     }
 
     /// A refusal is always sound. Truncation only ever reduces the spread's
