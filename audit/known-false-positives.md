@@ -149,6 +149,21 @@ to the same Float. The assertion reads only that Float, so it reaches the same
 verdict under both. The term stays because the README wording it refutes names
 it.
 
+## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` domain moved
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The assertions are a
+function of the bounded operands alone, and the property is proven for every
+chain the bounds admit: operands that are exact Floats (positive integers at
+most int224.max), a tracked `numerator * (n + 1)` under 2^256, and each op's
+loss under 10 / int224.max of its result. Moving the first operand's bounds
+anywhere within `[1, 1e67]`, or the others' within `[1, 1e3]`, keeps every
+hypothesis, so the test passes on every input under both programs. The first
+operand is kept at 67 digits because below the wei grid of a 68-digit Float no
+loss or margin reaches a wei: the margin variants of the round-10 scan (no
+margin, 1e-66 once, an order or six too large, the floor as oracle) all survive
+such a shrink, which reaches the same verdict as the original and only stops the
+test observing the rule.
+
 ## Equivalent mutant: pow oracle `k b` guard boundary
 
 `crates/tests/src/differential.rs`, `check_pow_with`'s `|a| = 10^k` branch.

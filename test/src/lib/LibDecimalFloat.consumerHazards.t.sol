@@ -463,20 +463,25 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     }
 
     /// README rule 1's margin on a positive chain: n operations drawn from mul,
-    /// div and add on integer operands in [1, 1e9], then a margin of (n + 1)e-66
-    /// of the result, give a lossless-flag ceiling at least the exact ceiling
-    /// and at most 1 above it. Every operand is exact and each op truncates by
-    /// under 10 / int224.max of its result, so the computed value is at least
-    /// the exact value times (1 - 7.42e-67)^n; the mul that sizes the margin
+    /// div and add on a 67-digit integer and integer operands in [1, 1e3], then
+    /// a margin of (n + 1)e-66 of the result, give a lossless-flag ceiling at
+    /// least the exact ceiling and at most floor((n + 1)e-66 × exact) + 1 above
+    /// it. Every operand is exact and each op truncates by under
+    /// 10 / int224.max of its result, so the computed value is at least the
+    /// exact value times (1 - 7.42e-67)^n; the mul that sizes the margin
     /// truncates the margin by under that fraction of itself, the add that
     /// applies it truncates once more, and
     /// (1 - 7.42e-67)^(n + 1) (1 + (n + 1)e-66 (1 - 7.42e-67)) exceeds 1. The
-    /// overshoot is under (2n + 2)e-66 of a result below 1e40, so the ceiling
-    /// never crosses a second integer.
+    /// margin only adds, so the result is at most exact (1 + (n + 1)e-66), whose
+    /// ceiling is at most ceil(exact) + floor((n + 1)e-66 × exact) + 1. The
+    /// first operand sits on the wei grid of a 68-digit Float, so each loss and
+    /// the margin reach whole wei: no margin, 1e-66 once, or an order more each
+    /// fail. The numerator stays under 1e67 × 1e9 = 1e76.
     function testFuzzMarginPerOperationPositiveChain(uint256[4] memory operands, uint8 ops) external pure {
         uint256 n = operands.length - 1;
-        for (uint256 i = 0; i <= n; i++) {
-            operands[i] = bound(operands[i], 1, 1e9);
+        operands[0] = bound(operands[0], 1e66, 1e67);
+        for (uint256 i = 1; i <= n; i++) {
+            operands[i] = bound(operands[i], 1, 1e3);
         }
         Float acc = LibDecimalFloat.fromFixedDecimalLosslessPacked(operands[0], 0);
         uint256 numerator = operands[0];
@@ -496,11 +501,12 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
             }
         }
         uint256 exactCeil = (numerator + denominator - 1) / denominator;
+        uint256 marginFloor = numerator * (n + 1) / 1e66 / denominator;
         Float margin = acc.mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(n + 1, 66));
         (uint256 got, bool lossless) = acc.add(margin).toFixedDecimalLossy(0);
         uint256 ceilGot = got + (lossless ? 0 : 1);
         assertGe(ceilGot, exactCeil);
-        assertLe(ceilGot, exactCeil + 1);
+        assertLe(ceilGot, exactCeil + marginFloor + 1);
     }
 
     /// Dividing by a truncated price turns an exact integer into a lossy
