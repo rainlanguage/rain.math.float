@@ -353,4 +353,23 @@ contract LibParseDecimalFloatPastInt256Test is Test {
         assertEq(c, int256(threshold - 1), "below coefficient");
         assertEq(x, int256(type(int32).max) - 9, "below exponent");
     }
+
+    /// The past-int256 path checks the threshold from the lowest exponent where
+    /// an int256 magnitude can reach it, `NEVER_PAST_EXPONENT + 1`: 77
+    /// significant digits either side of `(2^223 + 2) x 10^9` at `int32.max - 9`.
+    function testParsePastInt256GateAtNeverPastExponentPlusOne() external view {
+        string memory past = "134799733335753198973335075435098153368185722112702862405518051246100000000010e2147483637";
+        checkFail(past, ExponentOverflow.selector, bytes(past).length);
+        checkFail(string.concat("-", past), ExponentOverflow.selector, bytes(past).length + 1);
+        string memory below =
+            "134799733335753198973335075435098153368185722112702862405518051246099999999990e2147483637";
+        checkLoss(below, 13479973333575319897333507543509815336818572211270286240551805124609999999999, 2147483638);
+        checkLoss(
+            string.concat("-", below),
+            -13479973333575319897333507543509815336818572211270286240551805124609999999999,
+            2147483638
+        );
+        string memory s = string.concat("15", LibTestDecimalLiteral.zeroString(74), "10e2147483637");
+        checkFail(s, ExponentOverflow.selector, bytes(s).length);
+    }
 }
