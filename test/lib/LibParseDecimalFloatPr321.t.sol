@@ -62,6 +62,24 @@ contract LibParseDecimalFloatPr321Test is Test {
         this.parseFrozen(string.concat(Strings.toString(uint256(1) << 223), "e2147483648"));
     }
 
+    /// 2^223 + 2 ends in 0, so one shed leaves int224.max / 10 + 1 with no
+    /// digit lost: one past the nearest-bound window, either sign packs
+    /// exactly at exponent 1.
+    function testFrozenNearestBoundWindowUpperEdge() external pure {
+        int256 coefficient = int256(type(int224).max) / 10 + 1;
+        for (uint256 i = 0; i < 2; i++) {
+            int256 signedCoefficient = i == 0 ? coefficient : -coefficient;
+            string memory text = Strings.toStringSigned(signedCoefficient * 10);
+            (bytes4 error, Float result) = LibParseDecimalFloatPr321.parseDecimalFloat(text);
+            assertEq(error, bytes4(0), text);
+            // The coefficient's two's complement bits, masked to the low 224
+            // as a Float packs a negative coefficient.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            uint256 packedCoefficient = uint256(signedCoefficient) & uint256(type(uint224).max);
+            assertEq(Float.unwrap(result), bytes32(packedCoefficient | (uint256(1) << 224)), text);
+        }
+    }
+
     /// Below the int32 floor the frozen packer sheds exactly the shortfall in
     /// digits, for one, seven and 67 digits, and an underflow to zero is loss.
     /// Expected bits follow the Float representation, not the live packer.

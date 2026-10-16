@@ -135,9 +135,9 @@ so the packed float of a lossy result is never observed.
   moves digits between one division and the loop. The loop stops at the first
   shed count `k` whose result fits int224, and a shortcut never passes it: a
   coefficient of magnitude at least `1e72` (or `1e75`) still has at least
-  `1e67 > int224.max` (or `1e67`) after `5` (or `7`) sheds, so `k >= 5` (or
-  `k >= 8`) in every case. With or without the shortcut the result is `c / 10^k`
-  at `exponent + k`.
+  `1e68 > int224.max` after `4` (or `7`) sheds, so `k >= 5` (or `k >= 8`) in
+  every case. With or without the shortcut the result is `c / 10^k` at
+  `exponent + k`.
 - `initialExponent > 0` relaxed to `>= 0`: the branch is entered only when the
   exponent left int32 after shedding, which raises it by at most ten, so an
   initial exponent of zero ends in `[0, 10]` and never reaches it.
