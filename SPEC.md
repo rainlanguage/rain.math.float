@@ -48,6 +48,12 @@ does and has no ruling yet.
   int224 has no headroom, which is exactly past every Float (#304, #333).
 - Zero packs as `FLOAT_ZERO` (all bits zero), lossless true, for any `e`
   (**UNRULED**).
+- `isPastEveryFloat(m, e)`: true iff `m × 10^e` is at least
+  `(2^223 + 2) × 10^int32.max`, for any uint256 `m` and int256 `e`; for `m` up
+  to 2^255 that is exactly where `packLossy` reverts `ExponentOverflow`. Zero is
+  never past, and no value at an exponent at or below `NEVER_PAST_EXPONENT`
+  (`int32.max - 10`) is past. `packLossy`, `div`, `pow`, `pow10` and the parser
+  check the threshold through it, so it has one encoding (#649).
 - `packLossless(c, e)`: as `packLossy`; reverts `ExponentOverflow(c, e)` for any
   value past `FLOAT_MAX_POSITIVE_VALUE` or `FLOAT_MIN_NEGATIVE_VALUE`, the band
   `packLossy` truncates into them included, and `LossyConversionToFloat(c, e)`
@@ -290,8 +296,8 @@ digits (#306).
   int256 included (PR #433, #510).
 - `ParseDecimalPrecisionLoss` for any other literal not exactly a Float: the
   band below that threshold past the largest Float of its sign, a coefficient
-  past int256, and underflow to zero (PR #433, #510). `ParseDecimalOverflow` is
-  gone (#375).
+  past int256, a significant digit below `10^int32.min` (`1.5e-2147483648`), and
+  underflow to zero (PR #433, #510). `ParseDecimalOverflow` is gone (#375).
 - `ParseDecimalFloatExcessCharacters` for a well-formed literal followed by more
   input (PR #433).
 - Malformed literals keep their own selector: `ParseEmptyDecimalString` (no
