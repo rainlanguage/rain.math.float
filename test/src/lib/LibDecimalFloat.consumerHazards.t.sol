@@ -486,8 +486,11 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// [1, 1e3], then
     /// a margin of (n + 1)e-66 of the result, give a lossless-flag ceiling at
     /// least the exact ceiling and at most floor((n + 1)e-66 × exact) + 1 above
-    /// it. Every operand is exact and each op truncates by under
-    /// 10 / int224.max of its result, which holds while every intermediate is
+    /// it. Every operand is exact and each intermediate feeds only the next op,
+    /// so the n ops are the n truncations README rule 1 counts
+    /// (testMarginCountsReusedIntermediates is the reused case). Each op
+    /// truncates by under 10 / int224.max of its result, which
+    /// holds while every intermediate is
     /// at least 1e-2147483581 so that the exponent floor never cuts a
     /// coefficient short (here every intermediate is at least 1e66 / 1e9 and the
     /// margin at least 4e-9; testMarginFailsAtExponentFloor is the rule failing
@@ -533,6 +536,25 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         uint256 ceilGot = got + (lossless ? 0 : 1);
         assertGe(ceilGot, exactCeil);
         assertLe(ceilGot, exactCeil + marginFloor + 1);
+    }
+
+    /// README rule 1 counts truncations, not operations: x^16 by four squarings
+    /// is four ops, but each squaring doubles the loss its operand carries, so
+    /// 1 + 2 + 4 + 8 = 15 truncations reach the result. exactCeil is
+    /// ceil(c^16 / 10^992) for x = c × 10^-62, computed with bc. A margin of
+    /// 5e-66, one per op plus one for the add, leaves the lossless-flag ceiling
+    /// 4 short; 16e-66, one per truncation plus one, reaches it.
+    function testMarginCountsReusedIntermediates() external pure {
+        Float x = LibDecimalFloat.packLossless(1412421361643711017099055355479792418401738328688727981791023582929, -62);
+        Float acc = x;
+        for (uint256 i = 0; i < 4; i++) {
+            acc = acc.mul(acc);
+        }
+        uint256 exactCeil = 2508582777166415316374690630498779385647052452150497709646547158345;
+        (uint256 got, bool lossless) = acc.add(acc.mul(LibDecimalFloat.packLossless(5, -66))).toFixedDecimalLossy(0);
+        assertEq(got + (lossless ? 0 : 1), exactCeil - 4);
+        (got, lossless) = acc.add(acc.mul(LibDecimalFloat.packLossless(16, -66))).toFixedDecimalLossy(0);
+        assertEq(got + (lossless ? 0 : 1), exactCeil + 24);
     }
 
     /// a × inv(d), the product testFuzzMarginInvChain margins.
