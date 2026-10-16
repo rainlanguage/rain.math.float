@@ -1145,16 +1145,29 @@ contract LibDecimalFloatPowTest is Test {
         return a.pow(b);
     }
 
-    /// The squaring loop stops after the top bit of N, so `1.5^3` squares the
-    /// base once, not twice. The ceiling sits between the two costs: 4955
-    /// with the early break, 5624 without it.
-    function testPowSkipsUnusedFinalSquareGas() external view {
-        Float a = LibDecimalFloat.packLossless(15, -1);
-        Float b = LibDecimalFloat.packLossless(3, 0);
+    /// The gas of one `pow` through the external call.
+    function powGas(Float a, Float b) internal view returns (uint256) {
         uint256 before = gasleft();
         this.powExternal(a, b);
-        uint256 used = before - gasleft();
-        assertLt(used, 5300, "pow squares the base past the top bit of N");
+        return before - gasleft();
+    }
+
+    /// The squaring loop stops after the top bit of N (#637), pinned by the
+    /// loop's own gas steps. With ten as the base every multiply in the loop
+    /// and in the fraction leg is of a coefficient of one, so each costs the
+    /// same. Each bit of N above the first costs one square of the base, its
+    /// two range guards and a loop pass: `10^2.75` against `10^1.75`. The
+    /// first bit costs no square, only the multiply of the result by the base
+    /// and the leg's multiply by the result: `10^1.75` against `10^0.75`, two
+    /// multiplies, under two further bits by the guards and a pass. Squaring
+    /// the base after the top bit would make the first bit three multiplies,
+    /// over two further bits by a multiply less the guards and a pass.
+    function testPowSkipsUnusedFinalSquareGas() external view {
+        Float ten = LibDecimalFloat.packLossless(1, 1);
+        uint256 noBits = powGas(ten, LibDecimalFloat.packLossless(75, -2));
+        uint256 oneBit = powGas(ten, LibDecimalFloat.packLossless(175, -2));
+        uint256 twoBits = powGas(ten, LibDecimalFloat.packLossless(275, -2));
+        assertLt(oneBit - noBits, 2 * (twoBits - oneBit), "pow squares the base past the top bit of N");
     }
 
     /// `pow` raises to an integer exponent via exponentiation by squaring,

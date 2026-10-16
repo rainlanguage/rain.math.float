@@ -122,6 +122,7 @@ the call on the hot path. Moving it the other way, to
 `testParseOverflowThresholdExcesses`,
 `testParsePastInt256FirstExponentPastNeverPast` and
 `testParsePastInt256GateAtNeverPastExponentPlusOne` kill it.
+
 ## Resolved by removal: `pow` carry path `excess <= 67` guard at any bound from 27 up, or dropped
 
 `src/lib/LibDecimalFloat.sol`, `packRoundedSignificant`. The `excess <= 67`
@@ -163,6 +164,11 @@ on one side, `0 % unit` on the other), the sign test fails, and
 `packArithmeticResult(0, exponent)` is `FLOAT_ZERO` before `packLossy` looks at
 the exponent. `ceil` differs: its `fraction == 0` arm returns the input bytes,
 so the same narrowing there is killed.
+
+## Equivalent mutant: `ceil` fraction sign test `fraction > 0` as `fraction >= 0`
+
+`src/lib/LibDecimalFloat.sol`, `ceil`. The `fraction == 0` arm returns on the
+line before, so at the sign test the fraction is non-zero and `>= 0` is `> 0`.
 
 ## Equivalent mutant: `powUnrounded` top-bit `break` as `continue`
 
