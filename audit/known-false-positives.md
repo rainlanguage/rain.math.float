@@ -103,7 +103,7 @@ Raising the guard from `a > 0` to `a > 1`, or to any `a > k` with `k` at most
 with a limit of at least 1e33, the identity on a `b` already in `[1, 1e33]`. The
 helper's output is the same for every input;
 `testWeiSafeSideDomainInteriorEdges` passes `a = 1` and sees `b = 1e33` and
-`b = 1` under both.
+`b = 1` under both. `a > 1` and `a > 1e32` have both survived.
 
 ## Equivalent mutants: `testFuzzWeiFloorCeilSafeSideBoundsCounterexample` drops calls
 
@@ -149,13 +149,50 @@ to the same Float. The assertion reads only that Float, so it reaches the same
 verdict under both. The term stays because the README wording it refutes names
 it.
 
+## Equivalent mutant: `testMarginRelativeToResultFailsUnderCancellation` `subtrahend` inlined
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The test takes no input.
+Replacing `.sub(subtrahend)`, where `subtrahend` is `quotient - 1000`, with
+`.sub(quotient).add(1000)` at both uses changes nothing: `product`, `quotient`
+and the margined product are integers of at most 68 digits (the test asserts the
+first two; the margined product's 68 integer digits fill the coefficient, so its
+`add` drops the margin's fraction and packs an integer), and every difference
+and sum here is a small integer, so each `sub` and `add` is exact and
+`a - (q - 1000)` equals `(a - q) + 1000`: 996 for `res` and 1022 for the
+margined product under both programs. `eq` and `toFixedDecimalLossy` read values
+alone.
+
+## Equivalent mutant: `testFuzzMarginPerOperationPositiveChain` chain length fixed at 2
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. Replacing
+`opCount = operands.length - 1` with `opCount = 2` (or 1) runs a shorter chain
+on the same operands and reads `opCount` consistently in the loop, the margin
+and `marginFloor`; the NatSpec's two bounds hold for every chain length whose
+tracked `numerator * (opCount + 1)` stays under 2^256, so the test passes on
+every input under both programs. The variant only stops the fuzz test exercising
+a third op, leaving `operands[3]` unread. No other test reads the line.
+
+## Equivalent mutant: `testFuzzMarginPerOperationPositiveChain` margin scaled in two steps
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. Computing the margin as
+`acc.div(1e66).mul(opCount + 1)` instead of `acc.mul((opCount + 1)e-66)` changes
+nothing: SPEC.md rounds each `div` and `mul` result once toward zero to a Float,
+and `acc / 1e66` is a Float (the same coefficient at an exponent 66 lower, far
+from int32.min here), so the `div` is exact and the `mul` then rounds the exact
+product `(opCount + 1) × acc × 1e-66` once toward zero, the Float the original's
+single `mul` returns. `add` and `toFixedDecimalLossy` read values alone, so
+`ceilGot` is the same on every input. `acc.mul(1e-66).mul(opCount + 1)` and the
+`(opCount + 1)` step first are equivalent by the same argument: scaling a Float
+by a power of ten is exact away from the exponent limits, so the one inexact
+step rounds the same digits in every order.
+
 ## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` domain moved
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The assertions are a
 function of the bounded operands alone, and the property is proven for every
 chain the bounds admit: operands that are exact Floats (positive integers at
-most int224.max), a tracked `numerator * (n + 1)` under 2^256, and each op's
-loss under 10 / int224.max of its result. Moving the first operand's bounds
+most int224.max), a tracked `numerator * (opCount + 1)` under 2^256, and each
+op's loss under 10 / int224.max of its result. Moving the first operand's bounds
 anywhere within `[1, 1e67]`, or the others' within `[1, 1e3]`, keeps every
 hypothesis, so the test passes on every input under both programs. The first
 operand is kept at 67 digits because below the wei grid of a 68-digit Float no
@@ -187,9 +224,9 @@ value, so when that is the integer `exact` the Float is an integer of at least
 `exact + 1` or a non-integer above `exact`, and `ceilGot` is at least
 `exact + 1` either way. The upper bound only loosens.
 
-`marginFloor` from `n + 2` instead of `n + 1`: read only by the upper bound,
-which it loosens; `numerator × 5` is under 2^256 (the numerator is at most
-1e76), so nothing reverts.
+`marginFloor` from `opCount + 2` instead of `opCount + 1`: read only by the
+upper bound, which it loosens; `numerator × 5` is under 2^256 (the numerator is
+at most 1e76), so nothing reverts.
 
 `ceilGot` as `got + 1` whether or not `lossless`: differs only when the Float is
 an integer `F`, where the original reads `F` and the mutant `F + 1`. The lower
@@ -199,13 +236,13 @@ integer, `F - exact` is an integer at most `m`, so at most `floor(m)`; otherwise
 `F <= floor(exact + m) <= floor(exact) + floor(m) + 1 = ceil(exact) + floor(m)`.
 So `F + 1 <= exactCeil + marginFloor + 1`.
 
-Margin of `n e-66` instead of `(n + 1)e-66`: `n` is fixed at 3, so the margin is
-`3e-66` of the result against a loss under `4 × 10 / int224.max`, about
-2.968e-66, of it (three ops and the margin's `add`; the margin's `mul` truncates
-only the margin), and `(1 - 7.42e-67)^4 (1 + 3e-66 (1 - 7.42e-67))` still
-exceeds 1, so the Float stays strictly above the exact value and the lower bound
-holds. A smaller margin can only lower the Float, so the upper bound holds too.
-`n e-66` falls short of `(n + 1) × 7.42e-67` only at `n <= 2`;
+Margin of `n e-66` instead of `(n + 1)e-66`: the chain length `opCount` is 3, so
+the margin is `3e-66` of the result against a loss under `4 × 10 / int224.max`,
+about 2.968e-66, of it (three ops and the margin's `add`; the margin's `mul`
+truncates only the margin), and `(1 - 7.42e-67)^4 (1 + 3e-66 (1 - 7.42e-67))`
+still exceeds 1, so the Float stays strictly above the exact value and the lower
+bound holds. A smaller margin can only lower the Float, so the upper bound holds
+too. `n e-66` falls short of `(n + 1) × 7.42e-67` only at `n <= 2`;
 `testMarginCountsItsOwnAdd` pins that at `n = 2`, where `2e-66` leaves the
 lossless-flag ceiling one short. Fuzzing the chain length over 1..3 does not
 observe it: a shortfall needs every truncation near its maximum at once, and

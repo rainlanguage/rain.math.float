@@ -413,13 +413,13 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// lossless-flag ceiling 7 short; 3e-66, one per add plus one for the
     /// margin's add, reaches it.
     function testMarginCountsAdds() external pure {
-        uint256 x = 13479e63 + 9;
-        uint256 y = 2e63 + 9;
-        uint256 z = 9;
-        Float res = LibDecimalFloat.fromFixedDecimalLosslessPacked(x, 0)
-            .add(LibDecimalFloat.fromFixedDecimalLosslessPacked(y, 0))
-            .add(LibDecimalFloat.fromFixedDecimalLosslessPacked(z, 0));
-        uint256 exactSum = x + y + z;
+        uint256 firstAddend = 13479e63 + 9;
+        uint256 secondAddend = 2e63 + 9;
+        uint256 thirdAddend = 9;
+        Float res = LibDecimalFloat.fromFixedDecimalLosslessPacked(firstAddend, 0)
+            .add(LibDecimalFloat.fromFixedDecimalLosslessPacked(secondAddend, 0))
+            .add(LibDecimalFloat.fromFixedDecimalLosslessPacked(thirdAddend, 0));
+        uint256 exactSum = firstAddend + secondAddend + thirdAddend;
         (uint256 got, bool lossless) = res.toFixedDecimalLossy(0);
         assertEq(got, exactSum - 17);
         assertTrue(lossless);
@@ -467,26 +467,30 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
     /// a margin of (n + 1)e-66 of the result, give a lossless-flag ceiling at
     /// least the exact ceiling and at most floor((n + 1)e-66 × exact) + 1 above
     /// it. Every operand is exact and each op truncates by under
-    /// 10 / int224.max of its result, so the computed value is at least the
-    /// exact value times (1 - 7.42e-67)^n; the mul that sizes the margin
-    /// truncates the margin by under that fraction of itself, the add that
-    /// applies it truncates once more, and
-    /// (1 - 7.42e-67)^(n + 1) (1 + (n + 1)e-66 (1 - 7.42e-67)) exceeds 1. The
-    /// margin only adds, so the result is at most exact (1 + (n + 1)e-66), whose
-    /// ceiling is at most ceil(exact) + floor((n + 1)e-66 × exact) + 1. The
-    /// first operand sits on the wei grid of a 68-digit Float, so each loss and
-    /// the margin reach whole wei: no margin, 1e-66 once, or an order more each
-    /// fail. The numerator stays under 1e67 × 1e9 = 1e76.
+    /// 10 / int224.max of its result, which holds while every intermediate is
+    /// at least 1e-2147483581 so that the exponent floor never cuts a
+    /// coefficient short (here every intermediate is at least 1e66 / 1e9 and the
+    /// margin at least 4e-9; testMarginFailsAtExponentFloor is the rule failing
+    /// below it), so the computed value is at least the exact value times
+    /// (1 - 7.42e-67)^n; the mul that sizes the margin truncates the margin by
+    /// under that fraction of itself, the add that applies it truncates once
+    /// more, and (1 - 7.42e-67)^(n + 1) (1 + (n + 1)e-66 (1 - 7.42e-67))
+    /// exceeds 1. The margin only adds, so the result is at most
+    /// exact (1 + (n + 1)e-66), whose ceiling is at most
+    /// ceil(exact) + floor((n + 1)e-66 × exact) + 1. The first operand sits on
+    /// the wei grid of a 68-digit Float, so each loss and the margin reach whole
+    /// wei: no margin, 1e-66 once, or an order more each fail. The numerator
+    /// stays under 1e67 × 1e9 = 1e76.
     function testFuzzMarginPerOperationPositiveChain(uint256[4] memory operands, uint8 ops) external pure {
-        uint256 n = operands.length - 1;
+        uint256 opCount = operands.length - 1;
         operands[0] = bound(operands[0], 1e66, 1e67);
-        for (uint256 i = 1; i <= n; i++) {
+        for (uint256 i = 1; i <= opCount; i++) {
             operands[i] = bound(operands[i], 1, 1e3);
         }
         Float acc = LibDecimalFloat.fromFixedDecimalLosslessPacked(operands[0], 0);
         uint256 numerator = operands[0];
         uint256 denominator = 1;
-        for (uint256 i = 1; i <= n; i++) {
+        for (uint256 i = 1; i <= opCount; i++) {
             Float operand = LibDecimalFloat.fromFixedDecimalLosslessPacked(operands[i], 0);
             uint256 op = (ops >> (2 * (i - 1))) % 3;
             if (op == 0) {
@@ -501,12 +505,35 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
             }
         }
         uint256 exactCeil = (numerator + denominator - 1) / denominator;
-        uint256 marginFloor = numerator * (n + 1) / 1e66 / denominator;
-        Float margin = acc.mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(n + 1, 66));
+        uint256 marginFloor = numerator * (opCount + 1) / 1e66 / denominator;
+        Float margin = acc.mul(LibDecimalFloat.fromFixedDecimalLosslessPacked(opCount + 1, 66));
         (uint256 got, bool lossless) = acc.add(margin).toFixedDecimalLossy(0);
         uint256 ceilGot = got + (lossless ? 0 : 1);
         assertGe(ceilGot, exactCeil);
         assertLe(ceilGot, exactCeil + marginFloor + 1);
+    }
+
+    /// The margin rule's hypothesis fails at the exponent floor: a result below
+    /// about 1.35e-2147483582 cannot keep a coefficient above int224.max / 10,
+    /// so one op can lose far more than 1e-66 of it. 3e-2147483648 / 2 packs to
+    /// 1e-2147483648, a third lost; times 1e13 × 10^int32.max that is 1e12
+    /// where the exact product is 1.5e12, and rule 1's 3e-66 margin for the two
+    /// ops and its own add leaves the lossless-flag ceiling at 1e12 + 1, 5e11 - 1
+    /// below the exact ceiling.
+    function testMarginFailsAtExponentFloor() external pure {
+        Float quotient = LibDecimalFloat.packLossless(3, type(int32).min).div(LibDecimalFloat.packLossless(2, 0));
+        (int256 quotientCoefficient, int256 quotientExponent) = quotient.unpack();
+        assertEq(quotientCoefficient, 1);
+        assertEq(quotientExponent, type(int32).min);
+        Float res = quotient.mul(LibDecimalFloat.packLossless(1e13, type(int32).max));
+        assertTrue(res.eq(LibDecimalFloat.packLossless(1e12, 0)));
+        uint256 exactCeil = 15e11;
+        (uint256 got, bool lossless) = res.add(res.mul(LibDecimalFloat.packLossless(3, -66))).toFixedDecimalLossy(0);
+        assertEq(got, 1e12);
+        assertFalse(lossless);
+        uint256 ceilGot = got + (lossless ? 0 : 1);
+        assertEq(ceilGot, 1e12 + 1);
+        assertEq(exactCeil - ceilGot, 5e11 - 1);
     }
 
     /// Dividing by a truncated price turns an exact integer into a lossy

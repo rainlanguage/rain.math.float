@@ -314,11 +314,16 @@ Rules for protocols built on the library. Each example is a test in
    `add` and `sub` can drop a fraction smaller than one ulp with no signal, and
    so can the `add` that applies a margin. For an amount owed computed from
    positive values by `mul`, `div`, `inv` and `add` only, add a margin of at
-   least 1e-66 of the result per operation, plus 1e-66 for that `add`. A `sub`,
-   or an `add` of opposite signs, can cancel and amplify earlier losses relative
-   to the result: margin each term on its safe side before combining them. Keep
-   amounts as Floats through a calculation: converting to wei on every step
-   reintroduces Balancer/Bunni-style amplification.
+   least 1e-66 of the result per operation, plus 1e-66 for that `add`, while
+   every intermediate is at least 1e-2147483581, so that a result which does not
+   fit still keeps a coefficient above int224.max / 10 and loses under 1e-66 of
+   itself; nearer the exponent floor the coefficient is cut short and one
+   operation can lose most of its result (`3e-2147483648 / 2` is
+   `1e-2147483648`). A `sub`, or an `add` of opposite signs, can cancel and
+   amplify earlier losses relative to the result: margin each term on its safe
+   side before combining them. Keep amounts as Floats through a calculation:
+   converting to wei on every step reintroduces Balancer/Bunni-style
+   amplification.
 2. **Toward zero applies per operation, not per expression.** A rounded divisor
    biases the quotient upward: `inv(inv(6))` is `6.` then 65 zeros and a `2`. A
    negative result rounds toward +∞: `-1 / 3` is `-0.` then 67 threes. Get
