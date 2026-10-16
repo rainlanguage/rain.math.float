@@ -40,6 +40,8 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// a hint filter (`divHint`, `maximizeHints`) is false, and
 /// `LibHalmosExact.halmos.t.sol` proves those filters true for every input
 /// they are given, so the early returns exclude nothing.
+/// `AddSubRoundOnce.t.sol` checks MAX, IDEM, NEAR and FAR reach the call they
+/// check at both ends of their domains.
 ///
 /// Composition: by MAX and IDEM, NEAR/FAR apply to S. They put c 10^e at or
 /// below |S| and S below the next multiple of 10^e. A grid member above
@@ -54,7 +56,11 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// dispatch: the workflow is disabled on the repository, so a `src/` change
 /// re-proves nothing until someone dispatches it.
 contract AddSubRoundOnceHalmosTest {
+    /// floor(int256.max / 10).
+    uint256 internal constant T10 = uint256(type(int256).max) / 10;
     uint256 internal constant TWO_223 = 2 ** 223;
+    int256 internal constant FMIN = type(int32).min;
+    int256 internal constant FMAX = type(int32).max;
 
     function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure returns (int256, int256) {
         return LibDecimalFloatImplementation.add(ca, ea, cb, eb);
@@ -70,7 +76,7 @@ contract AddSubRoundOnceHalmosTest {
 
     function isMaximized(int256 m) internal pure returns (bool) {
         uint256 x = LibHalmosExact.abs(m);
-        return m != type(int256).min && x > LibHalmosExact.T10 && x <= 10 * LibHalmosExact.T10;
+        return m != type(int256).min && x > T10 && x <= 10 * T10;
     }
 
     /// ZERO.
@@ -134,7 +140,7 @@ contract AddSubRoundOnceHalmosTest {
             // T10 < |c| 10^k <= 10 T10 <= int256.max, so c 10^k does not
             // wrap: m is c 10^k exactly (so of c's sign, and 10^8 | m as
             // k >= 8) and maximized.
-            assert(x > LibHalmosExact.T10 / scale && x <= (10 * LibHalmosExact.T10) / scale);
+            assert(x > T10 / scale && x <= (10 * T10) / scale);
         } catch {
             assert(false);
         }
@@ -206,14 +212,20 @@ contract AddSubRoundOnceHalmosTest {
         uint256 d = LibHalmosExact.concrete(dBits, 7);
         if (d > 76 || !LibHalmosExact.inSlice(d)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
-        if (yb < -int256(LibHalmosExact.T10) || yb > int256(LibHalmosExact.T10)) return;
+        if (yb < -int256(T10) || yb > int256(T10)) return;
         int256 b = yb * 10;
         if (!isMaximized(a) || !isMaximized(b) || a % 1e8 != 0 || b % 1e8 != 0) return;
         if (!LibHalmosExact.divHint(a, 1e75) || !LibHalmosExact.divHint(b, 1e75)) return;
-        if (eB < LibHalmosExact.FMIN - 76 || eB > LibHalmosExact.FMAX - 8) return;
+        if (eB < FMIN - 76 || eB > FMAX - 8) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 eA = eB + int256(d);
         try this.implAdd(swap ? b : a, swap ? eB : eA, swap ? a : b, swap ? eA : eB) returns (int256 c, int256 e) {
+            // A zero sum returns the maximized zero (0, 0) whatever eB is;
+            // `checkSum` rejects a zero c for a nonzero S.
+            if (c == 0) {
+                checkSum(a, b, d, c, d);
+                return;
+            }
             int256 t = e - eB;
             // forge-lint: disable-next-line(unsafe-typecast)
             assert(t == int256(d) || t == int256(d) + 1);
@@ -232,10 +244,10 @@ contract AddSubRoundOnceHalmosTest {
         if (d <= 76 || d > 2 ** 40) return;
         if (!isMaximized(a) || !isMaximized(b) || a % 1e8 != 0 || b % 1e8 != 0) return;
         if (!LibHalmosExact.divHint(a, 1e75) || !LibHalmosExact.divHint(b, 1e75)) return;
-        if (eB < LibHalmosExact.FMIN - 76 || eB > LibHalmosExact.FMAX - 8) return;
+        if (eB < FMIN - 76 || eB > FMAX - 8) return;
         // forge-lint: disable-next-line(unsafe-typecast)
         int256 eA = eB + int256(d);
-        if (eA > LibHalmosExact.FMAX - 8) return;
+        if (eA > FMAX - 8) return;
         try this.implAdd(swap ? b : a, swap ? eB : eA, swap ? a : b, swap ? eA : eB) returns (int256 c, int256 e) {
             assert(e == eA);
             uint256 mc = LibHalmosExact.abs(c);

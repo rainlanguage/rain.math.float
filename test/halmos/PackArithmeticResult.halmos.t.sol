@@ -14,9 +14,13 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 /// `ExponentOverflow(c, e)` when it is no Float. Checked for every int256 c and
 /// every int256 e: Below, Low, Middle, High and Above tile the int256
 /// exponents, and each splits c by size class (`checkPackClass`), one per
-/// path; the halmos workflow, dispatched by hand (it is disabled on the
-/// repository), proves every band but `check_packLow` cases 99-780 (#511).
+/// path; `PackArithmeticResult.t.sol` checks both tilings at their ends. The
+/// halmos workflow, dispatched by hand (it is disabled on the repository),
+/// proves every band but `check_packLow` cases 99-780 (#511).
 contract PackArithmeticResultHalmosTest {
+    int256 internal constant FMIN = type(int32).min;
+    int256 internal constant FMAX = type(int32).max;
+
     function pack(int256 c, int256 e) external pure returns (Float) {
         return LibDecimalFloat.packArithmeticResult(c, e);
     }
@@ -42,10 +46,10 @@ contract PackArithmeticResultHalmosTest {
         // 0 < |c| < 2^256 < 10^78: at e <= int32.min - 78, |c| 10^e is below
         // 10^int32.min, every nonzero member; at e >= int32.max + 68 it is at
         // least 10^(int32.max + 68) > 2^223 10^int32.max, past every Float.
-        if (e <= LibHalmosExact.FMIN - 78) {
+        if (e <= FMIN - 78) {
             return (0, 0, 1);
         }
-        if (e >= LibHalmosExact.FMAX + 68) {
+        if (e >= FMAX + 68) {
             return (0, 0, 2);
         }
         uint256 x = LibHalmosExact.abs(c);
@@ -64,10 +68,10 @@ contract PackArithmeticResultHalmosTest {
             if (k == 0) {
                 // Lifting keeps the value exactly, so T = |c| 10^e when e is
                 // at least the floor.
-                if (e >= LibHalmosExact.FMIN) {
+                if (e >= FMIN) {
                     (m, f) = (x, e);
                 } else {
-                    (m, f) = (floorAt(x, e), LibHalmosExact.FMIN);
+                    (m, f) = (floorAt(x, e), FMIN);
                 }
             } else {
                 // forge-lint: disable-next-line(unsafe-typecast)
@@ -76,21 +80,21 @@ contract PackArithmeticResultHalmosTest {
                 uint256 q = x / p;
                 // q 10 < l iff q < floor((l - 1) / 10) + 1, iff x is below
                 // that times 10^k.
-                if (f0 - 1 >= LibHalmosExact.FMIN && x < ((l - 1) / 10 + 1) * p) {
+                if (f0 - 1 >= FMIN && x < ((l - 1) / 10 + 1) * p) {
                     (m, f) = (l, f0 - 1);
-                } else if (f0 >= LibHalmosExact.FMIN) {
+                } else if (f0 >= FMIN) {
                     (m, f) = (q, f0);
                 } else {
-                    (m, f) = (floorAt(x, e), LibHalmosExact.FMIN);
+                    (m, f) = (floorAt(x, e), FMIN);
                 }
             }
             if (m == 0) {
                 return (0, 0, 1);
             }
-            if (f > LibHalmosExact.FMAX) {
+            if (f > FMAX) {
                 // Lower f to the ceiling if m 10^(f - FMAX) is still at most l.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                uint256 j = uint256(f - LibHalmosExact.FMAX);
+                uint256 j = uint256(f - FMAX);
                 if (j > 67) {
                     return (0, 0, 2);
                 }
@@ -99,7 +103,7 @@ contract PackArithmeticResultHalmosTest {
                 if (m > l / p) {
                     return (0, 0, 2);
                 }
-                (m, f) = (m * p, LibHalmosExact.FMAX);
+                (m, f) = (m * p, FMAX);
             }
         }
         return (m, f, 0);
@@ -108,7 +112,7 @@ contract PackArithmeticResultHalmosTest {
     /// floor(x 10^e / 10^FMIN) for e < FMIN.
     function floorAt(uint256 x, int256 e) internal pure returns (uint256) {
         // forge-lint: disable-next-line(unsafe-typecast)
-        uint256 d = uint256(LibHalmosExact.FMIN - e);
+        uint256 d = uint256(FMIN - e);
         // x < 2^256 < 10^78.
         if (d > 77) {
             return 0;
@@ -165,7 +169,7 @@ contract PackArithmeticResultHalmosTest {
     /// e in [int256.min, int32.min - 78].
     function check_packBelow(int256 c, int256 e, uint256 iBits) external view {
         uint256 i = LibHalmosExact.concrete(iBits, 4);
-        if (i > 10 || e > LibHalmosExact.FMIN - 78) return;
+        if (i > 10 || e > FMIN - 78) return;
         checkPackClass(c, e, i);
     }
 
@@ -181,7 +185,7 @@ contract PackArithmeticResultHalmosTest {
         uint256 i = LibHalmosExact.concrete(iBits, 4);
         if (i > 10 || !LibHalmosExact.inSlice(j * 11 + i)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
-        checkPackClass(c, LibHalmosExact.FMIN - int256(j), i);
+        checkPackClass(c, FMIN - int256(j), i);
     }
 
     /// e in [int32.min + 1, int32.max - 11]: shedding at most 10 digits and
@@ -189,7 +193,7 @@ contract PackArithmeticResultHalmosTest {
     function check_packMiddle(int256 c, int256 e, uint256 iBits) external view {
         uint256 i = LibHalmosExact.concrete(iBits, 4);
         if (i > 10 || !LibHalmosExact.inSlice(i)) return;
-        if (e < LibHalmosExact.FMIN + 1 || e > LibHalmosExact.FMAX - 11) return;
+        if (e < FMIN + 1 || e > FMAX - 11) return;
         checkPackClass(c, e, i);
     }
 
@@ -201,13 +205,13 @@ contract PackArithmeticResultHalmosTest {
         uint256 i = LibHalmosExact.concrete(iBits, 4);
         if (i > 10 || !LibHalmosExact.inSlice(j * 11 + i)) return;
         // forge-lint: disable-next-line(unsafe-typecast)
-        checkPackClass(c, LibHalmosExact.FMAX - 10 + int256(j), i);
+        checkPackClass(c, FMAX - 10 + int256(j), i);
     }
 
     /// e in [int32.max + 68, int256.max].
     function check_packAbove(int256 c, int256 e, uint256 iBits) external view {
         uint256 i = LibHalmosExact.concrete(iBits, 4);
-        if (i > 10 || e < LibHalmosExact.FMAX + 68) return;
+        if (i > 10 || e < FMAX + 68) return;
         checkPackClass(c, e, i);
     }
 }
