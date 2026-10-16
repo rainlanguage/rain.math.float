@@ -264,6 +264,14 @@ is below 1, as `x^2 - N = (x - sqrt(N)) (x + sqrt(N)) > k x > x`; and
 `x1 <= x1'' < sqrt(N) + 1/2 + 1/2`, which puts `x1''` in `[s, s + 1]` like `x1`,
 and the decrement leaves `r = s`: the original's result for every input.
 
+## Equivalent mutant: frozen `sqrtPr309`, stale square after the decrement
+
+`(rootHigh, rootLow) = mul512(root + 1, root + 1)` after `root -= 1`, in the
+notation above: the decrement fires only for `x1 = s + 1`, and then
+`x1 < sqrt(N) + 1/2` gives `N - s^2 > s`, so the original returns `s + 1`; the
+mutant's `N - (s + 1)^2` is negative, its 512-bit high word nonzero, so it
+returns `s + 1` too.
+
 ## Equivalent in the domain: frozen `sqrtPre359`, Newton quotient from `coefficient + 1`
 
 `sqrtPre359`'s `root = (root + mulDiv(coefficient, scale, root)) >> 1` with the

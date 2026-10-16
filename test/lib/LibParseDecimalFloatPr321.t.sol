@@ -80,6 +80,24 @@ contract LibParseDecimalFloatPr321Test is Test {
         }
     }
 
+    /// Coefficients past int224 that start at or below the ceiling and shed
+    /// past it, so the ceiling branch is reached by shedding alone: 2^223 + 20
+    /// at int32.max sheds one digit to int224.max / 10 + 2, past the
+    /// nearest-bound window, at int32.max + 1, and 1e76 at int32.max - 7 sheds
+    /// nine to 1e67 at int32.max + 2 (shed counts from bc). A shed coefficient
+    /// has no headroom to lift, so each reverts with its original inputs.
+    function testFrozenShedPastCeilingReverts() external {
+        int256 pastWindow = (int256(1) << 223) + 20;
+        int256[3] memory coefficients = [pastWindow, -pastWindow, int256(1e76)];
+        int256[3] memory exponents = [int256(type(int32).max), type(int32).max, int256(type(int32).max) - 7];
+        for (uint256 i = 0; i < coefficients.length; i++) {
+            string memory text =
+                string.concat(Strings.toStringSigned(coefficients[i]), "e", Strings.toStringSigned(exponents[i]));
+            vm.expectRevert(abi.encodeWithSelector(ExponentOverflow.selector, coefficients[i], exponents[i]));
+            this.parseFrozen(text);
+        }
+    }
+
     /// A 77-digit coefficient sheds 10 digits to fit int224 and the 67 left to
     /// reach the int32 floor, so it underflows to zero and is loss. Past the
     /// shed-to-zero return, the rise of 77 would wrap `int256(10 ** 77)` to
