@@ -254,6 +254,38 @@ coefficient to an estimate below `1e74`, where the step's input is `9e27` above
 `sqrt(N)` and its quotient decides the root.
 `testImplementationSqrtPre359UnconvergedNewtonStep` pins it.
 
+## Equivalent mutant: frozen `sqrtPr309`, Newton quotient over `root - 1`
+
+The same step with the divisor `root - 1`, in the notation above:
+`x1'' = floor((x + N / (x - 1)) / 2)`. `N / (x - 1) - N / x = N / (x (x - 1))`
+is below 1, as `x^2 - N = (x - sqrt(N)) (x + sqrt(N)) > k x > x`; and
+`(x + N / x) / 2 = sqrt(N) + (x - sqrt(N))^2 / 2x < sqrt(N) + 1/2`, as
+`x - sqrt(N) <= 2k + 1 < sqrt(x)` for `x > 1e39`. So
+`x1 <= x1'' < sqrt(N) + 1/2 + 1/2`, which puts `x1''` in `[s, s + 1]` like `x1`,
+and the decrement leaves `r = s`: the original's result for every input.
+
+## Equivalent in the domain: frozen `sqrtPre359`, Newton quotient from `coefficient + 1`
+
+`sqrtPre359`'s `root = (root + mulDiv(coefficient, scale, root)) >> 1` with the
+numerator `coefficient + 1`. Write `N = coefficient * scale`, `s = isqrt(N)`,
+`R` the root fed to the step, `q = floor(N / R)` and `d = R - s`. The mutant's
+quotient is `q + 1` iff `N mod R >= R - scale`, and never more, as `scale < R`;
+its step then exceeds the original's iff `R + q` is odd. The original's step is
+`s` or `s + 1`: at least `sqrt(N)` by AM-GM, and below
+`sqrt(N) + (d + 1)^2 / 2R < sqrt(N) + 1`. With no decrement the result is the
+step plus one iff `N - step^2 > step`, which for `s` is `round(sqrt(N))` and for
+`s + 1` is `s + 1`. The mutant changes it only by moving the step up: from `s`,
+`q = 2s + 1 - R = s + 1 - d`, so `N mod R = N - s^2 - s - d + d^2` and the
+quotient grows only if `N >= s^2 + 2s + 2d - d^2 - scale`, while `s + 1` is
+wrong only if `N <= s^2 + s`, together `s <= d^2 - 2d + scale`; from `s + 1`,
+`q = s + 3 - d` needs `R q <= N <= s^2 + 2s`, so `s <= d^2 - 3d`. In the domain
+the scaled-up coefficient has 76 digits and `scale >= 1e5`, so `s >= 1e40`, and
+the six Newton steps leave the root within `5e10` of `isqrt(estimate)`, so
+`|d| < 5e13 + 1e3` and `d^2 - 2d + scale < 3e27`: neither bound holds. Outside
+the domain the frozen `scaleUp` wraps and the Newton steps need not converge, so
+this argument does not apply; there the copy is pinned by the verbatim check
+against 26a3cf06, not by tests of this line.
+
 ## Equivalent mutant: pow oracle `k b` guard boundary
 
 `crates/tests/src/differential.rs`, `check_pow_with`'s `|a| = 10^k` branch.

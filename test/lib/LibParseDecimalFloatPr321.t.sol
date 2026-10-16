@@ -80,6 +80,19 @@ contract LibParseDecimalFloatPr321Test is Test {
         }
     }
 
+    /// A 77-digit coefficient sheds 10 digits to fit int224 and the 67 left to
+    /// reach the int32 floor, so it underflows to zero and is loss. Past the
+    /// shed-to-zero return, the rise of 77 would wrap `int256(10 ** 77)` to
+    /// -(2^256 - 10^77), which this coefficient is twice, and the lossless
+    /// test would accept the zero.
+    function testFrozenFloorShedsAllAfterFit() external pure {
+        (bytes4 errorSelector, Float parsed) = LibParseDecimalFloatPr321.parseDecimalFloat(
+            "31584178474632390847141970017375815706539969331281128078915168015826259279872e-2147483725"
+        );
+        assertEq(errorSelector, ParseDecimalPrecisionLoss.selector);
+        assertEq(Float.unwrap(parsed), bytes32(0));
+    }
+
     /// Below the int32 floor the frozen packer sheds exactly the shortfall in
     /// digits, for one, seven and 67 digits, and an underflow to zero is loss.
     /// Expected bits follow the Float representation, not the live packer.
