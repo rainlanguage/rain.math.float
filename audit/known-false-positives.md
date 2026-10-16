@@ -159,6 +159,22 @@ result does either, so the mutant proves under halmos iff the original does. The
 bound states the composition's "no grid member below 10^t lies above |c| 10^t"
 for a reader.
 
+## Equivalent mutant: MAX's digit-count filter `x >= 10 ** (j + 1)` at `>`
+
+`test/halmos/AddSubRoundOnce.halmos.t.sol`, `check_maximizeFloat`. The mutant
+also admits |c| = 10^(j + 1) at case j, which case j + 1 already checks (at j =
+67 it is above 2^223, where the lemma has returned). No assertion after the
+filter reads j, so the mutant checks the same inputs under the same assertions,
+one of them twice, and proves iff the original does.
+
+## Equivalent mutant: FAR's `eB > FMAX - 8` bound moved up
+
+`test/halmos/AddSubRoundOnce.halmos.t.sol`, `check_addFar`. The lemma later
+returns on `eA > FMAX - 8` with eA = eB + d and d >= 77, which every eB above
+FMAX - 85 meets. So the `eB > FMAX - 8` term returns on no input the later test
+lets through, and moving its bound anywhere from FMAX - 85 up, `>=` included,
+changes nothing.
+
 ## Equivalent mutant: pow oracle `k b` guard boundary
 
 `crates/tests/src/differential.rs`, `check_pow_with`'s `|a| = 10^k` branch.

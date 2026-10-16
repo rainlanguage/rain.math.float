@@ -6,9 +6,9 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 
 /// Halmos: the hint filters the add/sub lemmas return on are true for every
 /// input they are given, so those lemmas exclude nothing by them.
-/// `HintsAndSeries.t.sol` checks under forge that every digit count in
-/// [0, 76] reaches the filters, and that a filter reporting false fails the
-/// lemma.
+/// `LibHalmosExactHoldsCoverTest.t.sol` checks under forge that every digit
+/// count in [0, 76] reaches the filters, and `LibHalmosExactHoldsFalseTest.t.sol`
+/// that a filter reporting false fails the lemma.
 contract LibHalmosExactHalmosTest {
     function maximizeHintsOf(int256 c, uint256 j) external pure virtual returns (bool) {
         return LibHalmosExact.maximizeHints(c, j);
@@ -18,8 +18,12 @@ contract LibHalmosExactHalmosTest {
         return LibHalmosExact.packHints(c, n);
     }
 
-    function check_divHintHolds(int256 x) external pure {
-        assert(LibHalmosExact.divHint(x, 1e75));
+    function divHintOf(int256 x, int256 d) external pure virtual returns (bool) {
+        return LibHalmosExact.divHint(x, d);
+    }
+
+    function check_divHintHolds(int256 x) external view {
+        assert(this.divHintOf(x, 1e75));
     }
 
     /// Every nonzero int256 has one digit count j + 1 in [1, 77].

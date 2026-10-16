@@ -2,8 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity =0.8.25;
 
-import {Test, stdError} from "forge-std-1.17.0/src/Test.sol";
-import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
+import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {AddSubRoundOnceHalmosTest} from "./AddSubRoundOnce.halmos.t.sol";
 
 /// Forge checks on the scaffolding of `AddSubRoundOnce.halmos.t.sol`. A lemma
@@ -11,9 +10,9 @@ import {AddSubRoundOnceHalmosTest} from "./AddSubRoundOnce.halmos.t.sol";
 /// every job green, so these hold ZERO, MINUS, MAX, IDEM, NEAR and FAR to
 /// their domains: each reaches the call it checks at both ends of every range
 /// it is stated over and not one past them (`vm.expectCall` counts the nested
-/// call). A lemma whose assertion is weakened passes halmos too, so the
-/// harness contracts below each override one wrapper to return a result wrong
-/// in one way and check the lemma rejects it.
+/// call). A lemma whose assertion is weakened passes halmos too, so each
+/// `AddSubRoundOnce*Test` harness overrides one wrapper to return a result
+/// wrong in one way and checks the lemma rejects it.
 contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
     /// The largest maximized magnitude, the last multiple of 10^8 at most
     /// 10 T10, and the smallest, the first above T10.
@@ -146,6 +145,17 @@ contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
         this.check_addNear(a, b / 10, eB, d, true);
     }
 
+    /// NEAR on opposite-sign edge operands at every gap, both argument orders:
+    /// `checkSum`'s cancelling arm at gaps 1 to 75 too.
+    function testNearOpposingSignsEveryGap() external view {
+        for (uint256 d = 0; d < FIRST_FAR_GAP; d++) {
+            callNear(HIGH_IN, -LOW_IN, 0, d);
+            callNear(-LOW_IN, HIGH_IN, 0, d);
+            callNear(LOW_IN, -HIGH_IN, 0, d);
+            callNear(-HIGH_IN, LOW_IN, 0, d);
+        }
+    }
+
     /// NEAR on a cancelling pair at gap 0: `Impl.add` returns the maximized
     /// zero (0, 0), so the lemma takes `checkSum`'s zero path and asserts
     /// nothing about the exponent. rain-marvin's counterexample to the form
@@ -245,210 +255,5 @@ contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
                 }
             }
         }
-    }
-}
-
-/// `maximize` one shift short: the result is exact and still c 10^k, but
-/// |c 10^k| is at most T10.
-contract AddSubRoundOnceMaximizeShortShiftTest is Test, AddSubRoundOnceHalmosTest {
-    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
-        (int256 m, int256 me,) = LibDecimalFloatImplementation.maximize(c, e);
-        return (m / 10, me + 1, 0);
-    }
-
-    /// MAX at c = floor(T10 / 1e9): the short form c 10^9 has |c| equal to
-    /// floor(T10 / 10^9), so only the strict lower bound of the magnitude
-    /// check rejects it.
-    function testMaxRejectsAMagnitudeAtT10() external {
-        vm.expectRevert(stdError.assertionError);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        this.check_maximizeFloat(int256(T10 / 1e9), 0, 66);
-    }
-}
-
-/// `maximize` with the coefficient one above the exact product.
-contract AddSubRoundOnceMaximizeOffByOneTest is Test, AddSubRoundOnceHalmosTest {
-    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
-        (int256 m, int256 me,) = LibDecimalFloatImplementation.maximize(c, e);
-        return (m + 1, me, 0);
-    }
-
-    /// MAX: m must be c 10^k exactly; the shift and the magnitude bounds
-    /// still hold for 10^76 + 1.
-    function testMaxRejectsAnInexactProduct() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_maximizeFloat(1, 0, 0);
-    }
-
-    /// IDEM: a maximized coefficient must come back unchanged.
-    function testIdemRejectsAChangedCoefficient() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_maximizeIdempotent(1e76, 0);
-    }
-}
-
-/// `maximize` with the exponent one above.
-contract AddSubRoundOnceMaximizeExponentAboveTest is Test, AddSubRoundOnceHalmosTest {
-    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
-        (int256 m, int256 me,) = LibDecimalFloatImplementation.maximize(c, e);
-        return (m, me + 1, 0);
-    }
-
-    /// IDEM: the exponent must come back unchanged.
-    function testIdemRejectsAChangedExponent() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_maximizeIdempotent(1e76, 0);
-    }
-}
-
-/// `maximize` reporting a shortfall of one.
-contract AddSubRoundOnceMaximizeShortfallTest is Test, AddSubRoundOnceHalmosTest {
-    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
-        (int256 m, int256 me,) = LibDecimalFloatImplementation.maximize(c, e);
-        return (m, me, 1);
-    }
-
-    /// MAX: no shortfall for an int32 exponent.
-    function testMaxRejectsAShortfall() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_maximizeFloat(1, 0, 0);
-    }
-
-    /// IDEM: no shortfall for a maximized input.
-    function testIdemRejectsAShortfall() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_maximizeIdempotent(1e76, 0);
-    }
-}
-
-/// `Impl.add` with the coefficient one above. The NEAR pair is a = b = 1e76
-/// at gap 5, whose exact sum 1e76 + 1e71 at eA is the result; the FAR pair
-/// is the same operands at gap 77, where the result is A.
-contract AddSubRoundOnceAddCoefficientAboveTest is Test, AddSubRoundOnceHalmosTest {
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
-        return (c + 1, e);
-    }
-
-    /// ZERO: the other operand's coefficient must come back unchanged.
-    function testZeroRejectsAChangedCoefficient() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_addZeroOperand(5, 3, -2, true);
-    }
-
-    /// NEAR: |c| 10^t must not exceed |S|.
-    function testNearRejectsAResultAboveTheSum() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_addNear(1e76, 1e75, 0, 5, false);
-    }
-
-    /// FAR: the magnitude is |A| when the signs agree.
-    function testFarRejectsAChangedMagnitude() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_addFar(1e76, 1e76, 0, 77, false);
-    }
-}
-
-/// `Impl.add` with the coefficient one below.
-contract AddSubRoundOnceAddCoefficientBelowTest is Test, AddSubRoundOnceHalmosTest {
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
-        return (c - 1, e);
-    }
-
-    /// NEAR: |S| must be below (|c| + 1) 10^t.
-    function testNearRejectsAResultTooFarBelowTheSum() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_addNear(1e76, 1e75, 0, 5, false);
-    }
-}
-
-/// `Impl.add` with the exponent one above.
-contract AddSubRoundOnceAddExponentAboveTest is Test, AddSubRoundOnceHalmosTest {
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
-        return (c, e + 1);
-    }
-
-    /// ZERO: the other operand's exponent must come back unchanged.
-    function testZeroRejectsAChangedExponent() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_addZeroOperand(5, 3, -2, false);
-    }
-
-    /// FAR: the result exponent is eA.
-    function testFarRejectsAChangedExponent() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_addFar(1e76, 1e76, 0, 77, false);
-    }
-}
-
-/// `Impl.add` with the coefficient negated.
-contract AddSubRoundOnceAddNegatedTest is Test, AddSubRoundOnceHalmosTest {
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
-        return (-c, e);
-    }
-
-    /// NEAR: c has S's sign.
-    function testNearRejectsAWrongSign() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_addNear(1e76, 1e75, 0, 5, false);
-    }
-
-    /// FAR: c has A's sign.
-    function testFarRejectsAWrongSign() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_addFar(1e76, 1e76, 0, 77, false);
-    }
-}
-
-/// `Impl.sub` reverting with the bytes the negated `Impl.add` returns: the
-/// two outcomes differ only in the success flag.
-contract AddSubRoundOnceSubRevertsWithAddBytesTest is Test, AddSubRoundOnceHalmosTest {
-    function implSub(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, -cb, eb);
-        bytes memory data = abi.encode(c, e);
-        assembly ("memory-safe") {
-            revert(add(data, 0x20), mload(data))
-        }
-    }
-
-    /// MINUS: sub and add succeed or revert together.
-    function testMinusRejectsADifferentOutcome() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_subIsAddNegated(1, 1, 0, 0, 0, 0);
-    }
-}
-
-/// `Impl.sub` returning only the coefficient word, a prefix of what the
-/// negated `Impl.add` returns.
-contract AddSubRoundOnceSubTruncatedTest is Test, AddSubRoundOnceHalmosTest {
-    function implSub(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c,) = LibDecimalFloatImplementation.add(ca, ea, -cb, eb);
-        assembly ("memory-safe") {
-            mstore(0, c)
-            return(0, 0x20)
-        }
-    }
-
-    /// MINUS: the two outputs have the same length.
-    function testMinusRejectsAShorterEncoding() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_subIsAddNegated(1, 1, 0, 0, 0, 0);
-    }
-}
-
-/// `Impl.sub` with the coefficient one above the negated `Impl.add`'s.
-contract AddSubRoundOnceSubCoefficientAboveTest is Test, AddSubRoundOnceHalmosTest {
-    function implSub(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, -cb, eb);
-        return (c + 1, e);
-    }
-
-    /// MINUS: the two outputs are byte-identical.
-    function testMinusRejectsAChangedCoefficient() external {
-        vm.expectRevert(stdError.assertionError);
-        this.check_subIsAddNegated(1, 1, 0, 0, 0, 0);
     }
 }
