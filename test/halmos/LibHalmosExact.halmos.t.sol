@@ -6,7 +6,18 @@ import {LibHalmosExact} from "./LibHalmosExact.sol";
 
 /// Halmos: the hint filters the add/sub lemmas return on are true for every
 /// input they are given, so those lemmas exclude nothing by them.
+/// `HintsAndSeries.t.sol` checks under forge that every digit count in
+/// [0, 76] reaches the filters, and that a filter reporting false fails the
+/// lemma.
 contract LibHalmosExactHalmosTest {
+    function maximizeHintsOf(int256 c, uint256 j) external pure virtual returns (bool) {
+        return LibHalmosExact.maximizeHints(c, j);
+    }
+
+    function packHintsOf(int256 c, uint256 n) external pure virtual returns (bool) {
+        return LibHalmosExact.packHints(c, n);
+    }
+
     function check_divHintHolds(int256 x) external pure {
         assert(LibHalmosExact.divHint(x, 1e75));
     }
@@ -17,13 +28,13 @@ contract LibHalmosExactHalmosTest {
         if (j > 76 || !LibHalmosExact.inSlice(j)) return;
         uint256 x = LibHalmosExact.abs(c);
         if (x < 10 ** j || x >= 10 ** (j + 1)) return;
-        assert(LibHalmosExact.maximizeHints(c, j));
+        assert(this.maximizeHintsOf(c, j));
     }
 
     /// Every nonzero int256 has one digit count n + 1 in [1, 77].
     function check_packHintsHold(int256 c, uint256 nBits) external view {
         uint256 n = LibHalmosExact.concrete(nBits, 7);
         if (n > 76 || !LibHalmosExact.inSlice(n) || !LibHalmosExact.hasDigits(c, n)) return;
-        assert(LibHalmosExact.packHints(c, n));
+        assert(this.packHintsOf(c, n));
     }
 }

@@ -21,7 +21,7 @@ contract PackArithmeticResultHalmosTest {
     int256 internal constant FMIN = type(int32).min;
     int256 internal constant FMAX = type(int32).max;
 
-    function pack(int256 c, int256 e) external pure returns (Float) {
+    function pack(int256 c, int256 e) external pure virtual returns (Float) {
         return LibDecimalFloat.packArithmeticResult(c, e);
     }
 

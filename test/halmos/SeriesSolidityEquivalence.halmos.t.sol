@@ -16,7 +16,7 @@ contract SeriesSolidityEquivalenceHalmosTest is Test {
         return LibDecimalFloatImplementation.log10Ratio(a, b, relative);
     }
 
-    function log10RatioSol(uint256 a, uint256 b, bool relative) external pure returns (int256, int256) {
+    function log10RatioSol(uint256 a, uint256 b, bool relative) external pure virtual returns (int256, int256) {
         return LibDecimalFloatImplementationSeriesSolidity.log10Ratio(a, b, relative);
     }
 
@@ -24,7 +24,7 @@ contract SeriesSolidityEquivalenceHalmosTest is Test {
         return LibDecimalFloatImplementation.exp10Fixed(x);
     }
 
-    function exp10FixedSol(uint256 x) external pure returns (uint256) {
+    function exp10FixedSol(uint256 x) external pure virtual returns (uint256) {
         return LibDecimalFloatImplementationSeriesSolidity.exp10Fixed(x);
     }
 

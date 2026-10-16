@@ -130,6 +130,35 @@ for its outputs. NEAR and FAR check the same inputs under either comparison:
 they also return on `a % 1e8 != 0` and `b % 1e8 != 0`, which exclude
 ±(2^255 - 8) whichever test rejects it first.
 
+## Equivalent mutant: MAX's lower shift bound `k >= 8` at `k >= 7`
+
+`test/halmos/AddSubRoundOnce.halmos.t.sol`, `check_maximizeFloat`. Changing
+`assert(k >= 8 && k <= 76)` to `k >= 7` changes nothing: the lemma returns for
+|c| above 2^223, and the magnitude assertion after it needs |c| > floor(T10 /
+10^k), which at k = 7 is floor((2^255 - 1) / 10^8), above 2^223. So no
+`maximize` result with k = 7, from the implementation or from a harness
+override, passes the mutant where the original rejects it; both panic on the
+magnitude check. The bound states the composition's `10^8 | M` for a reader, and
+`testMaximizeFloatAtTheTimesTenBound` and `testMaxRejectsAMagnitudeAtT10` pin
+the magnitude bounds that imply it. Every in-domain c has k in [9, 76]: 2^223
+10^8 is below T10.
+
+## Equivalent mutant: `checkSum`'s grid-gap bound `mc >= TWO_223 / 10 + 1` at `mc >= 1`
+
+`test/halmos/AddSubRoundOnce.halmos.t.sol`, `checkSum`, reached only from NEAR.
+Weakening the last disjunct to `mc >= 1` changes nothing. The two differ only
+for a result with 1 <= |c| <= 2^223 / 10 that is inexact or has F != |c| u, with
+F = floor(|S| / 10^D) and |c| u <= F < (|c| + 1) u, so F < 2^223 (u at most 10).
+NEAR's operands are maximized multiples of 10^8, so |A| > T10 and |Q| = |B| /
+10^D. With agreeing signs F >= |A| > T10. With opposing signs and D >= 2, F >=
+|A| - |Q| - 1 >= T10 - 10 T10 / 100 - 1, above 2^223. At D = 1 and D = 0 the sum
+is exact (10 | B) and F = |A| - |Q| is a multiple of 10^7, so F = |c| u for u in
+{1, 10}, which is the exact disjunct. No (c, t) a harness override could return
+reaches the weakened disjunct where the original is false, and no `Impl.add`
+result does either, so the mutant proves under halmos iff the original does. The
+bound states the composition's "no grid member below 10^t lies above |c| 10^t"
+for a reader.
+
 ## Equivalent mutant: pow oracle `k b` guard boundary
 
 `crates/tests/src/differential.rs`, `check_pow_with`'s `|a| = 10^k` branch.
