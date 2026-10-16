@@ -1172,6 +1172,28 @@
     }
   },
   {
+    "timestamp": "2026-10-14T21:05:00Z",
+    "commit": "3910e264689a16995e2d47af6ad40d146b9f10e6",
+    "testsAfterCommit": "730ff95d855330a05855defe3516cd8305822f21",
+    "publishedTag": "sol-v0.3.5",
+    "commitsAheadOfTag": 7,
+    "scope": "PR #711 (CI and packaging, no Solidity): the .soldeerignore allow-list, the gas-snapshot workflow's comparison and generation step, the inlined rainix-rs-test wiring, the regenerated .gas-snapshot. Tool-probed 18. S1-S7, one per .soldeerignore rule plus an added `!/test/` re-include: before, no check exists and all survive; after, script/check-soldeer-package.sh dry-runs the publish and demands exactly the tracked files under src/, README.md, SPEC.md, LICENSE and LICENSES/, killing all 7. G1-G7 on the comparison, extracted verbatim from the workflow into script/check-gas-snapshot.sh: before, the CI job green at HEAD kills the always-fail mutants G2 (fuzz rows never recognised), G3 (fresh side not normalised), G5 (verdict inverted) and misses the always-pass G1 (non-fuzz gas also erased), G4 (exit 0 on stale), G6 (no regenerate instruction), G7 (committed compared with itself); after, script/check-gas-snapshot-test.sh's 9 cases kill all 7. D1-D4 on .gas-snapshot: the check kills a changed non-fuzz value, a removed row and a renamed row; D3, a changed fuzz μ, is equivalent because normalise erases the field, proof in audit/known-false-positives.md. Manual 11 on workflow lines, observer the CI run: B1 (--snap dropped) and B6 (soldeer install dropped) are killed by the job going red on a correct commit (forge build fails without dependencies/, demonstrated in a fresh checkout); C4 (cachix setup dropped) and C7a (nix develop dropped) likewise, no nix or forge on the runner. SURVIVED, not equivalent: B7 --fuzz-seed 0 dropped (fuzz fields are normalised away and no test uses vm.random*, so only a seed-dependent fuzz failure distinguishes the programs; no single-run observer exists); C7b the old rainix#rust-shell wiring (that shell provides python3 3.13.12 from the nix store at both 8657b83 and f22d4dc under `nix develop -i`, and rs-test on main was green under it; the PR body's claim that it lacks python3 was false and is corrected; cargo test fails 56 of 229 only when PATH has no python3 at all); C1 C2 C3 C5 C6 (matrix os, fail-fast, runs-on, gc cap, rust-cache: configuration whose only observer would be a required status check). Adversarial: the rust-shell python3 claim; main moved 125 gas-relevant files past the merge base so the PR snapshot was stale on the merge commit (merged and regenerated in the PR after showing the check fail); gas-snapshot, soldeer-package and rs-test are not required status checks (#720). testsBefore 1 is the comparison at HEAD; testsAfter 11 is 9 self-test cases, the comparison and the package check. Tool note: mutation-probe's atomic write drops the executable bit of the target, so a wrapper that execs the target reports false kills; invoke targets via bash.",
+    "tool": "adversarial-mutation-test",
+    "skillVersion": "0.35.0",
+    "summary": {
+      "behaviours": 29,
+      "killedBefore": 10,
+      "killedAfter": 21,
+      "equivalent": 1,
+      "survived": 7,
+      "candidates": 3,
+      "confirmed": 3,
+      "testsBefore": 1,
+      "testsAfter": 11,
+      "filed": [720]
+    }
+  },
+  {
     "timestamp": "2026-10-14T21:06:05Z",
     "commit": "1fc0f0fbec8c1fb6773de5fedc3d6a7faf21fec7",
     "testsAfterCommit": "1fc0f0fbec8c1fb6773de5fedc3d6a7faf21fec7",
