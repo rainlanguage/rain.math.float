@@ -277,3 +277,84 @@ such line, so `normalise` maps both to the same text, and for every fresh
 snapshot the two give the same verdict. Fuzz rows comparing by name only is the
 check's specified behaviour: fuzz gas is not reproducible across machines even
 with a fixed seed.
+
+## Resolved by removal: `pow` carry path `excess <= 67` guard at any bound from 27 up, or dropped
+
+`src/lib/LibDecimalFloat.sol`, `packRoundedSignificant`. The `excess <= 67`
+guard, the `excess > 0` guard around it and the `revertIfPastLargestFloat` on
+the rounded value that followed were removed, so these mutants have no target:
+the carry path is `isPastEveryFloat(roundedCoefficient, roundedExponent)` alone.
+The record of why their mutants were equivalent stays as the proof that the
+removal changed nothing. The `excess > 0` guard was dead by the same argument as
+the `k` below 27: the rounded coefficient is at most 1e41 in magnitude
+(`roundSignificant` leaves 41 digits, or 1e41 on a carry), so at an exponent up
+to `int32.max` the rounded value is at most `1e41 × 10^int32.max`, below
+`(2^223 + 2) × 10^int32.max`, and `isPastEveryFloat` was already false there.
+The `revertIfPastLargestFloat(roundedCoefficient, roundedExponent, input)` after
+the branch ran only when `isPastEveryFloat` of the same pair was false, so it
+never reverted.
+
+Changing `excess <= 67 && isPastEveryFloat(roundedCoefficient, roundedExponent)`
+to `excess <= k && ...` for any `k` from 27 up, or dropping the `excess <= 67`
+term, changed nothing. `roundSignificant` returns a coefficient under 1e41
+unchanged, so the rounded and unrounded pairs are then equal and both branches
+check the same value: past reverts `ExponentOverflow(input)` either way, and not
+past packs it either way. Otherwise the rounded coefficient is at least 1e40 (41
+digits, or 1e41 on a carry), so at an excess of 28 or more the rounded value is
+at least `1e68 × 10^int32.max`, past every Float, and the unrounded value is
+within half a unit of the rounded one's last digit, at least
+`(1e40 - 1/2) × 10^(int32.max + 28)`, past too: checking either reverts
+`ExponentOverflow(input)`. At an excess of 27 a rounded coefficient from
+`(2^223 + 2) / 1e27` up is past while the unrounded one can be below it, so
+`k = 26` was not equivalent; `testPowCarryShedsTheUnrounded` killed it. `k = 66`
+and the dropped term survived the `Pow` suite at 5096 fuzz runs before the
+removal.
+
+## Equivalent mutant: `floor` zero guard narrowed to `exponent >= 0`
+
+`src/lib/LibDecimalFloat.sol`, `floor`. Guarding only a zero at a non-negative
+exponent changes nothing: a zero at a negative exponent reaches `intFrac`, which
+returns `(0, 0)` for a zero coefficient at every exponent (the whole coefficient
+on one side, `0 % unit` on the other), the sign test fails, and
+`packArithmeticResult(0, exponent)` is `FLOAT_ZERO` before `packLossy` looks at
+the exponent. `ceil` differs: its `fraction == 0` arm returns the input bytes,
+so the same narrowing there is killed.
+
+## Equivalent mutant: `powUnrounded` top-bit `break` as `continue`
+
+`src/lib/LibDecimalFloat.sol`, `powUnrounded`'s squaring loop. `continue` jumps
+to the `while` condition, `exponentBInteger >= 1`, which is false at the zero
+the branch tests for, so the loop exits exactly where `break` leaves it.
+
+## Equivalent mutant: `agreeValidateTolerances` zero from `packLossless(0, 0)`
+
+`src/lib/LibDecimalFloat.sol`, `agreeValidateTolerances`. `packLossless(0, 0)`
+returns `FLOAT_ZERO` through `packLossy`'s zero arm, byte for byte the constant.
+
+## Equivalent mutant: `agreeValidateTolerances` zero at a non-zero exponent
+
+`src/lib/LibDecimalFloat.sol`, `agreeValidateTolerances`. Comparing against a
+zero coefficient at exponent one (`Float.wrap(bytes32(uint256(1) << 224))`)
+changes nothing: `lt` and `gt` unpack both operands and compare numerically, and
+a zero coefficient is zero at every exponent, as the function's NatSpec states.
+
+## Equivalent mutant: `agreeWithinProportional` raised-exponent test as `!=`
+
+`src/lib/LibDecimalFloat.sol`, `agreeWithinProportional`'s fallback. Testing
+`scaledExponent != proportionalExponent + anchorExponent` in place of `>`
+changes nothing: `mul` returns the exponent sum plus the count of digits it
+shed, never less, for operands whose exponents are int32 (the paths that move an
+exponent down are for sums below `type(int256).min`), and the one product whose
+exponent is not that sum, the zero product's `(0, 0)`, is already refused by
+`scaledCoefficient != 0` ahead of this test.
+
+## Equivalent mutant: `agreeWithinProportional` spread exponent test as `<=`
+
+`src/lib/LibDecimalFloat.sol`, `agreeWithinProportional`'s fallback. Accepting
+`spreadExponent <= scaledExponent - 1` in place of `==` changes nothing: the
+clause runs only after `lte(spread, scaled)` was false with a non-zero
+`scaledCoefficient` at a raised exponent, which puts `scaledCoefficient` at or
+above `type(int256).max / 10`. A spread two or more exponents below the limit
+rescales the limit by at least `100`, past int256 (or past `compareRescale`'s
+`10^76` reach), and the overflow branch ranks the limit above the spread, so
+`lte` is true there and the fallback never sees such a spread.

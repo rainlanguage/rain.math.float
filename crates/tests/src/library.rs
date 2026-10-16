@@ -1021,6 +1021,22 @@ fn library_agree_last_aligned_digit() {
     }
 }
 
+/// A limit whose product passes int256.max: mul sheds a digit from it, but the
+/// spread, int256.max exactly, is within the exact limit 2^255 + 1.37.
+#[test]
+fn library_agree_limit_past_int256() {
+    let h = Dec::new(
+        "5789604461865809771178549250434395392663499233282028201969066711282"
+            .parse::<BigInt>()
+            .unwrap(),
+        10,
+    );
+    let l = Dec::new(BigInt::from(-38124891136564819967i128), 0);
+    let p = Dec::new(pow10(66) + 658505972u32, -66);
+    assert_eq!(r::agree(&Dec::zero(), &p, &l, &h), Ok(true));
+    run(check_agree(&Dec::zero(), &p, &l, &h));
+}
+
 /// A zero literal parses to zero however it is written.
 #[test]
 fn library_parse_zero() {
