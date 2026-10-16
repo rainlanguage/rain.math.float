@@ -5,7 +5,6 @@ path = [
   ".envrc",
   ".gas-snapshot",
   ".github/workflows/**/",
-  ".vscode/**/",
   ".soldeerignore",
   "audit/**/",
   ".gitignore",
