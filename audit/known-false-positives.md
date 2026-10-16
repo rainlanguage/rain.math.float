@@ -71,28 +71,6 @@ only at the same `exponentB`, where the mutant returns `(0, 0)` directly and the
 original returns the same `(0, 0)` through `underflowExponentBy > 76`. The
 comparison is free at its boundary in both directions.
 
-## Equivalent mutants: `WEI_SAFE_SIDE_AB_MAX` divisor raised (21, 40)
-
-`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. Raising the divisor from
-20 to any `d` from 21 up to `int224.max / 1e33` (about 1.3e34), of which 21 and
-40 are probed, shrinks the constant, and every test reaches the same verdict on
-every input under both values. `testFuzzWeiFloorCeilSafeSide` asserts a property
-its NatSpec proves for every `a * b <= int224.max / 20`, so it holds on the
-subset `a * b <= int224.max / d` the mutant fuzzes, and the swapped-order calls
-in `testFuzzWeiFloorCeilSafeSideBoundsCounterexample` wrap into that subset too.
-`testWeiSafeSideDomainInteriorEdges` reads the constant it checks the clamp
-against, so its edges move with it, and its fixed inputs stay inside the domain
-while `WEI_SAFE_SIDE_AB_MAX >= 1e33`: that keeps `b = 1e33` passing through at
-`a = 1` and the clamp limit at least 1 for every `a` up to 1e33. Past
-`int224.max / 1e33` that assertion fails, so a larger `d` is killed, not
-equivalent. Every pinned counterexample has `a * b` of at least 0.0510
-int224.max, above the constant for every `d >= 20`, so each
-`assertGt(a * b, WEI_SAFE_SIDE_AB_MAX)` passes, and their upper bounds are
-literals. Divisors below 20 are not equivalent: 19 and 16 are killed by
-`testWeiCeilUndershootNearBound` (0.0510 int224.max), 15 by
-`testWeiCeilUndershootInsideFifteenth` (0.0630), 14 and 10 by the other pinned
-inputs.
-
 ## Equivalent mutants: `boundWeiSafeSide` rearranged
 
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The helper's output is
@@ -139,6 +117,18 @@ because `boundWeiSafeSide` wraps any triple into the domain on which the fuzz
 property is proven, so any subset of the calls reaches the same verdict. Such a
 change deletes a check, the class no test can kill because the tests are the
 oracle. Each skipped input's undershoot stays asserted by its own pinned test.
+
+## Equivalent mutant: `testWeiSafeSideDomainInteriorEdges` interior `a` moved (9e32)
+
+`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The test takes no input
+and derives `edge = WEI_SAFE_SIDE_AB_MAX / a` from its `a`, so replacing
+`a = 8e32` with any `a` from 673998666678765994866675377175491, the smallest
+with `edge < 1e33`, up to 1e33 checks the clamp at another interior point and
+reaches the same verdict: `edge` and `edge + 1` are at most 1e33, so
+`bound(b, 1, 1e33)` leaves both alone, and the clamp returns `edge` and wraps
+`edge + 1` to 1. The `a = 1` and `a = 1e33` calls do not read `a`. Below
+673998666678765994866675377175491 `edge` reaches 1e33 and `assertLt(edge, 1e33)`
+fails, so a smaller `a` is killed, not equivalent.
 
 ## Equivalent mutant: `testSingleDivSubUlpFractionReadsLossless` divisor written as `packLossless(70, -1)`
 

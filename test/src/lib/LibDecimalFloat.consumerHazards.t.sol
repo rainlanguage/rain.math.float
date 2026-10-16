@@ -375,7 +375,9 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
 
     /// The margin is per operation: a * (1 / 73) here loses about 1.45e-66 of
     /// the result over its two truncations, so 1e-66 of the result leaves the
-    /// lossless-flag ceiling 10 short and 2e-66 reaches the exact ceiling.
+    /// lossless-flag ceiling 10 short. 2e-66 reaches it on this input, which
+    /// says nothing about other inputs: testMarginCountsItsOwnAdd has one where
+    /// it falls short.
     function testMarginIsPerOperation() external pure {
         uint256 aCoefficient = 9925887261852452467399719857351126276300750130317078586257692491778;
         Float a = LibDecimalFloat.fromFixedDecimalLosslessPacked(aCoefficient * 100, 0);
@@ -385,6 +387,22 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         assertEq(got + (lossless ? 0 : 1), exactCeil - 10);
         (got, lossless) = res.add(res.mul(LibDecimalFloat.packLossless(2, -66))).toFixedDecimalLossy(0);
         assertEq(got + (lossless ? 0 : 1), exactCeil);
+    }
+
+    /// The add that applies the margin truncates to the result's grid too, so
+    /// it costs up to one ulp of the result on top of the ops. Two ops with a
+    /// 2e-66 margin leave the lossless-flag ceiling 1 short here; 3e-66, one
+    /// per op plus one for the add, reaches the exact ceiling.
+    function testMarginCountsItsOwnAdd() external pure {
+        uint256 aFixed = 10807643726145906666284575962433451640027389170232479141916483202116 * 1000;
+        Float a = LibDecimalFloat.fromFixedDecimalLosslessPacked(aFixed, 0);
+        Float res = a.mul(LibDecimalFloat.packLossless(1, 0).div(LibDecimalFloat.packLossless(7345, 0)));
+        uint256 exactCeil = (aFixed + 7344) / 7345;
+        assertEq(aFixed % 7345, 170);
+        (uint256 got, bool lossless) = res.add(res.mul(LibDecimalFloat.packLossless(2, -66))).toFixedDecimalLossy(0);
+        assertEq(got + (lossless ? 0 : 1), exactCeil - 1);
+        (got, lossless) = res.add(res.mul(LibDecimalFloat.packLossless(3, -66))).toFixedDecimalLossy(0);
+        assertEq(got + (lossless ? 0 : 1), exactCeil + 1);
     }
 
     /// Dividing by a truncated price turns an exact integer into a lossy
@@ -463,6 +481,22 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         (aOut,, cOut) = boundWeiSafeSide(1e33, 1, 1e33);
         assertEq(aOut, 1e33);
         assertEq(cOut, 1e33);
+    }
+
+    /// The domain reaches the bound: at a = 1e33 the clamp admits
+    /// b = 673998666678765994866675377175490, the largest b with
+    /// a * b <= WEI_SAFE_SIDE_AB_MAX, and the property holds there. The literal
+    /// pins the constant from below as the pinned counterexamples pin it from
+    /// above: a divisor other than 20 fails one of the first two assertions.
+    function testWeiSafeSideDomainReachesBound() external view {
+        uint256 a = 1e33;
+        uint256 b = 673998666678765994866675377175490;
+        assertLe(a * b, WEI_SAFE_SIDE_AB_MAX);
+        assertGt(a * (b + 1), WEI_SAFE_SIDE_AB_MAX);
+        (, uint256 bOut,) = boundWeiSafeSide(a, b, 7);
+        assertEq(bOut, b);
+        assertEq(a * b % 7, 5);
+        this.testFuzzWeiFloorCeilSafeSide(a, b, 7);
     }
 
     /// a = 0 is in the domain and skips the clamp; b and c floor at 1, so no
