@@ -1,7 +1,7 @@
 name: soldeer-package
 on: [push]
 jobs:
-  check:
+  soldeer-package:
     runs-on: ubuntu-latest
     steps:
       - uses: rainlanguage/rainix/.github/actions/nix-cachix-setup@main
