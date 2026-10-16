@@ -1145,23 +1145,24 @@ contract LibDecimalFloatPowTest is Test {
         return a.pow(b);
     }
 
-    /// The gas of one `pow` through the external call.
+    /// The gas of one `pow`, measured in this frame: no call overhead. The
+    /// result is asserted so the call cannot be optimised away.
     function powGas(Float a, Float b) internal view returns (uint256) {
         uint256 before = gasleft();
-        this.powExternal(a, b);
-        return before - gasleft();
+        Float result = a.pow(b);
+        uint256 used = before - gasleft();
+        assertTrue(!result.isZero(), "pow result");
+        return used;
     }
 
     /// The squaring loop stops after the top bit of N (#637), pinned by the
-    /// loop's own gas steps. With ten as the base every multiply in the loop
-    /// and in the fraction leg is of a coefficient of one, so each costs the
-    /// same. Each bit of N above the first costs one square of the base, its
-    /// two range guards and a loop pass: `10^2.75` against `10^1.75`. The
-    /// first bit costs no square, only the multiply of the result by the base
-    /// and the leg's multiply by the result: `10^1.75` against `10^0.75`, two
-    /// multiplies, under two further bits by the guards and a pass. Squaring
-    /// the base after the top bit would make the first bit three multiplies,
-    /// over two further bits by a multiply less the guards and a pass.
+    /// loop's own gas steps. Each bit of N above the first costs one square
+    /// of the coefficient-one base, its two range guards and a loop pass:
+    /// `10^2.75` against `10^1.75`. The first bit costs the result's multiply
+    /// by the base and the leg's multiply of the full-width `10^0.75` by the
+    /// result: `10^1.75` against `10^0.75`, together under two further bits.
+    /// Squaring the base after the top bit adds one more square to the first
+    /// bit, which takes it past two further bits.
     function testPowSkipsUnusedFinalSquareGas() external view {
         Float ten = LibDecimalFloat.packLossless(1, 1);
         uint256 noBits = powGas(ten, LibDecimalFloat.packLossless(75, -2));
