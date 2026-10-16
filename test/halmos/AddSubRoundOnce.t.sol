@@ -4,103 +4,16 @@ pragma solidity =0.8.25;
 
 import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {stdError} from "forge-std-1.17.0/src/StdError.sol";
-import {LibDecimalFloatImplementation} from "../../src/lib/implementation/LibDecimalFloatImplementation.sol";
 import {AddSubRoundOnceHalmosTest} from "./AddSubRoundOnce.halmos.t.sol";
-
-/// Subjects for the sensitivity tests below: each breaks one component of
-/// what a lemma asserts and keeps the rest as the library has it, so the
-/// lemma fails on it only through that component.
-///
-/// `Impl.add` returns the exponent one too high. At gap 0 a carried sum's
-/// exponent then misses NEAR's first assertion alone; at gap 76 no sum
-/// carries, and NEAR's `mc * u` overflows before any assertion.
-contract AddSubSkewedExponentUp is AddSubRoundOnceHalmosTest {
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
-        return (c, e + 1);
-    }
-}
-
-/// `Impl.add` and `maximize` return the exponent one too low.
-contract AddSubSkewedExponent is AddSubRoundOnceHalmosTest {
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
-        return (c, e - 1);
-    }
-
-    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
-        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
-        return (m, me - 1, s);
-    }
-}
-
-/// `Impl.add` and `maximize` return the magnitude one too high.
-contract AddSubSkewedUp is AddSubRoundOnceHalmosTest {
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
-        return (c < 0 ? c - 1 : c + 1, e);
-    }
-
-    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
-        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
-        return (m < 0 ? m - 1 : m + 1, me, s);
-    }
-}
-
-/// `Impl.add` returns the magnitude one too low.
-contract AddSubSkewedDown is AddSubRoundOnceHalmosTest {
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
-        return (c < 0 ? c + 1 : c - 1, e);
-    }
-}
-
-/// `Impl.add` returns the opposite sign.
-contract AddSubFlippedSign is AddSubRoundOnceHalmosTest {
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
-        return (-c, e);
-    }
-}
-
-/// `maximize` returns the shortfall one too high.
-contract AddSubSkewedShortfall is AddSubRoundOnceHalmosTest {
-    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
-        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
-        return (m, me, s + 1);
-    }
-}
-
-/// `maximize` stops one shift short: the product still exact and the
-/// exponent still in range, the magnitude at most T10.
-contract AddSubUnderShifted is AddSubRoundOnceHalmosTest {
-    function maximize(int256 c, int256 e) external pure override returns (int256, int256, int256) {
-        (int256 m, int256 me, int256 s) = LibDecimalFloatImplementation.maximize(c, e);
-        return (m / 10, me + 1, s);
-    }
-}
-
-/// `Impl.add` and `maximize` revert.
-contract AddSubReverts is AddSubRoundOnceHalmosTest {
-    function implAdd(int256, int256, int256, int256) external pure override returns (int256, int256) {
-        revert();
-    }
-
-    function maximize(int256, int256) external pure override returns (int256, int256, int256) {
-        revert();
-    }
-}
-
-/// `Impl.add` returns a third word.
-contract AddSubLongReturn is AddSubRoundOnceHalmosTest {
-    function implAdd(int256 ca, int256 ea, int256 cb, int256 eb) external pure override returns (int256, int256) {
-        (int256 c, int256 e) = LibDecimalFloatImplementation.add(ca, ea, cb, eb);
-        bytes memory data = abi.encode(c, e, uint256(0));
-        assembly ("memory-safe") {
-            return(add(data, 0x20), mload(data))
-        }
-    }
-}
+import {AddSubSkewedExponentUp} from "./AddSubSkewedExponentUp.sol";
+import {AddSubSkewedExponent} from "./AddSubSkewedExponent.sol";
+import {AddSubSkewedUp} from "./AddSubSkewedUp.sol";
+import {AddSubSkewedDown} from "./AddSubSkewedDown.sol";
+import {AddSubFlippedSign} from "./AddSubFlippedSign.sol";
+import {AddSubSkewedShortfall} from "./AddSubSkewedShortfall.sol";
+import {AddSubUnderShifted} from "./AddSubUnderShifted.sol";
+import {AddSubReverts} from "./AddSubReverts.sol";
+import {AddSubLongReturn} from "./AddSubLongReturn.sol";
 
 /// Forge checks on the scaffolding of `AddSubRoundOnce.halmos.t.sol`. A lemma
 /// that returns early on more inputs than its header says passes halmos with
@@ -108,9 +21,10 @@ contract AddSubLongReturn is AddSubRoundOnceHalmosTest {
 /// each reaches the call it checks at both ends of every range it is stated
 /// over and not one past them (`vm.expectCall` counts the nested call). A
 /// lemma that asserts less than the header says passes too, the library being
-/// correct, so the sensitivity tests run each lemma on the subjects above and
-/// expect the assertion panic: a lemma that drops a conjunct passes its
-/// subject and fails here.
+/// correct, so the sensitivity tests run each lemma on the `AddSub*` subjects
+/// beside this file, each of which breaks one component of what a lemma
+/// asserts and keeps the rest as the library has it, and expect the assertion
+/// panic: a lemma that drops a conjunct passes its subject and fails here.
 contract AddSubRoundOnceCoverTest is Test, AddSubRoundOnceHalmosTest {
     /// The largest maximized magnitude, the last multiple of 10^8 at most
     /// 10 T10, and the smallest, the first above T10.
