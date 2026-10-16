@@ -637,13 +637,15 @@ contract LibDecimalFloatConsumerHazardsTest is Test {
         }
     }
 
-    /// The clamp limit is WEI_SAFE_SIDE_AB_MAX / a: at a = 8e32 it admits a*b up
-    /// to WEI_SAFE_SIDE_AB_MAX and wraps the input just above it onto b = 1,
-    /// never b = 0. Each operand wraps at 1e33.
+    /// The clamp limit is WEI_SAFE_SIDE_AB_MAX / a: at the smallest a where it
+    /// is below 1e33 it admits a*b up to WEI_SAFE_SIDE_AB_MAX and wraps the
+    /// input just above it onto b = 1, never b = 0, so a guard that skips the
+    /// clamp at that a fails. Each operand wraps at 1e33.
     function testWeiSafeSideDomainInteriorEdges() external pure {
-        uint256 a = 8e32;
+        uint256 a = 673998666678765994866675377175491;
         uint256 edge = WEI_SAFE_SIDE_AB_MAX / a;
         assertLt(edge, 1e33);
+        assertGe(WEI_SAFE_SIDE_AB_MAX / (a - 1), 1e33);
         (, uint256 b,) = boundWeiSafeSide(a, edge, 7);
         assertEq(b, edge);
         (, b,) = boundWeiSafeSide(a, edge + 1, 7);

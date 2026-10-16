@@ -76,9 +76,9 @@ comparison is free at its boundary in both directions.
 `test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The helper's output is
 read by `testFuzzWeiFloorCeilSafeSide`, whose assertions are a function of the
 bounded `(a, b, c)` alone, by `testWeiSafeSideDomainInteriorEdges`, which
-asserts the bounded `b` for raw `b` in `{edge, edge + 1}` with `a = 8e32` and in
-`{1e33, 1e33 + 1}` with `a = 1`, and by `testWeiSafeSideZeroFloors` at
-`(0, 0, 0)`.
+asserts the bounded `b` for raw `b` in `{edge, edge + 1}` with
+`a = 673998666678765994866675377175491` and in `{1e33, 1e33 + 1}` with `a = 1`,
+and by `testWeiSafeSideZeroFloors` at `(0, 0, 0)`.
 
 Moving the clamp before `b = bound(b, 1, 1e33)`: both orders land `b` in
 `[1, min(X, 1e33)]` for `X = WEI_SAFE_SIDE_AB_MAX / a`, because whichever bound
@@ -103,7 +103,9 @@ Raising the guard from `a > 0` to `a > 1`, or to any `a > k` with `k` at most
 with a limit of at least 1e33, the identity on a `b` already in `[1, 1e33]`. The
 helper's output is the same for every input;
 `testWeiSafeSideDomainInteriorEdges` passes `a = 1` and sees `b = 1e33` and
-`b = 1` under both. `a > 1` and `a > 1e32` have both survived.
+`b = 1` under both. `a > 1` and `a > 1e32` have both survived. From
+`k = 673998666678765994866675377175491` up the guard skips the clamp at that
+test's interior `a`, which leaves `edge + 1` unwrapped, so the test kills it.
 
 ## Equivalent mutants: `testFuzzWeiFloorCeilSafeSideBoundsCounterexample` drops calls
 
@@ -117,18 +119,6 @@ because `boundWeiSafeSide` wraps any triple into the domain on which the fuzz
 property is proven, so any subset of the calls reaches the same verdict. Such a
 change deletes a check, the class no test can kill because the tests are the
 oracle. Each skipped input's undershoot stays asserted by its own pinned test.
-
-## Equivalent mutant: `testWeiSafeSideDomainInteriorEdges` interior `a` moved (9e32)
-
-`test/src/lib/LibDecimalFloat.consumerHazards.t.sol`. The test takes no input
-and derives `edge = WEI_SAFE_SIDE_AB_MAX / a` from its `a`, so replacing
-`a = 8e32` with any `a` from 673998666678765994866675377175491, the smallest
-with `edge < 1e33`, up to 1e33 checks the clamp at another interior point and
-reaches the same verdict: `edge` and `edge + 1` are at most 1e33, so
-`bound(b, 1, 1e33)` leaves both alone, and the clamp returns `edge` and wraps
-`edge + 1` to 1. The `a = 1` and `a = 1e33` calls do not read `a`. Below
-673998666678765994866675377175491 `edge` reaches 1e33 and `assertLt(edge, 1e33)`
-fails, so a smaller `a` is killed, not equivalent.
 
 ## Equivalent mutant: `testSingleDivSubUlpFractionReadsLossless` divisor written as `packLossless(70, -1)`
 
@@ -212,7 +202,10 @@ same holds for its bounds, and `testMarginInvCountsItsOwnAdd`'s call into it
 passes on the moved domain too. `bound(divisor, 2, 1e3)` from 1 adds `d = 1`,
 where `inv(1)` and the `mul` are exact. `bound(numerator, 1e66, 1e67) * 1e4`
 without the `* 1e4` keeps `a` an exact Float (1e67 is below int224.max) and only
-takes `a / d` off the wei grid, as the shrink above does.
+takes `a / d` off the wei grid, as the shrink above does. Scaling by `1e5` up to
+`1e9` instead keeps `a` an exact Float and `numerator * 3` at most 3e76, under
+2^256; from `1e10` it overflows for every numerator above about 3.9e76, and the
+test reverts there.
 
 ## Equivalent mutants: `testFuzzMarginPerOperationPositiveChain` and `testFuzzMarginInvChain` oracle weakened or draw narrowed
 
