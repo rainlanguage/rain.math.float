@@ -1468,7 +1468,9 @@ library LibDecimalFloat {
     /// either side: under 5e-41 + 6e-76 relative. It is then clamped between
     /// `|a|` and `|b|`, which the true mean lies between, which only moves it
     /// closer. A root at or past either takes that input's representation, so
-    /// `gm(a, a)` is `abs(a)`, and no result is past every Float. The
+    /// `gm(a, a)` is `abs(a)`, and no result is past every Float. Of two
+    /// equal magnitudes the one with the smaller coefficient orders first, so
+    /// `gm(a, b)` and `gm(b, a)` are the same bytes. The
     /// clamped value packs as every arithmetic result does, toward zero: below
     /// 1e-2147483608 it sheds digits to the int32 floor, adding 1e-2147483648
     /// absolute, and the mean of two `int224.min × 10^int32.max` is
@@ -1492,7 +1494,9 @@ library LibDecimalFloat {
             ++exponent;
         }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
-        if (LibDecimalFloatImplementation.lt(signedCoefficientB, exponentB, signedCoefficientA, exponentA)) {
+        if (signedCoefficientB < signedCoefficientA
+                ? LibDecimalFloatImplementation.lte(signedCoefficientB, exponentB, signedCoefficientA, exponentA)
+                : LibDecimalFloatImplementation.lt(signedCoefficientB, exponentB, signedCoefficientA, exponentA)) {
             (signedCoefficientA, exponentA, signedCoefficientB, exponentB) =
             (signedCoefficientB, exponentB, signedCoefficientA, exponentA);
         }

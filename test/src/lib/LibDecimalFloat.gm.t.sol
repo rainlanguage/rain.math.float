@@ -60,6 +60,33 @@ contract LibDecimalFloatGmTest is Test {
         checkGm(a.minus(), f(2, 0), f(-2, 0));
     }
 
+    /// Equal magnitudes encoded differently give the same bytes in either
+    /// order: the smaller coefficient's when the root is at or below them, the
+    /// larger's when it rounds above.
+    function testGmEqualMagnitudesDifferentEncodings() external pure {
+        Float one = f(1, 0);
+        Float oneScaled = f(10, -1);
+        checkGm(one, oneScaled, one);
+        checkGm(oneScaled, one, one);
+        checkGm(one.minus(), oneScaled, one.minus());
+        checkGm(oneScaled, one.minus(), one.minus());
+        checkGm(one, oneScaled.minus(), one.minus());
+        checkGm(oneScaled.minus(), one, one.minus());
+        checkGm(one.minus(), oneScaled.minus(), one);
+        checkGm(oneScaled.minus(), one.minus(), one);
+
+        Float near = f(19999999999999999999999999999999999999999999999999999, -52);
+        Float nearScaled = f(199999999999999999999999999999999999999999999999999990, -53);
+        checkGm(near, nearScaled, nearScaled);
+        checkGm(nearScaled, near, nearScaled);
+        checkGm(near.minus(), nearScaled, nearScaled.minus());
+        checkGm(nearScaled, near.minus(), nearScaled.minus());
+        checkGm(near, nearScaled.minus(), nearScaled.minus());
+        checkGm(nearScaled.minus(), near, nearScaled.minus());
+        checkGm(near.minus(), nearScaled.minus(), nearScaled);
+        checkGm(nearScaled.minus(), near.minus(), nearScaled);
+    }
+
     /// Negative iff exactly one input is negative.
     function testGmSigns() external pure {
         checkGm(f(-1, 0), f(1, 0), f(-1, 0));

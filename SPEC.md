@@ -231,7 +231,9 @@ digits (#306).
   rounded to nearest at 41: within half a unit in the 41st digit plus `6e-76`
   relative, under `5e-41 + 6e-76`, either side (#729). Not correctly rounded.
 - Clamped between `|a|` and `|b|`, taking that input's representation at or past
-  it: `gm(a, a) = abs(a)`, and it never reverts.
+  it: `gm(a, a) = abs(a)`, and it never reverts. Of equal magnitudes the one
+  with the smaller coefficient orders first, so `gm(a, b)` and `gm(b, a)` are
+  the same bytes.
 - Packed toward zero: below `1e-2147483608` its bound adds `1e-2147483648`
   absolute; `gm` of two `int224.min × 10^int32.max` is
   `FLOAT_MAX_POSITIVE_VALUE`.
