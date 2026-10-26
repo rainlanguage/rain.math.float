@@ -52,6 +52,14 @@ contract LibDecimalFloatGmTest is Test {
         );
     }
 
+    /// A root rounding onto the larger input takes that input's representation.
+    function testGmRootRoundedOntoLargerInput() external pure {
+        Float a = f(19999999999999999999999999999999999999999999999999999, -52);
+        checkGm(a, f(2, 0), f(2, 0));
+        checkGm(f(2, 0), a, f(2, 0));
+        checkGm(a.minus(), f(2, 0), f(-2, 0));
+    }
+
     /// Negative iff exactly one input is negative.
     function testGmSigns() external pure {
         checkGm(f(-1, 0), f(1, 0), f(-1, 0));
