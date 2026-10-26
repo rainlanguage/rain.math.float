@@ -79,9 +79,7 @@
       "confirmed": 0,
       "testsBefore": 681,
       "testsAfter": 682,
-      "filed": [
-        325
-      ]
+      "filed": [325]
     }
   },
   {
@@ -102,9 +100,7 @@
       "confirmed": 0,
       "testsBefore": 693,
       "testsAfter": 696,
-      "filed": [
-        326
-      ]
+      "filed": [326]
     }
   },
   {
@@ -251,9 +247,7 @@
       "confirmed": 0,
       "testsBefore": 778,
       "testsAfter": 785,
-      "filed": [
-        332
-      ]
+      "filed": [332]
     }
   },
   {
@@ -295,9 +289,7 @@
       "confirmed": 0,
       "testsBefore": 743,
       "testsAfter": 747,
-      "filed": [
-        335
-      ]
+      "filed": [335]
     }
   },
   {
@@ -704,9 +696,7 @@
       "confirmed": 1,
       "testsBefore": 20,
       "testsAfter": 23,
-      "filed": [
-        394
-      ]
+      "filed": [394]
     }
   },
   {
@@ -1254,9 +1244,7 @@
       "confirmed": 3,
       "testsBefore": 1,
       "testsAfter": 11,
-      "filed": [
-        720
-      ]
+      "filed": [720]
     }
   },
   {
