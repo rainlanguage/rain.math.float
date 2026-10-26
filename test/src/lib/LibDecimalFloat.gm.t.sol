@@ -35,6 +35,23 @@ contract LibDecimalFloatGmTest is Test {
         checkGm(f(1, -2), f(1, 2), f(1e40, -40));
     }
 
+    /// A product of exactly 1e76 is past `sqrt`'s coefficient range.
+    function testGmProductAtCoefficientCeiling() external pure {
+        checkGm(f(1e38, 0), f(1e38, 0), f(1e38, 0));
+        checkGm(f(1e38, 0), f(-1e38, 0), f(-1e38, 0));
+        checkGm(f(1e37, 0), f(1e39, 0), f(1e40, -2));
+    }
+
+    /// A 76-digit product's last digit decides the rounding: `N - r^2 - r` is
+    /// 185494 for `N = 1e6 a b`, so the root rounds up.
+    function testGmRoundsOn76DigitProduct() external pure {
+        checkGm(
+            f(2500000142500000000000000000000003162277750000000000000000000000001, 0),
+            f(1000000057, 0),
+            f(50000002850000000000000000000000031622778, -3)
+        );
+    }
+
     /// Negative iff exactly one input is negative.
     function testGmSigns() external pure {
         checkGm(f(-1, 0), f(1, 0), f(-1, 0));
