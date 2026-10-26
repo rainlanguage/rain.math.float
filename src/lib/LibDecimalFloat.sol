@@ -1494,9 +1494,10 @@ library LibDecimalFloat {
             ++exponent;
         }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
-        if (signedCoefficientB < signedCoefficientA
-                ? LibDecimalFloatImplementation.lte(signedCoefficientB, exponentB, signedCoefficientA, exponentA)
-                : LibDecimalFloatImplementation.lt(signedCoefficientB, exponentB, signedCoefficientA, exponentA)) {
+        bool swap = signedCoefficientB < signedCoefficientA
+            ? LibDecimalFloatImplementation.lte(signedCoefficientB, exponentB, signedCoefficientA, exponentA)
+            : LibDecimalFloatImplementation.lt(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
+        if (swap) {
             (signedCoefficientA, exponentA, signedCoefficientB, exponentB) =
             (signedCoefficientB, exponentB, signedCoefficientA, exponentA);
         }
