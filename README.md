@@ -169,6 +169,8 @@ rounding tie can round to either neighbour:
   0, and K1 = 1.1728e-75 and K2 = 3.4786e-38 for b < 0.
 - `sqrt`: correctly rounded, half a unit in the 41st digit, under 5e-41
   relative.
+- `gm`, the signed geometric mean `s × sqrt(|a| × |b|)`: half a unit in the 41st
+  digit plus 6e-76 relative, clamped between `|a|` and `|b|`.
 
 A `pow10` or `pow` result below 1e-2147483608 sheds digits to lift its exponent
 to the int32 floor, so its bound adds 1e-2147483648 absolute. Below

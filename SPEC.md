@@ -62,8 +62,8 @@ does and has no ruling yet.
 - `packArithmeticResult(c, e)`: as `packLossy`; reverts
   `ExponentUnderflow(c, e)` with its own inputs when a non-zero value packs to
   `FLOAT_ZERO` (#202). It finalises `add`, `sub`, `mul`, `integer`, `frac`,
-  `floor`, `ceil`, `log10` and `sqrt`. `div`, `inv`, `pow` and `pow10` pack
-  inline and their range errors report their input; `minus` and `abs` never
+  `floor`, `ceil`, `log10`, `sqrt` and `gm`. `div`, `inv`, `pow` and `pow10`
+  pack inline and their range errors report their input; `minus` and `abs` never
   revert (#333, #421).
 - `unpack(f)` returns `(c, e)` sign-extended; never reverts (**UNRULED**).
 - `canonicalize(f)`: the representative with the largest `|c|` that fits int224
@@ -222,6 +222,21 @@ digits (#306).
 - `sqrt(0)` is `0`. A negative argument reverts `PowNegativeBase(c, e)`
   (**UNRULED**: the error chosen).
 - The root's exponent is half the input's, so it always packs.
+
+### gm
+
+- `gm(a, b)` is `s × sqrt(|a| × |b|)`, `s` negative iff exactly one input is
+  negative (#729). A zero input is `FLOAT_ZERO`.
+- The root of the exact product truncated toward zero to at most 76 digits,
+  rounded to nearest at 41: within half a unit in the 41st digit plus `6e-76`
+  relative, under `5e-41 + 6e-76`, either side (#729). Not correctly rounded.
+- Clamped between `|a|` and `|b|`, taking that input's representation at or past
+  it: `gm(a, a) = abs(a)`, and it never reverts. Of equal magnitudes the one
+  with the smaller coefficient orders first, so `gm(a, b)` and `gm(b, a)` are
+  the same bytes.
+- Packed toward zero: below `1e-2147483608` its bound adds `1e-2147483648`
+  absolute; `gm` of two `int224.min × 10^int32.max` is
+  `FLOAT_MAX_POSITIVE_VALUE`.
 
 ### log10
 

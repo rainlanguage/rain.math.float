@@ -553,7 +553,7 @@ library LibDecimalFloat {
     }
 
     /// Variant of `packLossy` used as the finaliser of `add`, `sub`, `mul`,
-    /// `integer`, `frac`, `floor`, `ceil`, `log10` and `sqrt`. `minus` and
+    /// `integer`, `frac`, `floor`, `ceil`, `log10`, `sqrt` and `gm`. `minus` and
     /// `abs` cannot underflow; `div`, `inv`, `pow` and `pow10` pack inline so
     /// their range errors report their input. Tolerates
     /// coefficient truncation (which preserves the order
@@ -1455,6 +1455,60 @@ library LibDecimalFloat {
             revert PowNegativeBase(signedCoefficient, exponent);
         }
         (signedCoefficient, exponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
+        return packArithmeticResult(signedCoefficient, exponent);
+    }
+
+    /// The signed geometric mean, `s × sqrt(|a| × |b|)`, `s` negative iff
+    /// exactly one of `a` and `b` is negative. A zero `a` or `b` is
+    /// `FLOAT_ZERO`. Never reverts.
+    ///
+    /// The root is taken of the exact product truncated toward zero to at most
+    /// 76 significant digits and rounded to nearest at 41, so it is within half
+    /// a unit in its 41st digit plus 6e-76 relative of the true mean, on
+    /// either side: under 5e-41 + 6e-76 relative. It is then clamped between
+    /// `|a|` and `|b|`, which the true mean lies between, which only moves it
+    /// closer. A root at or past either takes that input's representation, so
+    /// `gm(a, a)` is `abs(a)`, and no result is past every Float. Of two
+    /// equal magnitudes the one with the smaller coefficient orders first, so
+    /// `gm(a, b)` and `gm(b, a)` are the same bytes. The
+    /// clamped value packs as every arithmetic result does, toward zero: below
+    /// 1e-2147483608 it sheds digits to the int32 floor, adding 1e-2147483648
+    /// absolute, and the mean of two `int224.min × 10^int32.max` is
+    /// `FLOAT_MAX_POSITIVE_VALUE`.
+    /// @param a The first float.
+    /// @param b The second float.
+    /// @return The signed geometric mean of a and b.
+    function gm(Float a, Float b) internal pure returns (Float) {
+        (int256 signedCoefficientA, int256 exponentA) = a.unpack();
+        (int256 signedCoefficientB, int256 exponentB) = b.unpack();
+        if (signedCoefficientA == 0 || signedCoefficientB == 0) {
+            return FLOAT_ZERO;
+        }
+        bool negative = (signedCoefficientA < 0) != (signedCoefficientB < 0);
+        signedCoefficientA = LibDecimalFloatImplementation.absCoefficient(signedCoefficientA);
+        signedCoefficientB = LibDecimalFloatImplementation.absCoefficient(signedCoefficientB);
+        (int256 signedCoefficient, int256 exponent) =
+            LibDecimalFloatImplementation.mul(signedCoefficientA, exponentA, signedCoefficientB, exponentB);
+        if (signedCoefficient >= 1e76) {
+            signedCoefficient /= 10;
+            ++exponent;
+        }
+        (signedCoefficient, exponent) = LibDecimalFloatImplementation.sqrt(signedCoefficient, exponent);
+        bool swap = signedCoefficientB < signedCoefficientA
+            ? LibDecimalFloatImplementation.lte(signedCoefficientB, exponentB, signedCoefficientA, exponentA)
+            : LibDecimalFloatImplementation.lt(signedCoefficientB, exponentB, signedCoefficientA, exponentA);
+        if (swap) {
+            (signedCoefficientA, exponentA, signedCoefficientB, exponentB) =
+            (signedCoefficientB, exponentB, signedCoefficientA, exponentA);
+        }
+        if (LibDecimalFloatImplementation.lte(signedCoefficient, exponent, signedCoefficientA, exponentA)) {
+            (signedCoefficient, exponent) = (signedCoefficientA, exponentA);
+        } else if (LibDecimalFloatImplementation.gte(signedCoefficient, exponent, signedCoefficientB, exponentB)) {
+            (signedCoefficient, exponent) = (signedCoefficientB, exponentB);
+        }
+        if (negative) {
+            signedCoefficient = -signedCoefficient;
+        }
         return packArithmeticResult(signedCoefficient, exponent);
     }
 
