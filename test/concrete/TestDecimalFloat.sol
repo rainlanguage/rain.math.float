@@ -133,6 +133,10 @@ contract TestDecimalFloat {
         return a.sqrt();
     }
 
+    function gm(Float a, Float b) external pure returns (Float) {
+        return a.gm(b);
+    }
+
     function min(Float a, Float b) external pure returns (Float) {
         return a.min(b);
     }

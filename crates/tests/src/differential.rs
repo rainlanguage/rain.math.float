@@ -1358,6 +1358,86 @@ fn check_sqrt(a: &Dec) -> Result<(), TestCaseError> {
     check(&case, sol, Ok(want), None)
 }
 
+/// gm (NatSpec): `FLOAT_ZERO` for a zero input; otherwise negative iff
+/// exactly one input is, between |a| and |b| in magnitude (the lesser as it
+/// packs toward zero), within half a unit in its 41st digit plus 6e-76
+/// relative of sqrt(|a b|), plus 1e-2147483648 below 1e-2147483608, and at
+/// most 41 digits unless clamped to |a| or |b|. Never reverts.
+fn check_gm(a: &Dec, b: &Dec) -> Result<(), TestCaseError> {
+    let (fa, fb) = bin(a, b);
+    let case = format!("gm({}, {})", show(a), show(b));
+    let r = match sol_float(T::gmCall { a: fa, b: fb }) {
+        Ok(r) => r,
+        Err(f) => return Err(TestCaseError::fail(format!("{case}: solidity {f:?}"))),
+    };
+    if a.is_zero() || b.is_zero() {
+        prop_assert_eq!(r.to_bytes(), B256::ZERO, "{}: not FLOAT_ZERO", case);
+        return Ok(());
+    }
+    let r = d(&r);
+    let negative = a.is_negative() != b.is_negative();
+    prop_assert!(
+        r != D::ZERO && (r < D::ZERO) == negative,
+        "{case}: solidity {r}, negative {negative}"
+    );
+    let m = magnitude(&r);
+    let (x, y) = (magnitude(&d(a)), magnitude(&d(b)));
+    let hi = max_of(x.clone(), y.clone());
+    let lo = toward_zero(&min_of(x, y)).unwrap();
+    prop_assert!(
+        m <= hi && m >= lo,
+        "{case}: solidity {r} outside [{lo}, {hi}]"
+    );
+    let t = Context::<Zero>::new(100)
+        .sqrt(magnitude(&exact_mul(a, b)).repr())
+        .unwrap()
+        .value();
+    let mut bound = bound_sum(
+        &ulp41(&m, 5, 1),
+        &bound_mul(&t, &D::from_parts(IBig::from(6), -76)),
+    );
+    if sheds(&t) {
+        bound = bound_sum(&bound, &smallest());
+    }
+    let gap = distance(&m, &t);
+    prop_assert!(
+        gap <= bound,
+        "{case}: solidity {r}, dashu {t}, |r - t| {gap} past {bound}"
+    );
+    prop_assert!(
+        m.repr().digits() <= 41 || same(&m, &hi) || same(&m, &lo),
+        "{case}: {r} has over 41 digits"
+    );
+    Ok(())
+}
+
+/// gm's inputs: `pair`; both at the top, both at the bottom, or one at each
+/// end of the exponent range, so the product is past every Float; and a value
+/// with a neighbour or its negation, where the clamp acts.
+fn gm_input() -> BoxedStrategy<(Dec, Dec)> {
+    let top = || {
+        (exact::coefficient(), I32_MAX as i64 - 80..=I32_MAX as i64)
+            .prop_map(|(c, e)| Dec::new(c, e))
+    };
+    let bottom = || {
+        (exact::coefficient(), I32_MIN as i64..=I32_MIN as i64 + 80)
+            .prop_map(|(c, e)| Dec::new(c, e))
+    };
+    prop_oneof![
+        3 => pair(),
+        1 => (top(), top()),
+        1 => (bottom(), bottom()),
+        1 => (top(), bottom()),
+        1 => (exact::float(), -1i64..=1, any::<bool>()).prop_map(|(a, k, neg)| {
+            let c = (&a.c + k).clamp(r::int224_min(), r::int224_max());
+            let c = if neg && r::fits_int224(&-&c) { -c } else { c };
+            let e = a.e;
+            (a, Dec::new(c, e))
+        }),
+    ]
+    .boxed()
+}
+
 /// log10 within half a unit in the 41st digit plus 1.0037e-50 absolute,
 /// at most 41 digits, exact for a power of ten; zero reverts `Log10Zero`,
 /// negative `Log10Negative(a)` (NatSpec, README).
@@ -1887,6 +1967,9 @@ proptest! {
 
     #[test]
     fn differential_sqrt(a in sqrt_input()) { check_sqrt(&a)?; }
+
+    #[test]
+    fn differential_gm((a, b) in gm_input()) { check_gm(&a, &b)?; }
 
     #[test]
     fn differential_log10(a in transcendental::a_log10()) { check_log10(&a)?; }
