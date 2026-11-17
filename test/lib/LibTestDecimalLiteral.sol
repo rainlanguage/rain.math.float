@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {ParseEmptyDecimalString} from "rain-string-0.3.10/src/error/ErrParse.sol";
+import {ParseEmptyDecimalString} from "rain-string-0.3.11/src/error/ErrParse.sol";
 import {MalformedExponentDigits, MalformedDecimalPoint} from "../../src/error/ErrParse.sol";
 import {LibExactFloat} from "./LibExactFloat.sol";
 

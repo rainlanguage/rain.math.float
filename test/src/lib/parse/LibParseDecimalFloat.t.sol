@@ -7,7 +7,7 @@ import {Test} from "forge-std-1.17.0/src/Test.sol";
 import {LibParseDecimalFloat} from "../../../../src/lib/parse/LibParseDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {Strings} from "@openzeppelin-contracts-5.7.0/utils/Strings.sol";
-import {ParseEmptyDecimalString} from "rain-string-0.3.10/src/error/ErrParse.sol";
+import {ParseEmptyDecimalString} from "rain-string-0.3.11/src/error/ErrParse.sol";
 import {
     MalformedExponentDigits,
     ParseDecimalPrecisionLoss,
