@@ -2,7 +2,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2020 Rain Open Source Software Ltd
 pragma solidity ^0.8.25;
 
-import {LibParseChar} from "rain-string-0.3.10/src/lib/parse/LibParseChar.sol";
+import {LibParseChar} from "rain-string-0.3.11/src/lib/parse/LibParseChar.sol";
 import {
     CMASK_NUMERIC_0_9,
     CMASK_NEGATIVE_SIGN,
@@ -10,8 +10,8 @@ import {
     CMASK_E_NOTATION,
     CMASK_ZERO,
     CMASK_DECIMAL_POINT
-} from "rain-string-0.3.10/src/lib/parse/LibParseCMask.sol";
-import {LibParseDecimal} from "rain-string-0.3.10/src/lib/parse/LibParseDecimal.sol";
+} from "rain-string-0.3.11/src/lib/parse/LibParseCMask.sol";
+import {LibParseDecimal} from "rain-string-0.3.11/src/lib/parse/LibParseDecimal.sol";
 import {
     MalformedExponentDigits,
     ParseDecimalPrecisionLoss,
@@ -19,7 +19,7 @@ import {
     ParseDecimalFloatExcessCharacters,
     ParseDecimalNoSignificantDigits
 } from "../../error/ErrParse.sol";
-import {ParseEmptyDecimalString} from "rain-string-0.3.10/src/error/ErrParse.sol";
+import {ParseEmptyDecimalString} from "rain-string-0.3.11/src/error/ErrParse.sol";
 import {LibDecimalFloat, Float} from "../LibDecimalFloat.sol";
 import {LibBytes, Pointer} from "rain-solmem-0.1.28/src/lib/LibBytes.sol";
 import {ExponentOverflow} from "../../error/ErrDecimalFloat.sol";
